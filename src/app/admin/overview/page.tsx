@@ -93,7 +93,7 @@ export default async function AdminOverviewPage() {
   const newClientCount = (newClients as unknown as { count: number } | null)?.count ?? 0
 
   const agentMap = new Map<string, { agent_number: string; name: string; count: number; revenue: number }>()
-  for (const row of (agentCaseRows as AgentCaseRow[]) ?? []) {
+  for (const row of (agentCaseRows as unknown as AgentCaseRow[]) ?? []) {
     if (!row.agent_id || !row.agents) continue
     const prev = agentMap.get(row.agent_id) ?? { ...row.agents, count: 0, revenue: 0 }
     prev.count += 1
