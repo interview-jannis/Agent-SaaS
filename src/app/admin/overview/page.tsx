@@ -125,7 +125,7 @@ export default async function AdminOverviewPage() {
             </p>
             {paymentPending && paymentPending.length > 0 ? (
               <ul className="space-y-1">
-                {(paymentPending as ActionCase[]).map((c) => (
+                {(paymentPending as unknown as ActionCase[]).map((c) => (
                   <li key={c.id}>
                     <Link
                       href={`/admin/cases/${c.id}`}
@@ -164,7 +164,7 @@ export default async function AdminOverviewPage() {
             </p>
             {scheduleNeeded && scheduleNeeded.length > 0 ? (
               <ul className="space-y-1">
-                {(scheduleNeeded as ActionCase[]).map((c) => (
+                {(scheduleNeeded as unknown as ActionCase[]).map((c) => (
                   <li key={c.id}>
                     <Link
                       href={`/admin/cases/${c.id}`}
@@ -251,8 +251,8 @@ export default async function AdminOverviewPage() {
             </Link>
           </div>
           <ul className="divide-y divide-gray-50">
-            {recentCases && (recentCases as RecentCase[]).length > 0 ? (
-              (recentCases as RecentCase[]).map((c) => (
+            {recentCases && (recentCases as unknown as RecentCase[]).length > 0 ? (
+              (recentCases as unknown as RecentCase[]).map((c) => (
                 <li key={c.id}>
                   <Link
                     href={`/admin/cases/${c.id}`}
