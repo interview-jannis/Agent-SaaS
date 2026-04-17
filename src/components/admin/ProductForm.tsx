@@ -94,11 +94,6 @@ export default function ProductForm({ productId, productNumber, categories, init
 
   // Exchange rate (KRW per 1 USD)
   const [exchangeRate, setExchangeRate] = useState(1350)
-  const [usdPrice, setUsdPrice] = useState(() =>
-    initial?.form.base_price
-      ? String(Math.round(Number(initial.form.base_price) / 1350))
-      : ''
-  )
 
   useEffect(() => {
     supabase
@@ -108,14 +103,8 @@ export default function ProductForm({ productId, productNumber, categories, init
       .single()
       .then(({ data }) => {
         const rate = (data?.value as { usd_krw?: number } | null)?.usd_krw
-        if (rate) {
-          setExchangeRate(rate)
-          if (form.base_price) {
-            setUsdPrice(String(Math.round(Number(form.base_price) / rate)))
-          }
-        }
+        if (rate) setExchangeRate(rate)
       })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // ── Field helper ─────────────────────────────────────────────
@@ -124,7 +113,7 @@ export default function ProductForm({ productId, productNumber, categories, init
     setForm((prev) => ({ ...prev, [key]: value }))
   }
 
-  // ── Price (dual currency) ────────────────────────────────────
+  // ── Price ────────────────────────────────────────────────────
 
   function fmtNum(raw: string): string {
     if (!raw) return ''
@@ -132,17 +121,17 @@ export default function ProductForm({ productId, productNumber, categories, init
     return isNaN(n) ? '' : n.toLocaleString('ko-KR')
   }
 
-  function handleKrwChange(val: string) {
-    const raw = val.replace(/[^0-9]/g, '')
-    set('base_price', raw)
-    setUsdPrice(raw ? String(Math.round(Number(raw) / exchangeRate)) : '')
+  function handlePriceChange(val: string) {
+    set('base_price', val.replace(/[^0-9]/g, ''))
   }
 
-  function handleUsdChange(val: string) {
-    const raw = val.replace(/[^0-9]/g, '')
-    setUsdPrice(raw)
-    const krw = raw ? String(Math.round(Number(raw) * exchangeRate)) : ''
-    set('base_price', krw)
+  function priceHint(): string {
+    if (!form.base_price) return ''
+    const n = Number(form.base_price)
+    if (form.price_currency === 'KRW') {
+      return `≈ $${Math.round(n / exchangeRate).toLocaleString()} (₩${exchangeRate.toLocaleString()}/$)`
+    }
+    return `≈ ₩${Math.round(n * exchangeRate).toLocaleString()} (₩${exchangeRate.toLocaleString()}/$)`
   }
 
   // ── Contact channels ─────────────────────────────────────────
@@ -386,7 +375,7 @@ export default function ProductForm({ productId, productNumber, categories, init
               <div className="flex items-center gap-0.5 bg-gray-100 rounded-lg p-0.5">
                 <button
                   type="button"
-                  onClick={() => set('price_currency', 'KRW')}
+                  onClick={() => { set('price_currency', 'KRW'); set('base_price', '') }}
                   className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all ${
                     form.price_currency === 'KRW'
                       ? 'bg-white text-gray-900 shadow-sm'
@@ -397,7 +386,7 @@ export default function ProductForm({ productId, productNumber, categories, init
                 </button>
                 <button
                   type="button"
-                  onClick={() => set('price_currency', 'USD')}
+                  onClick={() => { set('price_currency', 'USD'); set('base_price', '') }}
                   className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all ${
                     form.price_currency === 'USD'
                       ? 'bg-white text-gray-900 shadow-sm'
@@ -408,43 +397,22 @@ export default function ProductForm({ productId, productNumber, categories, init
                 </button>
               </div>
             </div>
-            <div className="flex items-center gap-3">
-              <div className="flex-1">
-                <div className={`flex items-center border rounded-xl overflow-hidden transition-all focus-within:ring-2 focus-within:ring-[#0f4c35]/10 ${
-                  form.price_currency === 'KRW' ? 'border-[#0f4c35]' : 'border-gray-200 focus-within:border-[#0f4c35]'
-                }`}>
-                  <span className="px-3 py-2.5 text-sm text-gray-400 bg-gray-50 border-r border-gray-200">₩</span>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={fmtNum(form.base_price)}
-                    onChange={(e) => handleKrwChange(e.target.value)}
-                    placeholder="0"
-                    className="flex-1 px-3 py-2.5 text-sm focus:outline-none bg-white"
-                  />
-                </div>
-                <p className="text-xs text-gray-400 mt-1">KRW</p>
-              </div>
-
-              <span className="text-gray-300 text-sm mt-[-14px]">↔</span>
-
-              <div className="flex-1">
-                <div className={`flex items-center border rounded-xl overflow-hidden transition-all focus-within:ring-2 focus-within:ring-[#0f4c35]/10 ${
-                  form.price_currency === 'USD' ? 'border-[#0f4c35]' : 'border-gray-200 focus-within:border-[#0f4c35]'
-                }`}>
-                  <span className="px-3 py-2.5 text-sm text-gray-400 bg-gray-50 border-r border-gray-200">$</span>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={fmtNum(usdPrice)}
-                    onChange={(e) => handleUsdChange(e.target.value)}
-                    placeholder="0"
-                    className="flex-1 px-3 py-2.5 text-sm focus:outline-none bg-white"
-                  />
-                </div>
-                <p className="text-xs text-gray-400 mt-1">USD (at ₩{exchangeRate.toLocaleString()}/$)</p>
-              </div>
+            <div className="flex items-center border border-gray-200 rounded-xl overflow-hidden focus-within:border-[#0f4c35] focus-within:ring-2 focus-within:ring-[#0f4c35]/10 transition-all">
+              <span className="px-3 py-2.5 text-sm text-gray-400 bg-gray-50 border-r border-gray-200">
+                {form.price_currency === 'KRW' ? '₩' : '$'}
+              </span>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={fmtNum(form.base_price)}
+                onChange={(e) => handlePriceChange(e.target.value)}
+                placeholder="0"
+                className="flex-1 px-3 py-2.5 text-sm focus:outline-none bg-white"
+              />
             </div>
+            {priceHint() && (
+              <p className="text-xs text-gray-400 mt-1">{priceHint()}</p>
+            )}
           </div>
 
           <div>

@@ -64,7 +64,7 @@ export default function RegisterPage() {
       email,
       phone,
       country,
-      is_active: false,
+      is_active: true,
     })
 
     if (insertError) {
@@ -198,7 +198,7 @@ export default function RegisterPage() {
           </button>
 
           <p className="text-xs text-gray-400 text-center leading-relaxed">
-            Your account will be activated after admin approval.
+            You can sign in immediately after registration.
           </p>
         </form>
 

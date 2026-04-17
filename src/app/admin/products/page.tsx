@@ -26,7 +26,6 @@ export default function AdminProductsPage() {
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
-  const [exchangeRate, setExchangeRate] = useState(1350)
 
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('')
@@ -34,18 +33,15 @@ export default function AdminProductsPage() {
 
   useEffect(() => {
     async function load() {
-      const [{ data: cats }, { data: prods }, { data: rateSetting }] = await Promise.all([
+      const [{ data: cats }, { data: prods }] = await Promise.all([
         supabase.from('product_categories').select('id, name').order('name'),
         supabase
           .from('products')
           .select('id, product_number, name, base_price, price_currency, is_active, category_id, product_categories(name), product_images(image_url, is_primary)')
           .order('product_number', { ascending: false }),
-        supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single(),
       ])
       setCategories(cats ?? [])
       setProducts((prods as unknown as Product[]) ?? [])
-      const rate = (rateSetting?.value as { usd_krw?: number } | null)?.usd_krw
-      if (rate) setExchangeRate(rate)
       setLoading(false)
     }
     load()
@@ -178,7 +174,7 @@ export default function AdminProductsPage() {
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-900 text-right tabular-nums">
                       {p.price_currency === 'USD'
-                        ? `$${Math.round(p.base_price / exchangeRate).toLocaleString()}`
+                        ? `$${p.base_price.toLocaleString()}`
                         : `₩${p.base_price.toLocaleString('ko-KR')}`}
                     </td>
                     <td className="px-6 py-4 text-center">
