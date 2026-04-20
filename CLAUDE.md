@@ -82,6 +82,10 @@ Admin 수동 개입 4회:
 - 고객 URL 페이지: src/app/quote/[slug]/ , src/app/schedule/[slug]/
 - 타입 정의는 src/types/ 에 위치
 
+## 언어 규칙
+- **모든 UI 텍스트는 영어만 사용** (버튼, 라벨, 에러 메시지, placeholder 포함)
+- 한국어는 주석, 이 CLAUDE.md, docs/ 문서에만 허용
+
 ## 디자인 가이드
 - 프리미엄하고 깔끔한 느낌
 - Tailwind CSS 사용
