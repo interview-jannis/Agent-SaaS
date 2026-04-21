@@ -1,17 +1,43 @@
 # Project Progress
 
 ## 현재 상태
-- **Phase**: Agent/Admin UI 패턴 통일 완료, Invoice 흐름 정리
+- **Phase**: Agent/Admin UI 패턴 통일 완료, Invoice 흐름 정리, 미팅 피드백 반영 대기
 - **마지막 작업**: Admin Cases 표→50/50 재설계, Agent Cases/Clients 상세 페이지 생성, Invoice Preview+Send 분리, supabase-server.ts 404 수정
 - **마지막 업데이트**: 2026-04-21
+- **SaaS 브랜드명**: **Tiktak** (UI만 반영, 법인명은 Interview Co., Ltd 유지)
+
+> 2026-04-17 회사 미팅 피드백 반영 작업 추가됨 (`docs/meetings/26.04.17-kickoff-feedback.md` 참고)
 
 ---
 
 ## 다음 할 일
 
 ### 긴급 확인
-- [ ] 개발 서버 재시작 후 `/quote/[slug]` Preview 버튼 눌러서 인보이스 실제 렌더링 확인
+- [ ] `/quote/[slug]` Invoice 페이지 404 해결 — `window.print()` 핸들러가 async server component에 있어 오류 발생 가능성 높음. Print 버튼만 별도 client component로 분리 필요
 - [ ] `system_settings` DB에 `exchange_rate` 값이 `{ "usd_krw": 1350 }` 형식으로 저장됐는지 확인
+
+### 브랜딩 (Tiktak 적용)
+- [ ] 로고·사이드바·로그인 페이지·탭 타이틀(`<title>`)에 "Tiktak" 반영
+- [ ] Invoice 발행 주체는 Interview Co., Ltd 유지 (법인명이므로 변경 금지)
+
+### Agent Pre-Onboarding & 전자서명 (신규 플로우)
+- [ ] `/onboarding` 진입 페이지 — 사업 소개 + 서비스 구조 + OT 자료
+- [ ] NDA 전자서명 페이지 — Canvas 서명 + SMS 본인 인증
+- [ ] 파트너십 계약서 전자서명 페이지
+- [ ] 서명 완료 PDF 생성 + 에이전트 이메일 발송 (Resend)
+- [ ] `agent_contracts` 테이블 신규 생성 (signer_email, contract_type, signature_image_url, pdf_url, signed_at, ip, device_info)
+- [ ] 서명 완료 후에만 `/register` 진입 허용하는 가드 추가
+
+### Agent 회원가입 개편
+- [ ] `/register` 폼에 **정산 계좌(bank_info)** 필수 입력 필드 추가 — 은행명, 계좌번호, 예금주, Swift 등
+
+### 상품 카테고리
+- [ ] `product_categories` 테이블에 `order` 컬럼 추가 (또는 코드 상수로 순서 정의)
+- [ ] **Medical → Beauty → Wellness** 고정 순서 적용 (Agent Home 필터, Admin Categories, Admin Products 목록) — 알파벳 정렬 금지
+- [ ] 치과 / 안과 / 한방 카테고리 신규 등록
+
+### 상품 데이터 관리
+- [ ] Admin Products에 **"Export to Excel"** 버튼 추가 (`xlsx` 라이브러리 활용, 카테고리명·환산가격 등 가공 형태)
 
 ### 미구현 탭
 - [ ] Agent Payouts (`/agent/payouts`)
@@ -22,8 +48,7 @@
 
 ### 기능 보완
 - [ ] 고객용 스케줄 페이지 (`/schedule/[slug]`)
-- [ ] Admin Settings — 은행 계좌 정보 입력 UI (현재 인보이스에 "Not configured" 표시됨)
-- [ ] Resend 이메일 연동 (결제 요청 자동 발송)
+- [ ] Resend 이메일 연동 (결제 요청 자동 발송 + 서명 PDF 발송 공용)
 
 ---
 
@@ -47,7 +72,7 @@
 - [x] Admin Overview (`/admin/overview`) — 액션 필요 / This Month / Top Agents / Recent Cases
 - [x] Admin Products (`/admin/products`) — 목록, 등록, 수정, 삭제, 이미지 업로드
 - [x] Admin Categories (`/admin/categories`) — CRUD
-- [x] Admin Settings (`/admin/settings`) — 환율 설정
+- [x] Admin Settings (`/admin/settings`) — 환율 설정 + **은행 계좌 정보 입력**
 - [x] Admin Cases (`/admin/cases`) — **표 형식 + 50/50 분할 뷰**
   - 미선택: 전체 너비 테이블 (케이스# / 에이전트 / Lead Client / 상태 / 인원 / 여행기간 / USD)
   - 선택: 상단 브레드크럼 + 왼쪽 50%(케이스 정보+액션) / 오른쪽 50%(선택 상품)
@@ -113,6 +138,12 @@
 | Client 편집 필드 | 여행 필드 제외 | 여행 정보는 Case에 속함 |
 | 카트 지속성 | localStorage | 페이지 이동 간 상태 유지 |
 | 서버 DB 클라이언트 | anon key fallback | service role key 미설정 환경 대응 |
+| SaaS 브랜드명 | Tiktak (UI만) | 법적 발행 주체는 Interview Co., Ltd 유지 (법인명 ≠ 브랜드명) |
+| Agent 가입 선행 절차 | Pre-Onboarding → 전자서명 → 회원가입 | 계약 이전 검토 시간 확보 + 종이 계약 제거 |
+| 전자서명 방식 | 자체 구현 (Canvas + SMS 인증 + PDF 이메일 발송) | 가입 UX 매끄러움 우선, v2에서 Modusign 재검토 |
+| Agent 정산 계좌 | 가입 폼에서 필수 입력 | 정산 누락 방지, 관리자 수작업 제거 |
+| 상품 카테고리 정렬 | Medical → Beauty → Wellness 고정 순서 | 알파벳 정렬 금지 — 중요도·플로우 순서 반영 |
+| 상품 데이터 관리 | SaaS 직접 등록 (source of truth) + Excel Export 버튼 | 양방향 동기화로 인한 충돌 방지, 200개 넘으면 Bulk Import 재검토 |
 
 ---
 
