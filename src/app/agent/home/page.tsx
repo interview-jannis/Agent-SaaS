@@ -111,7 +111,11 @@ export default function AgentHomePage() {
 
   // Filters
   const [search, setSearch] = useState('')
-  const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([])
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('')
+  // Snapshot of cart product IDs at the moment of entering section view — used to pin
+  // already-selected products to the front of each section so they stay visible after
+  // un-filtering. Updated only when transitioning into section view, not on every add.
+  const [pinnedProductIds, setPinnedProductIds] = useState<Set<string>>(new Set())
   const [filterPrayerRoom, setFilterPrayerRoom] = useState(false)
   const [filterDietary, setFilterDietary] = useState<string[]>([])
   const [filterFemaleMedical, setFilterFemaleMedical] = useState(false)
@@ -154,7 +158,7 @@ export default function AgentHomePage() {
           .from('products')
           .select('id, name, description, base_price, price_currency, duration_value, duration_unit, partner_name, has_female_doctor, has_prayer_room, dietary_type, category_id, product_categories(name), product_images(image_url, is_primary)')
           .eq('is_active', true),
-        supabase.from('product_categories').select('id, name').order('name'),
+        supabase.from('product_categories').select('id, name').order('sort_order').order('name'),
       ])
 
       const aid = agentRes.data?.id ?? ''
@@ -188,16 +192,57 @@ export default function AgentHomePage() {
 
   // ── Derived ────────────────────────────────────────────────────────────────
 
+  // Cross-category filters (everything except the category itself)
+  function passesCrossFilters(p: Product): boolean {
+    if (search && !p.name.toLowerCase().includes(search.toLowerCase())) return false
+    if (filterPrayerRoom && !p.has_prayer_room) return false
+    if (filterFemaleMedical && !p.has_female_doctor) return false
+    if (filterDietary.length && !filterDietary.includes(p.dietary_type)) return false
+    return true
+  }
+
   const filteredProducts = useMemo(() => {
     return products.filter((p) => {
-      if (search && !p.name.toLowerCase().includes(search.toLowerCase())) return false
-      if (selectedCategoryIds.length && !selectedCategoryIds.includes(p.category_id)) return false
-      if (filterPrayerRoom && !p.has_prayer_room) return false
-      if (filterFemaleMedical && !p.has_female_doctor) return false
-      if (filterDietary.length && !filterDietary.includes(p.dietary_type)) return false
-      return true
+      if (selectedCategoryId && p.category_id !== selectedCategoryId) return false
+      return passesCrossFilters(p)
     })
-  }, [products, search, selectedCategoryIds, filterPrayerRoom, filterDietary, filterFemaleMedical])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [products, search, selectedCategoryId, filterPrayerRoom, filterDietary, filterFemaleMedical])
+
+  // Products grouped by category, with cart-pinned items first. Used in section view.
+  const productsByCategory = useMemo(() => {
+    const cartIds = new Set(groups.flatMap((g) => g.productIds))
+    const map = new Map<string, Product[]>()
+    for (const cat of categories) map.set(cat.id, [])
+    for (const p of products) {
+      if (!passesCrossFilters(p)) continue
+      const bucket = map.get(p.category_id)
+      if (bucket) bucket.push(p)
+    }
+    // Sort each bucket: pinned (was in cart at snapshot time) first, rest keeps original order.
+    // Items added to cart AFTER snapshot are NOT re-pinned (prevents cards jumping while user clicks).
+    for (const bucket of map.values()) {
+      bucket.sort((a, b) => {
+        const ap = pinnedProductIds.has(a.id) ? 0 : 1
+        const bp = pinnedProductIds.has(b.id) ? 0 : 1
+        if (ap !== bp) return ap - bp
+        return 0
+      })
+      // Still useful: if user JUST added an item (not in snapshot) keep it in original position.
+      // But if the only pinned items are already at front, nothing changes.
+      void cartIds
+    }
+    return map
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [products, categories, search, filterPrayerRoom, filterDietary, filterFemaleMedical, pinnedProductIds])
+
+  // When entering section view (selectedCategoryId cleared), snapshot current cart.
+  useEffect(() => {
+    if (selectedCategoryId === '') {
+      setPinnedProductIds(new Set(groups.flatMap((g) => g.productIds)))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCategoryId])
 
   const productGroupIndex = useMemo(() => {
     const map = new Map<string, number>()
@@ -335,6 +380,97 @@ export default function AgentHomePage() {
     return `$${withMargin.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
   }
 
+  function renderProductCard(product: Product, compact = false) {
+    const inActiveGroup = groups[activeGroupIndex]?.productIds.includes(product.id)
+    const activePalette = GROUP_PALETTE[activeGroupIndex]
+    const imgs = product.product_images ?? []
+    const sortedImgs = [...imgs].sort((a, b) => (b.is_primary ? 1 : 0) - (a.is_primary ? 1 : 0))
+    const imgIdx = imageIndexes[product.id] ?? 0
+    const currentImg = sortedImgs[imgIdx]
+
+    return (
+      <div
+        key={product.id}
+        className={`bg-white rounded-2xl border-2 overflow-hidden flex flex-col transition-all ${
+          inActiveGroup ? activePalette.border : 'border-gray-100'
+        }`}
+      >
+        {/* Image with carousel */}
+        <div
+          className={`${compact ? 'aspect-video' : 'aspect-[4/3]'} bg-gray-100 overflow-hidden relative group/img cursor-pointer`}
+          onClick={() => openDetail(product)}
+        >
+          {currentImg ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={currentImg.image_url} alt="" className="w-full h-full object-cover" />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center">
+              <svg className="w-8 h-8 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5z" />
+              </svg>
+            </div>
+          )}
+          {sortedImgs.length > 1 && (
+            <>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setImageIndexes((prev) => ({ ...prev, [product.id]: (imgIdx - 1 + sortedImgs.length) % sortedImgs.length }))
+                }}
+                className="absolute left-1.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-black/40 text-white flex items-center justify-center opacity-0 group-hover/img:opacity-100 transition-opacity text-xs"
+              >‹</button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setImageIndexes((prev) => ({ ...prev, [product.id]: (imgIdx + 1) % sortedImgs.length }))
+                }}
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-black/40 text-white flex items-center justify-center opacity-0 group-hover/img:opacity-100 transition-opacity text-xs"
+              >›</button>
+              <div className="absolute bottom-1.5 left-1/2 -translate-x-1/2 flex gap-1">
+                {sortedImgs.map((_, i) => (
+                  <div key={i} className={`w-1.5 h-1.5 rounded-full transition-all ${i === imgIdx ? 'bg-white' : 'bg-white/40'}`} />
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Content */}
+        <div className="p-3 flex flex-col flex-1 gap-1.5">
+          <button
+            onClick={() => openDetail(product)}
+            className="text-sm font-semibold text-gray-900 leading-tight text-left hover:text-[#0f4c35] transition-colors line-clamp-1"
+          >
+            {product.name}
+          </button>
+          {!compact && (
+            <p className="text-xs text-gray-400 line-clamp-2 leading-relaxed whitespace-pre-line">{product.description}</p>
+          )}
+
+          <div className="flex items-center justify-between mt-auto pt-1">
+            <div>
+              <p className="text-sm font-bold text-gray-900">{toUSD(product)}</p>
+              <p className="text-[11px] text-gray-400">{product.duration_value} {product.duration_unit}</p>
+            </div>
+            <div className="flex gap-1">
+              {product.has_female_doctor && <span title="Female medical staff" className="text-sm">👩‍⚕️</span>}
+              {product.has_prayer_room && <span title="Prayer room" className="text-sm">🕌</span>}
+            </div>
+          </div>
+
+          <button
+            onClick={() => toggleProduct(product.id)}
+            className={`mt-1 w-full py-1.5 rounded-lg text-xs font-medium transition-all ${
+              inActiveGroup ? activePalette.btn : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            {inActiveGroup ? `✓ ${groups[activeGroupIndex]?.name}` : `Add to ${groups[activeGroupIndex]?.name ?? 'Group'}`}
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   if (loading) {
@@ -410,20 +546,27 @@ export default function AgentHomePage() {
             />
           </div>
 
-          {/* Categories */}
+          {/* Categories (single-select radio) */}
           <div>
             <p className="text-xs font-semibold text-gray-500 mb-2">Category</p>
             <div className="space-y-1.5">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="category-filter"
+                  checked={selectedCategoryId === ''}
+                  onChange={() => setSelectedCategoryId('')}
+                  className="accent-[#0f4c35] w-3.5 h-3.5"
+                />
+                <span className="text-xs text-gray-600">All</span>
+              </label>
               {categories.map((cat) => (
                 <label key={cat.id} className="flex items-center gap-2 cursor-pointer">
                   <input
-                    type="checkbox"
-                    checked={selectedCategoryIds.includes(cat.id)}
-                    onChange={(e) => {
-                      setSelectedCategoryIds((prev) =>
-                        e.target.checked ? [...prev, cat.id] : prev.filter((id) => id !== cat.id)
-                      )
-                    }}
+                    type="radio"
+                    name="category-filter"
+                    checked={selectedCategoryId === cat.id}
+                    onChange={() => setSelectedCategoryId(cat.id)}
                     className="accent-[#0f4c35] w-3.5 h-3.5"
                   />
                   <span className="text-xs text-gray-600">{cat.name}</span>
@@ -479,107 +622,47 @@ export default function AgentHomePage() {
           </div>
         </div>
 
-        {/* ── Product Grid ── */}
-        <div className="flex-1 overflow-y-auto bg-gray-50 p-6">
-          {filteredProducts.length === 0 ? (
+        {/* ── Product Area: sections (no category filter) OR flat grid (category selected) ── */}
+        <div className={`flex-1 bg-gray-50 p-6 ${selectedCategoryId === '' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
+          {selectedCategoryId === '' ? (
+            Array.from(productsByCategory.values()).every((arr) => arr.length === 0) ? (
+              <div className="flex items-center justify-center h-48">
+                <p className="text-sm text-gray-400">No products found</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 grid-rows-2 gap-4 h-full">
+                {categories.map((cat) => {
+                  const items = productsByCategory.get(cat.id) ?? []
+                  if (items.length === 0) return null
+                  const PREVIEW = 3
+                  const preview = items.slice(0, PREVIEW)
+                  const hasMore = items.length > PREVIEW
+                  return (
+                    <section key={cat.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex flex-col min-h-0">
+                      <div className="flex items-center justify-between mb-3 pb-2 border-b border-gray-100 shrink-0">
+                        <h2 className="text-sm font-semibold text-gray-800">{cat.name}</h2>
+                        <button
+                          onClick={() => setSelectedCategoryId(cat.id)}
+                          className="text-xs text-[#0f4c35] font-medium hover:underline"
+                        >
+                          {hasMore ? `See all (${items.length}) →` : 'See all →'}
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-3 gap-3 flex-1 min-h-0">
+                        {preview.map((product) => renderProductCard(product, true))}
+                      </div>
+                    </section>
+                  )
+                })}
+              </div>
+            )
+          ) : filteredProducts.length === 0 ? (
             <div className="flex items-center justify-center h-48">
               <p className="text-sm text-gray-400">No products found</p>
             </div>
           ) : (
-            <div className="grid grid-cols-3 gap-4">
-              {filteredProducts.map((product) => {
-                const groupIdx = productGroupIndex.get(product.id)
-                const inActiveGroup = groups[activeGroupIndex]?.productIds.includes(product.id)
-                const activePalette = GROUP_PALETTE[activeGroupIndex]
-                const imgs = product.product_images ?? []
-                const sortedImgs = [...imgs].sort((a, b) => (b.is_primary ? 1 : 0) - (a.is_primary ? 1 : 0))
-                const imgIdx = imageIndexes[product.id] ?? 0
-                const currentImg = sortedImgs[imgIdx]
-
-                return (
-                  <div
-                    key={product.id}
-                    className={`bg-white rounded-2xl border-2 overflow-hidden flex flex-col transition-all ${
-                      inActiveGroup ? activePalette.border : 'border-gray-100'
-                    }`}
-                  >
-                    {/* Image with carousel */}
-                    <div
-                      className="aspect-[4/3] bg-gray-100 overflow-hidden relative group/img cursor-pointer"
-                      onClick={() => openDetail(product)}
-                    >
-                      {currentImg ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={currentImg.image_url} alt="" className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center">
-                          <svg className="w-8 h-8 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5z" />
-                          </svg>
-                        </div>
-                      )}
-
-                      {/* Carousel arrows */}
-                      {sortedImgs.length > 1 && (
-                        <>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              setImageIndexes((prev) => ({ ...prev, [product.id]: (imgIdx - 1 + sortedImgs.length) % sortedImgs.length }))
-                            }}
-                            className="absolute left-1.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-black/40 text-white flex items-center justify-center opacity-0 group-hover/img:opacity-100 transition-opacity text-xs"
-                          >‹</button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              setImageIndexes((prev) => ({ ...prev, [product.id]: (imgIdx + 1) % sortedImgs.length }))
-                            }}
-                            className="absolute right-1.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-black/40 text-white flex items-center justify-center opacity-0 group-hover/img:opacity-100 transition-opacity text-xs"
-                          >›</button>
-                          {/* Dots */}
-                          <div className="absolute bottom-1.5 left-1/2 -translate-x-1/2 flex gap-1">
-                            {sortedImgs.map((_, i) => (
-                              <div key={i} className={`w-1.5 h-1.5 rounded-full transition-all ${i === imgIdx ? 'bg-white' : 'bg-white/40'}`} />
-                            ))}
-                          </div>
-                        </>
-                      )}
-                    </div>
-
-                    {/* Content */}
-                    <div className="p-3 flex flex-col flex-1 gap-1.5">
-                      <button
-                        onClick={() => openDetail(product)}
-                        className="text-sm font-semibold text-gray-900 leading-tight text-left hover:text-[#0f4c35] transition-colors line-clamp-1"
-                      >
-                        {product.name}
-                      </button>
-                      <p className="text-xs text-gray-400 line-clamp-2 leading-relaxed whitespace-pre-line">{product.description}</p>
-
-                      <div className="flex items-center justify-between mt-auto pt-1">
-                        <div>
-                          <p className="text-sm font-bold text-gray-900">{toUSD(product)}</p>
-                          <p className="text-[11px] text-gray-400">{product.duration_value} {product.duration_unit}</p>
-                        </div>
-                        <div className="flex gap-1">
-                          {product.has_female_doctor && <span title="Female medical staff" className="text-sm">👩‍⚕️</span>}
-                          {product.has_prayer_room && <span title="Prayer room" className="text-sm">🕌</span>}
-                        </div>
-                      </div>
-
-                      {/* Add button */}
-                      <button
-                        onClick={() => toggleProduct(product.id)}
-                        className={`mt-1 w-full py-1.5 rounded-lg text-xs font-medium transition-all ${
-                          inActiveGroup ? activePalette.btn : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                        }`}
-                      >
-                        {inActiveGroup ? `✓ ${groups[activeGroupIndex]?.name}` : `Add to ${groups[activeGroupIndex]?.name ?? 'Group'}`}
-                      </button>
-                    </div>
-                  </div>
-                )
-              })}
+            <div className="grid grid-cols-4 gap-3">
+              {filteredProducts.map((product) => renderProductCard(product))}
             </div>
           )}
         </div>

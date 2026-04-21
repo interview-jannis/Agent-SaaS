@@ -306,7 +306,7 @@ export default function ProductForm({ productId, productNumber, categories, init
   // ── Render ───────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 [&_input]:text-gray-900 [&_textarea]:text-gray-900 [&_select]:text-gray-900">
       <div className="px-12 py-10 max-w-2xl space-y-6">
 
         {/* Header */}

@@ -16,7 +16,7 @@ export default function AdminCategoriesPage() {
   const [error, setError] = useState('')
 
   async function load() {
-    const { data } = await supabase.from('product_categories').select('id, name').order('name')
+    const { data } = await supabase.from('product_categories').select('id, name').order('sort_order').order('name')
     setCategories(data ?? [])
     setLoading(false)
   }

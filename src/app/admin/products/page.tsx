@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
@@ -42,7 +42,7 @@ export default function AdminProductsPage() {
   useEffect(() => {
     async function load() {
       const [{ data: cats }, { data: prods }, { data: cmSetting }, { data: rateSetting }] = await Promise.all([
-        supabase.from('product_categories').select('id, name').order('name'),
+        supabase.from('product_categories').select('id, name').order('sort_order').order('name'),
         supabase
           .from('products')
           .select('id, product_number, name, description, partner_name, base_price, price_currency, is_active, category_id, product_categories(name), product_images(image_url, is_primary)')
@@ -105,6 +105,19 @@ export default function AdminProductsPage() {
       setPartnerFilter('')
     }
   }, [categoryFilter, partnerFilter, availablePartners])
+
+  // Group filtered products by category (in category sort_order)
+  const groupedByCategory = new Map<string, Product[]>()
+  for (const cat of categories) groupedByCategory.set(cat.id, [])
+  for (const p of filtered) {
+    const bucket = groupedByCategory.get(p.category_id)
+    if (bucket) bucket.push(p)
+  }
+
+  function scrollToCategory(catId: string) {
+    const el = document.getElementById(`cat-section-${catId}`)
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -184,6 +197,27 @@ export default function AdminProductsPage() {
           </select>
         </div>
 
+        {/* Category jump pills (sticky — always accessible while scrolling) */}
+        {!loading && filtered.length > 0 && (
+          <div className="sticky top-0 z-20 bg-[#0f4c35]/[0.04] border border-[#0f4c35]/15 rounded-xl shadow-sm px-4 py-2.5 flex flex-wrap gap-2 backdrop-blur-sm">
+            <span className="self-center text-[11px] font-semibold text-[#0f4c35]/70 uppercase tracking-wide mr-1">Jump to</span>
+            {categories.map((cat) => {
+              const count = groupedByCategory.get(cat.id)?.length ?? 0
+              if (count === 0) return null
+              return (
+                <button
+                  key={cat.id}
+                  onClick={() => scrollToCategory(cat.id)}
+                  className="px-3 py-1.5 rounded-full bg-white border border-gray-200 hover:border-[#0f4c35] hover:text-[#0f4c35] text-sm text-gray-700 transition-colors shadow-sm"
+                >
+                  {cat.name}
+                  <span className="text-gray-400 ml-1.5">({count})</span>
+                </button>
+              )
+            })}
+          </div>
+        )}
+
         {/* Table */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
           {loading ? (
@@ -211,12 +245,26 @@ export default function AdminProductsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {filtered.map((p) => (
-                  <tr
-                    key={p.id}
-                    onClick={() => router.push(`/admin/products/${p.id}`)}
-                    className="hover:bg-gray-50 cursor-pointer transition-colors group"
-                  >
+                {categories.map((cat) => {
+                  const items = groupedByCategory.get(cat.id) ?? []
+                  if (items.length === 0) return null
+                  return (
+                    <Fragment key={cat.id}>
+                      <tr id={`cat-section-${cat.id}`} className="scroll-mt-20">
+                        <td
+                          colSpan={9}
+                          className="sticky top-16 z-10 bg-gray-100 border-y border-gray-200 px-6 py-2 text-xs font-bold text-gray-700 uppercase tracking-wide"
+                        >
+                          {cat.name}
+                          <span className="text-gray-400 font-normal normal-case ml-2">({items.length})</span>
+                        </td>
+                      </tr>
+                      {items.map((p) => (
+                        <tr
+                          key={p.id}
+                          onClick={() => router.push(`/admin/products/${p.id}`)}
+                          className="hover:bg-gray-50 cursor-pointer transition-colors group"
+                        >
                     <td className="px-6 py-4 text-xs font-mono text-gray-400 whitespace-nowrap">{p.product_number}</td>
                     <td className="px-4 py-3">
                       {(() => {
@@ -325,7 +373,10 @@ export default function AdminProductsPage() {
                       </svg>
                     </td>
                   </tr>
-                ))}
+                      ))}
+                    </Fragment>
+                  )
+                })}
               </tbody>
             </table>
           )}
