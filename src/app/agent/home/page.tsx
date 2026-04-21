@@ -39,6 +39,10 @@ type Group = {
   productIds: string[]
 }
 
+type DietaryRestriction = 'halal_certified' | 'halal_friendly' | 'muslim_friendly' | 'pork_free' | 'none'
+type PrayerFrequency = 'strict' | 'moderate' | 'flexible'
+type PrayerLocation = 'prayer_room' | 'mosque_nearby' | 'quiet_private_space' | 'any_clean_space' | 'no_preference'
+
 type ClientForm = {
   name: string
   nationality: string
@@ -47,7 +51,9 @@ type ClientForm = {
   phone: string
   email: string
   needs_muslim_friendly: boolean
-  dietary_restriction: 'halal_certified' | 'halal_friendly' | 'muslim_friendly' | 'pork_free' | 'none'
+  dietary_restriction: DietaryRestriction
+  prayer_frequency: PrayerFrequency | null
+  prayer_location: PrayerLocation | null
   special_requests: string
 }
 
@@ -67,12 +73,26 @@ const DIETARY_FILTER_OPTIONS = [
   { value: 'pork_free', label: 'Pork Free' },
 ]
 
-const DIETARY_FORM_OPTIONS = [
+const DIETARY_FORM_OPTIONS: { value: DietaryRestriction; label: string }[] = [
   { value: 'halal_certified', label: 'Halal Certified' },
   { value: 'halal_friendly', label: 'Halal Friendly' },
   { value: 'muslim_friendly', label: 'Muslim Friendly' },
   { value: 'pork_free', label: 'Pork Free' },
   { value: 'none', label: 'None' },
+]
+
+const PRAYER_FREQUENCY_OPTIONS: { value: PrayerFrequency; label: string }[] = [
+  { value: 'strict', label: 'Strict (5 times on time)' },
+  { value: 'moderate', label: 'Moderate (flexible timing)' },
+  { value: 'flexible', label: 'Flexible (when possible)' },
+]
+
+const PRAYER_LOCATION_OPTIONS: { value: PrayerLocation; label: string }[] = [
+  { value: 'prayer_room', label: 'Dedicated prayer room' },
+  { value: 'mosque_nearby', label: 'Mosque within walking distance' },
+  { value: 'quiet_private_space', label: 'Quiet private space (hotel room, etc.)' },
+  { value: 'any_clean_space', label: 'Any clean space' },
+  { value: 'no_preference', label: 'No preference' },
 ]
 
 const DEFAULT_CLIENT_FORM: ClientForm = {
@@ -84,6 +104,8 @@ const DEFAULT_CLIENT_FORM: ClientForm = {
   email: '',
   needs_muslim_friendly: false,
   dietary_restriction: 'none',
+  prayer_frequency: null,
+  prayer_location: null,
   special_requests: '',
 }
 
@@ -859,164 +881,134 @@ export default function AgentHomePage() {
 
       {/* ── Client Registration Modal ── */}
       {showClientModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-              <h2 className="text-sm font-semibold text-gray-900">Register Client</h2>
-              <button
-                onClick={() => { setShowClientModal(false); setClientError('') }}
-                className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100"
-              >
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => !savingClient && setShowClientModal(false)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+              <h2 className="text-base font-semibold text-gray-900">New Client</h2>
+              <button onClick={() => !savingClient && setShowClientModal(false)} className="text-gray-400 hover:text-gray-600">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
             </div>
 
-            <div className="px-6 py-4 space-y-4">
-              <p className="text-xs text-gray-400">Basic information · Required for quote creation</p>
-
+            <div className="p-6 space-y-3">
               {/* Name */}
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">
-                  Name <span className="text-red-400">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={clientForm.name}
-                  onChange={(e) => setField('name', e.target.value)}
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-[#0f4c35]"
-                />
+                <label className="block text-xs text-gray-500 mb-1">Name *</label>
+                <input value={clientForm.name} onChange={(e) => setField('name', e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
               </div>
 
-              {/* Nationality */}
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Nationality</label>
-                <input
-                  type="text"
-                  value={clientForm.nationality}
-                  onChange={(e) => setField('nationality', e.target.value)}
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-[#0f4c35]"
-                />
-              </div>
-
-              {/* Gender */}
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Gender</label>
-                <div className="flex gap-4">
-                  {(['male', 'female'] as const).map((g) => (
-                    <label key={g} className="flex items-center gap-1.5 cursor-pointer">
-                      <input
-                        type="radio"
-                        checked={clientForm.gender === g}
-                        onChange={() => setField('gender', g)}
-                        className="accent-[#0f4c35]"
-                      />
-                      <span className="text-sm text-gray-700 capitalize">{g}</span>
-                    </label>
-                  ))}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Nationality</label>
+                  <input value={clientForm.nationality} onChange={(e) => setField('nationality', e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Gender</label>
+                  <div className="flex gap-3 pt-1">
+                    {(['male', 'female'] as const).map((g) => (
+                      <label key={g} className="flex items-center gap-1.5 cursor-pointer">
+                        <input type="radio" checked={clientForm.gender === g}
+                          onChange={() => setField('gender', g)}
+                          className="accent-[#0f4c35]" />
+                        <span className="text-sm text-gray-700 capitalize">{g}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Date of Birth</label>
+                  <input type="date" value={clientForm.date_of_birth}
+                    onChange={(e) => setField('date_of_birth', e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Phone</label>
+                  <input value={clientForm.phone} onChange={(e) => setField('phone', e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs text-gray-500 mb-1">Email</label>
+                  <input type="email" value={clientForm.email} onChange={(e) => setField('email', e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
                 </div>
               </div>
 
-              {/* Date of birth */}
+              {/* Muslim? */}
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Date of Birth</label>
-                <input
-                  type="date"
-                  value={clientForm.date_of_birth}
-                  onChange={(e) => setField('date_of_birth', e.target.value)}
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-[#0f4c35]"
-                />
-              </div>
-
-              {/* Phone */}
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Phone</label>
-                <input
-                  type="text"
-                  value={clientForm.phone}
-                  onChange={(e) => setField('phone', e.target.value)}
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-[#0f4c35]"
-                />
-              </div>
-
-              {/* Email */}
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Email</label>
-                <input
-                  type="email"
-                  value={clientForm.email}
-                  onChange={(e) => setField('email', e.target.value)}
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-[#0f4c35]"
-                />
-              </div>
-
-              {/* Muslim Friendly */}
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Muslim Friendly</label>
+                <label className="block text-xs text-gray-500 mb-1">Muslim?</label>
                 <div className="flex gap-4">
                   {([true, false] as const).map((v) => (
                     <label key={String(v)} className="flex items-center gap-1.5 cursor-pointer">
-                      <input
-                        type="radio"
-                        checked={clientForm.needs_muslim_friendly === v}
-                        onChange={() => setField('needs_muslim_friendly', v)}
-                        className="accent-[#0f4c35]"
-                      />
-                      <span className="text-sm text-gray-700">{v ? 'Required' : 'Not required'}</span>
+                      <input type="radio" checked={clientForm.needs_muslim_friendly === v}
+                        onChange={() => setClientForm((p) => ({
+                          ...p,
+                          needs_muslim_friendly: v,
+                          // Reset Muslim-specific fields when switching to No
+                          ...(v ? {} : { dietary_restriction: 'none' as DietaryRestriction, prayer_frequency: null, prayer_location: null }),
+                        }))}
+                        className="accent-[#0f4c35]" />
+                      <span className="text-sm text-gray-700">{v ? 'Yes' : 'No'}</span>
                     </label>
                   ))}
                 </div>
               </div>
 
-              {/* Dietary */}
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Dietary Restriction</label>
-                <div className="space-y-1.5">
-                  {DIETARY_FORM_OPTIONS.map((opt) => (
-                    <label key={opt.value} className="flex items-center gap-1.5 cursor-pointer">
-                      <input
-                        type="radio"
-                        checked={clientForm.dietary_restriction === opt.value}
-                        onChange={() => setField('dietary_restriction', opt.value as ClientForm['dietary_restriction'])}
-                        className="accent-[#0f4c35]"
-                      />
-                      <span className="text-sm text-gray-700">{opt.label}</span>
-                    </label>
-                  ))}
+              {/* Conditional: only shown when Muslim = Yes */}
+              {clientForm.needs_muslim_friendly && (
+                <div className="space-y-3 rounded-xl border border-[#0f4c35]/15 bg-[#0f4c35]/[0.03] p-3">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Dietary Restriction</label>
+                    <select value={clientForm.dietary_restriction}
+                      onChange={(e) => setField('dietary_restriction', e.target.value as DietaryRestriction)}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35] bg-white">
+                      {DIETARY_FORM_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Prayer Frequency</label>
+                    <select value={clientForm.prayer_frequency ?? ''}
+                      onChange={(e) => setField('prayer_frequency', (e.target.value || null) as PrayerFrequency | null)}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35] bg-white">
+                      <option value="">— Select —</option>
+                      {PRAYER_FREQUENCY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Prayer Location</label>
+                    <select value={clientForm.prayer_location ?? ''}
+                      onChange={(e) => setField('prayer_location', (e.target.value || null) as PrayerLocation | null)}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35] bg-white">
+                      <option value="">— Select —</option>
+                      {PRAYER_LOCATION_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                  </div>
                 </div>
-              </div>
+              )}
 
-              {/* Special requests */}
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Special Requests</label>
-                <textarea
-                  value={clientForm.special_requests}
+                <label className="block text-xs text-gray-500 mb-1">Special Requests</label>
+                <textarea value={clientForm.special_requests}
                   onChange={(e) => setField('special_requests', e.target.value)}
-                  rows={3}
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-[#0f4c35] resize-none"
-                />
+                  rows={2}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35] resize-none" />
               </div>
 
               <p className="text-xs text-gray-400">* Travel details (passport, flights, etc.) can be added after payment.</p>
 
-              {clientError && (
-                <p className="text-sm text-red-500">{clientError}</p>
-              )}
+              {clientError && <p className="text-xs text-red-500">{clientError}</p>}
             </div>
 
-            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100">
-              <button
-                onClick={() => { setShowClientModal(false); setClientError('') }}
-                className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50"
-              >
+            <div className="p-5 border-t border-gray-100 flex items-center justify-end gap-2">
+              <button onClick={() => { setShowClientModal(false); setClientError('') }} disabled={savingClient}
+                className="px-4 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
                 Cancel
               </button>
-              <button
-                onClick={handleRegisterClient}
-                disabled={savingClient}
-                className="px-4 py-2 text-sm font-medium bg-[#0f4c35] text-white rounded-xl hover:bg-[#0a3828] disabled:opacity-40"
-              >
+              <button onClick={handleRegisterClient} disabled={savingClient}
+                className="px-4 py-1.5 text-sm bg-[#0f4c35] text-white font-medium rounded-lg hover:bg-[#0a3828] disabled:opacity-50 transition-colors">
                 {savingClient ? 'Saving...' : 'Register & Review Quote'}
               </button>
             </div>

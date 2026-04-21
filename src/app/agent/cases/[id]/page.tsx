@@ -383,6 +383,19 @@ export default function CaseDetailPage() {
                   ))}
                 </div>
                 <div>
+                  <label className="block text-xs text-gray-500 mb-1">Muslim?</label>
+                  <div className="flex gap-4">
+                    {([true, false] as const).map(v => (
+                      <label key={String(v)} className="flex items-center gap-1.5 cursor-pointer">
+                        <input type="radio" checked={newClientForm.needs_muslim_friendly === v}
+                          onChange={() => setNewClientForm(p => ({ ...p, needs_muslim_friendly: v }))}
+                          className="accent-[#0f4c35]" />
+                        <span className="text-sm text-gray-700">{v ? 'Yes' : 'No'}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <div>
                   <label className="block text-xs text-gray-500 mb-1">Dietary Restriction</label>
                   <select value={newClientForm.dietary_restriction}
                     onChange={e => setNewClientForm(p => ({ ...p, dietary_restriction: e.target.value as DietaryType }))}

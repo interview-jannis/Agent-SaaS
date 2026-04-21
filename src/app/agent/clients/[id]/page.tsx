@@ -7,6 +7,8 @@ import { supabase } from '@/lib/supabase'
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type DietaryType = 'halal_certified' | 'halal_friendly' | 'muslim_friendly' | 'pork_free' | 'none'
+type PrayerFrequency = 'strict' | 'moderate' | 'flexible'
+type PrayerLocation = 'prayer_room' | 'mosque_nearby' | 'quiet_private_space' | 'any_clean_space' | 'no_preference'
 type CaseStatus = 'payment_pending' | 'payment_completed' | 'schedule_reviewed' | 'schedule_confirmed' | 'travel_completed'
 
 type Client = {
@@ -21,6 +23,8 @@ type Client = {
   passport_number: string | null
   needs_muslim_friendly: boolean
   dietary_restriction: DietaryType | null
+  prayer_frequency: PrayerFrequency | null
+  prayer_location: PrayerLocation | null
   special_requests: string | null
   created_at: string
 }
@@ -34,6 +38,8 @@ type EditForm = {
   passport_number: string
   needs_muslim_friendly: boolean
   dietary_restriction: DietaryType
+  prayer_frequency: PrayerFrequency | null
+  prayer_location: PrayerLocation | null
   special_requests: string
 }
 
@@ -57,6 +63,24 @@ const DIETARY_OPTIONS: { value: DietaryType; label: string }[] = [
   { value: 'halal_certified', label: 'Halal Certified' }, { value: 'halal_friendly', label: 'Halal Friendly' },
   { value: 'muslim_friendly', label: 'Muslim Friendly' }, { value: 'pork_free', label: 'Pork Free' }, { value: 'none', label: 'None' },
 ]
+const PRAYER_FREQUENCY_OPTIONS: { value: PrayerFrequency; label: string }[] = [
+  { value: 'strict', label: 'Strict (5 times on time)' },
+  { value: 'moderate', label: 'Moderate (flexible timing)' },
+  { value: 'flexible', label: 'Flexible (when possible)' },
+]
+const PRAYER_LOCATION_OPTIONS: { value: PrayerLocation; label: string }[] = [
+  { value: 'prayer_room', label: 'Dedicated prayer room' },
+  { value: 'mosque_nearby', label: 'Mosque within walking distance' },
+  { value: 'quiet_private_space', label: 'Quiet private space' },
+  { value: 'any_clean_space', label: 'Any clean space' },
+  { value: 'no_preference', label: 'No preference' },
+]
+const PRAYER_FREQ_LABELS: Record<PrayerFrequency, string> = Object.fromEntries(
+  PRAYER_FREQUENCY_OPTIONS.map((o) => [o.value, o.label])
+) as Record<PrayerFrequency, string>
+const PRAYER_LOC_LABELS: Record<PrayerLocation, string> = Object.fromEntries(
+  PRAYER_LOCATION_OPTIONS.map((o) => [o.value, o.label])
+) as Record<PrayerLocation, string>
 const STATUS_LABELS: Record<CaseStatus, string> = {
   payment_pending: 'Awaiting Payment', payment_completed: 'Payment Confirmed',
   schedule_reviewed: 'Schedule Reviewed', schedule_confirmed: 'Schedule Confirmed', travel_completed: 'Travel Completed',
@@ -76,6 +100,8 @@ function toEditForm(c: Client): EditForm {
     email: c.email ?? '', passport_number: c.passport_number ?? '',
     needs_muslim_friendly: c.needs_muslim_friendly,
     dietary_restriction: c.dietary_restriction ?? 'none',
+    prayer_frequency: c.prayer_frequency,
+    prayer_location: c.prayer_location,
     special_requests: c.special_requests ?? '',
   }
 }
@@ -98,7 +124,7 @@ export default function ClientDetailPage() {
   const fetchData = useCallback(async () => {
     const [{ data: cl }, { data: cm }] = await Promise.all([
       supabase.from('clients')
-        .select('id, client_number, name, nationality, gender, date_of_birth, phone, email, passport_number, needs_muslim_friendly, dietary_restriction, special_requests, created_at')
+        .select('id, client_number, name, nationality, gender, date_of_birth, phone, email, passport_number, needs_muslim_friendly, dietary_restriction, prayer_frequency, prayer_location, special_requests, created_at')
         .eq('id', id).single(),
       supabase.from('case_members')
         .select('is_lead, cases(id, case_number, status, travel_start_date, travel_end_date, quotes(total_price))')
@@ -124,6 +150,7 @@ export default function ClientDetailPage() {
     if (!client || !editForm) return
     setSaving(true); setSaveError('')
     try {
+      const isMuslim = editForm.needs_muslim_friendly
       const { error } = await supabase.from('clients').update({
         nationality: editForm.nationality || null,
         gender: editForm.gender || null,
@@ -132,7 +159,9 @@ export default function ClientDetailPage() {
         email: editForm.email || null,
         passport_number: editForm.passport_number || null,
         needs_muslim_friendly: editForm.needs_muslim_friendly,
-        dietary_restriction: editForm.dietary_restriction,
+        dietary_restriction: isMuslim ? editForm.dietary_restriction : 'none',
+        prayer_frequency: isMuslim ? editForm.prayer_frequency : null,
+        prayer_location: isMuslim ? editForm.prayer_location : null,
         special_requests: editForm.special_requests || null,
       }).eq('id', id)
       if (error) throw error
@@ -216,8 +245,12 @@ export default function ClientDetailPage() {
                   ['Passport Number', client.passport_number, false, true],
                   ['Phone', client.phone, false, false],
                   ['Email', client.email, false, false],
-                  ['Dietary Restriction', client.dietary_restriction ? DIETARY_LABELS[client.dietary_restriction] : null, false, false],
-                  ['Muslim Friendly', client.needs_muslim_friendly ? 'Yes' : 'No', false, false],
+                  ['Muslim', client.needs_muslim_friendly ? 'Yes' : 'No', false, false],
+                  ...(client.needs_muslim_friendly ? [
+                    ['Dietary Restriction', client.dietary_restriction ? DIETARY_LABELS[client.dietary_restriction] : null, false, false],
+                    ['Prayer Frequency', client.prayer_frequency ? PRAYER_FREQ_LABELS[client.prayer_frequency] : null, false, false],
+                    ['Prayer Location', client.prayer_location ? PRAYER_LOC_LABELS[client.prayer_location] : null, false, false],
+                  ] : []),
                 ] as [string, string | null | boolean, boolean, boolean][]).map(([label, value, cap, mono]) => (
                   <div key={String(label)}>
                     <p className="text-xs text-gray-400 mb-0.5">{label}</p>
@@ -258,21 +291,52 @@ export default function ClientDetailPage() {
                   </select>
                 </div>
                 <div className="col-span-2">
-                  <label className="block text-xs text-gray-500 mb-1">Dietary Restriction</label>
-                  <select value={editForm.dietary_restriction}
-                    onChange={e => setEditForm(p => p && ({ ...p, dietary_restriction: e.target.value as DietaryType }))}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-[#0f4c35] bg-white">
-                    {DIETARY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  </select>
+                  <label className="block text-xs text-gray-500 mb-1">Muslim?</label>
+                  <div className="flex gap-4">
+                    {([true, false] as const).map((v) => (
+                      <label key={String(v)} className="flex items-center gap-1.5 cursor-pointer">
+                        <input type="radio" checked={editForm.needs_muslim_friendly === v}
+                          onChange={() => setEditForm((p) => p && ({
+                            ...p,
+                            needs_muslim_friendly: v,
+                            ...(v ? {} : { dietary_restriction: 'none' as DietaryType, prayer_frequency: null, prayer_location: null }),
+                          }))}
+                          className="accent-[#0f4c35]" />
+                        <span className="text-sm text-gray-700">{v ? 'Yes' : 'No'}</span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
-                <div className="col-span-2">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" checked={editForm.needs_muslim_friendly}
-                      onChange={e => setEditForm(p => p && ({ ...p, needs_muslim_friendly: e.target.checked }))}
-                      className="accent-[#0f4c35] w-4 h-4" />
-                    <span className="text-sm text-gray-600">Requires Muslim Friendly services</span>
-                  </label>
-                </div>
+                {editForm.needs_muslim_friendly && (
+                  <div className="col-span-2 space-y-3 rounded-xl border border-[#0f4c35]/15 bg-[#0f4c35]/[0.03] p-3">
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Dietary Restriction</label>
+                      <select value={editForm.dietary_restriction}
+                        onChange={e => setEditForm(p => p && ({ ...p, dietary_restriction: e.target.value as DietaryType }))}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-[#0f4c35] bg-white">
+                        {DIETARY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Prayer Frequency</label>
+                      <select value={editForm.prayer_frequency ?? ''}
+                        onChange={e => setEditForm(p => p && ({ ...p, prayer_frequency: (e.target.value || null) as PrayerFrequency | null }))}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-[#0f4c35] bg-white">
+                        <option value="">— Select —</option>
+                        {PRAYER_FREQUENCY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Prayer Location</label>
+                      <select value={editForm.prayer_location ?? ''}
+                        onChange={e => setEditForm(p => p && ({ ...p, prayer_location: (e.target.value || null) as PrayerLocation | null }))}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-[#0f4c35] bg-white">
+                        <option value="">— Select —</option>
+                        {PRAYER_LOCATION_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                )}
                 <div className="col-span-2">
                   <label className="block text-xs text-gray-500 mb-1">Special Requests</label>
                   <textarea value={editForm.special_requests}

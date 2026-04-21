@@ -346,7 +346,7 @@ export default function QuoteReviewPage() {
       }
 
       localStorage.removeItem('agent-cart')
-      router.push('/agent/home')
+      router.push(`/agent/cases/${caseData.id}`)
     } catch (e: unknown) {
       setError((e as { message?: string })?.message ?? 'Failed to create quote.')
     } finally {

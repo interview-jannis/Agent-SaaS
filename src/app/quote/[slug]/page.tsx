@@ -61,7 +61,7 @@ export default async function QuotePage({ params }: { params: Promise<{ slug: st
       cases(
         id, created_at,
         agents!cases_agent_id_fkey(name, email, phone),
-        case_members(is_lead, clients(name, nationality))
+        case_members(is_lead, clients(name, nationality, needs_muslim_friendly))
       ),
       quote_groups(
         id, name, order, member_count,
@@ -84,7 +84,7 @@ export default async function QuotePage({ params }: { params: Promise<{ slug: st
   const caseData = quote.cases as unknown as {
     created_at: string | null
     agents: { name: string } | null
-    case_members: { is_lead: boolean; clients: { name: string; nationality: string | null } | null }[]
+    case_members: { is_lead: boolean; clients: { name: string; nationality: string | null; needs_muslim_friendly: boolean | null } | null }[]
   } | null
 
   const agentName = caseData?.agents?.name ?? '—'
@@ -126,7 +126,7 @@ export default async function QuotePage({ params }: { params: Promise<{ slug: st
   const issueDate = fmtDate(issuedAt)
   const dueDate = quote.payment_due_date ? fmtDate(quote.payment_due_date) : addDays(issuedAt, 7)
 
-  const nationality = leadClient?.nationality ?? ''
+  const isMuslim = leadClient?.needs_muslim_friendly === true
 
   return (
     <div className="min-h-screen bg-gray-100 py-8 px-4 print:bg-white print:py-0">
@@ -195,7 +195,7 @@ export default async function QuotePage({ params }: { params: Promise<{ slug: st
           <div className="mb-5">
             <p className="text-sm font-bold text-gray-900">
               Subject : K-Beauty &amp; Medical Premium Tour Package
-              {nationality ? ` for ${nationality} VIP Clients` : ' for VIP Clients'}
+              {isMuslim ? ' for Muslim VIP Clients' : ' for VIP Clients'}
             </p>
           </div>
 
