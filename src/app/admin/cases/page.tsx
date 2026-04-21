@@ -226,85 +226,32 @@ export default function AdminCasesPage() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
-  return (
-    <div className="flex h-full overflow-hidden">
+  // ── Detail view (50/50 split) ──────────────────────────────────────────────
+  if (selectedCase) {
+    return (
+      <div className="flex flex-col h-full overflow-hidden">
 
-      {/* ── Cases List ── */}
-      <div className={`${selectedCase ? 'hidden md:flex' : 'flex'} flex-col w-full md:w-80 shrink-0 border-r border-gray-100 bg-gray-50`}>
-        <div className="h-14 flex items-center px-4 border-b border-gray-100 bg-white gap-2">
-          <h1 className="text-sm font-semibold text-gray-900 shrink-0">Cases</h1>
-          {!loading && <span className="text-xs text-gray-400">{filteredCases.length}</span>}
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as CaseStatus | 'all')}
-            className="ml-auto text-xs border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:border-[#0f4c35] bg-white text-gray-600"
-          >
-            <option value="all">All statuses</option>
-            {ALL_STATUSES.map((s) => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
-          </select>
+        {/* Header bar */}
+        <div className="h-14 shrink-0 flex items-center gap-3 px-6 border-b border-gray-100 bg-white">
+          <button onClick={() => setSelectedCase(null)}
+            className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-700 transition-colors">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+            </svg>
+            Cases
+          </button>
+          <span className="text-gray-200">/</span>
+          <span className="text-sm font-medium text-gray-900">{selectedCase.case_number}</span>
+          <span className={`text-[10px] font-medium px-2.5 py-0.5 rounded-full border ${STATUS_STYLES[selectedCase.status]}`}>
+            {STATUS_LABELS[selectedCase.status]}
+          </span>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-3 space-y-2">
-          {loading ? (
-            <p className="text-sm text-gray-400 text-center py-12">Loading...</p>
-          ) : filteredCases.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-16">No cases found.</p>
-          ) : filteredCases.map((c) => {
-            const caseLead = c.case_members?.find((m) => m.is_lead)
-            const companionCount = c.case_members?.filter((m) => !m.is_lead).length ?? 0
-            const quote = c.quotes?.[0]
-            const isSelected = selectedCase?.id === c.id
-            return (
-              <button key={c.id} onClick={() => openCase(c)}
-                className={`w-full text-left px-4 py-3.5 rounded-xl border transition-all ${isSelected ? 'bg-[#0f4c35]/5 border-[#0f4c35]/20' : 'bg-white border-gray-100 hover:border-gray-200 hover:shadow-sm'}`}
-              >
-                <div className="flex items-start justify-between gap-2 mb-1.5">
-                  <span className="text-[10px] font-mono text-gray-400">{c.case_number}</span>
-                  <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border shrink-0 ${STATUS_STYLES[c.status]}`}>{STATUS_LABELS[c.status]}</span>
-                </div>
-                <p className="text-sm font-medium text-gray-900 mb-0.5">{caseLead?.clients?.name ?? '—'}</p>
-                <p className="text-xs text-gray-400 mb-1.5">{c.agents?.name ?? '—'} <span className="font-mono">({c.agents?.agent_number})</span></p>
-                <div className="flex items-center gap-3 text-xs text-gray-400">
-                  {(c.travel_start_date || c.travel_end_date) && <span>{c.travel_start_date ?? '—'} ~ {c.travel_end_date ?? '—'}</span>}
-                  {companionCount > 0 && <span>+{companionCount}</span>}
-                </div>
-                {quote && (
-                  <div className="flex items-center justify-between mt-2.5 pt-2.5 border-t border-gray-100">
-                    <span className="text-[10px] font-mono text-gray-400">{quote.quote_number}</span>
-                    <span className="text-xs font-medium text-gray-700">{fmtKRW(quote.total_price)}</span>
-                  </div>
-                )}
-              </button>
-            )
-          })}
-        </div>
-      </div>
+        {/* 50/50 split */}
+        <div className="flex-1 overflow-hidden flex">
 
-      {/* ── Detail Panel ── */}
-      {selectedCase ? (
-        <div className="flex-1 overflow-hidden flex bg-white">
-
-          {/* LEFT — Invoice / Case Info */}
-          <div className="flex-1 overflow-y-auto border-r border-gray-100 px-6 py-6 space-y-5 min-w-0">
-
-            {/* Back (mobile) + Header */}
-            <div className="flex items-start gap-3">
-              <button onClick={() => setSelectedCase(null)} className="md:hidden mt-0.5 p-1 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
-              </button>
-              <div className="flex-1">
-                <div className="flex items-center gap-3 flex-wrap">
-                  <h2 className="text-base font-semibold text-gray-900">{selectedCase.case_number}</h2>
-                  <span className={`text-xs font-medium px-2.5 py-0.5 rounded-full border ${STATUS_STYLES[selectedCase.status]}`}>{STATUS_LABELS[selectedCase.status]}</span>
-                </div>
-                <div className="flex items-center gap-3 mt-1 text-xs text-gray-400 flex-wrap">
-                  {(selectedCase.travel_start_date || selectedCase.travel_end_date) && (
-                    <span>Travel: {selectedCase.travel_start_date ?? '—'} ~ {selectedCase.travel_end_date ?? '—'}</span>
-                  )}
-                  <span>Created: {selectedCase.created_at.slice(0, 10)}</span>
-                </div>
-              </div>
-            </div>
+          {/* LEFT — Case Info + Actions */}
+          <div className="w-1/2 overflow-y-auto border-r border-gray-100 px-6 py-6 space-y-5">
 
             {/* Agent */}
             <section className="bg-gray-50 rounded-2xl p-4">
@@ -312,6 +259,25 @@ export default function AdminCasesPage() {
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-mono text-gray-400">{selectedCase.agents?.agent_number}</span>
                 <span className="text-sm font-medium text-gray-900">{selectedCase.agents?.name ?? '—'}</span>
+              </div>
+            </section>
+
+            {/* Travel Period */}
+            <section className="bg-gray-50 rounded-2xl p-4">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Travel Period</p>
+              <div className="flex items-center gap-4 text-sm">
+                <div>
+                  <p className="text-[10px] text-gray-400 mb-0.5">Start</p>
+                  <p className="text-gray-800 font-medium">{selectedCase.travel_start_date ?? '—'}</p>
+                </div>
+                <svg className="w-4 h-4 text-gray-300 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+                </svg>
+                <div>
+                  <p className="text-[10px] text-gray-400 mb-0.5">End</p>
+                  <p className="text-gray-800 font-medium">{selectedCase.travel_end_date ?? '—'}</p>
+                </div>
+                <p className="text-xs text-gray-400 ml-auto">Created: {selectedCase.created_at.slice(0, 10)}</p>
               </div>
             </section>
 
@@ -360,21 +326,22 @@ export default function AdminCasesPage() {
               </section>
             )}
 
-            {/* Quote */}
+            {/* Quote / Financials */}
             {latestQuote && (
               <section className="bg-gray-50 rounded-2xl p-4 space-y-3">
                 <div className="flex items-center justify-between">
-                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Quote</p>
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Financials</p>
                   <div className="flex items-center gap-3">
                     <span className="text-[10px] font-mono text-gray-400">{latestQuote.quote_number}</span>
                     <a href={`${baseUrl}/quote/${latestQuote.slug}`} target="_blank" rel="noopener noreferrer"
-                      className="text-xs text-[#0f4c35] font-medium hover:underline">View invoice ↗</a>
+                      className="text-xs text-gray-400 hover:text-[#0f4c35] transition-colors">View ↗</a>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <div><p className="text-[10px] text-gray-400 mb-0.5">Total (KRW)</p><p className="font-semibold text-gray-900">{fmtKRW(latestQuote.total_price)}</p></div>
                   <div><p className="text-[10px] text-gray-400 mb-0.5">Total (USD)</p><p className="font-semibold text-gray-900">{fmtUSD(latestQuote.total_price / exchangeRate)}</p></div>
-                  <div><p className="text-[10px] text-gray-400 mb-0.5">Payment Due</p>
+                  <div>
+                    <p className="text-[10px] text-gray-400 mb-0.5">Payment Due</p>
                     <p className={`font-medium text-sm ${selectedCase.status === 'payment_pending' && latestQuote.payment_due_date && new Date(latestQuote.payment_due_date) < new Date() ? 'text-red-500' : 'text-gray-800'}`}>
                       {latestQuote.payment_due_date ?? '—'}
                     </p>
@@ -411,7 +378,7 @@ export default function AdminCasesPage() {
               </section>
             )}
 
-            {/* ── Admin Actions ── */}
+            {/* Admin Actions */}
             {actionError && <p className="text-xs text-red-500 px-1">{actionError}</p>}
 
             {selectedCase.status === 'payment_pending' && (
@@ -458,7 +425,7 @@ export default function AdminCasesPage() {
           </div>
 
           {/* RIGHT — Selected Products */}
-          <div className="w-72 shrink-0 overflow-y-auto bg-gray-50 border-l border-gray-100 px-5 py-6">
+          <div className="w-1/2 overflow-y-auto bg-gray-50/50 px-6 py-6">
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-4">Selected Products</p>
 
             {sortedGroups.length === 0 ? (
@@ -470,7 +437,6 @@ export default function AdminCasesPage() {
                   const groupTotal = group.quote_items.reduce((s, item) => s + item.final_price, 0)
                   return (
                     <div key={group.id}>
-                      {/* Group header */}
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-xs font-semibold text-gray-600">{group.name}</span>
                         <span className="text-[10px] text-gray-400">{memberCount} pax</span>
@@ -500,7 +466,6 @@ export default function AdminCasesPage() {
                           )
                         })}
                       </div>
-                      {/* Group subtotal */}
                       <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-200">
                         <span className="text-[10px] text-gray-400">Subtotal</span>
                         <div className="text-right">
@@ -512,7 +477,6 @@ export default function AdminCasesPage() {
                   )
                 })}
 
-                {/* Total */}
                 {latestQuote && (
                   <div className="flex items-center justify-between pt-3 border-t-2 border-gray-300">
                     <span className="text-xs font-bold text-gray-900">Total</span>
@@ -527,19 +491,80 @@ export default function AdminCasesPage() {
           </div>
 
         </div>
-      ) : (
-        <div className="hidden md:flex flex-1 items-center justify-center bg-white">
-          <div className="text-center">
-            <div className="w-12 h-12 rounded-2xl bg-gray-100 flex items-center justify-center mx-auto mb-3">
-              <svg className="w-6 h-6 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25zM6.75 12h.008v.008H6.75V12zm0 3h.008v.008H6.75V15zm0 3h.008v.008H6.75V18z" />
-              </svg>
-            </div>
-            <p className="text-sm text-gray-400">Select a case to view details</p>
-          </div>
-        </div>
-      )}
+      </div>
+    )
+  }
 
+  // ── Table view (no case selected) ─────────────────────────────────────────
+  return (
+    <div className="flex flex-col h-full bg-white">
+
+      {/* Header */}
+      <div className="h-14 shrink-0 flex items-center gap-4 px-6 border-b border-gray-100">
+        <div className="flex items-center gap-2">
+          <h1 className="text-sm font-semibold text-gray-900">Cases</h1>
+          {!loading && <span className="text-xs text-gray-400">{filteredCases.length}</span>}
+        </div>
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value as CaseStatus | 'all')}
+          className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-[#0f4c35] bg-white text-gray-600 ml-auto"
+        >
+          <option value="all">All statuses</option>
+          {ALL_STATUSES.map((s) => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
+        </select>
+      </div>
+
+      {/* Table */}
+      <div className="flex-1 overflow-auto">
+        {loading ? (
+          <p className="text-sm text-gray-400 text-center py-16">Loading...</p>
+        ) : filteredCases.length === 0 ? (
+          <p className="text-sm text-gray-400 text-center py-24">No cases found.</p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="border-b border-gray-100 bg-gray-50/60 sticky top-0">
+              <tr>
+                {['Case #', 'Agent', 'Lead Client', 'Status', 'Members', 'Travel Period', 'Total (USD)'].map(h => (
+                  <th key={h} className="py-3 px-4 text-xs font-medium text-gray-400 text-left">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filteredCases.map((c) => {
+                const caseLead = c.case_members?.find((m) => m.is_lead)
+                const memberCount = c.case_members?.length ?? 0
+                const quote = c.quotes?.[0]
+                return (
+                  <tr key={c.id} onClick={() => openCase(c)}
+                    className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors">
+                    <td className="py-3.5 px-4 font-mono text-xs text-gray-400">{c.case_number}</td>
+                    <td className="py-3.5 px-4">
+                      <p className="text-gray-800 font-medium">{c.agents?.name ?? '—'}</p>
+                      <p className="text-[10px] font-mono text-gray-400">{c.agents?.agent_number}</p>
+                    </td>
+                    <td className="py-3.5 px-4 font-medium text-gray-900">{caseLead?.clients?.name ?? '—'}</td>
+                    <td className="py-3.5 px-4">
+                      <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${STATUS_STYLES[c.status]}`}>
+                        {STATUS_LABELS[c.status]}
+                      </span>
+                    </td>
+                    <td className="py-3.5 px-4 text-gray-500 text-center">{memberCount}</td>
+                    <td className="py-3.5 px-4 text-gray-500 text-xs">
+                      {c.travel_start_date || c.travel_end_date
+                        ? `${c.travel_start_date ?? '—'} ~ ${c.travel_end_date ?? '—'}`
+                        : '—'}
+                    </td>
+                    <td className="py-3.5 px-4 font-medium text-gray-900">
+                      {quote ? fmtUSD(quote.total_price / exchangeRate) : '—'}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
   )
 }

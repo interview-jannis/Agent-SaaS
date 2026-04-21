@@ -211,7 +211,7 @@ export default function AgentHomePage() {
           const isIn = g.productIds.includes(productId)
           return { ...g, productIds: isIn ? g.productIds.filter((id) => id !== productId) : [...g.productIds, productId] }
         }
-        return { ...g, productIds: g.productIds.filter((id) => id !== productId) }
+        return g
       })
     )
   }
@@ -478,7 +478,7 @@ export default function AgentHomePage() {
                   <div
                     key={product.id}
                     className={`bg-white rounded-2xl border-2 overflow-hidden flex flex-col transition-all ${
-                      groupIdx !== undefined ? GROUP_PALETTE[groupIdx].border : 'border-gray-100'
+                      inActiveGroup ? activePalette.border : 'border-gray-100'
                     }`}
                   >
                     {/* Image with carousel */}
@@ -549,14 +549,10 @@ export default function AgentHomePage() {
                       <button
                         onClick={() => toggleProduct(product.id)}
                         className={`mt-1 w-full py-1.5 rounded-lg text-xs font-medium transition-all ${
-                          inActiveGroup
-                            ? activePalette.btn
-                            : groupIdx !== undefined
-                            ? GROUP_PALETTE[groupIdx].btnOff
-                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          inActiveGroup ? activePalette.btn : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                         }`}
                       >
-                        {inActiveGroup ? '✓ Added' : groupIdx !== undefined ? `Move to ${groups[activeGroupIndex]?.name}` : 'Add'}
+                        {inActiveGroup ? `✓ ${groups[activeGroupIndex]?.name}` : `Add to ${groups[activeGroupIndex]?.name ?? 'Group'}`}
                       </button>
                     </div>
                   </div>
