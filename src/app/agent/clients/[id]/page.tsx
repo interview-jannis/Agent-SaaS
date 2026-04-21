@@ -244,7 +244,7 @@ export default function ClientDetailPage() {
                 {([['Nationality', 'nationality', 'text'], ['Date of Birth', 'date_of_birth', 'date'], ['Phone', 'phone', 'text'], ['Email', 'email', 'email'], ['Passport Number', 'passport_number', 'text']] as const).map(([label, field, type]) => (
                   <div key={field}>
                     <label className="block text-xs text-gray-500 mb-1">{label}</label>
-                    <input type={type} value={(editForm as Record<string, string>)[field]}
+                    <input type={type} value={(editForm as unknown as Record<string, string>)[field]}
                       onChange={e => setEditForm(p => p && ({ ...p, [field]: e.target.value }))}
                       className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-[#0f4c35]" />
                   </div>

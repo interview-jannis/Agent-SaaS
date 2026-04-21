@@ -214,7 +214,7 @@ export default function AgentCasesPage() {
                       {([['Name *', 'name', 'text'], ['Nationality', 'nationality', 'text'], ['Phone', 'phone', 'text'], ['Email', 'email', 'email']] as const).map(([label, field, type]) => (
                         <div key={field}>
                           <label className="block text-xs text-gray-500 mb-1">{label}</label>
-                          <input type={type} value={(regForm as Record<string, string>)[field]}
+                          <input type={type} value={(regForm as unknown as Record<string, string>)[field]}
                             onChange={e => setRegForm(p => ({ ...p, [field]: e.target.value }))}
                             className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-[#0f4c35]" />
                         </div>
