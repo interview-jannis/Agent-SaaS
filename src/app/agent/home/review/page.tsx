@@ -69,6 +69,8 @@ export default function QuoteReviewPage() {
   const [agentClients, setAgentClients] = useState<Client[]>([])
   const [agentId, setAgentId] = useState('')
   const [exchangeRate, setExchangeRate] = useState(1350)
+  const [companyMargin, setCompanyMargin] = useState(0.5)
+  const [agentMargin, setAgentMargin] = useState(0.15)
   const [loading, setLoading] = useState(true)
 
   // Companions
@@ -101,19 +103,26 @@ export default function QuoteReviewPage() {
       const userId = session?.user?.id
       if (!userId) return
 
-      const [leadRes, productsRes, rateRes, agentRes] = await Promise.all([
+      const [leadRes, productsRes, rateRes, companyRateRes, agentRes] = await Promise.all([
         supabase.from('clients').select('id, client_number, name, nationality, gender, needs_muslim_friendly, dietary_restriction').eq('id', draft.clientId).single(),
         allProductIds.length
           ? supabase.from('products').select('id, name, base_price, price_currency').in('id', allProductIds)
           : Promise.resolve({ data: [] }),
         supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single(),
-        supabase.from('agents').select('id').eq('auth_user_id', userId).single(),
+        supabase.from('system_settings').select('value').eq('key', 'company_margin_rate').single(),
+        supabase.from('agents').select('id, margin_rate').eq('auth_user_id', userId).single(),
       ])
 
       setLead(leadRes.data)
       setProducts((productsRes.data as Product[]) ?? [])
       const rate = (rateRes.data?.value as { usd_krw?: number } | null)?.usd_krw
       if (rate) setExchangeRate(rate)
+
+      const cm = (companyRateRes.data?.value as { rate?: number } | null)?.rate
+      if (typeof cm === 'number') setCompanyMargin(cm)
+
+      const am = (agentRes.data as { margin_rate?: number } | null)?.margin_rate
+      if (typeof am === 'number') setAgentMargin(am)
 
       const aid = agentRes.data?.id ?? ''
       setAgentId(aid)
@@ -135,10 +144,19 @@ export default function QuoteReviewPage() {
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
+  const marginMult = (1 + companyMargin) * (1 + agentMargin)
+
+  // USD with all margins applied — used for display on this review page (matches Home display).
   function toUSD(p: Product): number {
-    return p.price_currency === 'USD' ? p.base_price : Math.round(p.base_price / exchangeRate)
+    const baseUSD = p.price_currency === 'USD' ? p.base_price : p.base_price / exchangeRate
+    return baseUSD * marginMult
   }
 
+  function fmtUSD(n: number): string {
+    return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  }
+
+  // Raw KRW base price — used ONLY to compute final_price at save time (margins applied there).
   function toKRW(p: Product): number {
     return p.price_currency === 'KRW' ? p.base_price : Math.round(p.base_price * exchangeRate)
   }
@@ -298,7 +316,9 @@ export default function QuoteReviewPage() {
         if (group.productIds.length === 0) continue
 
         const { data: qgData } = await supabase
-          .from('quote_groups').insert({ quote_id: quoteData.id, name: group.name, order: i }).select('id').single()
+          .from('quote_groups')
+          .insert({ quote_id: quoteData.id, name: group.name, order: i, member_count: group.memberCount })
+          .select('id').single()
         if (!qgData) continue
 
         // Quote items
@@ -570,9 +590,9 @@ export default function QuoteReviewPage() {
                   return (
                     <div key={pid} className="grid grid-cols-[1fr_auto_auto_auto] gap-x-4 items-center py-2 px-3 bg-gray-50 rounded-xl">
                       <span className="text-sm text-gray-800 truncate">{p.name}</span>
-                      <span className="text-sm text-gray-600 tabular-nums text-right">${unitUSD.toLocaleString()}</span>
+                      <span className="text-sm text-gray-600 tabular-nums text-right">{fmtUSD(unitUSD)}</span>
                       <span className="text-sm text-gray-400 text-center">×{group.memberCount}</span>
-                      <span className="text-sm font-semibold text-gray-900 tabular-nums text-right">${totalItemUSD.toLocaleString()}</span>
+                      <span className="text-sm font-semibold text-gray-900 tabular-nums text-right">{fmtUSD(totalItemUSD)}</span>
                     </div>
                   )
                 })}
@@ -580,14 +600,14 @@ export default function QuoteReviewPage() {
 
               <div className="flex items-center justify-between pt-2.5 mt-1 border-t border-gray-100">
                 <span className="text-xs text-gray-400">Subtotal</span>
-                <span className="text-sm font-semibold text-gray-900 tabular-nums">${groupSubtotalUSD(group).toLocaleString()}</span>
+                <span className="text-sm font-semibold text-gray-900 tabular-nums">{fmtUSD(groupSubtotalUSD(group))}</span>
               </div>
             </div>
           ))}
 
           <div className="flex items-center justify-between pt-3 border-t-2 border-gray-200">
             <span className="text-sm font-bold text-gray-900">Total</span>
-            <span className="text-lg font-bold text-gray-900 tabular-nums">${totalUSD.toLocaleString()}</span>
+            <span className="text-lg font-bold text-gray-900 tabular-nums">{fmtUSD(totalUSD)}</span>
           </div>
           <p className="text-xs text-gray-400">Payment due within 7 days of quote creation.</p>
         </section>

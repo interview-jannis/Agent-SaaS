@@ -25,6 +25,7 @@ export type FormState = {
   price_currency: 'KRW' | 'USD'
   duration_value: string
   duration_unit: 'hours' | 'days' | 'nights'
+  partner_name: string
   location_address: string
   contact_channels: ContactChannel[]
   has_prayer_room: boolean
@@ -71,6 +72,7 @@ const DEFAULT_FORM: FormState = {
   price_currency: 'KRW',
   duration_value: '',
   duration_unit: 'hours',
+  partner_name: '',
   location_address: '',
   contact_channels: [],
   has_prayer_room: false,
@@ -94,17 +96,18 @@ export default function ProductForm({ productId, productNumber, categories, init
 
   // Exchange rate (KRW per 1 USD)
   const [exchangeRate, setExchangeRate] = useState(1350)
+  const [companyMargin, setCompanyMargin] = useState(0.5)
 
   useEffect(() => {
-    supabase
-      .from('system_settings')
-      .select('value')
-      .eq('key', 'exchange_rate')
-      .single()
-      .then(({ data }) => {
-        const rate = (data?.value as { usd_krw?: number } | null)?.usd_krw
-        if (rate) setExchangeRate(rate)
-      })
+    Promise.all([
+      supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single(),
+      supabase.from('system_settings').select('value').eq('key', 'company_margin_rate').single(),
+    ]).then(([rateRes, cmRes]) => {
+      const rate = (rateRes.data?.value as { usd_krw?: number } | null)?.usd_krw
+      if (rate) setExchangeRate(rate)
+      const cm = (cmRes.data?.value as { rate?: number } | null)?.rate
+      if (typeof cm === 'number') setCompanyMargin(cm)
+    })
   }, [])
 
   // ── Field helper ─────────────────────────────────────────────
@@ -129,7 +132,7 @@ export default function ProductForm({ productId, productNumber, categories, init
     if (!form.base_price) return ''
     const n = Number(form.base_price)
     if (form.price_currency === 'KRW') {
-      return `≈ $${Math.round(n / exchangeRate).toLocaleString()} (₩${exchangeRate.toLocaleString()}/$)`
+      return `≈ $${(n / exchangeRate).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (₩${exchangeRate.toLocaleString()}/$)`
     }
     return `≈ ₩${Math.round(n * exchangeRate).toLocaleString()} (₩${exchangeRate.toLocaleString()}/$)`
   }
@@ -189,6 +192,7 @@ export default function ProductForm({ productId, productNumber, categories, init
     if (!form.description.trim()) return 'Description is required.'
     if (!form.base_price) return 'Price is required.'
     if (!form.duration_value) return 'Duration is required.'
+    if (!form.partner_name.trim()) return 'Partner name is required.'
     if (!form.location_address.trim()) return 'Address is required.'
     if (form.contact_channels.length === 0) return 'At least one contact channel is required.'
     if (form.contact_channels.some((ch) => !ch.value.trim())) return 'All contact channel values must be filled in.'
@@ -213,6 +217,7 @@ export default function ProductForm({ productId, productNumber, categories, init
         price_currency: form.price_currency,
         duration_value: Number(form.duration_value),
         duration_unit: form.duration_unit,
+        partner_name: form.partner_name.trim(),
         location_address: form.location_address.trim(),
         contact_channels: form.contact_channels,
         has_prayer_room: form.has_prayer_room,
@@ -413,6 +418,29 @@ export default function ProductForm({ productId, productNumber, categories, init
             {priceHint() && (
               <p className="text-xs text-gray-400 mt-1">{priceHint()}</p>
             )}
+            {form.base_price && (
+              <div className="mt-3 p-3 bg-gray-50 rounded-lg border border-gray-100">
+                <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1.5">
+                  Customer Price by Agent Tier
+                </p>
+                <div className="space-y-1">
+                  {[0.15, 0.20, 0.25].map((tier) => {
+                    const n = Number(form.base_price)
+                    const final = n * (1 + companyMargin) * (1 + tier)
+                    const isUSD = form.price_currency === 'USD'
+                    const display = isUSD
+                      ? `$${final.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                      : `₩${Math.round(final).toLocaleString('ko-KR')}`
+                    return (
+                      <div key={tier} className="flex justify-between text-xs">
+                        <span className="text-gray-500">Agent {Math.round(tier * 100)}%</span>
+                        <span className="font-semibold text-gray-800 tabular-nums">{display}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
           <div>
@@ -509,9 +537,23 @@ export default function ProductForm({ productId, productNumber, categories, init
           <p className="text-xs text-gray-400">Click ★ to set as primary image</p>
         </section>
 
-        {/* ── Location ── */}
-        <section className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-4">
-          <h2 className="text-sm font-semibold text-gray-900">Location</h2>
+        {/* ── Partner Info ── */}
+        <section className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-5">
+          <h2 className="text-sm font-semibold text-gray-900">Partner Info</h2>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1.5">
+              Partner Name <span className="text-red-400">*</span>
+            </label>
+            <input
+              type="text"
+              value={form.partner_name}
+              onChange={(e) => set('partner_name', e.target.value)}
+              placeholder="Enter partner/institution name"
+              className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-[#0f4c35] focus:ring-2 focus:ring-[#0f4c35]/10 transition-all"
+            />
+          </div>
+
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1.5">
               Address <span className="text-red-400">*</span>
@@ -524,60 +566,59 @@ export default function ProductForm({ productId, productNumber, categories, init
               className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-[#0f4c35] focus:ring-2 focus:ring-[#0f4c35]/10 transition-all"
             />
           </div>
-        </section>
 
-        {/* ── Contact Channels ── */}
-        <section className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-gray-900">
-              Contact Channels <span className="text-red-400">*</span>
-            </h2>
-            <button
-              type="button"
-              onClick={addChannel}
-              className="flex items-center gap-1.5 text-sm text-[#0f4c35] font-medium hover:underline"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-              </svg>
-              Add Channel
-            </button>
-          </div>
-          {form.contact_channels.length === 0 ? (
-            <p className="text-sm text-gray-400">No channels added</p>
-          ) : (
-            <div className="space-y-2.5">
-              {form.contact_channels.map((ch, idx) => (
-                <div key={idx} className="flex items-center gap-2">
-                  <select
-                    value={ch.type}
-                    onChange={(e) => updateChannel(idx, 'type', e.target.value)}
-                    className="w-32 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-[#0f4c35] bg-white"
-                  >
-                    {CHANNEL_TYPES.map((t) => (
-                      <option key={t} value={t}>{t}</option>
-                    ))}
-                  </select>
-                  <input
-                    type="text"
-                    value={ch.value}
-                    onChange={(e) => updateChannel(idx, 'value', e.target.value)}
-                    placeholder="Contact info"
-                    className="flex-1 border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-[#0f4c35] focus:ring-2 focus:ring-[#0f4c35]/10 transition-all"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => removeChannel(idx)}
-                    className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
-                  >
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-              ))}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-medium text-gray-500">
+                Contact Channels <span className="text-red-400">*</span>
+              </label>
+              <button
+                type="button"
+                onClick={addChannel}
+                className="flex items-center gap-1.5 text-xs text-[#0f4c35] font-medium hover:underline"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                </svg>
+                Add Channel
+              </button>
             </div>
-          )}
+            {form.contact_channels.length === 0 ? (
+              <p className="text-sm text-gray-400">No channels added</p>
+            ) : (
+              <div className="space-y-2.5">
+                {form.contact_channels.map((ch, idx) => (
+                  <div key={idx} className="flex items-center gap-2">
+                    <select
+                      value={ch.type}
+                      onChange={(e) => updateChannel(idx, 'type', e.target.value)}
+                      className="w-32 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-[#0f4c35] bg-white"
+                    >
+                      {CHANNEL_TYPES.map((t) => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
+                    <input
+                      type="text"
+                      value={ch.value}
+                      onChange={(e) => updateChannel(idx, 'value', e.target.value)}
+                      placeholder="Contact info"
+                      className="flex-1 border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-[#0f4c35] focus:ring-2 focus:ring-[#0f4c35]/10 transition-all"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeChannel(idx)}
+                      className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </section>
 
         {/* ── Muslim Friendly ── */}

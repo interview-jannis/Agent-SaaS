@@ -81,7 +81,7 @@ export default async function AdminOverviewPage() {
     supabase.from('cases').select('id, quotes(total_price)').eq('status', 'travel_completed').gte('created_at', monthStart),
     supabase.from('clients').select('id', { count: 'exact', head: true }).gte('created_at', monthStart),
     supabase.from('cases').select('id, case_number, status, travel_start_date, travel_end_date, case_members(is_lead, clients(name))').order('created_at', { ascending: false }).limit(5),
-    supabase.from('cases').select('agent_id, agents(agent_number, name), quotes(total_price)').eq('status', 'travel_completed').gte('created_at', monthStart),
+    supabase.from('cases').select('agent_id, agents!cases_agent_id_fkey(agent_number, name), quotes(total_price)').eq('status', 'travel_completed').gte('created_at', monthStart),
   ])
 
   const monthlyRevenue = (completedThisMonth ?? []).reduce((sum, c) => {

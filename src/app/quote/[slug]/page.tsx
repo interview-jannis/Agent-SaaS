@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase-server'
+import PrintButton from '@/components/PrintButton'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,8 +17,8 @@ type QuoteGroup = {
   id: string
   name: string
   order: number
+  member_count: number
   quote_items: QuoteItem[]
-  quote_group_members: { id: string }[]
 }
 
 type BankDetails = {
@@ -55,17 +56,16 @@ export default async function QuotePage({ params }: { params: Promise<{ slug: st
   const { data: quote } = await supabase
     .from('quotes')
     .select(`
-      id, quote_number, total_price, payment_due_date, created_at,
+      id, quote_number, total_price, payment_due_date,
       company_margin_rate, agent_margin_rate,
       cases(
-        id,
-        agents(name, email, phone),
+        id, created_at,
+        agents!cases_agent_id_fkey(name, email, phone),
         case_members(is_lead, clients(name, nationality))
       ),
       quote_groups(
-        id, name, order,
-        quote_items(id, base_price, final_price, products(name, description)),
-        quote_group_members(id)
+        id, name, order, member_count,
+        quote_items(id, base_price, final_price, products(name, description))
       )
     `)
     .eq('slug', slug)
@@ -73,17 +73,16 @@ export default async function QuotePage({ params }: { params: Promise<{ slug: st
 
   if (!quote) notFound()
 
-  const [rateRes, bankRes, adminRes] = await Promise.all([
+  const [rateRes, bankRes] = await Promise.all([
     supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single(),
     supabase.from('system_settings').select('value').eq('key', 'bank_details').single(),
-    supabase.from('admins').select('name').order('created_at').limit(1).single(),
   ])
 
   const exchangeRate = (rateRes.data?.value as { usd_krw?: number } | null)?.usd_krw ?? 1350
   const bank = (bankRes.data?.value as BankDetails | null) ?? {}
-  const adminName = adminRes.data?.name ?? 'Interview Admin'
 
   const caseData = quote.cases as unknown as {
+    created_at: string | null
     agents: { name: string } | null
     case_members: { is_lead: boolean; clients: { name: string; nationality: string | null } | null }[]
   } | null
@@ -99,7 +98,7 @@ export default async function QuotePage({ params }: { params: Promise<{ slug: st
   const lineItems: LineItem[] = []
   let no = 1
   for (const group of groups) {
-    const memberCount = Math.max(group.quote_group_members?.length ?? 0, 1)
+    const memberCount = Math.max(group.member_count ?? 1, 1)
     for (const item of group.quote_items) {
       const amtUSD = item.final_price / exchangeRate
       const unitUSD = amtUSD / memberCount
@@ -116,13 +115,16 @@ export default async function QuotePage({ params }: { params: Promise<{ slug: st
 
   const totalUSD = lineItems.reduce((s, r) => s + r.amtUSD, 0)
 
-  // Ref.No: INTERVIEW-{zero-padded quote number}-{year}
+  // Dates: use case's created_at as issue date (quotes table has no created_at column).
+  // Due date comes from quote.payment_due_date which is pre-computed as issue + 7 days.
+  const issuedAt = caseData?.created_at ?? new Date().toISOString()
+
   const qNum = quote.quote_number.replace('#Q-', '').replace('#', '')
-  const year = new Date(quote.created_at).getFullYear()
+  const year = new Date(issuedAt).getFullYear()
   const refNo = `INTERVIEW-${qNum}-${year}`
 
-  const issueDate = fmtDate(quote.created_at)
-  const dueDate = addDays(quote.created_at, 7)
+  const issueDate = fmtDate(issuedAt)
+  const dueDate = quote.payment_due_date ? fmtDate(quote.payment_due_date) : addDays(issuedAt, 7)
 
   const nationality = leadClient?.nationality ?? ''
 
@@ -132,15 +134,7 @@ export default async function QuotePage({ params }: { params: Promise<{ slug: st
 
         {/* Print button */}
         <div className="flex justify-end px-8 pt-6 print:hidden">
-          <button
-            onClick={() => window.print()}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-[#0f4c35] border border-[#0f4c35] rounded-lg hover:bg-[#0f4c35]/5 transition-colors"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0l.229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0021 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 00-1.913-.247M6.34 18H5.25A2.25 2.25 0 013 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 011.913-.247m10.5 0a48.536 48.536 0 00-10.5 0m10.5 0V3.375c0-.621-.504-1.125-1.125-1.125h-8.25c-.621 0-1.125.504-1.125 1.125v3.659M18 10.5h.008v.008H18V10.5zm-3 0h.008v.008H15V10.5z" />
-            </svg>
-            Print / Save PDF
-          </button>
+          <PrintButton />
         </div>
 
         <div className="px-12 pb-12 pt-4 print:px-10 print:pt-6">
@@ -170,10 +164,6 @@ export default async function QuotePage({ params }: { params: Promise<{ slug: st
               <div className="flex gap-3">
                 <span className="w-20 shrink-0 font-semibold text-gray-700">To</span>
                 <span className="text-gray-900">: {leadClient?.name ?? '—'}</span>
-              </div>
-              <div className="flex gap-3">
-                <span className="w-20 shrink-0 font-semibold text-gray-700">Attn</span>
-                <span className="text-gray-900">: {adminName}</span>
               </div>
               <div className="flex gap-3">
                 <span className="w-20 shrink-0 font-semibold text-gray-700">C.C</span>
@@ -277,24 +267,48 @@ export default async function QuotePage({ params }: { params: Promise<{ slug: st
           <div className="mb-10">
             <h3 className="text-sm font-bold text-gray-900 mb-3">Bank Account Details</h3>
             {(bank.bank_name || bank.account_number) ? (
-              <div className="space-y-1 text-sm">
+              <div className="grid grid-cols-[9rem_auto_1fr] gap-x-2 gap-y-1 text-sm">
                 {bank.bank_name && (
-                  <p><span className="inline-block w-36 text-gray-500">1. Name of Bank</span><span className="font-medium text-gray-800">: {bank.bank_name}</span></p>
+                  <>
+                    <span className="text-gray-500">1. Name of Bank</span>
+                    <span className="text-gray-500">:</span>
+                    <span className="font-medium text-gray-800">{bank.bank_name}</span>
+                  </>
                 )}
                 {bank.account_number && (
-                  <p><span className="inline-block w-36 text-gray-500">2. Account No.</span><span className="font-mono text-gray-800">: {bank.account_number}</span></p>
+                  <>
+                    <span className="text-gray-500">2. Account No.</span>
+                    <span className="text-gray-500">:</span>
+                    <span className="text-gray-800">{bank.account_number}</span>
+                  </>
                 )}
                 {bank.address && (
-                  <p><span className="inline-block w-36 text-gray-500">3. Address</span><span className="text-gray-800">: {bank.address}</span></p>
+                  <>
+                    <span className="text-gray-500">3. Address</span>
+                    <span className="text-gray-500">:</span>
+                    <span className="text-gray-800">{bank.address}</span>
+                  </>
                 )}
                 {bank.swift_code && (
-                  <p><span className="inline-block w-36 text-gray-500">4. Swift Code</span><span className="font-mono text-gray-800">: {bank.swift_code}</span></p>
+                  <>
+                    <span className="text-gray-500">4. Swift Code</span>
+                    <span className="text-gray-500">:</span>
+                    <span className="text-gray-800">{bank.swift_code}</span>
+                  </>
                 )}
                 {bank.beneficiary && (
-                  <p><span className="inline-block w-36 text-gray-500">5. Beneficiary</span><span className="text-gray-800">: {bank.beneficiary}</span></p>
+                  <>
+                    <span className="text-gray-500">5. Beneficiary</span>
+                    <span className="text-gray-500">:</span>
+                    <span className="text-gray-800">{bank.beneficiary}</span>
+                  </>
                 )}
                 {bank.beneficiary_number && (
-                  <p><span className="inline-block w-36 text-gray-500 pl-4">Beneficiary No.</span><span className="font-mono text-gray-800">: {bank.beneficiary_number}</span></p>
+                  <>
+                    <span className="text-gray-500 pl-4">Beneficiary No.</span>
+                    <span className="text-gray-500">:</span>
+                    <span className="text-gray-800">{bank.beneficiary_number}</span>
+                  </>
                 )}
               </div>
             ) : (

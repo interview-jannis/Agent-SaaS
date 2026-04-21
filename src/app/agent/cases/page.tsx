@@ -13,7 +13,7 @@ type CaseRow = {
   status: CaseStatus
   travel_start_date: string | null
   case_members: { is_lead: boolean; clients: { name: string } | null }[]
-  quotes: { total_price: number }[]
+  quotes: { total_price: number; quote_groups: { member_count: number }[] }[]
 }
 
 type AgentClient = { id: string; name: string; nationality: string }
@@ -60,7 +60,7 @@ export default function AgentCasesPage() {
   const fetchCases = useCallback(async (aid: string) => {
     const { data } = await supabase
       .from('cases')
-      .select('id, case_number, status, travel_start_date, case_members(is_lead, clients(name)), quotes(total_price)')
+      .select('id, case_number, status, travel_start_date, case_members(is_lead, clients(name)), quotes(total_price, quote_groups(member_count))')
       .eq('agent_id', aid)
       .order('created_at', { ascending: false })
     setCases((data as unknown as CaseRow[]) ?? [])
@@ -75,7 +75,8 @@ export default function AgentCasesPage() {
       const aid = ag?.id ?? ''
       setAgentId(aid)
       const { data: ss } = await supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single()
-      if (ss?.value) { const r = Number(typeof ss.value === 'number' ? ss.value : (ss.value as Record<string, unknown>)?.rate ?? ss.value); if (!isNaN(r) && r > 0) setExchangeRate(r) }
+      const rate = (ss?.value as { usd_krw?: number } | null)?.usd_krw
+      if (typeof rate === 'number' && rate > 0) setExchangeRate(rate)
       if (aid) {
         await fetchCases(aid)
         const { data: cl } = await supabase.from('clients').select('id, name, nationality').eq('agent_id', aid).order('name')
@@ -157,9 +158,9 @@ export default function AgentCasesPage() {
             <tbody>
               {cases.map((c) => {
                 const lead = c.case_members?.find(m => m.is_lead)
-                const members = c.case_members?.length ?? 0
                 const quote = c.quotes?.[0]
-                const amountUsd = quote ? Math.round(quote.total_price / exchangeRate) : null
+                const members = quote?.quote_groups?.reduce((s, g) => s + (g.member_count ?? 0), 0) ?? 0
+                const amountUsd = quote ? quote.total_price / exchangeRate : null
                 return (
                   <tr key={c.id} onClick={() => router.push(`/agent/cases/${c.id}`)}
                     className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors">
@@ -171,7 +172,7 @@ export default function AgentCasesPage() {
                     <td className="py-3.5 px-4 text-gray-500">{members}</td>
                     <td className="py-3.5 px-4 text-xs text-gray-500">{c.travel_start_date ?? '—'}</td>
                     <td className="py-3.5 px-4 text-right font-medium text-gray-900">
-                      {amountUsd !== null ? `$${amountUsd.toLocaleString()}` : '—'}
+                      {amountUsd !== null ? `$${amountUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
                     </td>
                   </tr>
                 )

@@ -36,6 +36,7 @@ type QuoteGroup = {
   id: string
   name: string
   order: number
+  member_count: number
   quote_items: QuoteItem[]
   quote_group_members: { id: string }[]
 }
@@ -59,6 +60,8 @@ type Schedule = {
   version: number
 }
 
+type Agent = { id: string; agent_number: string; name: string }
+
 type Case = {
   id: string
   case_number: string
@@ -68,10 +71,16 @@ type Case = {
   payment_date: string | null
   payment_confirmed_at: string | null
   created_at: string
-  agents: { id: string; agent_number: string; name: string } | null
+  agents: Agent | Agent[] | null
   case_members: CaseMember[]
   quotes: Quote[]
   schedules: Schedule[]
+}
+
+function getAgent(c: { agents: Agent | Agent[] | null } | null | undefined): Agent | null {
+  const a = c?.agents
+  if (!a) return null
+  return Array.isArray(a) ? (a[0] ?? null) : a
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -118,24 +127,25 @@ export default function AdminCasesPage() {
   // ── Data fetching ──────────────────────────────────────────────────────────
 
   const fetchCases = useCallback(async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('cases')
       .select(`
         id, case_number, status, travel_start_date, travel_end_date,
         payment_date, payment_confirmed_at, created_at,
-        agents(id, agent_number, name),
+        agents!cases_agent_id_fkey(id, agent_number, name),
         case_members(
           id, is_lead,
           clients(id, client_number, name, nationality, gender, date_of_birth, phone, email, dietary_restriction, needs_muslim_friendly, special_requests)
         ),
         quotes(
           id, quote_number, slug, total_price, payment_due_date, agent_margin_rate, company_margin_rate,
-          quote_groups(id, name, order, quote_items(id, base_price, final_price, products(id, name, description)), quote_group_members(id))
+          quote_groups(id, name, order, member_count, quote_items(id, base_price, final_price, products(id, name, description)), quote_group_members(id))
         ),
         schedules(id, slug, pdf_url, status, version)
       `)
       .order('created_at', { ascending: false })
 
+    if (error) console.error('[cases] fetch error:', error)
     const fetched = (data as unknown as Case[]) ?? []
     setCases(fetched)
     setSelectedCase((prev) => {
@@ -257,8 +267,8 @@ export default function AdminCasesPage() {
             <section className="bg-gray-50 rounded-2xl p-4">
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Agent</p>
               <div className="flex items-center gap-2">
-                <span className="text-[10px] font-mono text-gray-400">{selectedCase.agents?.agent_number}</span>
-                <span className="text-sm font-medium text-gray-900">{selectedCase.agents?.name ?? '—'}</span>
+                <span className="text-[10px] font-mono text-gray-400">{getAgent(selectedCase)?.agent_number}</span>
+                <span className="text-sm font-medium text-gray-900">{getAgent(selectedCase)?.name ?? '—'}</span>
               </div>
             </section>
 
@@ -426,38 +436,38 @@ export default function AdminCasesPage() {
 
           {/* RIGHT — Selected Products */}
           <div className="w-1/2 overflow-y-auto bg-gray-50/50 px-6 py-6">
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-4">Selected Products</p>
+            <p className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-4">Selected Products</p>
 
             {sortedGroups.length === 0 ? (
               <p className="text-sm text-gray-300">No products selected.</p>
             ) : (
-              <div className="space-y-5">
+              <div className="space-y-6">
                 {sortedGroups.map((group) => {
-                  const memberCount = group.quote_group_members?.length || 1
+                  const memberCount = Math.max(group.member_count ?? 1, 1)
                   const groupTotal = group.quote_items.reduce((s, item) => s + item.final_price, 0)
                   return (
                     <div key={group.id}>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-semibold text-gray-600">{group.name}</span>
-                        <span className="text-[10px] text-gray-400">{memberCount} pax</span>
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-base font-semibold text-gray-700">{group.name}</span>
+                        <span className="text-xs text-gray-400">{memberCount} pax</span>
                       </div>
-                      <div className="space-y-2">
+                      <div className="space-y-2.5">
                         {group.quote_items.map((item) => {
                           const amtKRW = item.final_price
                           const amtUSD = amtKRW / exchangeRate
                           const unitUSD = amtUSD / memberCount
                           return (
-                            <div key={item.id} className="bg-white rounded-xl border border-gray-100 p-3">
-                              <p className="text-xs font-medium text-gray-800 mb-1">{item.products?.name ?? '—'}</p>
+                            <div key={item.id} className="bg-white rounded-xl border border-gray-100 p-4">
+                              <p className="text-sm font-medium text-gray-800 mb-1">{item.products?.name ?? '—'}</p>
                               {item.products?.description && (
-                                <p className="text-[10px] text-gray-400 mb-2 line-clamp-1">{item.products.description}</p>
+                                <p className="text-[11px] text-gray-400 mb-2.5 line-clamp-2 whitespace-pre-line">{item.products.description}</p>
                               )}
-                              <div className="space-y-0.5 text-[10px] text-gray-500">
+                              <div className="space-y-1 text-sm text-gray-500">
                                 <div className="flex justify-between">
                                   <span>{fmtUSD(unitUSD)} × {memberCount}</span>
-                                  <span className="font-medium text-gray-700">{fmtUSD(amtUSD)}</span>
+                                  <span className="font-semibold text-gray-800">{fmtUSD(amtUSD)}</span>
                                 </div>
-                                <div className="flex justify-between text-gray-400">
+                                <div className="flex justify-between text-xs text-gray-400">
                                   <span>{fmtKRW(item.final_price / memberCount)} × {memberCount}</span>
                                   <span>{fmtKRW(amtKRW)}</span>
                                 </div>
@@ -466,11 +476,11 @@ export default function AdminCasesPage() {
                           )
                         })}
                       </div>
-                      <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-200">
-                        <span className="text-[10px] text-gray-400">Subtotal</span>
+                      <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-gray-200">
+                        <span className="text-sm text-gray-500">Subtotal</span>
                         <div className="text-right">
-                          <p className="text-xs font-semibold text-gray-700">{fmtUSD(groupTotal / exchangeRate)}</p>
-                          <p className="text-[10px] text-gray-400">{fmtKRW(groupTotal)}</p>
+                          <p className="text-base font-semibold text-gray-800">{fmtUSD(groupTotal / exchangeRate)}</p>
+                          <p className="text-xs text-gray-400">{fmtKRW(groupTotal)}</p>
                         </div>
                       </div>
                     </div>
@@ -478,11 +488,11 @@ export default function AdminCasesPage() {
                 })}
 
                 {latestQuote && (
-                  <div className="flex items-center justify-between pt-3 border-t-2 border-gray-300">
-                    <span className="text-xs font-bold text-gray-900">Total</span>
+                  <div className="flex items-center justify-between pt-4 border-t-2 border-gray-300">
+                    <span className="text-base font-bold text-gray-900">Total</span>
                     <div className="text-right">
-                      <p className="text-sm font-bold text-gray-900">{fmtUSD(latestQuote.total_price / exchangeRate)}</p>
-                      <p className="text-[10px] text-gray-500">{fmtKRW(latestQuote.total_price)}</p>
+                      <p className="text-lg font-bold text-gray-900">{fmtUSD(latestQuote.total_price / exchangeRate)}</p>
+                      <p className="text-xs text-gray-500">{fmtKRW(latestQuote.total_price)}</p>
                     </div>
                   </div>
                 )}
@@ -533,15 +543,15 @@ export default function AdminCasesPage() {
             <tbody>
               {filteredCases.map((c) => {
                 const caseLead = c.case_members?.find((m) => m.is_lead)
-                const memberCount = c.case_members?.length ?? 0
                 const quote = c.quotes?.[0]
+                const memberCount = quote?.quote_groups?.reduce((s, g) => s + (g.member_count ?? 0), 0) ?? 0
                 return (
                   <tr key={c.id} onClick={() => openCase(c)}
                     className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors">
                     <td className="py-3.5 px-4 font-mono text-xs text-gray-400">{c.case_number}</td>
                     <td className="py-3.5 px-4">
-                      <p className="text-gray-800 font-medium">{c.agents?.name ?? '—'}</p>
-                      <p className="text-[10px] font-mono text-gray-400">{c.agents?.agent_number}</p>
+                      <p className="text-gray-800 font-medium">{getAgent(c)?.name ?? '—'}</p>
+                      <p className="text-[10px] font-mono text-gray-400">{getAgent(c)?.agent_number}</p>
                     </td>
                     <td className="py-3.5 px-4 font-medium text-gray-900">{caseLead?.clients?.name ?? '—'}</td>
                     <td className="py-3.5 px-4">

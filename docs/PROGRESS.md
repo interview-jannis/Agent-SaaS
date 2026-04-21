@@ -14,6 +14,9 @@
 
 ### 긴급 확인
 - [ ] `/quote/[slug]` Invoice 페이지 404 해결 — `window.print()` 핸들러가 async server component에 있어 오류 발생 가능성 높음. Print 버튼만 별도 client component로 분리 필요
+- [ ] Invoice Subject 로직 변경 — 현재 `nationality` 기반("for {국적} VIP Clients") → **`clients.needs_muslim_friendly` 기반**으로 교체
+  - true → "K-Beauty & Medical Premium Tour Package for **Muslim** VIP Clients"
+  - false → "K-Beauty & Medical Premium Tour Package for VIP Clients"
 - [ ] `system_settings` DB에 `exchange_rate` 값이 `{ "usd_krw": 1350 }` 형식으로 저장됐는지 확인
 
 ### 브랜딩 (Tiktak 적용)

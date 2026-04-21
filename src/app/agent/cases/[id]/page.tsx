@@ -19,13 +19,14 @@ type CaseMember = {
 type QuoteItem = {
   id: string
   final_price: number
-  products: { id: string; name: string; price_currency: string; duration_value: number | null; duration_unit: string | null }
+  products: { id: string; name: string; base_price: number; price_currency: string; duration_value: number | null; duration_unit: string | null }
 }
 
 type QuoteGroup = {
   id: string
   name: string
   order: number
+  member_count: number
   quote_items: QuoteItem[]
   quote_group_members: { id: string }[]
 }
@@ -37,6 +38,7 @@ type Quote = {
   total_price: number
   payment_due_date: string | null
   agent_margin_rate: number
+  company_margin_rate: number
   quote_groups: QuoteGroup[]
 }
 
@@ -127,10 +129,10 @@ export default function CaseDetailPage() {
           clients(id, client_number, name, nationality, gender, needs_muslim_friendly)
         ),
         quotes(
-          id, quote_number, slug, total_price, payment_due_date, agent_margin_rate,
+          id, quote_number, slug, total_price, payment_due_date, agent_margin_rate, company_margin_rate,
           quote_groups(
-            id, name, order,
-            quote_items(id, final_price, products(id, name, price_currency, duration_value, duration_unit)),
+            id, name, order, member_count,
+            quote_items(id, final_price, products(id, name, base_price, price_currency, duration_value, duration_unit)),
             quote_group_members(id)
           )
         ),
@@ -151,10 +153,8 @@ export default function CaseDetailPage() {
       setAgentId(aid)
 
       const { data: ss } = await supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single()
-      if (ss?.value) {
-        const r = Number(typeof ss.value === 'number' ? ss.value : (ss.value as Record<string, unknown>)?.rate ?? ss.value)
-        if (!isNaN(r) && r > 0) setExchangeRate(r)
-      }
+      const rate = (ss?.value as { usd_krw?: number } | null)?.usd_krw
+      if (typeof rate === 'number' && rate > 0) setExchangeRate(rate)
 
       await fetchCase()
 
@@ -241,7 +241,8 @@ export default function CaseDetailPage() {
   const totalKrw = quote?.total_price ?? 0
   const agentMarginRate = quote?.agent_margin_rate ?? 0
   const earningsKrw = agentMarginRate > 0 ? Math.round(totalKrw * agentMarginRate / (1 + agentMarginRate)) : 0
-  const toUsd = (krw: number) => Math.round(krw / exchangeRate)
+  const toUsd = (krw: number) => krw / exchangeRate
+  const fmtUsd = (usd: number) => `$${usd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
   const durationDays = caseData.travel_start_date && caseData.travel_end_date
     ? Math.ceil((new Date(caseData.travel_end_date).getTime() - new Date(caseData.travel_start_date).getTime()) / 86400000)
@@ -429,13 +430,21 @@ export default function CaseDetailPage() {
                 <span className="text-[10px] font-mono text-gray-400">{quote.quote_number}</span>
               </div>
               {[...quote.quote_groups].sort((a, b) => a.order - b.order).map(group => {
-                const qty = group.quote_group_members.length || 1
-                const groupTotalUsd = group.quote_items.reduce((sum, item) => {
-                  const usd = item.products.price_currency === 'KRW'
-                    ? item.final_price / exchangeRate
-                    : item.final_price
-                  return sum + usd * qty
-                }, 0)
+                const qty = Math.max(group.member_count ?? 1, 1)
+                // Compute per-product unit price the SAME way Home does:
+                //   baseUSD × (1 + companyMargin) × (1 + agentMargin)
+                // Using quote's stored margins so display stays consistent with the moment of quote creation.
+                const marginMult = (1 + (quote.company_margin_rate ?? 0)) * (1 + (quote.agent_margin_rate ?? 0))
+                const unitUsdFor = (item: QuoteItem) => {
+                  const baseUSD = item.products.price_currency === 'USD'
+                    ? item.products.base_price
+                    : item.products.base_price / exchangeRate
+                  return baseUSD * marginMult
+                }
+                const groupTotalUsd = group.quote_items.reduce(
+                  (sum, item) => sum + unitUsdFor(item) * qty,
+                  0
+                )
                 return (
                   <div key={group.id} className="bg-gray-50 rounded-2xl p-4">
                     <div className="flex items-center justify-between mb-3">
@@ -455,9 +464,7 @@ export default function CaseDetailPage() {
                         <span className="text-right">Total</span>
                       </div>
                       {group.quote_items.map(item => {
-                        const unitUsd = item.products.price_currency === 'KRW'
-                          ? Math.round(item.final_price / exchangeRate)
-                          : Math.round(item.final_price)
+                        const unitUsd = unitUsdFor(item)
                         const totalUsd = unitUsd * qty
                         return (
                           <div key={item.id} className="grid grid-cols-[1fr_auto_auto_auto] gap-x-4 py-2 border-b border-gray-100 last:border-0 text-sm">
@@ -467,16 +474,16 @@ export default function CaseDetailPage() {
                                 <p className="text-xs text-gray-400">{item.products.duration_value} {item.products.duration_unit}</p>
                               )}
                             </div>
-                            <span className="text-gray-500 text-xs self-center">${unitUsd.toLocaleString()}</span>
+                            <span className="text-gray-500 text-xs self-center">${unitUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                             <span className="text-gray-500 text-xs self-center">×{qty}</span>
-                            <span className="text-right font-medium text-gray-900 self-center">${totalUsd.toLocaleString()}</span>
+                            <span className="text-right font-medium text-gray-900 self-center">${totalUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                           </div>
                         )
                       })}
                     </div>
                     <div className="flex justify-between items-center mt-3 pt-2.5 border-t border-gray-200">
                       <span className="text-xs text-gray-500">Group subtotal</span>
-                      <span className="text-sm font-bold text-gray-900">${Math.round(groupTotalUsd).toLocaleString()}</span>
+                      <span className="text-sm font-bold text-gray-900">${groupTotalUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                     </div>
                   </div>
                 )
@@ -552,7 +559,7 @@ export default function CaseDetailPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-white rounded-xl border border-gray-100 p-3">
                   <p className="text-[10px] text-gray-400 mb-1">Total Amount</p>
-                  <p className="text-base font-bold text-gray-900">${toUsd(totalKrw).toLocaleString()}</p>
+                  <p className="text-base font-bold text-gray-900">{fmtUsd(toUsd(totalKrw))}</p>
                 </div>
                 {quote.payment_due_date && (
                   <div className="bg-white rounded-xl border border-gray-100 p-3">
@@ -570,7 +577,7 @@ export default function CaseDetailPage() {
                 <div className="bg-[#0f4c35]/5 border border-[#0f4c35]/15 rounded-xl p-3 flex items-center justify-between">
                   <div>
                     <p className="text-[10px] text-[#0f4c35]/70 mb-1">Your Estimated Earnings</p>
-                    <p className="text-base font-bold text-[#0f4c35]">${toUsd(earningsKrw).toLocaleString()}</p>
+                    <p className="text-base font-bold text-[#0f4c35]">{fmtUsd(toUsd(earningsKrw))}</p>
                   </div>
                   <div className="text-right">
                     <p className="text-[10px] text-gray-400 mb-1">Commission Rate</p>

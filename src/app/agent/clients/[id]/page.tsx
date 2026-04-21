@@ -112,10 +112,8 @@ export default function ClientDetailPage() {
   useEffect(() => {
     async function load() {
       const { data: ss } = await supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single()
-      if (ss?.value) {
-        const r = Number(typeof ss.value === 'number' ? ss.value : (ss.value as Record<string, unknown>)?.rate ?? ss.value)
-        if (!isNaN(r) && r > 0) setExchangeRate(r)
-      }
+      const rate = (ss?.value as { usd_krw?: number } | null)?.usd_krw
+      if (typeof rate === 'number' && rate > 0) setExchangeRate(rate)
       await fetchData()
       setLoading(false)
     }
@@ -296,7 +294,7 @@ export default function ClientDetailPage() {
               <div className="space-y-2">
                 {cases.map(c => {
                   const quote = c.quotes?.[0]
-                  const amountUsd = quote ? Math.round(quote.total_price / exchangeRate) : null
+                  const amountUsd = quote ? quote.total_price / exchangeRate : null
                   return (
                     <button key={c.id} onClick={() => router.push(`/agent/cases/${c.id}`)}
                       className="w-full text-left flex items-center justify-between gap-3 bg-gray-50 rounded-xl px-4 py-3 border border-gray-100 hover:border-gray-200 hover:bg-gray-100 transition-all">
@@ -314,7 +312,7 @@ export default function ClientDetailPage() {
                       </div>
                       <div className="flex items-center gap-3 shrink-0">
                         {amountUsd !== null && (
-                          <span className="text-sm font-semibold text-gray-800">${amountUsd.toLocaleString()}</span>
+                          <span className="text-sm font-semibold text-gray-800">${amountUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                         )}
                         <svg className="w-4 h-4 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />

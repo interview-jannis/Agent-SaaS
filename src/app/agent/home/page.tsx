@@ -14,6 +14,7 @@ type Product = {
   price_currency: 'KRW' | 'USD'
   duration_value: number
   duration_unit: 'hours' | 'days' | 'nights'
+  partner_name: string | null
   has_female_doctor: boolean
   has_prayer_room: boolean
   dietary_type: string
@@ -94,6 +95,8 @@ export default function AgentHomePage() {
   // Agent info
   const [agentId, setAgentId] = useState('')
   const [exchangeRate, setExchangeRate] = useState(1350)
+  const [companyMargin, setCompanyMargin] = useState(0.5)
+  const [agentMargin, setAgentMargin] = useState(0.15)
 
   // DB data
   const [products, setProducts] = useState<Product[]>([])
@@ -128,6 +131,12 @@ export default function AgentHomePage() {
   const [renameValue, setRenameValue] = useState('')
   const [imageIndexes, setImageIndexes] = useState<Record<string, number>>({})
   const [detailProduct, setDetailProduct] = useState<Product | null>(null)
+  const [modalImageIndex, setModalImageIndex] = useState(0)
+
+  function openDetail(product: Product) {
+    setModalImageIndex(imageIndexes[product.id] ?? 0)
+    setDetailProduct(product)
+  }
 
   // ── Load data ──────────────────────────────────────────────────────────────
 
@@ -137,12 +146,13 @@ export default function AgentHomePage() {
       const userId = session?.user?.id
       if (!userId) return
 
-      const [agentRes, rateRes, productsRes, catsRes] = await Promise.all([
-        supabase.from('agents').select('id').eq('auth_user_id', userId).single(),
+      const [agentRes, rateRes, companyRateRes, productsRes, catsRes] = await Promise.all([
+        supabase.from('agents').select('id, margin_rate').eq('auth_user_id', userId).single(),
         supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single(),
+        supabase.from('system_settings').select('value').eq('key', 'company_margin_rate').single(),
         supabase
           .from('products')
-          .select('id, name, description, base_price, price_currency, duration_value, duration_unit, has_female_doctor, has_prayer_room, dietary_type, category_id, product_categories(name), product_images(image_url, is_primary)')
+          .select('id, name, description, base_price, price_currency, duration_value, duration_unit, partner_name, has_female_doctor, has_prayer_room, dietary_type, category_id, product_categories(name), product_images(image_url, is_primary)')
           .eq('is_active', true),
         supabase.from('product_categories').select('id, name').order('name'),
       ])
@@ -152,6 +162,12 @@ export default function AgentHomePage() {
 
       const rate = (rateRes.data?.value as { usd_krw?: number } | null)?.usd_krw
       if (rate) setExchangeRate(rate)
+
+      const cm = (companyRateRes.data?.value as { rate?: number } | null)?.rate
+      if (typeof cm === 'number') setCompanyMargin(cm)
+
+      const am = (agentRes.data as { margin_rate?: number } | null)?.margin_rate
+      if (typeof am === 'number') setAgentMargin(am)
 
       setProducts((productsRes.data as unknown as Product[]) ?? [])
       setCategories(catsRes.data ?? [])
@@ -189,16 +205,18 @@ export default function AgentHomePage() {
     return map
   }, [groups])
 
+  const marginMult = (1 + companyMargin) * (1 + agentMargin)
+
   const totalUSD = useMemo(() => {
     return groups.reduce((total, g) => {
       return total + g.productIds.reduce((sum, pid) => {
         const p = products.find((x) => x.id === pid)
         if (!p) return sum
-        const usd = p.price_currency === 'USD' ? p.base_price : Math.round(p.base_price / exchangeRate)
-        return sum + usd * g.memberCount
+        const baseUSD = p.price_currency === 'USD' ? p.base_price : p.base_price / exchangeRate
+        return sum + baseUSD * marginMult * g.memberCount
       }, 0)
     }, 0)
-  }, [groups, products, exchangeRate])
+  }, [groups, products, exchangeRate, marginMult])
 
   const activeGroupIndex = groups.findIndex((g) => g.id === activeGroupId)
 
@@ -274,7 +292,10 @@ export default function AgentHomePage() {
 
   async function handleRegisterClient() {
     if (!clientForm.name.trim()) { setClientError('Name is required.'); return }
-    if (!agentId) return
+    if (!agentId) {
+      setClientError('Agent profile not loaded. Please refresh the page and try again.')
+      return
+    }
     setSavingClient(true)
     setClientError('')
     try {
@@ -309,8 +330,9 @@ export default function AgentHomePage() {
   // ── Price helper ───────────────────────────────────────────────────────────
 
   function toUSD(p: Product): string {
-    const usd = p.price_currency === 'USD' ? p.base_price : Math.round(p.base_price / exchangeRate)
-    return `$${usd.toLocaleString()}`
+    const baseUSD = p.price_currency === 'USD' ? p.base_price : p.base_price / exchangeRate
+    const withMargin = baseUSD * marginMult
+    return `$${withMargin.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
   }
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -484,7 +506,7 @@ export default function AgentHomePage() {
                     {/* Image with carousel */}
                     <div
                       className="aspect-[4/3] bg-gray-100 overflow-hidden relative group/img cursor-pointer"
-                      onClick={() => setDetailProduct(product)}
+                      onClick={() => openDetail(product)}
                     >
                       {currentImg ? (
                         // eslint-disable-next-line @next/next/no-img-element
@@ -527,12 +549,12 @@ export default function AgentHomePage() {
                     {/* Content */}
                     <div className="p-3 flex flex-col flex-1 gap-1.5">
                       <button
-                        onClick={() => setDetailProduct(product)}
+                        onClick={() => openDetail(product)}
                         className="text-sm font-semibold text-gray-900 leading-tight text-left hover:text-[#0f4c35] transition-colors line-clamp-1"
                       >
                         {product.name}
                       </button>
-                      <p className="text-xs text-gray-400 line-clamp-2 leading-relaxed">{product.description}</p>
+                      <p className="text-xs text-gray-400 line-clamp-2 leading-relaxed whitespace-pre-line">{product.description}</p>
 
                       <div className="flex items-center justify-between mt-auto pt-1">
                         <div>
@@ -639,7 +661,7 @@ export default function AgentHomePage() {
         <div className="flex items-center gap-4 shrink-0">
           <div className="text-right">
             <p className="text-[10px] text-gray-400">Total</p>
-            <p className="text-sm font-bold text-gray-900">${totalUSD.toLocaleString()}</p>
+            <p className="text-sm font-bold text-gray-900">${totalUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
           </div>
           <button
             onClick={handleCreateQuote}
@@ -658,16 +680,16 @@ export default function AgentHomePage() {
             {/* Images */}
             {(() => {
               const imgs = [...(detailProduct.product_images ?? [])].sort((a, b) => (b.is_primary ? 1 : 0) - (a.is_primary ? 1 : 0))
-              const idx = imageIndexes[detailProduct.id] ?? 0
+              const idx = modalImageIndex % Math.max(imgs.length, 1)
               return imgs.length > 0 ? (
                 <div className="relative aspect-video bg-gray-100 overflow-hidden rounded-t-2xl">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={imgs[idx].image_url} alt="" className="w-full h-full object-cover" />
                   {imgs.length > 1 && (
                     <>
-                      <button onClick={() => setImageIndexes((p) => ({ ...p, [detailProduct.id]: (idx - 1 + imgs.length) % imgs.length }))}
+                      <button onClick={() => setModalImageIndex((idx - 1 + imgs.length) % imgs.length)}
                         className="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/40 text-white flex items-center justify-center text-lg">‹</button>
-                      <button onClick={() => setImageIndexes((p) => ({ ...p, [detailProduct.id]: (idx + 1) % imgs.length }))}
+                      <button onClick={() => setModalImageIndex((idx + 1) % imgs.length)}
                         className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/40 text-white flex items-center justify-center text-lg">›</button>
                       <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1.5">
                         {imgs.map((_, i) => <div key={i} className={`w-2 h-2 rounded-full ${i === idx ? 'bg-white' : 'bg-white/40'}`} />)}
@@ -707,6 +729,14 @@ export default function AgentHomePage() {
                 <p className="text-xs font-medium text-gray-500 mb-1">Description</p>
                 <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">{detailProduct.description}</p>
               </div>
+
+              {/* Partner */}
+              {detailProduct.partner_name && (
+                <div>
+                  <p className="text-xs font-medium text-gray-500 mb-1">Partner</p>
+                  <p className="text-sm text-gray-800 font-medium">{detailProduct.partner_name}</p>
+                </div>
+              )}
 
               {/* Muslim Friendly */}
               {(detailProduct.has_prayer_room || detailProduct.has_female_doctor || detailProduct.dietary_type !== 'none') && (
