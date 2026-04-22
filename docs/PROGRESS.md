@@ -1,235 +1,242 @@
 # Project Progress
 
 ## 현재 상태
-- **Phase**: Agent/Admin 핵심 플로우 안정화 완료, 무슬림 UX·Tiktak 브랜딩·고객용 스케줄 페이지 적용
-- **마지막 작업**: Invoice 404 복구, member_count, Admin 카테고리 그룹핑, Home 2×2 섹션 뷰, 무슬림 조건부 필드, Tiktak 브랜딩, Schedule Preview/Send
-- **마지막 업데이트**: 2026-04-21
-- **SaaS 브랜드명**: **Tiktak** (UI 전역 반영 완료, 법인명은 Interview Co., Ltd 유지)
+- **Phase**: 전 플로우 (견적→결제→스케줄 승인→여행 완료→정산) 구축 완료. UX 폴리시 + 테스트 단계.
+- **마지막 작업**: 스케줄 버전 관리, 고객 정보 대폭 확장, Members staging, Agent/Admin 관리 페이지 5개 신규, 정산 흐름 end-to-end
+- **마지막 업데이트**: 2026-04-22 (D-7, MVP 4/29 마감)
+- **SaaS 브랜드명**: **Tiktak** (UI 전역, 법인명 Interview Co., Ltd)
 
-> 2026-04-17 회사 미팅 피드백 반영 작업 반영됨 (`docs/meetings/26.04.17-kickoff-feedback.md`)
-> 2026-04-21 상세 작업 로그: `docs/26.04.21.md`
+> 2026-04-22 상세: `docs/26.04.22.md` (최신)
+> 2026-04-21 상세: `docs/26.04.21.md`
+> 2026-04-17 회사 미팅 피드백: `docs/meetings/26.04.17-kickoff-feedback.md`
 
 ---
 
 ## 다음 할 일
 
-### 긴급 확인
-- [ ] `/schedule/[slug]` 실제 PDF 업로드 테스트 — Supabase Storage `schedules` 버킷 수동 생성 필요 (Public bucket)
+### 안정화 (MVP 마감 전)
+- [ ] End-to-end 전체 플로우 테스트 (Agent 가입 → 고객 등록 → 견적 → 결제 → 스케줄 → 여행 → 정산)
+- [ ] Vercel 배포 환경 점검
+- [ ] CLAUDE.md 현재 스키마에 맞춰 업데이트 (clients/cases/settlements 컬럼 대폭 추가됨)
 
-### Agent Pre-Onboarding & 전자서명 (신규 플로우)
-- [ ] `/onboarding` 진입 페이지 — 사업 소개 + 서비스 구조 + OT 자료
-- [ ] NDA 전자서명 페이지 — Canvas 서명 + SMS 본인 인증
-- [ ] 파트너십 계약서 전자서명 페이지
-- [ ] 서명 완료 PDF 생성 + 에이전트 이메일 발송 (Resend)
-- [ ] `agent_contracts` 테이블 신규 생성 (signer_email, contract_type, signature_image_url, pdf_url, signed_at, ip, device_info)
-- [ ] 서명 완료 후에만 `/register` 진입 허용하는 가드 추가
+### 기능 보완 (시간 되면)
+- [ ] Register 폼에 bank_info 필수 입력 (지금은 Profile에서만 입력 가능)
+- [ ] Admin Products Excel Export (`xlsx` 라이브러리)
+- [ ] `agents.monthly_completed` 자동 업데이트 트리거 or 월말 리셋 (지금은 수동, 대시보드는 누적으로 fallback)
 
-### Agent 회원가입 개편
-- [ ] `/register` 폼에 **정산 계좌(bank_info)** 필수 입력 필드 추가 — 은행명, 계좌번호, 예금주, Swift 등
-
-### 상품 데이터 관리
-- [ ] Admin Products에 **"Export to Excel"** 버튼 추가 (`xlsx` 라이브러리, 카테고리명·환산가격 가공 형태)
-
-### 미구현 탭
-- [ ] Agent Payouts (`/agent/payouts`)
-- [ ] Agent Dashboard (`/agent/dashboard`)
-- [ ] Agent Profile (`/agent/profile`)
-- [ ] Admin Agents (`/admin/agents`) — 에이전트 목록/상세/마진율 관리
-- [ ] Admin Settlement (`/admin/settlement`) — 정산 관리
-
-### 기능 보완
-- [ ] Resend 이메일 연동 (결제 요청 자동 발송 + 서명 PDF 발송 공용 + 스케줄 링크 발송)
+### Post-MVP (다음 스프린트)
+- [ ] Resend 이메일 연동 (Invoice/Schedule 링크 고객에 자동 발송, 서명 PDF)
+- [ ] Agent Pre-Onboarding + 전자서명 (NDA/파트너십 계약서, Canvas 서명 + SMS 인증)
+  - `/onboarding` 진입 페이지
+  - `agent_contracts` 테이블 (signer_email, contract_type, signature_image_url, pdf_url, signed_at, ip)
+  - 서명 완료 후에만 `/register` 허용
+- [ ] Agent Dashboard 고급화 (월별 커미션 차트, 성과 비교)
+- [ ] Settlement 월별 집계 뷰
 
 ---
 
 ## 완료된 작업
 
 ### 인프라 / 세팅
-- [x] Next.js 프로젝트 생성 (TypeScript, Tailwind CSS, App Router)
-- [x] Supabase 연결 (`src/lib/supabase.ts`, `src/lib/supabase-server.ts`)
-- [x] GitHub 연결 (`interview-jannis/Agent-SaaS`)
-- [x] CLAUDE.md 프로젝트 바이블 작성
-- [x] `docs/PROGRESS.md` 진행 현황 파일 생성
-- [x] 전체 테이블 RLS 비활성화 (+ agents/quote_group_members/schedules 정책 완전 제거)
-- [x] Admin layout `min-h-screen → h-screen` (sticky 활성)
-- [x] `supabase-server.ts` — `SUPABASE_SERVICE_ROLE_KEY` ?? anon key fallback
+- [x] Next.js (TypeScript, Tailwind, App Router) + Supabase + Vercel
+- [x] GitHub: `interview-jannis/Agent-SaaS`
+- [x] 전체 테이블 RLS 비활성화 (settlements, agents 포함)
+- [x] Storage 버킷 `schedules`, `product-images` (Public) + 버킷별 RLS 정책
+- [x] CLAUDE.md 프로젝트 바이블
+- [x] 공용 lib: `src/lib/clientCompleteness.ts` (필수 필드 체크 공유)
+- [x] 공용 컴포넌트: `DOBPicker`, `PrintPdfButton`, `AutoPrint`, `PrintButton`
 
 ### 인증
-- [x] 로그인 페이지 (`/login`) — 이메일/비밀번호, 역할 분기(admin/agent), Tiktak 브랜딩
-- [x] 회원가입 페이지 (`/register`) — Agent 전용, Tiktak 브랜딩
+- [x] 로그인 페이지 (`/login`) — 역할 분기(admin/agent), Tiktak 브랜딩
+- [x] 회원가입 페이지 (`/register`) — Agent 전용
 
 ### 브랜딩
-- [x] 전역 metadata title = "Tiktak"
-- [x] Agent/Admin Sidebar 로고 = Tiktak
-- [x] 로그인/회원가입 안내 문구 = Tiktak
-- [x] Invoice 상단 로고 = Tiktak (하단 "by Interview Co., Ltd" 부기), 법적 발행 주체 Interview Co., Ltd 유지
+- [x] 전역 metadata title / Sidebar / 로그인 / Invoice 모두 Tiktak
+- [x] 법적 발행 주체(Invoice From)만 Interview Co., Ltd 유지
 
 ### Admin 화면
-- [x] Admin 공통 레이아웃 + 사이드바 (로그인 유저 이름, 로그아웃)
-- [x] Admin Overview (`/admin/overview`) — 액션 필요 / This Month / Top Agents / Recent Cases
-- [x] Admin Products (`/admin/products`)
-  - 목록/등록/수정/삭제, 이미지 업로드 + **hover 캐러셀**
-  - Partner Name 컬럼 + Description 줄바꿈 보존
-  - 원가 + 3 tier(15/20/25%) 최종가 (USD 통일), Price 헤더 정렬
-  - **카테고리별 그룹핑 + Sticky Jump-to pill 네비게이션**
-  - 파트너 필터(카테고리 선택 시 해당 카테고리 파트너만 표시)
-- [x] Admin Categories (`/admin/categories`) — CRUD + sort_order 기반 정렬
-- [x] Admin Settings (`/admin/settings`) — 환율 + 회사 마진 + 은행 계좌 정보
-- [x] Admin Cases (`/admin/cases`) — 표 + 50/50 분할 뷰
-  - Agent/Lead/Status/Members(=member_count 합)/Travel/Total(USD)
-  - Admin 액션: 결제 확인 / **드래그&드롭 PDF 업로드** / 여행 완료 처리
-  - 우측 Selected Products 패널 가독성 개선 (글자 확대, description 2줄 클램프)
+- [x] Overview (`/admin/overview`) — 액션 필요 / 월매출(KRW+USD) / Top Agents / Recent Cases
+- [x] Products (`/admin/products`) — 카테고리 그룹핑 + Sticky 네비 + 3 tier 가격 + 캐러셀
+- [x] Categories (`/admin/categories`) — CRUD + sort_order
+- [x] Settings (`/admin/settings`) — 환율 + 회사 마진 + 은행 정보
+- [x] Cases 리스트 (`/admin/cases`) — 표 + 상태 필터
+- [x] **Case 상세 (`/admin/cases/[id]`)** — 라우트 분리 (새로고침·링크 공유 가능)
+  - 50/50 분할, Trip Info 읽기 전용, Client Info Status, Group 경고
+  - Schedule History: 2단계 업로드(프리뷰→Confirm), 버전별 관리, Delete 확인창
+  - Lock 배너: schedule_confirmed/travel_completed면 업로드·삭제 불가
+- [x] **Agents (`/admin/agents`, `/admin/agents/[id]`)** — 에이전트 관리
+  - 리스트: Margin/Unsettled/Paid Out 재정산 3열 묶음
+  - 상세: Profile·Bank·Cases·Settlement History + Activate/Deactivate 토글
+- [x] **Settlement (`/admin/settlement`)** — 수수료 지급 관리
+  - Unsettled Cases + Settle 모달 (agent 은행정보 자동 표시)
+  - Settlement History (읽기 전용, 삭제 없음)
 
 ### Agent 화면
-- [x] Agent 공통 레이아웃 + 사이드바 (Home / Cases / Clients 활성)
-- [x] Agent Home (`/agent/home`)
-  - **2×2 카테고리 섹션 뷰** (Medical/Beauty/Wellness/Subpackage), See all → 단일 카테고리 flat grid
-  - 장바구니 pinned 정렬 (섹션 진입 시점 스냅샷)
-  - 상품 카드 이미지 캐러셀, 상세 모달 (모달 이미지 index 독립)
-  - 그룹 기반 카트 (최대 4그룹, 색상 코딩)
-  - **마진 적용된 최종 USD 가격** 표시 (Home·Review·Invoice 완전 일치)
-  - 카테고리 라디오(단일 선택), 무슬림/식단/여성의사 필터
-  - **Client 등록 모달** (Clients 탭과 동일 스타일), Muslim=Yes 조건부 3개 필드
-- [x] Agent 견적 검토 (`/agent/home/review`)
-  - 동반자 관리, 그룹 배정
-  - **Send Quote → 새 케이스 상세 페이지로 redirect**
-  - `quote_groups.member_count` 저장, 마진 적용가 2자리 USD
-- [x] Agent Cases (`/agent/cases`) — 리스트 전용 (New Case 생성 기능 제거, Home 플로우로만)
-- [x] Agent Cases 상세 (`/agent/cases/[id]`)
-  - 여행 기간 편집, Lead Client 링크, 동반자 관리 (Muslim Yes/No 조건부)
-  - Selected Products (각 상품 USD 단가 × Qty = Amount) — member_count 기반
-  - **Schedule Preview/Send 버튼** (Invoice의 Preview/Send와 동일 패턴)
-  - Financials: 총액 USD, 결제 마감일, 예상 수익
-- [x] Agent Clients (`/agent/clients`)
-  - 리스트 + 검색, **Add Client 버튼 + 등록 모달**
-  - Muslim Yes/No 조건부 3개 필드
-- [x] Agent Clients 상세 (`/agent/clients/[id]`)
-  - 편집/뷰 모드, Muslim=Yes 시 Dietary/Prayer Frequency/Prayer Location 노출
+- [x] 공통 레이아웃 + 사이드바 (6탭 전부 활성)
+- [x] Home (`/agent/home`) — 2×2 카테고리 섹션, 그룹 기반 카트, 마진 적용 USD
+- [x] 견적 검토 (`/agent/home/review`) — 그룹 배정, 필수 검증, Redirect to case
+- [x] **Dashboard (`/agent/dashboard`)** — 신규
+  - Action Needed 배너 (amber)
+  - Hero 2열: This Month 총수익 / Next Tier progress bar
+  - Recent Cases + Upcoming Travel 2열 (days until 뱃지)
+  - Pipeline 5칸 (0이면 회색, 활성은 상태색)
+- [x] Cases 리스트 (`/agent/cases`)
+- [x] **Cases 상세 (`/agent/cases/[id]`)** — 재작성
+  - Trip Info 섹션 (concept/meeting_date/flights 편집)
+  - Client Info Status (미완성 고객 한 줄 요약)
+  - Members & Groups: staging 모드 (Save/Cancel), 2열 그룹 배치, Lead 교체, 그룹 dropdown
+  - Selected Products 접기/펴기 토글
+  - Schedule 섹션: 버전 표시, Confirm/Request Revision (pending일 때만)
+  - Mark Travel Complete (schedule_confirmed일 때)
+  - Financials: 총액 · 결제 마감 · 예상 수수료
+- [x] Clients 리스트 (`/agent/clients`) — Info 컬럼(완성도 뱃지)
+- [x] **Clients 상세 (`/agent/clients/[id]`)** — 대폭 확장
+  - Basic / Contact / Emergency Contact / Medical / Lifestyle / Muslim Preferences / Additional Notes 7개 섹션
+  - Missing Info 상단 요약 배너
+  - Female일 때만 Pregnancy 노출, Muslim=Yes일 때만 Muslim Preferences
+  - Edit는 상단, Save는 하단 (긴 폼 자연스럽게)
+- [x] **Payouts (`/agent/payouts`)** — 신규
+  - 카드 3개: Unsettled / Received This Month / Total Received
+  - Unsettled Cases + Settlement History
+- [x] **Profile (`/agent/profile`)** — 신규
+  - Basic (읽기) / Contact (편집) / Bank Information (편집)
+  - Bank 미입력 시 경고 배너
 
 ### 고객용 페이지
-- [x] 인보이스 페이지 (`/quote/[slug]`) — Commercial Invoice 양식
-  - To / CC / From / Ref.No / Issue Date / Due Date
-  - Subject: **Muslim VIP Clients** (leadClient.needs_muslim_friendly 기반) / VIP Clients
-  - 상품 테이블, 총액 USD 2자리 소수점
-  - 은행 계좌 (`system_settings.bank_details`), colon 정렬 통일
-  - Print 버튼(client component 분리), Tiktak 로고
-- [x] 스케줄 페이지 (`/schedule/[slug]`) — PDF iframe 풀스크린 (간소화)
+- [x] Invoice (`/quote/[slug]`) — Commercial Invoice, Muslim 기반 Subject, Tiktak 로고
+- [x] Schedule (`/schedule/[slug]`) — PDF iframe, `?autoprint=1`로 에이전트 인쇄용 호출
 
 ---
 
-## 주요 결정사항
+## 주요 결정사항 (이번 스프린트 추가분)
 
 | 항목 | 결정 | 이유 |
 |------|------|------|
-| UI 패턴 | 표(list) → 클릭 → 상세(detail) | Admin/Agent 모두 동일한 패턴으로 통일 |
-| 전체 UI 언어 | 영어 | 해외 에이전트 대상 |
-| Agent 가격 표시 | 무조건 USD, 2자리 소수점 | 해외 에이전트 기준 통화, 일관성 |
-| Admin 가격 표시 | 원가(원화 or USD) + 3 tier USD | 내부 관리용 + 에이전트 tier별 최종가 |
-| Quote = Invoice | 견적 생성 시 slug 발급, 그게 인보이스 URL | 별도 Invoice 발행 단계 불필요 |
-| Agent Invoice/Schedule 접근 | Preview(새 탭) + Send(링크 복사) 분리 | 에이전트가 확인도 하고 고객에게도 공유 |
-| Admin Invoice 접근 | 조용한 View ↗ 링크만 | Admin은 인보이스 발송 주체가 아님 |
-| RLS 정책 | 전체 비활성화 + 정책 완전 제거 | 내부 전용 B2B 도구 |
-| Client 편집 필드 | 여행 필드 제외 | 여행 정보는 Case에 속함 |
-| 카트 지속성 | localStorage | 페이지 이동 간 상태 유지 |
-| 서버 DB 클라이언트 | anon key fallback | service role key 미설정 환경 대응 |
-| Supabase nested select FK | `!constraint_name` 명시 힌트 | PostgREST 자동 인식 불안정 회피 |
-| SaaS 브랜드명 | Tiktak (UI 전역) | 법적 발행 주체는 Interview Co., Ltd 유지 |
-| Agent 가입 선행 절차 | Pre-Onboarding → 전자서명 → 회원가입 | 계약 이전 검토 시간 확보 + 종이 계약 제거 |
-| 전자서명 방식 | 자체 구현 (Canvas + SMS 인증 + PDF 이메일 발송) | 가입 UX 매끄러움 우선 |
-| Agent 정산 계좌 | 가입 폼에서 필수 입력 | 정산 누락 방지 |
-| 상품 카테고리 정렬 | Medical → Beauty → Wellness → Subpackage 고정 | 비즈니스 의도 기반, 알파벳 금지 |
-| 상품 데이터 관리 | SaaS 직접 등록 + Excel Export | 양방향 동기화 충돌 방지 |
-| Enum 관리 방식 | **TEXT + CHECK constraint** (ENUM 지양) | 값 추가/삭제/이름변경이 ALTER TYPE보다 쉬움 |
-| 고객 등록 진입점 | Clients 탭 Add Client + Home 모달 양쪽 | Cases에서는 생성 기능 제거 (플로우 명확화) |
-| Muslim 질문 방식 | "Muslim?" Yes/No 라디오 | 대부분 비무슬림이라 "Not required" 부정형 어색 |
-| Muslim 조건부 필드 | Yes일 때만 Dietary/Prayer Frequency/Prayer Location | 비무슬림에겐 무관, 폼 간결 |
+| Schedule 버전 관리 | 케이스당 여러 schedule 행 (slug 공유) | 버전 히스토리 + 고객 URL 안정 |
+| Schedule 상태 | pending / confirmed / revision_requested | 승인 플로우에 필요 |
+| Schedule 업로드 | 드롭 → 프리뷰 → Confirm (2단계) | 실수 방지 |
+| Mark Travel Complete | Admin → **Agent**가 표시 | 현장에 있는 주체가 확정 |
+| 정산 기본 단위 | 1 case = 1 settlement | 실제 송금 단위와 일치, 수동 송금에 안전 |
+| Settlement 금액 입력 | 읽기 전용 (자동 계산) | deterministic → 오타 방지 |
+| Settlement 삭제 | 불가 (audit log) | 재무 기록 무결성 |
+| Members 편집 | Staging 모드 (Save/Cancel) | 실수로 잘못 고른 것 되돌리기 |
+| Trip Info 저장 | JSONB (outbound/inbound) | 쿼리 필요 없음, 스키마 변경 최소화 |
+| Client 필수 필드 | "N/A 허용" 정책 | 무의미 필드 때문에 업로드 블록 방지 |
+| Pregnancy 필드 | female일 때만 노출 | UX 간결 |
+| Muslim Preferences | needs_muslim_friendly=true일 때만 노출 | 비무슬림에겐 무관 |
+| Prayer enum | all_five_daily / flexible / not_applicable | 고객 템플릿 용어와 일치 |
+| DOB 입력 | 커스텀 Year/Month/Day 드롭다운 | native date input은 연도 스크롤 지옥 |
+| Date input 색 | CSS로 gray-900 강제 | 브라우저 기본 회색 가독성 나쁨 |
+
+### 이전 스프린트 결정
+(참고용, 변경 없음 — 자세히는 이전 연구노트 참조)
+- UI 언어 영어, 가격 USD 2자리, Quote=Invoice, RLS 전체 비활성화, Tiktak 브랜드, 상품 카테고리 정렬 고정, ENUM 대신 TEXT+CHECK, Cases에서 신규 생성 금지 (Home 플로우만)
 
 ---
 
-## DB 변경사항 (Supabase에 직접 적용 필요 — 누적)
+## DB 스키마 변경사항 누적
+
+### 금일(4/22) 추가분
 
 ```sql
--- price_currency 컬럼 (원가 통화)
-ALTER TABLE products ADD COLUMN IF NOT EXISTS price_currency TEXT NOT NULL DEFAULT 'KRW';
+-- Schedules 버전 관리
+ALTER TABLE schedules ADD COLUMN IF NOT EXISTS file_name TEXT;
+ALTER TABLE schedules ADD COLUMN IF NOT EXISTS revision_note TEXT;
+ALTER TABLE schedules ADD COLUMN IF NOT EXISTS confirmed_at TIMESTAMPTZ;
+ALTER TABLE schedules DROP CONSTRAINT IF EXISTS schedules_status_check;
+UPDATE schedules SET status = 'pending' WHERE status = 'reviewed';
+ALTER TABLE schedules ADD CONSTRAINT schedules_status_check
+  CHECK (status IN ('pending','confirmed','revision_requested'));
+ALTER TABLE schedules DROP CONSTRAINT IF EXISTS schedules_slug_key;
+ALTER TABLE schedules ADD CONSTRAINT schedules_case_version_unique UNIQUE (case_id, version);
+CREATE INDEX IF NOT EXISTS schedules_slug_idx ON schedules(slug);
 
--- 카테고리 정렬
-ALTER TABLE product_categories ADD COLUMN IF NOT EXISTS sort_order INT NOT NULL DEFAULT 99;
-UPDATE product_categories SET sort_order = 1 WHERE LOWER(name) = 'medical';
-UPDATE product_categories SET sort_order = 2 WHERE LOWER(name) = 'beauty';
-UPDATE product_categories SET sort_order = 3 WHERE LOWER(name) = 'wellness';
-INSERT INTO product_categories (name, sort_order) VALUES ('Subpackage', 4)
-  ON CONFLICT DO NOTHING;
+-- Storage RLS
+CREATE POLICY "schedules_all_access" ON storage.objects
+  FOR ALL TO anon, authenticated
+  USING (bucket_id = 'schedules') WITH CHECK (bucket_id = 'schedules');
 
--- 견적 그룹 인원수
-ALTER TABLE quote_groups ADD COLUMN IF NOT EXISTS member_count INT NOT NULL DEFAULT 1;
+-- Clients 확장 (의료관광 필수 정보 20+ 필드)
+ALTER TABLE clients ADD COLUMN emergency_contact_name TEXT;
+ALTER TABLE clients ADD COLUMN emergency_contact_relation TEXT;
+ALTER TABLE clients ADD COLUMN emergency_contact_phone TEXT;
+ALTER TABLE clients ADD COLUMN blood_type TEXT;
+ALTER TABLE clients ADD COLUMN allergies TEXT;
+ALTER TABLE clients ADD COLUMN current_medications TEXT;
+ALTER TABLE clients ADD COLUMN health_conditions TEXT;
+ALTER TABLE clients ADD COLUMN medical_restrictions TEXT;
+ALTER TABLE clients ADD COLUMN height_cm NUMERIC;
+ALTER TABLE clients ADD COLUMN weight_kg NUMERIC;
+ALTER TABLE clients ADD COLUMN preferred_language TEXT;
+ALTER TABLE clients ADD COLUMN mobility_limitations TEXT;
+ALTER TABLE clients ADD COLUMN cultural_religious_notes TEXT;
+ALTER TABLE clients ADD COLUMN prior_aesthetic_procedures TEXT;
+ALTER TABLE clients ADD COLUMN recent_health_checkup_notes TEXT;
 
--- 파트너사 이름
-ALTER TABLE products ADD COLUMN IF NOT EXISTS partner_name TEXT;
+ALTER TABLE clients ADD COLUMN pregnancy_status TEXT
+  CHECK (pregnancy_status IN ('not_applicable','none','pregnant','unknown'));
+ALTER TABLE clients ADD COLUMN smoking_status TEXT
+  CHECK (smoking_status IN ('non_smoker','occasional','regular','former','not_applicable'));
+ALTER TABLE clients ADD COLUMN alcohol_status TEXT
+  CHECK (alcohol_status IN ('none','occasional','regular','not_applicable'));
+ALTER TABLE clients ADD COLUMN same_gender_doctor TEXT
+  CHECK (same_gender_doctor IN ('required','preferred','no_preference','not_applicable'));
+ALTER TABLE clients ADD COLUMN same_gender_therapist TEXT
+  CHECK (same_gender_therapist IN ('required','preferred','no_preference','not_applicable'));
+ALTER TABLE clients ADD COLUMN mixed_gender_activities TEXT
+  CHECK (mixed_gender_activities IN ('comfortable','prefer_to_limit','not_comfortable','not_applicable'));
 
--- dietary ENUM → TEXT+CHECK 마이그레이션
-ALTER TABLE products ALTER COLUMN dietary_type DROP DEFAULT;
-ALTER TABLE products ALTER COLUMN dietary_type TYPE TEXT USING dietary_type::text;
-ALTER TABLE products ALTER COLUMN dietary_type SET DEFAULT 'none';
-ALTER TABLE products ADD CONSTRAINT products_dietary_type_check
-  CHECK (dietary_type IS NULL OR dietary_type IN
-    ('halal_certified','halal_friendly','muslim_friendly','pork_free','none'));
-ALTER TABLE clients ALTER COLUMN dietary_restriction DROP DEFAULT;
-ALTER TABLE clients ALTER COLUMN dietary_restriction TYPE TEXT USING dietary_restriction::text;
-ALTER TABLE clients ADD CONSTRAINT clients_dietary_restriction_check
-  CHECK (dietary_restriction IS NULL OR dietary_restriction IN
-    ('halal_certified','halal_friendly','muslim_friendly','pork_free','none'));
-DROP TYPE dietary_type;
+-- Prayer enum 값 재정의
+UPDATE clients SET prayer_frequency = NULL
+  WHERE prayer_frequency NOT IN ('all_five_daily','flexible','not_applicable');
+ALTER TABLE clients DROP CONSTRAINT clients_prayer_frequency_check;
+ALTER TABLE clients ADD CONSTRAINT clients_prayer_frequency_check
+  CHECK (prayer_frequency IN ('all_five_daily','flexible','not_applicable'));
 
--- 기도 관련 필드
-ALTER TABLE clients ADD COLUMN IF NOT EXISTS prayer_frequency TEXT
-  CHECK (prayer_frequency IS NULL OR prayer_frequency IN ('strict','moderate','flexible'));
-ALTER TABLE clients ADD COLUMN IF NOT EXISTS prayer_location TEXT
-  CHECK (prayer_location IS NULL OR prayer_location IN
-    ('prayer_room','mosque_nearby','quiet_private_space','any_clean_space','no_preference'));
+UPDATE clients SET prayer_location = NULL
+  WHERE prayer_location NOT IN ('hotel','vehicle','external_prayer_room','mosque','not_applicable');
+ALTER TABLE clients DROP CONSTRAINT clients_prayer_location_check;
+ALTER TABLE clients ADD CONSTRAINT clients_prayer_location_check
+  CHECK (prayer_location IN ('hotel','vehicle','external_prayer_room','mosque','not_applicable'));
 
--- 전체 테이블 RLS 비활성화 + 정책 완전 제거
-ALTER TABLE products DISABLE ROW LEVEL SECURITY;
-ALTER TABLE product_categories DISABLE ROW LEVEL SECURITY;
-ALTER TABLE product_images DISABLE ROW LEVEL SECURITY;
+-- Cases 확장 (Trip Info)
+ALTER TABLE cases ADD COLUMN concept TEXT DEFAULT 'K-Beauty + Medical + Wellness + Luxury';
+ALTER TABLE cases ADD COLUMN meeting_date DATE;
+ALTER TABLE cases ADD COLUMN outbound_flight JSONB;
+ALTER TABLE cases ADD COLUMN inbound_flight JSONB;
+
+-- Settlements 확장
+ALTER TABLE settlements ADD COLUMN case_id UUID REFERENCES cases(id);
+CREATE UNIQUE INDEX settlements_case_id_idx ON settlements(case_id);
+ALTER TABLE settlements DISABLE ROW LEVEL SECURITY;
+
+-- Agents 권한 (re-enable된 것 다시 차단)
 ALTER TABLE agents DISABLE ROW LEVEL SECURITY;
-ALTER TABLE admins DISABLE ROW LEVEL SECURITY;
-ALTER TABLE clients DISABLE ROW LEVEL SECURITY;
-ALTER TABLE cases DISABLE ROW LEVEL SECURITY;
-ALTER TABLE case_members DISABLE ROW LEVEL SECURITY;
-ALTER TABLE quotes DISABLE ROW LEVEL SECURITY;
-ALTER TABLE quote_groups DISABLE ROW LEVEL SECURITY;
-ALTER TABLE quote_group_members DISABLE ROW LEVEL SECURITY;
-ALTER TABLE quote_items DISABLE ROW LEVEL SECURITY;
-ALTER TABLE schedules DISABLE ROW LEVEL SECURITY;
-ALTER TABLE system_settings DISABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "agents_self_insert" ON agents;
-DROP POLICY IF EXISTS "authenticated users can read agents" ON agents;
-
--- 권한 (anon, authenticated 모두 SELECT 권한)
-GRANT SELECT ON ALL TABLES IN SCHEMA public TO anon, authenticated;
-
--- generate_agent_number RPC
-CREATE OR REPLACE FUNCTION generate_agent_number()
-RETURNS TEXT AS $$
-DECLARE next_num INT;
-BEGIN
-  SELECT COUNT(*) + 1 INTO next_num FROM agents;
-  RETURN '#AG-' || LPAD(next_num::TEXT, 3, '0');
-END;
-$$ LANGUAGE plpgsql;
-
--- system_settings 필수 키
--- exchange_rate: value = { "usd_krw": 1478 }
--- company_margin_rate: value = { "rate": 0.5 }
--- bank_details: value = { bank_name, account_number, address, swift_code, beneficiary, beneficiary_number }
+GRANT SELECT ON agents TO anon, authenticated;
 ```
+
+### 누적 스키마 요약
+
+- **products**: 기본 + `price_currency`, `partner_name`, sort_order, dietary TEXT+CHECK
+- **product_categories**: `sort_order` (Medical→Beauty→Wellness→Subpackage)
+- **clients**: 기본 + passport/flight/accommodation + emergency contact + medical (height/weight/blood/allergies/medications/conditions/restrictions) + lifestyle (smoking/alcohol/pregnancy) + language/mobility + muslim prefs (prayer x2, dietary, same-gender x2, mixed-gender, cultural) + optional (aesthetic/checkup)
+- **cases**: 기본 + `concept`, `meeting_date`, `outbound_flight` (JSONB), `inbound_flight` (JSONB)
+- **case_members**: (case_id, client_id) UNIQUE, is_lead
+- **quotes**: 기본 + slug, payment_due_date
+- **quote_groups**: 기본 + `member_count`
+- **quote_group_members**: (quote_group_id, case_member_id)
+- **quote_items**: 기본
+- **schedules**: 기본 + `file_name`, `revision_note`, `confirmed_at`, status CHECK(pending/confirmed/revision_requested), (case_id, version) UNIQUE, slug index
+- **settlements**: 기본 + `case_id` (UNIQUE, 1:1), amount는 KRW 저장
+- **system_settings**: key=exchange_rate/company_margin_rate/bank_details
 
 ---
 
 ## 블로커 / 이슈
 
-- Supabase Storage **`schedules` 버킷 수동 생성 필요** (Public bucket으로 설정 — 고객이 URL로 PDF 조회해야 함)
-- `product-images` 버킷도 수동 생성 필요 (있을 수도)
+- **`agents.created_at` 컬럼 실제 DB에 없음**: 코드에서 order by created_at 쓰면 400. 최소 name 정렬로 회피 중.
+- **`agents.monthly_completed` 자동 업데이트 안 됨**: 트리거 없음. Dashboard는 total 카운트로 fallback. 월 리셋 로직도 미구현.
+- **RLS 재활성화 경계**: settlements, agents 테이블이 수 차례 RLS 자동 재활성화됨. 새 테이블 생성 시마다 즉시 disable 필요.
 
 ---
 
@@ -237,5 +244,5 @@ $$ LANGUAGE plpgsql;
 - GitHub: https://github.com/interview-jannis/Agent-SaaS
 - Supabase: https://supabase.com/dashboard/project/tknucfjnqapriadgiwuv
 - 로컬 개발: http://localhost:3000
-- 연구노트: `docs/26.04.21.md` (최신), `docs/26.04.20.md`, `docs/26.04.17.md`, `docs/26.04.16.md`
-- 미팅 노트: `docs/meetings/26.04.17-meeting-feedback.md`
+- 연구노트 (최신순): `docs/26.04.22.md`, `docs/26.04.21.md`, `docs/26.04.20.md`, `docs/26.04.17.md`, `docs/26.04.16.md`
+- 미팅 노트: `docs/meetings/26.04.17-kickoff-feedback.md`
