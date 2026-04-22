@@ -195,7 +195,15 @@ export default function QuoteReviewPage() {
   }
 
   async function handleAddNewClient() {
-    if (!newClientForm.name.trim()) { setNewClientError('Name is required.'); return }
+    const f = newClientForm
+    const missing: string[] = []
+    if (!f.name.trim()) missing.push('Name')
+    if (!f.nationality.trim()) missing.push('Nationality')
+    if (!f.gender) missing.push('Gender')
+    if (!f.date_of_birth) missing.push('Date of Birth')
+    if (!f.phone.trim()) missing.push('Phone')
+    if (!f.email.trim()) missing.push('Email')
+    if (missing.length > 0) { setNewClientError(`Required: ${missing.join(', ')}`); return }
     if (!agentId) return
     setSavingNewClient(true)
     setNewClientError('')
@@ -206,7 +214,14 @@ export default function QuoteReviewPage() {
         .insert({
           client_number: `#CL-${String((count ?? 0) + 1).padStart(3, '0')}`,
           agent_id: agentId,
-          ...newClientForm,
+          name: f.name.trim(),
+          nationality: f.nationality.trim(),
+          gender: f.gender,
+          date_of_birth: f.date_of_birth,
+          phone: f.phone.trim(),
+          email: f.email.trim(),
+          needs_muslim_friendly: f.needs_muslim_friendly,
+          dietary_restriction: f.dietary_restriction,
         })
         .select('id, client_number, name, nationality, gender, needs_muslim_friendly, dietary_restriction')
         .single()

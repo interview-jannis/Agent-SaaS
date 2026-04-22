@@ -24,3 +24,11 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Native date/datetime inputs default to light gray text — force dark like other fields. */
+input[type="date"],
+input[type="datetime-local"],
+input[type="time"],
+input[type="month"] {
+  color: rgb(17 24 39); /* gray-900 */
+}

@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import DOBPicker from '@/components/DOBPicker'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -40,8 +41,6 @@ type Group = {
 }
 
 type DietaryRestriction = 'halal_certified' | 'halal_friendly' | 'muslim_friendly' | 'pork_free' | 'none'
-type PrayerFrequency = 'strict' | 'moderate' | 'flexible'
-type PrayerLocation = 'prayer_room' | 'mosque_nearby' | 'quiet_private_space' | 'any_clean_space' | 'no_preference'
 
 type ClientForm = {
   name: string
@@ -52,8 +51,6 @@ type ClientForm = {
   email: string
   needs_muslim_friendly: boolean
   dietary_restriction: DietaryRestriction
-  prayer_frequency: PrayerFrequency | null
-  prayer_location: PrayerLocation | null
   special_requests: string
 }
 
@@ -81,20 +78,6 @@ const DIETARY_FORM_OPTIONS: { value: DietaryRestriction; label: string }[] = [
   { value: 'none', label: 'None' },
 ]
 
-const PRAYER_FREQUENCY_OPTIONS: { value: PrayerFrequency; label: string }[] = [
-  { value: 'strict', label: 'Strict (5 times on time)' },
-  { value: 'moderate', label: 'Moderate (flexible timing)' },
-  { value: 'flexible', label: 'Flexible (when possible)' },
-]
-
-const PRAYER_LOCATION_OPTIONS: { value: PrayerLocation; label: string }[] = [
-  { value: 'prayer_room', label: 'Dedicated prayer room' },
-  { value: 'mosque_nearby', label: 'Mosque within walking distance' },
-  { value: 'quiet_private_space', label: 'Quiet private space (hotel room, etc.)' },
-  { value: 'any_clean_space', label: 'Any clean space' },
-  { value: 'no_preference', label: 'No preference' },
-]
-
 const DEFAULT_CLIENT_FORM: ClientForm = {
   name: '',
   nationality: '',
@@ -104,8 +87,6 @@ const DEFAULT_CLIENT_FORM: ClientForm = {
   email: '',
   needs_muslim_friendly: false,
   dietary_restriction: 'none',
-  prayer_frequency: null,
-  prayer_location: null,
   special_requests: '',
 }
 
@@ -358,7 +339,15 @@ export default function AgentHomePage() {
   // ── Client registration ────────────────────────────────────────────────────
 
   async function handleRegisterClient() {
-    if (!clientForm.name.trim()) { setClientError('Name is required.'); return }
+    const f = clientForm
+    const missing: string[] = []
+    if (!f.name.trim()) missing.push('Name')
+    if (!f.nationality.trim()) missing.push('Nationality')
+    if (!f.gender) missing.push('Gender')
+    if (!f.date_of_birth) missing.push('Date of Birth')
+    if (!f.phone.trim()) missing.push('Phone')
+    if (!f.email.trim()) missing.push('Email')
+    if (missing.length > 0) { setClientError(`Required: ${missing.join(', ')}`); return }
     if (!agentId) {
       setClientError('Agent profile not loaded. Please refresh the page and try again.')
       return
@@ -373,7 +362,15 @@ export default function AgentHomePage() {
         .insert({
           client_number: `#CL-${String(next).padStart(3, '0')}`,
           agent_id: agentId,
-          ...clientForm,
+          name: f.name.trim(),
+          nationality: f.nationality.trim(),
+          gender: f.gender,
+          date_of_birth: f.date_of_birth,
+          phone: f.phone.trim(),
+          email: f.email.trim(),
+          needs_muslim_friendly: f.needs_muslim_friendly,
+          dietary_restriction: f.dietary_restriction,
+          special_requests: f.special_requests || null,
         })
         .select('id, client_number, name, nationality')
         .single()
@@ -902,12 +899,12 @@ export default function AgentHomePage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">Nationality</label>
+                  <label className="block text-xs text-gray-500 mb-1">Nationality *</label>
                   <input value={clientForm.nationality} onChange={(e) => setField('nationality', e.target.value)}
                     className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">Gender</label>
+                  <label className="block text-xs text-gray-500 mb-1">Gender *</label>
                   <div className="flex gap-3 pt-1">
                     {(['male', 'female'] as const).map((g) => (
                       <label key={g} className="flex items-center gap-1.5 cursor-pointer">
@@ -920,18 +917,16 @@ export default function AgentHomePage() {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">Date of Birth</label>
-                  <input type="date" value={clientForm.date_of_birth}
-                    onChange={(e) => setField('date_of_birth', e.target.value)}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
+                  <label className="block text-xs text-gray-500 mb-1">Date of Birth *</label>
+                  <DOBPicker value={clientForm.date_of_birth} onChange={v => setField('date_of_birth', v)} />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">Phone</label>
+                  <label className="block text-xs text-gray-500 mb-1">Phone *</label>
                   <input value={clientForm.phone} onChange={(e) => setField('phone', e.target.value)}
                     className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
                 </div>
                 <div className="col-span-2">
-                  <label className="block text-xs text-gray-500 mb-1">Email</label>
+                  <label className="block text-xs text-gray-500 mb-1">Email *</label>
                   <input type="email" value={clientForm.email} onChange={(e) => setField('email', e.target.value)}
                     className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
                 </div>
@@ -948,7 +943,7 @@ export default function AgentHomePage() {
                           ...p,
                           needs_muslim_friendly: v,
                           // Reset Muslim-specific fields when switching to No
-                          ...(v ? {} : { dietary_restriction: 'none' as DietaryRestriction, prayer_frequency: null, prayer_location: null }),
+                          ...(v ? {} : { dietary_restriction: 'none' as DietaryRestriction }),
                         }))}
                         className="accent-[#0f4c35]" />
                       <span className="text-sm text-gray-700">{v ? 'Yes' : 'No'}</span>
@@ -968,24 +963,7 @@ export default function AgentHomePage() {
                       {DIETARY_FORM_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                     </select>
                   </div>
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">Prayer Frequency</label>
-                    <select value={clientForm.prayer_frequency ?? ''}
-                      onChange={(e) => setField('prayer_frequency', (e.target.value || null) as PrayerFrequency | null)}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35] bg-white">
-                      <option value="">— Select —</option>
-                      {PRAYER_FREQUENCY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">Prayer Location</label>
-                    <select value={clientForm.prayer_location ?? ''}
-                      onChange={(e) => setField('prayer_location', (e.target.value || null) as PrayerLocation | null)}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35] bg-white">
-                      <option value="">— Select —</option>
-                      {PRAYER_LOCATION_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                    </select>
-                  </div>
+                  <p className="text-[11px] text-gray-500">Prayer preferences, medical info, and other details can be added on the client&apos;s detail page.</p>
                 </div>
               )}
 

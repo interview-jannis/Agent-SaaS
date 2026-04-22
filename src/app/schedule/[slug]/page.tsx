@@ -1,18 +1,28 @@
 import { notFound } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase-server'
+import AutoPrint from '@/components/AutoPrint'
 
 export const dynamic = 'force-dynamic'
 
-export default async function SchedulePage({ params }: { params: Promise<{ slug: string }> }) {
+export default async function SchedulePage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ slug: string }>
+  searchParams: Promise<{ autoprint?: string }>
+}) {
   const { slug } = await params
+  const { autoprint } = await searchParams
   const supabase = createServerClient()
 
-  const { data: schedule } = await supabase
+  const { data: schedules } = await supabase
     .from('schedules')
-    .select('pdf_url')
+    .select('pdf_url, version')
     .eq('slug', slug)
-    .single()
+    .order('version', { ascending: false })
+    .limit(1)
 
+  const schedule = schedules?.[0]
   if (!schedule) notFound()
 
   if (!schedule.pdf_url) {
@@ -28,6 +38,7 @@ export default async function SchedulePage({ params }: { params: Promise<{ slug:
   return (
     <div className="h-screen w-screen">
       <iframe src={schedule.pdf_url} className="w-full h-full border-0" title="Travel Schedule" />
+      <AutoPrint enabled={autoprint === '1'} />
     </div>
   )
 }

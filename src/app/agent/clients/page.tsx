@@ -3,19 +3,14 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import DOBPicker from '@/components/DOBPicker'
+import { type ClientInfo, getMissingClientFields, CLIENT_INFO_COLUMNS } from '@/lib/clientCompleteness'
 
 type DietaryType = 'halal_certified' | 'halal_friendly' | 'muslim_friendly' | 'pork_free' | 'none'
-type PrayerFrequency = 'strict' | 'moderate' | 'flexible'
-type PrayerLocation = 'prayer_room' | 'mosque_nearby' | 'quiet_private_space' | 'any_clean_space' | 'no_preference'
 
-type Client = {
-  id: string
+type Client = ClientInfo & {
   client_number: string
-  name: string
   nationality: string | null
-  gender: string | null
-  dietary_restriction: DietaryType | null
-  needs_muslim_friendly: boolean
 }
 
 type NewClientForm = {
@@ -27,14 +22,7 @@ type NewClientForm = {
   email: string
   needs_muslim_friendly: boolean
   dietary_restriction: DietaryType
-  prayer_frequency: PrayerFrequency | null
-  prayer_location: PrayerLocation | null
   special_requests: string
-}
-
-const DIETARY_LABELS: Record<DietaryType, string> = {
-  halal_certified: 'Halal Certified', halal_friendly: 'Halal Friendly',
-  muslim_friendly: 'Muslim Friendly', pork_free: 'Pork Free', none: '—',
 }
 
 const DIETARY_OPTIONS: { value: DietaryType; label: string }[] = [
@@ -45,24 +33,10 @@ const DIETARY_OPTIONS: { value: DietaryType; label: string }[] = [
   { value: 'none', label: 'None' },
 ]
 
-const PRAYER_FREQUENCY_OPTIONS: { value: PrayerFrequency; label: string }[] = [
-  { value: 'strict', label: 'Strict (5 times on time)' },
-  { value: 'moderate', label: 'Moderate (flexible timing)' },
-  { value: 'flexible', label: 'Flexible (when possible)' },
-]
-
-const PRAYER_LOCATION_OPTIONS: { value: PrayerLocation; label: string }[] = [
-  { value: 'prayer_room', label: 'Dedicated prayer room' },
-  { value: 'mosque_nearby', label: 'Mosque within walking distance' },
-  { value: 'quiet_private_space', label: 'Quiet private space (hotel room, etc.)' },
-  { value: 'any_clean_space', label: 'Any clean space' },
-  { value: 'no_preference', label: 'No preference' },
-]
-
 const DEFAULT_FORM: NewClientForm = {
   name: '', nationality: '', gender: 'male', date_of_birth: '',
   phone: '', email: '', needs_muslim_friendly: false,
-  dietary_restriction: 'none', prayer_frequency: null, prayer_location: null,
+  dietary_restriction: 'none',
   special_requests: '',
 }
 
@@ -82,10 +56,10 @@ export default function AgentClientsPage() {
   async function fetchClients(aid: string) {
     const { data } = await supabase
       .from('clients')
-      .select('id, client_number, name, nationality, gender, dietary_restriction, needs_muslim_friendly')
+      .select(`client_number, nationality, ${CLIENT_INFO_COLUMNS}`)
       .eq('agent_id', aid)
       .order('created_at', { ascending: false })
-    setClients((data as Client[]) ?? [])
+    setClients((data as unknown as Client[]) ?? [])
   }
 
   useEffect(() => {
@@ -103,7 +77,14 @@ export default function AgentClientsPage() {
   }, [])
 
   async function handleCreate() {
-    if (!form.name.trim()) { setFormError('Name is required.'); return }
+    const missing: string[] = []
+    if (!form.name.trim()) missing.push('Name')
+    if (!form.nationality.trim()) missing.push('Nationality')
+    if (!form.gender) missing.push('Gender')
+    if (!form.date_of_birth) missing.push('Date of Birth')
+    if (!form.phone.trim()) missing.push('Phone')
+    if (!form.email.trim()) missing.push('Email')
+    if (missing.length > 0) { setFormError(`Required: ${missing.join(', ')}`); return }
     if (!agentId) { setFormError('Agent profile not loaded.'); return }
     setSaving(true)
     setFormError('')
@@ -113,7 +94,15 @@ export default function AgentClientsPage() {
       const { error } = await supabase.from('clients').insert({
         client_number: `#CL-${String(next).padStart(3, '0')}`,
         agent_id: agentId,
-        ...form,
+        name: form.name.trim(),
+        nationality: form.nationality.trim(),
+        gender: form.gender,
+        date_of_birth: form.date_of_birth,
+        phone: form.phone.trim(),
+        email: form.email.trim(),
+        needs_muslim_friendly: form.needs_muslim_friendly,
+        dietary_restriction: form.dietary_restriction,
+        special_requests: form.special_requests || null,
       })
       if (error) throw error
       setShowModal(false)
@@ -181,30 +170,36 @@ export default function AgentClientsPage() {
           <table className="w-full text-sm">
             <thead className="border-b border-gray-100 bg-gray-50/60 sticky top-0">
               <tr>
-                {['Client #', 'Name', 'Nationality', 'Gender', 'Dietary', 'Muslim'].map(h => (
+                {['Client #', 'Name', 'Nationality', 'Gender', 'Muslim', 'Info'].map(h => (
                   <th key={h} className="py-3 px-4 text-xs font-medium text-gray-400 text-left">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {filtered.map(c => (
-                <tr key={c.id} onClick={() => router.push(`/agent/clients/${c.id}`)}
-                  className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors">
-                  <td className="py-3.5 px-4 font-mono text-xs text-gray-400">{c.client_number}</td>
-                  <td className="py-3.5 px-4 font-medium text-gray-900">{c.name}</td>
-                  <td className="py-3.5 px-4 text-gray-500">{c.nationality ?? '—'}</td>
-                  <td className="py-3.5 px-4 text-gray-500 capitalize">{c.gender ?? '—'}</td>
-                  <td className="py-3.5 px-4 text-gray-500">
-                    {c.dietary_restriction && c.dietary_restriction !== 'none' ? DIETARY_LABELS[c.dietary_restriction] : '—'}
-                  </td>
-                  <td className="py-3.5 px-4">
-                    {c.needs_muslim_friendly
-                      ? <span className="text-[10px] px-2 py-0.5 bg-emerald-50 text-emerald-600 rounded-full border border-emerald-100">Yes</span>
-                      : <span className="text-gray-300 text-xs">—</span>
-                    }
-                  </td>
-                </tr>
-              ))}
+              {filtered.map(c => {
+                const missingCount = getMissingClientFields(c).length
+                return (
+                  <tr key={c.id} onClick={() => router.push(`/agent/clients/${c.id}`)}
+                    className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors">
+                    <td className="py-3.5 px-4 font-mono text-xs text-gray-400">{c.client_number}</td>
+                    <td className="py-3.5 px-4 font-medium text-gray-900">{c.name}</td>
+                    <td className="py-3.5 px-4 text-gray-500">{c.nationality ?? '—'}</td>
+                    <td className="py-3.5 px-4 text-gray-500 capitalize">{c.gender ?? '—'}</td>
+                    <td className="py-3.5 px-4">
+                      {c.needs_muslim_friendly
+                        ? <span className="text-[10px] px-2 py-0.5 bg-emerald-50 text-emerald-600 rounded-full border border-emerald-100">Yes</span>
+                        : <span className="text-gray-300 text-xs">—</span>
+                      }
+                    </td>
+                    <td className="py-3.5 px-4">
+                      {missingCount === 0
+                        ? <span className="text-[10px] px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-full border border-emerald-200">Complete</span>
+                        : <span className="text-[10px] px-2 py-0.5 bg-amber-50 text-amber-700 rounded-full border border-amber-200">{missingCount} missing</span>
+                      }
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         )}
@@ -231,12 +226,12 @@ export default function AgentClientsPage() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">Nationality</label>
+                  <label className="block text-xs text-gray-500 mb-1">Nationality *</label>
                   <input value={form.nationality} onChange={e => setForm(p => ({ ...p, nationality: e.target.value }))}
                     className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">Gender</label>
+                  <label className="block text-xs text-gray-500 mb-1">Gender *</label>
                   <div className="flex gap-3 pt-1">
                     {(['male', 'female'] as const).map(g => (
                       <label key={g} className="flex items-center gap-1.5 cursor-pointer">
@@ -249,18 +244,16 @@ export default function AgentClientsPage() {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">Date of Birth</label>
-                  <input type="date" value={form.date_of_birth}
-                    onChange={e => setForm(p => ({ ...p, date_of_birth: e.target.value }))}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
+                  <label className="block text-xs text-gray-500 mb-1">Date of Birth *</label>
+                  <DOBPicker value={form.date_of_birth} onChange={v => setForm(p => ({ ...p, date_of_birth: v }))} />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">Phone</label>
+                  <label className="block text-xs text-gray-500 mb-1">Phone *</label>
                   <input value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))}
                     className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
                 </div>
                 <div className="col-span-2">
-                  <label className="block text-xs text-gray-500 mb-1">Email</label>
+                  <label className="block text-xs text-gray-500 mb-1">Email *</label>
                   <input type="email" value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))}
                     className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
                 </div>
@@ -275,7 +268,7 @@ export default function AgentClientsPage() {
                         onChange={() => setForm(p => ({
                           ...p,
                           needs_muslim_friendly: v,
-                          ...(v ? {} : { dietary_restriction: 'none' as DietaryType, prayer_frequency: null, prayer_location: null }),
+                          ...(v ? {} : { dietary_restriction: 'none' as DietaryType }),
                         }))}
                         className="accent-[#0f4c35]" />
                       <span className="text-sm text-gray-700">{v ? 'Yes' : 'No'}</span>
@@ -294,24 +287,7 @@ export default function AgentClientsPage() {
                       {DIETARY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                     </select>
                   </div>
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">Prayer Frequency</label>
-                    <select value={form.prayer_frequency ?? ''}
-                      onChange={e => setForm(p => ({ ...p, prayer_frequency: (e.target.value || null) as PrayerFrequency | null }))}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35] bg-white">
-                      <option value="">— Select —</option>
-                      {PRAYER_FREQUENCY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">Prayer Location</label>
-                    <select value={form.prayer_location ?? ''}
-                      onChange={e => setForm(p => ({ ...p, prayer_location: (e.target.value || null) as PrayerLocation | null }))}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35] bg-white">
-                      <option value="">— Select —</option>
-                      {PRAYER_LOCATION_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                    </select>
-                  </div>
+                  <p className="text-[11px] text-gray-500">Prayer preferences, medical info, and other details can be added on the client&apos;s detail page.</p>
                 </div>
               )}
 
