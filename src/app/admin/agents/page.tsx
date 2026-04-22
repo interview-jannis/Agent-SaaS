@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
+type OnboardingStatus = 'pending_onboarding' | 'awaiting_approval' | 'approved'
+
 type Agent = {
   id: string
   agent_number: string | null
@@ -13,6 +15,7 @@ type Agent = {
   margin_rate: number | null
   monthly_completed: number | null
   is_active: boolean
+  onboarding_status: OnboardingStatus | null
 }
 
 type CaseRow = {
@@ -43,27 +46,55 @@ export default function AdminAgentsPage() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all')
 
+  // Create Temp Agent modal
+  const [showCreate, setShowCreate] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [createError, setCreateError] = useState('')
+  const [createdCreds, setCreatedCreds] = useState<{ agent_number: string; username: string; email: string; password: string } | null>(null)
+
+  async function fetchAll() {
+    const [agentsRes, casesRes, clientsRes, settlementsRes, rateRes] = await Promise.all([
+      supabase.from('agents')
+        .select('id, agent_number, name, email, country, margin_rate, monthly_completed, is_active, onboarding_status')
+        .order('name'),
+      supabase.from('cases').select('id, agent_id, status, quotes(total_price, agent_margin_rate)'),
+      supabase.from('clients').select('id, agent_id'),
+      supabase.from('settlements').select('id, agent_id, case_id, amount'),
+      supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single(),
+    ])
+    setAgents((agentsRes.data as Agent[]) ?? [])
+    setCases((casesRes.data as unknown as CaseRow[]) ?? [])
+    setClients((clientsRes.data as ClientRow[]) ?? [])
+    setSettlements((settlementsRes.data as SettlementRow[]) ?? [])
+    const r = (rateRes.data?.value as { usd_krw?: number } | null)?.usd_krw
+    if (r) setExchangeRate(r)
+  }
+
   useEffect(() => {
-    async function init() {
-      const [agentsRes, casesRes, clientsRes, settlementsRes, rateRes] = await Promise.all([
-        supabase.from('agents')
-          .select('id, agent_number, name, email, country, margin_rate, monthly_completed, is_active')
-          .order('name'),
-        supabase.from('cases').select('id, agent_id, status, quotes(total_price, agent_margin_rate)'),
-        supabase.from('clients').select('id, agent_id'),
-        supabase.from('settlements').select('id, agent_id, case_id, amount'),
-        supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single(),
-      ])
-      setAgents((agentsRes.data as Agent[]) ?? [])
-      setCases((casesRes.data as unknown as CaseRow[]) ?? [])
-      setClients((clientsRes.data as ClientRow[]) ?? [])
-      setSettlements((settlementsRes.data as SettlementRow[]) ?? [])
-      const r = (rateRes.data?.value as { usd_krw?: number } | null)?.usd_krw
-      if (r) setExchangeRate(r)
-      setLoading(false)
-    }
+    async function init() { await fetchAll(); setLoading(false) }
     init()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  async function createTempAgent() {
+    setCreating(true); setCreateError('')
+    try {
+      const res = await fetch('/api/admin/create-agent', { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Failed')
+      setCreatedCreds(data)
+      await fetchAll()
+    } catch (e: unknown) {
+      setCreateError((e as { message?: string })?.message ?? 'Failed.')
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  function closeCreateModal() {
+    setShowCreate(false)
+    setCreateError(''); setCreatedCreds(null)
+  }
 
   // Per-agent aggregates
   const agentMetrics = new Map<string, { cases: number; clients: number; unsettledKrw: number; paidKrw: number }>()
@@ -98,13 +129,21 @@ export default function AdminAgentsPage() {
     return (a.name?.toLowerCase().includes(q) || a.agent_number?.toLowerCase().includes(q) || a.country?.toLowerCase().includes(q))
   })
 
+  const approvedAgents = filtered.filter(a => a.onboarding_status === 'approved' || a.onboarding_status === null)
+  const tempAgents = filtered.filter(a => a.onboarding_status === 'pending_onboarding' || a.onboarding_status === 'awaiting_approval')
+
   return (
     <div className="flex flex-col h-full bg-white">
       {/* Header */}
       <div className="h-14 shrink-0 flex items-center gap-4 px-6 border-b border-gray-100">
         <div className="flex items-center gap-2">
           <h1 className="text-sm font-semibold text-gray-900">Agents</h1>
-          {!loading && <span className="text-xs text-gray-400">{filtered.length}</span>}
+          {!loading && (
+            <span className="text-xs text-gray-400">
+              {approvedAgents.length} approved
+              {tempAgents.length > 0 && <span className="ml-1 text-amber-600">· {tempAgents.length} onboarding</span>}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg w-64">
           <svg className="w-3.5 h-3.5 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -119,53 +158,184 @@ export default function AdminAgentsPage() {
           <option value="active">Active</option>
           <option value="inactive">Inactive</option>
         </select>
+        <button onClick={() => setShowCreate(true)}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-[#0f4c35] text-white text-xs font-medium rounded-lg hover:bg-[#0a3828]">
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+          </svg>
+          Create Temp Agent
+        </button>
       </div>
 
-      {/* Table */}
-      <div className="flex-1 overflow-auto">
+      {/* Table — split layout: approved (scrollable) on top, onboarding pinned to bottom */}
+      <div className="flex-1 flex flex-col min-h-0">
         {loading ? (
           <p className="text-sm text-gray-400 text-center py-16">Loading...</p>
         ) : filtered.length === 0 ? (
           <p className="text-sm text-gray-400 text-center py-24">{search ? 'No results.' : 'No agents yet.'}</p>
         ) : (
-          <table className="w-full text-sm">
-            <thead className="border-b border-gray-100 bg-gray-50/60 sticky top-0">
-              <tr>
-                {['Agent #', 'Name', 'Country', 'Cases', 'Clients', 'Margin', 'Unsettled', 'Paid Out', 'Status'].map(h => (
-                  <th key={h} className="py-3 px-4 text-xs font-medium text-gray-400 text-left">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(a => {
-                const m = agentMetrics.get(a.id) ?? { cases: 0, clients: 0, unsettledKrw: 0, paidKrw: 0 }
-                return (
-                  <tr key={a.id} onClick={() => router.push(`/admin/agents/${a.id}`)}
-                    className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors">
-                    <td className="py-3.5 px-4 font-mono text-xs text-gray-400">{a.agent_number ?? '—'}</td>
-                    <td className="py-3.5 px-4">
-                      <p className="font-medium text-gray-900">{a.name}</p>
-                      <p className="text-[10px] text-gray-400">{a.email ?? ''}</p>
-                    </td>
-                    <td className="py-3.5 px-4 text-gray-500">{a.country ?? '—'}</td>
-                    <td className="py-3.5 px-4 text-gray-500 text-center">{m.cases}</td>
-                    <td className="py-3.5 px-4 text-gray-500 text-center">{m.clients}</td>
-                    <td className="py-3.5 px-4 text-gray-700">{a.margin_rate != null ? `${(a.margin_rate * 100).toFixed(0)}%` : '—'}</td>
-                    <td className={`py-3.5 px-4 font-medium ${m.unsettledKrw > 0 ? 'text-amber-700' : 'text-gray-400'}`}>{fmtUSD(m.unsettledKrw / exchangeRate)}</td>
-                    <td className="py-3.5 px-4 text-gray-600">{fmtUSD(m.paidKrw / exchangeRate)}</td>
-                    <td className="py-3.5 px-4">
-                      {a.is_active
-                        ? <span className="text-[10px] px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-full border border-emerald-200">Active</span>
-                        : <span className="text-[10px] px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full border border-gray-200">Inactive</span>
-                      }
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+          <>
+            {/* Approved agents — takes 5/7 of the viewport, scrolls within */}
+            <section className="flex-[5] overflow-y-auto min-h-0">
+              <div className="px-6 pt-4 pb-2 flex items-center gap-2">
+                <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Approved Agents</h2>
+                <span className="text-[10px] text-gray-400">{approvedAgents.length}</span>
+              </div>
+              {approvedAgents.length === 0 ? (
+                <p className="text-xs text-gray-400 px-6 py-8">No approved agents yet.</p>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead className="border-y border-gray-100 bg-gray-50/60">
+                    <tr>
+                      {['Agent #', 'Name', 'Country', 'Cases', 'Clients', 'Margin', 'Unsettled', 'Paid Out', 'Status'].map(h => (
+                        <th key={h} className="py-2.5 px-4 text-xs font-medium text-gray-400 text-left">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {approvedAgents.map(a => {
+                      const m = agentMetrics.get(a.id) ?? { cases: 0, clients: 0, unsettledKrw: 0, paidKrw: 0 }
+                      return (
+                        <tr key={a.id} onClick={() => router.push(`/admin/agents/${a.id}`)}
+                          className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors">
+                          <td className="py-3.5 px-4 font-mono text-xs text-gray-400">{a.agent_number ?? '—'}</td>
+                          <td className="py-3.5 px-4">
+                            <p className="font-medium text-gray-900">{a.name}</p>
+                            <p className="text-[10px] text-gray-400">{a.email ?? ''}</p>
+                          </td>
+                          <td className="py-3.5 px-4 text-gray-500">{a.country ?? '—'}</td>
+                          <td className="py-3.5 px-4 text-gray-500 text-center">{m.cases}</td>
+                          <td className="py-3.5 px-4 text-gray-500 text-center">{m.clients}</td>
+                          <td className="py-3.5 px-4 text-gray-700">{a.margin_rate != null ? `${(a.margin_rate * 100).toFixed(0)}%` : '—'}</td>
+                          <td className={`py-3.5 px-4 font-medium ${m.unsettledKrw > 0 ? 'text-amber-700' : 'text-gray-400'}`}>{fmtUSD(m.unsettledKrw / exchangeRate)}</td>
+                          <td className="py-3.5 px-4 text-gray-600">{fmtUSD(m.paidKrw / exchangeRate)}</td>
+                          <td className="py-3.5 px-4">
+                            {a.is_active
+                              ? <span className="text-[10px] px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-full border border-emerald-200">Active</span>
+                              : <span className="text-[10px] px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full border border-gray-200">Inactive</span>
+                            }
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </section>
+
+            {/* Temp agents (onboarding in progress) — takes 2/5 of the viewport, scrolls within */}
+            <section className="flex-[2] min-h-0 overflow-y-auto bg-gray-50/30 border-t-2 border-gray-200">
+              <div className="px-6 pt-2 pb-2 flex items-center gap-2 bg-gray-50/30 sticky top-0">
+                <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Onboarding</h2>
+                <span className="text-[10px] text-gray-400">{tempAgents.length}</span>
+                <p className="text-[11px] text-gray-400 ml-3">Temp accounts — pending signature or awaiting approval.</p>
+              </div>
+              {tempAgents.length === 0 ? (
+                <p className="text-xs text-gray-400 px-6 py-8">No temp agents in onboarding.</p>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead className="border-y border-gray-100 bg-gray-50">
+                    <tr>
+                      {['Agent #', 'Login Email', 'Status'].map(h => (
+                        <th key={h} className="py-2.5 px-4 text-xs font-medium text-gray-400 text-left">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tempAgents.map(a => {
+                      const status = a.onboarding_status
+                      const style =
+                        status === 'awaiting_approval' ? 'bg-amber-50 text-amber-700 border-amber-200'
+                        : 'bg-gray-100 text-gray-600 border-gray-200'
+                      const label =
+                        status === 'awaiting_approval' ? 'Awaiting Approval'
+                        : 'Pending Onboarding'
+                      return (
+                        <tr key={a.id} className="border-b border-gray-50">
+                          <td className="py-3.5 px-4 font-mono text-xs text-gray-400">{a.agent_number ?? '—'}</td>
+                          <td className="py-3.5 px-4 font-mono text-xs text-gray-700">{a.email ?? '—'}</td>
+                          <td className="py-3.5 px-4">
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full border ${style}`}>{label}</span>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </section>
+          </>
         )}
       </div>
+
+      {/* Create Temp Agent Modal */}
+      {showCreate && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => !creating && closeCreateModal()}>
+          <div className="bg-white rounded-2xl max-w-md w-full p-5 space-y-4" onClick={e => e.stopPropagation()}>
+            {!createdCreds ? (
+              <>
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900">Create Temporary Agent</h3>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Generates a throwaway login (e.g. <code className="bg-gray-100 px-1 rounded">temp05</code>) for the agent to see OT + sign contracts.
+                    Real profile is set up after you approve.
+                  </p>
+                </div>
+
+                {createError && <p className="text-xs text-red-500">{createError}</p>}
+
+                <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
+                  <button onClick={closeCreateModal} disabled={creating}
+                    className="text-xs text-gray-500 hover:text-gray-800 px-3 py-1.5 rounded-lg disabled:opacity-40">Cancel</button>
+                  <button onClick={createTempAgent} disabled={creating}
+                    className="text-xs font-medium bg-[#0f4c35] text-white hover:bg-[#0a3828] px-4 py-1.5 rounded-lg disabled:opacity-40">
+                    {creating ? 'Creating...' : 'Generate'}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900">Temp Agent Created</h3>
+                  <p className="text-xs text-gray-500 mt-1">Use these credentials to log the agent in for onboarding.</p>
+                </div>
+
+                <div className="bg-gray-50 rounded-xl p-4 space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-gray-500">Agent #</span>
+                    <span className="font-mono text-sm text-gray-800">{createdCreds.agent_number}</span>
+                  </div>
+                  <div className="flex justify-between items-center gap-2">
+                    <span className="text-xs text-gray-500 shrink-0">Email</span>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="font-mono text-sm text-gray-900 break-all">{createdCreds.email}</span>
+                      <button onClick={() => navigator.clipboard.writeText(createdCreds.email)}
+                        className="text-[10px] text-[#0f4c35] hover:underline shrink-0">Copy</button>
+                    </div>
+                  </div>
+                  <div className="flex justify-between items-center gap-2">
+                    <span className="text-xs text-gray-500 shrink-0">Password</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-semibold text-lg text-gray-900">{createdCreds.password}</span>
+                      <button onClick={() => navigator.clipboard.writeText(createdCreds.password)}
+                        className="text-[10px] text-[#0f4c35] hover:underline">Copy</button>
+                    </div>
+                  </div>
+                </div>
+
+                <p className="text-[11px] text-amber-700">
+                  ⚠ Password is the same as the username — weak by design, meant only for initial onboarding. It&apos;ll be replaced after approval.
+                </p>
+
+                <div className="flex justify-end pt-2 border-t border-gray-100">
+                  <button onClick={closeCreateModal}
+                    className="text-xs font-medium bg-[#0f4c35] text-white hover:bg-[#0a3828] px-4 py-1.5 rounded-lg">Done</button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -15,22 +15,30 @@
 ## 다음 할 일
 
 ### 안정화 (MVP 마감 전)
-- [ ] End-to-end 전체 플로우 테스트 (Agent 가입 → 고객 등록 → 견적 → 결제 → 스케줄 → 여행 → 정산)
-- [ ] Vercel 배포 환경 점검
-- [ ] CLAUDE.md 현재 스키마에 맞춰 업데이트 (clients/cases/settlements 컬럼 대폭 추가됨)
+- [ ] End-to-end 전체 플로우 테스트
+- [ ] Vercel 배포 환경 점검 (`SUPABASE_SERVICE_ROLE_KEY` 환경변수 확인)
+- [ ] CLAUDE.md 현재 스키마에 맞춰 업데이트
+
+### 온보딩 플로우 (진행 중)
+- [x] DB 테이블 (`contract_templates`, `agent_contracts`, `agents.onboarding_status`)
+- [x] Admin Contracts 편집 페이지 (`/admin/contracts`)
+- [x] Temp Agent 자동 생성 API + UI (Admin Agents 페이지)
+- [x] Admin Agents 섹션 분리 (Approved / Onboarding 5:2)
+- [x] 공개 회원가입 차단 (`/register` → redirect, login 링크 제거)
+- [ ] Agent `/onboarding` 라우트 (OT → Contract x 2 → Waiting)
+- [ ] 라우팅 가드 (onboarding_status 기반)
+- [ ] Admin 서명 검토 + 승인 UI
+- [ ] 승인 후 setup wizard (PW 변경 + 기본정보 입력)
 
 ### 기능 보완 (시간 되면)
-- [ ] Register 폼에 bank_info 필수 입력 (지금은 Profile에서만 입력 가능)
 - [ ] Admin Products Excel Export (`xlsx` 라이브러리)
-- [ ] `agents.monthly_completed` 자동 업데이트 트리거 or 월말 리셋 (지금은 수동, 대시보드는 누적으로 fallback)
+- [ ] `agents.monthly_completed` 자동 업데이트 트리거 or 월말 리셋
 
 ### Post-MVP (다음 스프린트)
 - [ ] Resend 이메일 연동 (Invoice/Schedule 링크 고객에 자동 발송, 서명 PDF)
-- [ ] Agent Pre-Onboarding + 전자서명 (NDA/파트너십 계약서, Canvas 서명 + SMS 인증)
-  - `/onboarding` 진입 페이지
-  - `agent_contracts` 테이블 (signer_email, contract_type, signature_image_url, pdf_url, signed_at, ip)
-  - 서명 완료 후에만 `/register` 허용
-- [ ] Agent Dashboard 고급화 (월별 커미션 차트, 성과 비교)
+- [ ] 서명 계약서 PDF 생성 + Agent 이메일 발송
+- [ ] SMS 본인 인증 (현재는 서명 이미지 + 메타데이터만)
+- [ ] Agent Dashboard 고급화 (월별 커미션 차트)
 - [ ] Settlement 월별 집계 뷰
 
 ---
@@ -213,6 +221,39 @@ ALTER TABLE settlements DISABLE ROW LEVEL SECURITY;
 -- Agents 권한 (re-enable된 것 다시 차단)
 ALTER TABLE agents DISABLE ROW LEVEL SECURITY;
 GRANT SELECT ON agents TO anon, authenticated;
+
+-- Onboarding (오후 세션)
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS onboarding_status TEXT DEFAULT 'approved'
+  CHECK (onboarding_status IN ('pending_onboarding', 'awaiting_approval', 'approved'));
+UPDATE agents SET onboarding_status = 'approved' WHERE onboarding_status IS NULL;
+
+CREATE TABLE IF NOT EXISTS contract_templates (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  contract_type TEXT UNIQUE CHECK (contract_type IN ('nda','partnership')),
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS agent_contracts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  agent_id UUID REFERENCES agents(id),
+  contract_type TEXT CHECK (contract_type IN ('nda','partnership')),
+  title_snapshot TEXT NOT NULL,
+  body_snapshot TEXT NOT NULL,
+  ot_acknowledged_at TIMESTAMPTZ,
+  signature_data_url TEXT,
+  signed_at TIMESTAMPTZ NOT NULL,
+  ip_address TEXT,
+  user_agent TEXT,
+  approved_at TIMESTAMPTZ,
+  approved_by UUID REFERENCES admins(id)
+);
+
+INSERT INTO contract_templates (contract_type, title, body) VALUES
+  ('nda', 'Non-Disclosure Agreement', E'## 1. Parties\n[Edit in Admin > Contracts.]\n\n## 2. Confidential Information\n...'),
+  ('partnership', 'Partnership Agreement', E'## 1. Role\n[Edit in Admin > Contracts.]\n\n## 2. Commission Structure\n...')
+ON CONFLICT (contract_type) DO NOTHING;
 ```
 
 ### 누적 스키마 요약

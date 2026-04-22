@@ -2,7 +2,6 @@
 
 import { useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 
 function LoginForm() {
@@ -123,12 +122,8 @@ function LoginForm() {
           </button>
         </form>
 
-        {/* Sign up link */}
-        <p className="text-sm text-gray-400 text-center mt-6">
-          Don&apos;t have an account?{' '}
-          <Link href="/register" className="text-[#0f4c35] font-medium hover:underline">
-            Sign up
-          </Link>
+        <p className="text-xs text-gray-400 text-center mt-6">
+          Agent accounts are provisioned by Tiktak staff.
         </p>
 
       </div>
