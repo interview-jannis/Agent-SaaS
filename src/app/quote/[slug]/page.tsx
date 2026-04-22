@@ -148,8 +148,8 @@ export default async function QuotePage({ params }: { params: Promise<{ slug: st
                 </svg>
               </div>
               <div>
-                <p className="text-lg font-bold text-[#0f4c35]">Interview</p>
-                <p className="text-xs text-gray-400">Interview Co., Ltd</p>
+                <p className="text-lg font-bold text-[#0f4c35]">Tiktak</p>
+                <p className="text-xs text-gray-400">by Interview Co., Ltd</p>
               </div>
             </div>
             <div className="text-right">

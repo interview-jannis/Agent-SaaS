@@ -412,9 +412,20 @@ export default function AdminCasesPage() {
                   {selectedCase.status === 'payment_completed' ? 'Upload Schedule' : 'Update Schedule'}
                 </p>
                 {selectedCase.status === 'payment_completed' && <p className="text-xs text-blue-600">Upload a PDF schedule for the agent and client to review.</p>}
-                <label className={`flex items-center justify-center gap-2 w-full py-2.5 text-sm font-medium rounded-xl border-2 border-dashed transition-colors cursor-pointer ${uploadingSchedule ? 'opacity-40 cursor-not-allowed' : selectedCase.status === 'payment_completed' ? 'border-blue-300 text-blue-700 hover:bg-blue-100' : 'border-violet-300 text-violet-700 hover:bg-violet-100'}`}>
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" /></svg>
-                  {uploadingSchedule ? 'Uploading...' : 'Choose PDF'}
+                <label
+                  onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                  onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.classList.add('ring-2') }}
+                  onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.classList.remove('ring-2') }}
+                  onDrop={(e) => {
+                    e.preventDefault(); e.stopPropagation()
+                    e.currentTarget.classList.remove('ring-2')
+                    if (uploadingSchedule) return
+                    const f = e.dataTransfer.files?.[0]
+                    if (f && f.type === 'application/pdf') uploadSchedule(f)
+                  }}
+                  className={`flex flex-col items-center justify-center gap-1 w-full py-6 text-sm font-medium rounded-xl border-2 border-dashed transition-all cursor-pointer ring-offset-1 ${uploadingSchedule ? 'opacity-40 cursor-not-allowed' : selectedCase.status === 'payment_completed' ? 'border-blue-300 text-blue-700 hover:bg-blue-100 ring-blue-300' : 'border-violet-300 text-violet-700 hover:bg-violet-100 ring-violet-300'}`}>
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" /></svg>
+                  <span>{uploadingSchedule ? 'Uploading...' : 'Click or drag PDF here'}</span>
                   <input type="file" accept="application/pdf" disabled={uploadingSchedule} className="hidden"
                     onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadSchedule(f) }} />
                 </label>

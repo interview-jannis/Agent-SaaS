@@ -44,6 +44,7 @@ type Quote = {
 
 type Schedule = {
   id: string
+  slug: string | null
   pdf_url: string | null
   status: string
   version: number
@@ -116,6 +117,7 @@ export default function CaseDetailPage() {
 
   // Invoice
   const [copied, setCopied] = useState(false)
+  const [scheduleCopied, setScheduleCopied] = useState(false)
 
   // ── Data fetching ──────────────────────────────────────────────────────────
 
@@ -136,7 +138,7 @@ export default function CaseDetailPage() {
             quote_group_members(id)
           )
         ),
-        schedules(id, pdf_url, status, version, created_at)
+        schedules(id, slug, pdf_url, status, version, created_at)
       `)
       .eq('id', id)
       .single()
@@ -223,6 +225,16 @@ export default function CaseDetailPage() {
     navigator.clipboard.writeText(`${baseUrl}/quote/${quote.slug}`).then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
+  // Send Schedule
+  function sendSchedule() {
+    if (!schedule?.slug) return
+    const baseUrl = typeof window !== 'undefined' ? window.location.origin : ''
+    navigator.clipboard.writeText(`${baseUrl}/schedule/${schedule.slug}`).then(() => {
+      setScheduleCopied(true)
+      setTimeout(() => setScheduleCopied(false), 2000)
     })
   }
 
@@ -506,7 +518,43 @@ export default function CaseDetailPage() {
 
           {/* Schedule */}
           <section className="bg-gray-50 rounded-2xl p-5">
-            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Schedule</h3>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Schedule</h3>
+              {schedule?.slug && schedule.pdf_url && (
+                <div className="flex items-center gap-2">
+                  {/* Preview — open schedule page in new tab */}
+                  <a
+                    href={`${typeof window !== 'undefined' ? window.location.origin : ''}/schedule/${schedule.slug}`}
+                    target="_blank" rel="noopener noreferrer"
+                    className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-[#0f4c35] transition-colors px-2 py-1.5 rounded-lg hover:bg-white">
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    Preview
+                  </a>
+                  {/* Send — copy schedule URL */}
+                  <button onClick={sendSchedule}
+                    className="flex items-center gap-1.5 text-xs font-medium bg-[#0f4c35] text-white hover:bg-[#0a3828] transition-colors px-3 py-1.5 rounded-lg">
+                    {scheduleCopied ? (
+                      <>
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                        Copied!
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0 0a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186zm0-12.814a2.25 2.25 0 103.933-2.185 2.25 2.25 0 00-3.933 2.185z" />
+                        </svg>
+                        Send Schedule
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+            </div>
             {!schedule ? (
               <p className="text-sm text-gray-400">No schedule uploaded yet. We will notify you once it is ready.</p>
             ) : (

@@ -91,7 +91,7 @@ export default function RegisterPage() {
             </svg>
           </div>
           <h1 className="text-2xl font-semibold text-gray-900">Create an account</h1>
-          <p className="text-sm text-gray-400 mt-1">Apply to become an Interview agent</p>
+          <p className="text-sm text-gray-400 mt-1">Apply to become a Tiktak agent</p>
         </div>
 
         {/* Form */}
