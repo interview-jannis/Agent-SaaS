@@ -42,6 +42,10 @@ function fmtKRW(n: number): string {
   return '₩' + n.toLocaleString('ko-KR')
 }
 
+function fmtUSD(n: number): string {
+  return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
 const STATUS_EN: Record<string, string> = {
   payment_pending: 'Payment Pending',
   payment_completed: 'Payment Completed',
@@ -75,6 +79,7 @@ export default async function AdminOverviewPage() {
     { data: newClients },
     { data: recentCases },
     { data: agentCaseRows },
+    { data: rateRow },
   ] = await Promise.all([
     supabase.from('cases').select(CASE_WITH_LEAD).eq('status', 'payment_pending').order('created_at', { ascending: false }),
     supabase.from('cases').select(CASE_WITH_LEAD).eq('status', 'payment_completed').order('created_at', { ascending: false }),
@@ -82,7 +87,10 @@ export default async function AdminOverviewPage() {
     supabase.from('clients').select('id', { count: 'exact', head: true }).gte('created_at', monthStart),
     supabase.from('cases').select('id, case_number, status, travel_start_date, travel_end_date, case_members(is_lead, clients(name))').order('created_at', { ascending: false }).limit(5),
     supabase.from('cases').select('agent_id, agents!cases_agent_id_fkey(agent_number, name), quotes(total_price)').eq('status', 'travel_completed').gte('created_at', monthStart),
+    supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single(),
   ])
+
+  const exchangeRate = (rateRow?.value as { usd_krw?: number } | null)?.usd_krw ?? 1350
 
   const monthlyRevenue = (completedThisMonth ?? []).reduce((sum, c) => {
     const quotes = (c.quotes as { total_price: number }[]) ?? []
@@ -201,6 +209,7 @@ export default async function AdminOverviewPage() {
             <div className="px-6 py-5">
               <p className="text-xs text-gray-400 mb-1">Total Revenue</p>
               <p className="text-xl font-semibold text-gray-900">{fmtKRW(monthlyRevenue)}</p>
+              <p className="text-[11px] text-gray-400 mt-0.5">≈ {fmtUSD(monthlyRevenue / exchangeRate)}</p>
             </div>
             <div className="px-6 py-5">
               <p className="text-xs text-gray-400 mb-1">Completed Cases</p>
@@ -232,7 +241,10 @@ export default async function AdminOverviewPage() {
                       <span className="text-sm font-medium text-gray-800">{agent.name}</span>
                     </div>
                     <span className="text-xs text-gray-400">{agent.count} cases</span>
-                    <span className="text-sm font-semibold text-gray-800 tabular-nums">{fmtKRW(agent.revenue)}</span>
+                    <span className="flex flex-col items-end">
+                      <span className="text-sm font-semibold text-gray-800 tabular-nums">{fmtKRW(agent.revenue)}</span>
+                      <span className="text-[10px] text-gray-400">≈ {fmtUSD(agent.revenue / exchangeRate)}</span>
+                    </span>
                   </li>
                 ))}
               </ul>

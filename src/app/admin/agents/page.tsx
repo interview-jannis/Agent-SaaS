@@ -13,7 +13,6 @@ type Agent = {
   margin_rate: number | null
   monthly_completed: number | null
   is_active: boolean
-  created_at: string
 }
 
 type CaseRow = {
@@ -48,8 +47,8 @@ export default function AdminAgentsPage() {
     async function init() {
       const [agentsRes, casesRes, clientsRes, settlementsRes, rateRes] = await Promise.all([
         supabase.from('agents')
-          .select('id, agent_number, name, email, country, margin_rate, monthly_completed, is_active, created_at')
-          .order('created_at', { ascending: false }),
+          .select('id, agent_number, name, email, country, margin_rate, monthly_completed, is_active')
+          .order('name'),
         supabase.from('cases').select('id, agent_id, status, quotes(total_price, agent_margin_rate)'),
         supabase.from('clients').select('id, agent_id'),
         supabase.from('settlements').select('id, agent_id, case_id, amount'),
@@ -67,8 +66,8 @@ export default function AdminAgentsPage() {
   }, [])
 
   // Per-agent aggregates
-  const agentMetrics = new Map<string, { cases: number; clients: number; unsettledKrw: number }>()
-  for (const a of agents) agentMetrics.set(a.id, { cases: 0, clients: 0, unsettledKrw: 0 })
+  const agentMetrics = new Map<string, { cases: number; clients: number; unsettledKrw: number; paidKrw: number }>()
+  for (const a of agents) agentMetrics.set(a.id, { cases: 0, clients: 0, unsettledKrw: 0, paidKrw: 0 })
   for (const c of cases) {
     const m = agentMetrics.get(c.agent_id)
     if (m) m.cases++
@@ -85,6 +84,10 @@ export default function AdminAgentsPage() {
     if (!q) continue
     const m = agentMetrics.get(c.agent_id)
     if (m) m.unsettledKrw += commissionKrw(q.total_price, q.agent_margin_rate)
+  }
+  for (const s of settlements) {
+    const m = agentMetrics.get(s.agent_id)
+    if (m) m.paidKrw += s.amount ?? 0
   }
 
   const filtered = agents.filter(a => {
@@ -128,14 +131,14 @@ export default function AdminAgentsPage() {
           <table className="w-full text-sm">
             <thead className="border-b border-gray-100 bg-gray-50/60 sticky top-0">
               <tr>
-                {['Agent #', 'Name', 'Country', 'Margin', 'Cases', 'Clients', 'Unsettled', 'Status'].map(h => (
+                {['Agent #', 'Name', 'Country', 'Cases', 'Clients', 'Margin', 'Unsettled', 'Paid Out', 'Status'].map(h => (
                   <th key={h} className="py-3 px-4 text-xs font-medium text-gray-400 text-left">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {filtered.map(a => {
-                const m = agentMetrics.get(a.id) ?? { cases: 0, clients: 0, unsettledKrw: 0 }
+                const m = agentMetrics.get(a.id) ?? { cases: 0, clients: 0, unsettledKrw: 0, paidKrw: 0 }
                 return (
                   <tr key={a.id} onClick={() => router.push(`/admin/agents/${a.id}`)}
                     className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors">
@@ -145,10 +148,11 @@ export default function AdminAgentsPage() {
                       <p className="text-[10px] text-gray-400">{a.email ?? ''}</p>
                     </td>
                     <td className="py-3.5 px-4 text-gray-500">{a.country ?? '—'}</td>
-                    <td className="py-3.5 px-4 text-gray-700">{a.margin_rate != null ? `${(a.margin_rate * 100).toFixed(0)}%` : '—'}</td>
                     <td className="py-3.5 px-4 text-gray-500 text-center">{m.cases}</td>
                     <td className="py-3.5 px-4 text-gray-500 text-center">{m.clients}</td>
-                    <td className="py-3.5 px-4 font-medium text-gray-900">{fmtUSD(m.unsettledKrw / exchangeRate)}</td>
+                    <td className="py-3.5 px-4 text-gray-700">{a.margin_rate != null ? `${(a.margin_rate * 100).toFixed(0)}%` : '—'}</td>
+                    <td className={`py-3.5 px-4 font-medium ${m.unsettledKrw > 0 ? 'text-amber-700' : 'text-gray-400'}`}>{fmtUSD(m.unsettledKrw / exchangeRate)}</td>
+                    <td className="py-3.5 px-4 text-gray-600">{fmtUSD(m.paidKrw / exchangeRate)}</td>
                     <td className="py-3.5 px-4">
                       {a.is_active
                         ? <span className="text-[10px] px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-full border border-emerald-200">Active</span>

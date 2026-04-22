@@ -17,7 +17,6 @@ type Agent = {
   monthly_completed: number | null
   is_active: boolean
   bank_info: BankInfo | null
-  created_at: string
 }
 
 type CaseRow = {
@@ -72,7 +71,7 @@ export default function AdminAgentDetailPage() {
   const fetchData = useCallback(async () => {
     const [agentRes, casesRes, settlementsRes, rateRes] = await Promise.all([
       supabase.from('agents')
-        .select('id, agent_number, name, email, phone, country, margin_rate, monthly_completed, is_active, bank_info, created_at')
+        .select('id, agent_number, name, email, phone, country, margin_rate, monthly_completed, is_active, bank_info')
         .eq('id', id).single(),
       supabase.from('cases')
         .select('id, case_number, status, travel_start_date, travel_end_date, created_at, quotes(total_price, agent_margin_rate), case_members(is_lead, clients(name))')
@@ -119,8 +118,7 @@ export default function AdminAgentDetailPage() {
   const unsettledKrw = completedCases
     .filter(c => !settledCaseIds.has(c.id))
     .reduce((sum, c) => sum + commissionKrw(c.quotes?.[0]?.total_price ?? 0, c.quotes?.[0]?.agent_margin_rate ?? 0), 0)
-  const settledKrw = settlements.reduce((s, st) => s + (st.amount ?? 0), 0)
-  const totalCommissionKrw = unsettledKrw + settledKrw
+  const paidKrw = settlements.reduce((s, st) => s + (st.amount ?? 0), 0)
 
   return (
     <div className="flex flex-col h-full bg-white">
@@ -151,16 +149,16 @@ export default function AdminAgentDetailPage() {
             <div className="bg-gray-50 rounded-2xl p-4">
               <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-1">Margin Rate</p>
               <p className="text-lg font-bold text-[#0f4c35]">{agent.margin_rate != null ? `${(agent.margin_rate * 100).toFixed(0)}%` : '—'}</p>
-              <p className="text-[10px] text-gray-400 mt-0.5">{agent.monthly_completed ?? 0} completed this month</p>
+              <p className="text-[10px] text-gray-400 mt-0.5">{agent.monthly_completed ?? 0} completed this month · {completedCases.length} total</p>
             </div>
             <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
               <p className="text-[10px] text-amber-700 uppercase tracking-wide mb-1">Unsettled</p>
               <p className="text-lg font-bold text-amber-800">{fmtUSD(unsettledKrw / exchangeRate)}</p>
             </div>
             <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4">
-              <p className="text-[10px] text-emerald-700 uppercase tracking-wide mb-1">Total Commission</p>
-              <p className="text-lg font-bold text-emerald-800">{fmtUSD(totalCommissionKrw / exchangeRate)}</p>
-              <p className="text-[10px] text-emerald-600 mt-0.5">{completedCases.length} case{completedCases.length !== 1 ? 's' : ''} completed</p>
+              <p className="text-[10px] text-emerald-700 uppercase tracking-wide mb-1">Paid Out</p>
+              <p className="text-lg font-bold text-emerald-800">{fmtUSD(paidKrw / exchangeRate)}</p>
+              <p className="text-[10px] text-emerald-600 mt-0.5">{settlements.length} settlement{settlements.length !== 1 ? 's' : ''}</p>
             </div>
           </div>
 
@@ -171,7 +169,6 @@ export default function AdminAgentDetailPage() {
               <div><p className="text-[10px] text-gray-400 mb-0.5">Email</p><p className="text-gray-800 break-all">{agent.email ?? '—'}</p></div>
               <div><p className="text-[10px] text-gray-400 mb-0.5">Phone</p><p className="text-gray-800">{agent.phone ?? '—'}</p></div>
               <div><p className="text-[10px] text-gray-400 mb-0.5">Country</p><p className="text-gray-800">{agent.country ?? '—'}</p></div>
-              <div><p className="text-[10px] text-gray-400 mb-0.5">Joined</p><p className="text-gray-800">{agent.created_at.slice(0, 10)}</p></div>
             </div>
           </section>
 
