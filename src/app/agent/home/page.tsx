@@ -547,11 +547,15 @@ export default function AgentHomePage() {
         <div className="h-4 w-px bg-gray-200" />
 
         {/* Date range */}
+        {(() => {
+          const today = new Date().toISOString().slice(0, 10)
+          return (
         <div className="flex items-center gap-2">
           <span className="text-xs text-gray-400 whitespace-nowrap">Date *</span>
           <input
             type="date"
             value={dateStart}
+            min={today}
             onChange={(e) => {
               setDateStart(e.target.value)
               if (dateEnd && e.target.value > dateEnd) setDateEnd(e.target.value)
@@ -562,11 +566,13 @@ export default function AgentHomePage() {
           <input
             type="date"
             value={dateEnd}
-            min={dateStart || undefined}
+            min={dateStart || today}
             onChange={(e) => setDateEnd(e.target.value)}
             className="text-sm border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-[#0f4c35] text-gray-700"
           />
         </div>
+          )
+        })()}
       </div>
 
       {/* ── Main ── */}
