@@ -345,6 +345,7 @@ export default function AgentHomePage() {
   function handleCreateQuote() {
     const hasProducts = groups.some((g) => g.productIds.length > 0)
     if (!hasProducts) return
+    if (!dateStart || !dateEnd) return
 
     if (!selectedClientId) {
       setShowClientModal(true)
@@ -547,7 +548,7 @@ export default function AgentHomePage() {
 
         {/* Date range */}
         <div className="flex items-center gap-2">
-          <span className="text-xs text-gray-400 whitespace-nowrap">Date</span>
+          <span className="text-xs text-gray-400 whitespace-nowrap">Date *</span>
           <input
             type="date"
             value={dateStart}
@@ -783,19 +784,34 @@ export default function AgentHomePage() {
         </div>
 
         {/* Total + CTA */}
+        {(() => {
+          const hasProducts = groups.some((g) => g.productIds.length > 0)
+          const missingDates = !dateStart || !dateEnd
+          const hint = !hasProducts ? 'Add at least one product to continue'
+            : missingDates ? 'Select travel dates to continue'
+            : ''
+          return (
         <div className="flex items-center gap-4 shrink-0">
+          {hint && (
+            <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1">
+              {hint}
+            </p>
+          )}
           <div className="text-right">
             <p className="text-[10px] text-gray-400">Total</p>
             <p className="text-sm font-bold text-gray-900">${totalUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
           </div>
           <button
             onClick={handleCreateQuote}
-            disabled={!groups.some((g) => g.productIds.length > 0)}
+            disabled={!hasProducts || missingDates}
+            title={hint}
             className="px-5 py-2 bg-[#0f4c35] text-white text-sm font-medium rounded-xl hover:bg-[#0a3828] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             Create Quote
           </button>
         </div>
+          )
+        })()}
       </div>
 
       {/* ── Product Detail Modal ── */}
