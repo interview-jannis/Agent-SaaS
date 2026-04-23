@@ -21,6 +21,12 @@
 - [ ] CLAUDE.md 현재 스키마에 맞춰 업데이트 (travel_completed_at, setup_completed_at, link_url 등)
 - [ ] 법무 검토: NDA / Partnership Agreement 초안 (사내 고문변호사 or SIAC 전문가)
 
+### 4/23 검토 결과 — D-6 내 추가 작업
+- [ ] **Forgot Password** (`supabase.auth.resetPasswordForEmail` + Login 링크)
+- [ ] **Agent Approve Reject 옵션** (admin Agent 상세에 Reject 버튼, 거절 시 온보딩 초기화 또는 삭제)
+- [ ] **Agent 본인 Case 삭제** (payment_pending 단계만, confirm dialog)
+- [ ] **Audit log** 간단 페이지 (최근 N개, 주요 상태 변경 기록)
+
 ### 기능 보완 (시간 되면)
 - [ ] Admin Products Excel Export (`xlsx` 라이브러리)
 - [ ] `agents.monthly_completed` 자동 업데이트 트리거 or 월말 리셋 (현재는 travel_completed_at 기반 당월 환자수로 계산)
@@ -29,12 +35,16 @@
 
 ### Post-MVP (다음 스프린트)
 - [ ] Resend 이메일 연동 (Invoice/Schedule 링크 고객에 자동 발송, 서명 PDF 첨부)
+- [ ] 모바일 반응형 (사이드바 drawer, 테이블 카드화, 서명 캔버스 터치 검증)
+- [ ] Arabic 지원 (중동 VIP 대응)
 - [ ] SMS 본인 인증 (현재는 서명 이미지 + user-agent 메타데이터만)
 - [ ] Agent Dashboard 고급화 (월별 커미션 차트)
 - [ ] Settlement 월별 집계 뷰
 - [ ] Meeting date 컬럼 DB DROP (UI는 이미 제거됨)
 - [ ] 계약서 템플릿 검증 로직 (토큰 미치환/오입력 방지)
 - [ ] Storage 고아 PDF 정리 배치
+- [ ] Client-Agent 매칭 모델 재검토 (스케일 이슈 생길 때)
+- [ ] 오래된 read 알림 자동 정리 (30일+)
 
 ---
 
