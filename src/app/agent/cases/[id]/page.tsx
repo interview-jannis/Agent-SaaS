@@ -4,8 +4,10 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import { notifyAllAdmins } from '@/lib/notifications'
 import DOBPicker from '@/components/DOBPicker'
 import PrintPdfButton from '@/components/PrintPdfButton'
+import DateTime24Picker from '@/components/DateTime24Picker'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -74,7 +76,6 @@ type CaseDetail = {
   travel_end_date: string | null
   created_at: string
   concept: string | null
-  meeting_date: string | null
   outbound_flight: FlightInfo
   inbound_flight: FlightInfo
   case_members: CaseMember[]
@@ -109,14 +110,13 @@ const DEFAULT_FORM: NewClientForm = { name: '', nationality: '', gender: 'male',
 
 type TripForm = {
   concept: string
-  meeting_date: string
   out_departure_datetime: string; out_departure_airport: string
   out_arrival_datetime: string; out_arrival_airport: string
   in_departure_datetime: string; in_departure_airport: string
   in_arrival_datetime: string; in_arrival_airport: string
 }
 const EMPTY_TRIP_FORM: TripForm = {
-  concept: '', meeting_date: '',
+  concept: '',
   out_departure_datetime: '', out_departure_airport: '',
   out_arrival_datetime: '', out_arrival_airport: '',
   in_departure_datetime: '', in_departure_airport: '',
@@ -194,7 +194,7 @@ export default function CaseDetailPage() {
       .from('cases')
       .select(`
         id, case_number, status, travel_start_date, travel_end_date, created_at,
-        concept, meeting_date, outbound_flight, inbound_flight,
+        concept, outbound_flight, inbound_flight,
         case_members(
           id, is_lead,
           clients(client_number, nationality, ${CLIENT_INFO_COLUMNS})
@@ -327,8 +327,9 @@ export default function CaseDetailPage() {
     if (!window.confirm('Mark this trip as completed? This will move the case to the settlement queue.')) return
     setMarkingTravelComplete(true); setScheduleError('')
     try {
-      const { error } = await supabase.from('cases').update({ status: 'travel_completed' }).eq('id', caseData.id)
+      const { error } = await supabase.from('cases').update({ status: 'travel_completed', travel_completed_at: new Date().toISOString() }).eq('id', caseData.id)
       if (error) throw error
+      await notifyAllAdmins(`${caseData.case_number} Travel completed — ready for settlement`, `/admin/settlement`)
       await fetchCase()
     } catch (e: unknown) {
       setScheduleError((e as { message?: string })?.message ?? 'Failed.')
@@ -346,6 +347,7 @@ export default function CaseDetailPage() {
         .eq('id', schedule.id)
       if (se) throw se
       await supabase.from('cases').update({ status: 'schedule_confirmed' }).eq('id', caseData.id)
+      await notifyAllAdmins(`${caseData.case_number} Schedule v${schedule.version} confirmed`, `/admin/cases/${caseData.id}`)
       await fetchCase()
     } catch (e: unknown) {
       setScheduleError((e as { message?: string })?.message ?? 'Failed.')
@@ -378,7 +380,6 @@ export default function CaseDetailPage() {
         : null
       const { error } = await supabase.from('cases').update({
         concept: tripForm.concept.trim() || null,
-        meeting_date: tripForm.meeting_date || null,
         outbound_flight: out,
         inbound_flight: inb,
       }).eq('id', caseData.id)
@@ -581,7 +582,6 @@ export default function CaseDetailPage() {
     if (!caseData) return
     setTripForm({
       concept: caseData.concept ?? '',
-      meeting_date: caseData.meeting_date ?? '',
       out_departure_datetime: caseData.outbound_flight?.departure_datetime ?? '',
       out_departure_airport: caseData.outbound_flight?.departure_airport ?? '',
       out_arrival_datetime: caseData.outbound_flight?.arrival_datetime ?? '',
@@ -604,6 +604,7 @@ export default function CaseDetailPage() {
         .update({ status: 'revision_requested', revision_note: revisionNote.trim() })
         .eq('id', schedule.id)
       if (se) throw se
+      await notifyAllAdmins(`${caseData.case_number} Schedule v${schedule.version} revision requested`, `/admin/cases/${caseData.id}`)
       await fetchCase()
       setShowRevisionModal(false)
       setRevisionNote('')
@@ -627,11 +628,11 @@ export default function CaseDetailPage() {
     : null
 
   const expectedMemberCount = quote?.quote_groups?.reduce((s, g) => s + (g.member_count ?? 0), 0) ?? 0
-  const allMembersRegistered = expectedMemberCount === 0 || caseData.case_members.length >= expectedMemberCount
   const clientsMissingInfo = caseData.case_members
     .map(m => ({ member: m, missing: getMissingClientFields(m.clients) }))
     .filter(x => x.missing.length > 0)
-  const allClientsComplete = caseData.case_members.length > 0 && clientsMissingInfo.length === 0 && allMembersRegistered
+  // Info-only completeness (member count shortfall is a group assignment concern, not an info concern)
+  const allClientsComplete = caseData.case_members.length > 0 && clientsMissingInfo.length === 0
   const groupsComplete = !quote || quote.quote_groups.every(g => (g.quote_group_members?.length ?? 0) === g.member_count)
   const missingCaseFields = getMissingCaseFields(caseData)
   const caseInfoComplete = missingCaseFields.length === 0
@@ -669,6 +670,10 @@ export default function CaseDetailPage() {
         <span className="text-sm font-medium text-gray-900">{caseData.case_number}</span>
         <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${STATUS_STYLES[caseData.status]}`}>
           {STATUS_LABELS[caseData.status]}
+        </span>
+        <span className="text-xs text-gray-500 ml-auto">
+          <span className="text-[10px] uppercase tracking-wide text-gray-400 mr-1.5">Created</span>
+          <span className="font-medium text-gray-700">{caseData.created_at.slice(0, 10)}</span>
         </span>
       </div>
 
@@ -759,11 +764,6 @@ export default function CaseDetailPage() {
                   <p className="text-[10px] text-gray-400 mb-0.5">Concept *</p>
                   <p className="text-gray-800">{caseData.concept || <span className="text-gray-300">—</span>}</p>
                 </div>
-                <div>
-                  <p className="text-[10px] text-gray-400 mb-0.5">Meeting Date *</p>
-                  <p className="text-gray-800">{caseData.meeting_date || <span className="text-gray-300">—</span>}</p>
-                </div>
-                <div />
                 <div className="col-span-2 grid grid-cols-2 gap-x-6 gap-y-2 pt-2 border-t border-gray-200">
                   <div>
                     <p className="text-[10px] text-gray-500 font-medium uppercase tracking-wide mb-1">Outbound Flight *</p>
@@ -787,13 +787,6 @@ export default function CaseDetailPage() {
                     onChange={e => setTripForm(p => ({ ...p, concept: e.target.value }))}
                     className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-[#0f4c35] bg-white" />
                 </div>
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Meeting Date *</label>
-                  <input type="date" value={tripForm.meeting_date}
-                    onChange={e => setTripForm(p => ({ ...p, meeting_date: e.target.value }))}
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-[#0f4c35] bg-white" />
-                </div>
-                <div />
                 {([
                   ['Outbound', 'out'],
                   ['Inbound', 'in'],
@@ -803,9 +796,9 @@ export default function CaseDetailPage() {
                     <div className="grid grid-cols-2 gap-2">
                       <div>
                         <label className="block text-[10px] text-gray-500 mb-0.5">Departure Date & Time</label>
-                        <input type="datetime-local" value={tripForm[`${prefix}_departure_datetime`]}
-                          onChange={e => setTripForm(p => ({ ...p, [`${prefix}_departure_datetime`]: e.target.value }))}
-                          className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-[#0f4c35]" />
+                        <DateTime24Picker value={tripForm[`${prefix}_departure_datetime`]}
+                          minDate={caseData.created_at.slice(0, 10)}
+                          onChange={v => setTripForm(p => ({ ...p, [`${prefix}_departure_datetime`]: v }))} />
                       </div>
                       <div>
                         <label className="block text-[10px] text-gray-500 mb-0.5">Departure Airport</label>
@@ -816,9 +809,9 @@ export default function CaseDetailPage() {
                       </div>
                       <div>
                         <label className="block text-[10px] text-gray-500 mb-0.5">Arrival Date & Time</label>
-                        <input type="datetime-local" value={tripForm[`${prefix}_arrival_datetime`]}
-                          onChange={e => setTripForm(p => ({ ...p, [`${prefix}_arrival_datetime`]: e.target.value }))}
-                          className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-[#0f4c35]" />
+                        <DateTime24Picker value={tripForm[`${prefix}_arrival_datetime`]}
+                          minDate={caseData.created_at.slice(0, 10)}
+                          onChange={v => setTripForm(p => ({ ...p, [`${prefix}_arrival_datetime`]: v }))} />
                       </div>
                       <div>
                         <label className="block text-[10px] text-gray-500 mb-0.5">Arrival Airport</label>
@@ -853,13 +846,22 @@ export default function CaseDetailPage() {
             </section>
           )}
 
-          {/* Members & Groups (view / edit modes) */}
+          {/* Members & Groups — includes member-related readiness */}
+          {(() => {
+            const memberShortfall = expectedMemberCount > 0 && caseData.case_members.length < expectedMemberCount
+            const groupGaps = quote?.quote_groups?.filter(g => (g.quote_group_members?.length ?? 0) !== g.member_count) ?? []
+            const memberIssueCount = (memberShortfall ? 1 : 0) + groupGaps.length + clientsMissingInfo.length
+            const memberReady = memberIssueCount === 0 && caseData.case_members.length > 0
+            return (
           <section className="bg-gray-50 rounded-2xl p-5 space-y-3">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div className="flex items-center gap-2">
                 <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
                   Members ({pendingMembers.filter(p => !p.isRemoved).length}{expectedMemberCount > 0 ? ` / ${expectedMemberCount}` : ''})
                 </h3>
+                {!memberReady
+                  ? <span className="text-[10px] font-medium text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">{memberIssueCount} issue{memberIssueCount > 1 ? 's' : ''}</span>
+                  : <span className="text-[10px] font-medium text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">Ready</span>}
                 {editMembers && membersDirty && <span className="text-[10px] font-medium text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">Unsaved</span>}
               </div>
               {!editMembers ? (
@@ -871,8 +873,8 @@ export default function CaseDetailPage() {
               )}
             </div>
 
-            {/* Group slot overview */}
-            {sortedGroups.length > 0 && (
+            {/* Group slot overview — edit mode only (view-mode status handled by Case Readiness) */}
+            {editMembers && sortedGroups.length > 0 && (
               <div className="flex items-center gap-2 flex-wrap text-[11px]">
                 <span className="text-gray-400">Group slots:</span>
                 {sortedGroups.map(g => {
@@ -1125,44 +1127,34 @@ export default function CaseDetailPage() {
                 </div>
               </>
             )}
-          </section>
 
-          {/* Client Info Status — compact */}
-          {caseData.case_members.length > 0 && (
-            <section className={`rounded-2xl p-4 ${allClientsComplete ? 'bg-gray-50' : 'bg-amber-50 border border-amber-200'}`}>
-              <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Client Info Status</h3>
-                {allClientsComplete ? (
-                  <>
-                    <span className="text-[10px] font-medium text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">All Complete</span>
-                    <span className="text-xs text-gray-500 ml-auto">{caseData.case_members.length} client{caseData.case_members.length > 1 ? 's' : ''}</span>
-                  </>
-                ) : !allMembersRegistered ? (
-                  <span className="text-xs text-amber-800">
-                    Only {caseData.case_members.length} of {expectedMemberCount} members registered.
-                  </span>
-                ) : (
-                  <>
-                    <span className="text-[10px] font-medium text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">{clientsMissingInfo.length} incomplete</span>
-                    <span className="text-xs text-amber-800 flex items-center gap-1 flex-wrap">
-                      {clientsMissingInfo.map(({ member }, idx) => {
-                        const c = member.clients
-                        if (!c) return null
-                        return (
-                          <span key={member.id} className="inline-flex items-center gap-1">
-                            <Link href={`/agent/clients/${c.id}`} className="text-[#0f4c35] hover:underline font-medium">
-                              {c.name}
-                            </Link>
-                            {idx < clientsMissingInfo.length - 1 && <span className="text-amber-400">·</span>}
-                          </span>
-                        )
-                      })}
-                    </span>
-                  </>
-                )}
+            {/* Member-related readiness checklist (embedded, view mode only) */}
+            {!editMembers && !memberReady && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mt-1">
+                <p className="text-[10px] font-semibold text-amber-800 uppercase tracking-wide mb-1.5">{memberIssueCount} issue{memberIssueCount > 1 ? 's' : ''} to resolve</p>
+                <ul className="space-y-1 text-xs text-amber-800">
+                  {memberShortfall && (
+                    <li>· Members: {caseData.case_members.length} of {expectedMemberCount} registered</li>
+                  )}
+                  {groupGaps.map(g => (
+                    <li key={g.id}>· {g.name}: {g.quote_group_members?.length ?? 0} / {g.member_count} assigned</li>
+                  ))}
+                  {clientsMissingInfo.map(({ member, missing }) => {
+                    const c = member.clients
+                    if (!c) return null
+                    return (
+                      <li key={member.id}>
+                        · <Link href={`/agent/clients/${c.id}`} className="text-[#0f4c35] hover:underline font-medium">{c.name}</Link>
+                        <span className="text-amber-700"> info incomplete ({missing.length} field{missing.length > 1 ? 's' : ''})</span>
+                      </li>
+                    )
+                  })}
+                </ul>
               </div>
-            </section>
-          )}
+            )}
+          </section>
+            )
+          })()}
 
           {/* Selected Products — group subtotals always visible, details collapsible */}
           {quote && quote.quote_groups.length > 0 && (
@@ -1325,8 +1317,8 @@ export default function CaseDetailPage() {
                 {caseData.status === 'schedule_confirmed' && (
                   <div className="flex items-center justify-end pt-1">
                     <button onClick={markTravelComplete} disabled={markingTravelComplete}
-                      className="px-3 py-1.5 text-xs font-medium bg-[#0f4c35] text-white rounded-lg hover:bg-[#0a3828] disabled:opacity-40 transition-colors">
-                      {markingTravelComplete ? 'Updating...' : 'Mark Travel Complete'}
+                      className="px-3 py-1.5 text-xs font-medium bg-white text-[#0f4c35] border border-[#0f4c35] rounded-lg hover:bg-[#0f4c35]/5 disabled:opacity-40 transition-colors">
+                      {markingTravelComplete ? 'Updating...' : '✓ Mark Travel Complete'}
                     </button>
                   </div>
                 )}

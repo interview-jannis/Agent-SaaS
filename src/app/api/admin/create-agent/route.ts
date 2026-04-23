@@ -17,9 +17,19 @@ export async function POST() {
     { auth: { autoRefreshToken: false, persistSession: false } }
   )
 
-  // Find next available temp number by counting existing agents (simple, MVP-friendly).
-  const { count } = await supabase.from('agents').select('*', { count: 'exact', head: true })
-  const nextNum = (count ?? 0) + 1
+  // Find next available temp number — must avoid both existing agents AND lingering
+  // auth.users (e.g. when agents table was wiped but auth users weren't).
+  const { count: agentCount } = await supabase.from('agents').select('*', { count: 'exact', head: true })
+  const taken = new Set<number>()
+  // Scan up to 1000 auth users for existing temp emails
+  const { data: usersData } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 })
+  for (const u of usersData?.users ?? []) {
+    const m = u.email?.match(/^temp(\d+)@tiktak\.temp$/)
+    if (m) taken.add(Number(m[1]))
+  }
+  let nextNum = (agentCount ?? 0) + 1
+  while (taken.has(nextNum)) nextNum++
+
   const username = `temp${String(nextNum).padStart(2, '0')}`
   const email = `${username}@tiktak.temp`
   const password = username // identical for easy tablet/demo handoff; real creds set after approval

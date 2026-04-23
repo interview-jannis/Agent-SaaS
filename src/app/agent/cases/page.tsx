@@ -11,6 +11,8 @@ type CaseRow = {
   case_number: string
   status: CaseStatus
   travel_start_date: string | null
+  travel_end_date: string | null
+  created_at: string
   case_members: { is_lead: boolean; clients: { name: string } | null }[]
   quotes: { total_price: number; quote_groups: { member_count: number }[] }[]
 }
@@ -36,7 +38,7 @@ export default function AgentCasesPage() {
   const fetchCases = useCallback(async (aid: string) => {
     const { data } = await supabase
       .from('cases')
-      .select('id, case_number, status, travel_start_date, case_members(is_lead, clients(name)), quotes(total_price, quote_groups(member_count))')
+      .select('id, case_number, status, travel_start_date, travel_end_date, created_at, case_members(is_lead, clients(name)), quotes(total_price, quote_groups(member_count))')
       .eq('agent_id', aid)
       .order('created_at', { ascending: false })
     setCases((data as unknown as CaseRow[]) ?? [])
@@ -80,8 +82,8 @@ export default function AgentCasesPage() {
           <table className="w-full text-sm">
             <thead className="border-b border-gray-100 bg-gray-50/60 sticky top-0">
               <tr>
-                {['Case #', 'Lead Client', 'Status', 'Members', 'Travel Start', 'Amount (USD)'].map((h, i) => (
-                  <th key={h} className={`py-3 px-4 text-xs font-medium text-gray-400 ${i === 5 ? 'text-right' : 'text-left'}`}>{h}</th>
+                {['Case #', 'Lead Client', 'Status', 'Members', 'Created', 'Travel Start', 'Travel End', 'Amount (USD)'].map((h, i) => (
+                  <th key={h} className={`py-3 px-4 text-xs font-medium text-gray-400 ${i === 7 ? 'text-right' : 'text-left'}`}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -100,7 +102,9 @@ export default function AgentCasesPage() {
                       <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${STATUS_STYLES[c.status]}`}>{STATUS_LABELS[c.status]}</span>
                     </td>
                     <td className="py-3.5 px-4 text-gray-500">{members}</td>
+                    <td className="py-3.5 px-4 text-xs text-gray-500">{c.created_at?.slice(0, 10) ?? '—'}</td>
                     <td className="py-3.5 px-4 text-xs text-gray-500">{c.travel_start_date ?? '—'}</td>
+                    <td className="py-3.5 px-4 text-xs text-gray-500">{c.travel_end_date ?? '—'}</td>
                     <td className="py-3.5 px-4 text-right font-medium text-gray-900">
                       {amountUsd !== null ? `$${amountUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
                     </td>

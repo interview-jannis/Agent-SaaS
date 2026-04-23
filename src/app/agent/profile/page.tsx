@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import ChangePasswordCard from '@/components/ChangePasswordCard'
 
 type BankInfo = {
   bank_name?: string
@@ -185,12 +186,12 @@ export default function AgentProfilePage() {
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">Phone</label>
                   <input value={phone} onChange={e => setPhone(e.target.value)}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-[#0f4c35]" />
+                    className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
                 </div>
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">Country</label>
                   <input value={country} onChange={e => setCountry(e.target.value)}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-[#0f4c35]" />
+                    className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
                 </div>
               </div>
             )}
@@ -244,12 +245,14 @@ export default function AgentProfilePage() {
                     <input value={bankForm[key] ?? ''}
                       onChange={e => setBankForm(p => ({ ...p, [key]: e.target.value }))}
                       placeholder={placeholder}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-[#0f4c35]" />
+                      className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
                   </div>
                 ))}
               </div>
             )}
           </section>
+
+          <ChangePasswordCard />
 
         </div>
       </div>

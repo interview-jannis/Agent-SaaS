@@ -53,7 +53,7 @@ export default function AdminCategoriesPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-white">
       <div className="px-12 py-10 max-w-xl space-y-6">
 
         <h1 className="text-xl font-semibold text-gray-900">Manage Categories</h1>

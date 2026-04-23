@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
+import { notifyAgent } from '@/lib/notifications'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -131,6 +132,7 @@ export default function AdminSettlementPage() {
         paid_at: settlePaidDate,
       })
       if (error) throw error
+      await notifyAgent(settlingCase.agent_id, `${settlingCase.case_number} Settlement paid — ${fmtUSD(toUsd(amountKrw))}`, '/agent/payouts')
       await fetchData()
       closeSettleModal()
     } catch (e: unknown) {
@@ -327,6 +329,7 @@ export default function AdminSettlementPage() {
                     <label className="block text-xs text-gray-500 mb-1">Paid Date *</label>
                     <input type="date" value={settlePaidDate}
                       onChange={e => setSettlePaidDate(e.target.value)}
+                      min={settlingCase.travel_end_date ?? undefined}
                       className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-[#0f4c35]" />
                   </div>
                 </div>

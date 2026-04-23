@@ -1,0 +1,56 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { supabase } from '@/lib/supabase'
+
+type Status = 'pending_onboarding' | 'awaiting_approval' | 'approved'
+
+export default function OnboardingEntryPage() {
+  const router = useRouter()
+  const [status, setStatus] = useState<Status | null>(null)
+
+  useEffect(() => {
+    async function load() {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.user?.id) return
+      const { data } = await supabase.from('agents').select('onboarding_status').eq('auth_user_id', session.user.id).maybeSingle()
+      setStatus((data as { onboarding_status?: Status } | null)?.onboarding_status ?? 'pending_onboarding')
+    }
+    load()
+  }, [])
+
+  if (status === 'awaiting_approval') {
+    // Already signed everything — send to waiting screen
+    router.replace('/onboarding/waiting')
+    return null
+  }
+
+  return (
+    <div className="space-y-6 max-w-2xl mx-auto">
+      <div>
+        <h1 className="text-2xl font-semibold text-gray-900">Welcome to Tiktak</h1>
+        <p className="text-sm text-gray-500 mt-2">Before you can start bringing in clients, we need to walk through a short onboarding.</p>
+      </div>
+
+      <section className="bg-white rounded-2xl border border-gray-100 p-6 space-y-4">
+        <div>
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">What to expect</p>
+          <ol className="space-y-2 text-sm text-gray-700 list-decimal list-inside">
+            <li>Brief orientation covering Tiktak&apos;s platform and commission structure</li>
+            <li>Non-Disclosure Agreement (NDA) — provide your name, country, then sign</li>
+            <li>Partnership Agreement — review and sign</li>
+            <li>Wait for admin approval, then start using Tiktak</li>
+          </ol>
+        </div>
+        <p className="text-xs text-gray-400">Estimated time: 10–15 minutes.</p>
+      </section>
+
+      <button
+        onClick={() => router.push('/onboarding/orientation')}
+        className="w-full py-3 text-sm font-medium bg-[#0f4c35] text-white rounded-xl hover:bg-[#0a3828] transition-colors">
+        Get Started →
+      </button>
+    </div>
+  )
+}

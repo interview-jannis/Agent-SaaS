@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { notifyAllAdmins } from '@/lib/notifications'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -268,7 +269,7 @@ export default function QuoteReviewPage() {
       if (!session?.user?.id) throw new Error('Not authenticated')
 
       const { data: agentData } = await supabase
-        .from('agents').select('id, margin_rate').eq('auth_user_id', session.user.id).single()
+        .from('agents').select('id, name, margin_rate').eq('auth_user_id', session.user.id).single()
       if (!agentData) throw new Error('Agent not found')
 
       const { data: companyRateSetting } = await supabase
@@ -361,6 +362,8 @@ export default function QuoteReviewPage() {
       }
 
       localStorage.removeItem('agent-cart')
+      const caseNumber = `#C-${String((caseCount ?? 0) + 1).padStart(3, '0')}`
+      await notifyAllAdmins(`${caseNumber} New case created by ${agentData.name}`, `/admin/cases/${caseData.id}`)
       router.push(`/agent/cases/${caseData.id}`)
     } catch (e: unknown) {
       setError((e as { message?: string })?.message ?? 'Failed to create quote.')
@@ -631,7 +634,8 @@ export default function QuoteReviewPage() {
 
         {/* Actions */}
         <div className="flex items-center justify-end gap-3 pb-10">
-          <button onClick={() => router.back()} className="px-5 py-2.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50">
+          <button onClick={() => { sessionStorage.setItem('agent-cart-restore', '1'); router.back() }}
+            className="px-5 py-2.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50">
             Edit
           </button>
           <button onClick={handleSendQuote} disabled={sending}

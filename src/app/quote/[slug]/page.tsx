@@ -247,7 +247,7 @@ export default async function QuotePage({ params }: { params: Promise<{ slug: st
                   <td className="py-3 px-3 text-right font-bold text-gray-900 border border-gray-300">
                     Total Amount (USD)
                   </td>
-                  <td className="py-3 px-3 text-right font-bold text-gray-900 font-mono border border-gray-300 text-base">
+                  <td className="py-3 px-3 text-right font-bold text-gray-900 font-mono border border-gray-300 text-base whitespace-nowrap tracking-tight">
                     $ {fmtUSD(totalUSD)}
                   </td>
                   <td className="py-3 px-3 border border-gray-300" />

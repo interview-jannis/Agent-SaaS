@@ -113,7 +113,6 @@ export type FlightInfo = {
 
 export type CaseRequiredFields = {
   concept: string | null
-  meeting_date: string | null
   outbound_flight: FlightInfo
   inbound_flight: FlightInfo
 }
@@ -127,7 +126,6 @@ function isFlightComplete(f: FlightInfo): boolean {
 export function getMissingCaseFields(c: CaseRequiredFields): string[] {
   const missing: string[] = []
   if (!isFilledText(c.concept)) missing.push('Concept')
-  if (!isFilledText(c.meeting_date)) missing.push('Meeting Date')
   if (!isFlightComplete(c.outbound_flight)) missing.push('Outbound Flight')
   if (!isFlightComplete(c.inbound_flight)) missing.push('Inbound Flight')
   return missing

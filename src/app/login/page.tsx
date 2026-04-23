@@ -30,13 +30,20 @@ function LoginForm() {
 
     const [{ data: admin }, { data: agent }] = await Promise.all([
       supabase.from('admins').select('id').eq('auth_user_id', userId).maybeSingle(),
-      supabase.from('agents').select('id').eq('auth_user_id', userId).maybeSingle(),
+      supabase.from('agents').select('id, onboarding_status, setup_completed_at').eq('auth_user_id', userId).maybeSingle(),
     ])
 
     if (admin) {
       router.push('/admin/overview')
     } else if (agent) {
-      router.push('/agent/home')
+      const a = agent as { onboarding_status?: string; setup_completed_at?: string | null }
+      if (a.onboarding_status === 'pending_onboarding' || a.onboarding_status === 'awaiting_approval') {
+        router.push('/onboarding')
+      } else if (a.onboarding_status === 'approved' && !a.setup_completed_at) {
+        router.push('/onboarding/setup')
+      } else {
+        router.push('/agent/home')
+      }
     } else {
       setError('Access denied. Please contact your administrator.')
       await supabase.auth.signOut()

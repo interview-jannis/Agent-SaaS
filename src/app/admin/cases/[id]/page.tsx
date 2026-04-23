@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { notifyAgent } from '@/lib/notifications'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -39,7 +40,7 @@ type QuoteGroup = {
   order: number
   member_count: number
   quote_items: QuoteItem[]
-  quote_group_members: { id: string }[]
+  quote_group_members: { id: string; case_member_id: string }[]
 }
 
 type Quote = {
@@ -73,13 +74,13 @@ type Case = {
   id: string
   case_number: string
   status: CaseStatus
+  agent_id: string
   travel_start_date: string | null
   travel_end_date: string | null
   payment_date: string | null
   payment_confirmed_at: string | null
   created_at: string
   concept: string | null
-  meeting_date: string | null
   outbound_flight: FlightInfo
   inbound_flight: FlightInfo
   agents: Agent | Agent[] | null
@@ -147,9 +148,9 @@ export default function AdminCaseDetailPage() {
     const { data, error } = await supabase
       .from('cases')
       .select(`
-        id, case_number, status, travel_start_date, travel_end_date,
+        id, case_number, status, agent_id, travel_start_date, travel_end_date,
         payment_date, payment_confirmed_at, created_at,
-        concept, meeting_date, outbound_flight, inbound_flight,
+        concept, outbound_flight, inbound_flight,
         agents!cases_agent_id_fkey(id, agent_number, name),
         case_members(
           id, is_lead,
@@ -157,7 +158,7 @@ export default function AdminCaseDetailPage() {
         ),
         quotes(
           id, quote_number, slug, total_price, payment_due_date, agent_margin_rate, company_margin_rate,
-          quote_groups(id, name, order, member_count, quote_items(id, base_price, final_price, products(id, name, description)), quote_group_members(id))
+          quote_groups(id, name, order, member_count, quote_items(id, base_price, final_price, products(id, name, description)), quote_group_members(id, case_member_id))
         ),
         schedules(id, slug, pdf_url, status, version, file_name, revision_note, confirmed_at, created_at)
       `)
@@ -194,6 +195,7 @@ export default function AdminCaseDetailPage() {
         payment_confirmed_at: new Date().toISOString(),
       }).eq('id', caseData.id)
       if (error) throw error
+      await notifyAgent(caseData.agent_id, `${caseData.case_number} Payment confirmed`, `/agent/cases/${caseData.id}`)
       await fetchCase()
       setPaymentDate('')
     } catch (e: unknown) { setActionError((e as { message?: string })?.message ?? 'Failed.') }
@@ -237,6 +239,7 @@ export default function AdminCaseDetailPage() {
       if (insertError) throw insertError
 
       await supabase.from('cases').update({ status: 'schedule_reviewed' }).eq('id', caseData.id)
+      await notifyAgent(caseData.agent_id, `${caseData.case_number} Schedule uploaded (v${version})`, `/agent/cases/${caseData.id}`)
       await fetchCase()
       setStagedFile(null)
     } catch (e: unknown) { setActionError((e as { message?: string })?.message ?? 'Failed.') }
@@ -288,11 +291,11 @@ export default function AdminCaseDetailPage() {
   const sortedSchedules = caseData.schedules ? [...caseData.schedules].sort((a, b) => b.version - a.version) : []
   const latestSchedule = sortedSchedules[0] ?? null
   const expectedMemberCount = latestQuote?.quote_groups?.reduce((s, g) => s + (g.member_count ?? 0), 0) ?? 0
-  const allMembersRegistered = expectedMemberCount === 0 || caseData.case_members.length >= expectedMemberCount
   const clientsMissingInfo = caseData.case_members
     .map(m => ({ member: m, missing: getMissingClientFields(m.clients) }))
     .filter(x => x.missing.length > 0)
-  const allClientsComplete = caseData.case_members.length > 0 && clientsMissingInfo.length === 0 && allMembersRegistered
+  // Info-only completeness (member count shortfall handled by group assignment section)
+  const allClientsComplete = caseData.case_members.length > 0 && clientsMissingInfo.length === 0
   const groupsComplete = !latestQuote || latestQuote.quote_groups.every(g => (g.quote_group_members?.length ?? 0) === g.member_count)
   const missingCaseFields = getMissingCaseFields(caseData)
   const caseInfoComplete = missingCaseFields.length === 0
@@ -359,6 +362,37 @@ export default function AdminCaseDetailPage() {
             </div>
           </section>
 
+          {/* Trip Info (case-level, read-only) */}
+          <section className={`rounded-2xl p-4 ${caseInfoComplete ? 'bg-gray-50' : 'bg-amber-50 border border-amber-200'}`}>
+            <div className="flex items-center gap-2 mb-3">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Trip Info</p>
+              {!caseInfoComplete && <span className="text-[10px] font-medium text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">Incomplete</span>}
+            </div>
+            {!caseInfoComplete && (
+              <p className="text-xs text-amber-800 mb-3">Missing: {missingCaseFields.join(' · ')}</p>
+            )}
+            <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
+              <div className="col-span-2">
+                <p className="text-[10px] text-gray-400 mb-0.5">Concept *</p>
+                <p className="text-gray-800">{caseData.concept || <span className="text-gray-300">—</span>}</p>
+              </div>
+              <div className="col-span-2 grid grid-cols-2 gap-x-6 gap-y-2 pt-2 border-t border-gray-200">
+                <div>
+                  <p className="text-[10px] text-gray-500 font-medium uppercase tracking-wide mb-1">Outbound *</p>
+                  <p className="text-xs text-gray-800">{caseData.outbound_flight?.departure_airport ?? '—'} → {caseData.outbound_flight?.arrival_airport ?? '—'}</p>
+                  <p className="text-[11px] text-gray-500">Dep: {caseData.outbound_flight?.departure_datetime ?? '—'}</p>
+                  <p className="text-[11px] text-gray-500">Arr: {caseData.outbound_flight?.arrival_datetime ?? '—'}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-gray-500 font-medium uppercase tracking-wide mb-1">Inbound *</p>
+                  <p className="text-xs text-gray-800">{caseData.inbound_flight?.departure_airport ?? '—'} → {caseData.inbound_flight?.arrival_airport ?? '—'}</p>
+                  <p className="text-[11px] text-gray-500">Dep: {caseData.inbound_flight?.departure_datetime ?? '—'}</p>
+                  <p className="text-[11px] text-gray-500">Arr: {caseData.inbound_flight?.arrival_datetime ?? '—'}</p>
+                </div>
+              </div>
+            </div>
+          </section>
+
           {/* Lead Client */}
           {lead && (
             <section className="bg-gray-50 rounded-2xl p-4">
@@ -387,110 +421,92 @@ export default function AdminCaseDetailPage() {
             </section>
           )}
 
-          {/* Trip Info (case-level, read-only) */}
-          <section className={`rounded-2xl p-4 ${caseInfoComplete ? 'bg-gray-50' : 'bg-amber-50 border border-amber-200'}`}>
-            <div className="flex items-center gap-2 mb-3">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Trip Info</p>
-              {!caseInfoComplete && <span className="text-[10px] font-medium text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">Incomplete</span>}
-            </div>
-            {!caseInfoComplete && (
-              <p className="text-xs text-amber-800 mb-3">Missing: {missingCaseFields.join(' · ')}</p>
-            )}
-            <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
-              <div className="col-span-2">
-                <p className="text-[10px] text-gray-400 mb-0.5">Concept *</p>
-                <p className="text-gray-800">{caseData.concept || <span className="text-gray-300">—</span>}</p>
-              </div>
-              <div>
-                <p className="text-[10px] text-gray-400 mb-0.5">Meeting Date *</p>
-                <p className="text-gray-800">{caseData.meeting_date || <span className="text-gray-300">—</span>}</p>
-              </div>
-              <div />
-              <div className="col-span-2 grid grid-cols-2 gap-x-6 gap-y-2 pt-2 border-t border-gray-200">
-                <div>
-                  <p className="text-[10px] text-gray-500 font-medium uppercase tracking-wide mb-1">Outbound *</p>
-                  <p className="text-xs text-gray-800">{caseData.outbound_flight?.departure_airport ?? '—'} → {caseData.outbound_flight?.arrival_airport ?? '—'}</p>
-                  <p className="text-[11px] text-gray-500">Dep: {caseData.outbound_flight?.departure_datetime ?? '—'}</p>
-                  <p className="text-[11px] text-gray-500">Arr: {caseData.outbound_flight?.arrival_datetime ?? '—'}</p>
+          {/* Members + Readiness (merged) */}
+          {(() => {
+            const memberShortfall = expectedMemberCount > 0 && caseData.case_members.length < expectedMemberCount
+            const groupGaps = latestQuote?.quote_groups?.filter(g => (g.quote_group_members?.length ?? 0) !== g.member_count) ?? []
+            const issueCount = (memberShortfall ? 1 : 0) + groupGaps.length + clientsMissingInfo.length
+            const ready = issueCount === 0 && caseData.case_members.length > 0
+            return (
+              <section className="bg-gray-50 rounded-2xl p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+                    Members ({caseData.case_members.length}{expectedMemberCount > 0 ? ` / ${expectedMemberCount}` : ''})
+                  </h3>
+                  {ready
+                    ? <span className="text-[10px] font-medium text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">Ready</span>
+                    : <span className="text-[10px] font-medium text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">{issueCount} issue{issueCount > 1 ? 's' : ''}</span>}
                 </div>
-                <div>
-                  <p className="text-[10px] text-gray-500 font-medium uppercase tracking-wide mb-1">Inbound *</p>
-                  <p className="text-xs text-gray-800">{caseData.inbound_flight?.departure_airport ?? '—'} → {caseData.inbound_flight?.arrival_airport ?? '—'}</p>
-                  <p className="text-[11px] text-gray-500">Dep: {caseData.inbound_flight?.departure_datetime ?? '—'}</p>
-                  <p className="text-[11px] text-gray-500">Arr: {caseData.inbound_flight?.arrival_datetime ?? '—'}</p>
-                </div>
-              </div>
-            </div>
-          </section>
 
-          {/* Client Info Status — compact incomplete list */}
-          {caseData.case_members.length > 0 && (
-            <section className={`rounded-2xl p-4 ${allClientsComplete ? 'bg-gray-50' : 'bg-amber-50 border border-amber-200'}`}>
-              <div className="flex items-center gap-2 mb-3">
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Client Info Status</p>
-                {allClientsComplete
-                  ? <span className="text-[10px] font-medium text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">All Complete</span>
-                  : !allMembersRegistered
-                    ? <span className="text-[10px] font-medium text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">{caseData.case_members.length} of {expectedMemberCount} registered</span>
-                    : <span className="text-[10px] font-medium text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">{clientsMissingInfo.length} incomplete</span>}
-              </div>
-              {allClientsComplete ? (
-                <p className="text-xs text-gray-500">All {caseData.case_members.length} client{caseData.case_members.length > 1 ? 's have' : ' has'} complete info.</p>
-              ) : (
-                <>
-                  {!allMembersRegistered && (
-                    <p className="text-xs text-amber-800 mb-3">Only {caseData.case_members.length} of {expectedMemberCount} members registered. Agent needs to add more companions.</p>
-                  )}
-                  <p className="text-xs text-amber-800 mb-3">Agent must complete missing info before you can upload a schedule.</p>
-                  <div className="space-y-2">
-                    {clientsMissingInfo.map(({ member, missing }) => {
-                      const c = member.clients
-                      return (
-                        <div key={member.id} className="flex items-center gap-2 flex-wrap bg-white rounded-xl px-3 py-2 border border-amber-200">
-                          <span className="text-sm font-medium text-gray-800">{c.name}</span>
-                          <span className="text-[10px] font-mono text-gray-400">{c.client_number}</span>
-                          {member.is_lead && <span className="text-[9px] font-medium text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">LEAD</span>}
-                          <span className="text-[11px] text-amber-700 ml-auto">{missing.length} field{missing.length > 1 ? 's' : ''} missing</span>
+                {caseData.case_members.length > 0 && (() => {
+                  const memberGroupMap = new Map<string, string>()
+                  sortedGroups.forEach(g => g.quote_group_members?.forEach(gm => memberGroupMap.set(gm.case_member_id, g.id)))
+                  const grouped = sortedGroups.map(g => ({
+                    group: g,
+                    members: caseData.case_members
+                      .filter(m => memberGroupMap.get(m.id) === g.id)
+                      .sort((a, b) => Number(b.is_lead) - Number(a.is_lead)),
+                  }))
+                  const unassigned = caseData.case_members
+                    .filter(m => !memberGroupMap.has(m.id))
+                    .sort((a, b) => Number(b.is_lead) - Number(a.is_lead))
+
+                  const renderRow = (m: typeof caseData.case_members[number]) => (
+                    <div key={m.id} className="flex items-center gap-2 py-1">
+                      <span className="text-sm text-gray-800 truncate">{m.clients?.name ?? '—'}</span>
+                      <span className="text-[10px] font-mono text-gray-400">{m.clients?.client_number}</span>
+                      {m.is_lead && <span className="text-[9px] font-medium text-white bg-[#0f4c35] px-1.5 py-0.5 rounded">LEAD</span>}
+                    </div>
+                  )
+
+                  return sortedGroups.length > 0 ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {grouped.map(({ group, members }) => (
+                        <div key={group.id} className="space-y-1">
+                          <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">{group.name}</p>
+                          {members.length === 0
+                            ? <p className="text-xs text-gray-300 italic">No members assigned</p>
+                            : members.map(renderRow)}
                         </div>
-                      )
-                    })}
-                  </div>
-                </>
-              )}
-            </section>
-          )}
+                      ))}
+                      {unassigned.length > 0 && (
+                        <div className="space-y-1 sm:col-span-2">
+                          <p className="text-[10px] font-semibold text-amber-600 uppercase tracking-wide">Unassigned</p>
+                          {unassigned.map(renderRow)}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-1">{caseData.case_members.map(renderRow)}</div>
+                  )
+                })()}
 
-          {/* Group assignment warning */}
-          {latestQuote && !groupsComplete && (
-            <section className="border border-amber-200 bg-amber-50 rounded-2xl p-4">
-              <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide mb-1.5">Group Assignment Incomplete</p>
-              <p className="text-xs text-amber-800">Some groups have unfilled slots. Ask the agent to assign all clients before scheduling.</p>
-              <ul className="mt-2 space-y-0.5">
-                {latestQuote.quote_groups.filter(g => (g.quote_group_members?.length ?? 0) !== g.member_count).map(g => (
-                  <li key={g.id} className="text-[11px] text-amber-700">
-                    · {g.name}: {g.quote_group_members?.length ?? 0} of {g.member_count} assigned
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
-
-          {/* Companions */}
-          {companions.length > 0 && (
-            <section className="bg-gray-50 rounded-2xl p-4">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Companions ({companions.length})</p>
-              <div className="space-y-2">
-                {companions.map((m) => (
-                  <div key={m.id} className="flex items-center gap-3 py-1.5 px-3 bg-white rounded-xl border border-gray-100">
-                    <span className="text-[10px] font-mono text-gray-400">{m.clients.client_number}</span>
-                    <span className="text-sm text-gray-800">{m.clients.name}</span>
-                    {m.clients.nationality && <span className="text-xs text-gray-400">{m.clients.nationality}</span>}
-                    {m.clients.needs_muslim_friendly && <span className="text-xs text-emerald-600 ml-auto">Muslim Friendly</span>}
+                {!ready && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+                    <p className="text-[10px] font-semibold text-amber-800 uppercase tracking-wide mb-1.5">{issueCount} issue{issueCount > 1 ? 's' : ''} to resolve</p>
+                    <ul className="space-y-1 text-xs text-amber-800">
+                      {memberShortfall && (
+                        <li>· Members: {caseData.case_members.length} of {expectedMemberCount} registered</li>
+                      )}
+                      {groupGaps.map(g => (
+                        <li key={g.id}>· {g.name}: {g.quote_group_members?.length ?? 0} / {g.member_count} assigned</li>
+                      ))}
+                      {clientsMissingInfo.map(({ member, missing }) => {
+                        const c = member.clients
+                        return (
+                          <li key={member.id}>
+                            · <span className="font-medium text-gray-800">{c.name}</span>
+                            <span className="text-[10px] font-mono text-gray-400 ml-1">{c.client_number}</span>
+                            <span className="text-amber-700"> — info incomplete ({missing.length} field{missing.length > 1 ? 's' : ''})</span>
+                          </li>
+                        )
+                      })}
+                    </ul>
                   </div>
-                ))}
-              </div>
-            </section>
-          )}
+                )}
+              </section>
+            )
+          })()}
 
           {/* Quote / Financials */}
           {latestQuote && (
@@ -531,13 +547,6 @@ export default function AdminCaseDetailPage() {
                 <span className="text-[10px] text-gray-400">{sortedSchedules.length} version{sortedSchedules.length > 1 ? 's' : ''}</span>
               </div>
 
-              {latestSchedule?.status === 'revision_requested' && latestSchedule.revision_note && (
-                <div className="border border-rose-200 bg-rose-50 rounded-xl p-3">
-                  <p className="text-[10px] font-semibold text-rose-700 uppercase tracking-wide mb-1">Revision Requested (v{latestSchedule.version})</p>
-                  <p className="text-xs text-rose-800 whitespace-pre-line">{latestSchedule.revision_note}</p>
-                </div>
-              )}
-
               {scheduleLocked && (
                 <div className="flex items-center gap-2 border border-emerald-200 bg-emerald-50 rounded-xl px-3 py-2">
                   <svg className="w-3.5 h-3.5 text-emerald-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -564,10 +573,13 @@ export default function AdminCaseDetailPage() {
                     'Pending Review'
                   return (
                     <div key={s.id} className={`bg-white rounded-xl border p-3 space-y-1.5 ${isLatest ? 'border-gray-300' : 'border-gray-100'}`}>
-                      <div className="flex items-center gap-2 flex-wrap">
+                      <div className="flex items-start gap-2 flex-wrap">
                         <span className="text-xs font-semibold text-gray-700">v{s.version}</span>
                         {isLatest && <span className="text-[9px] font-medium text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">LATEST</span>}
                         <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${statusStyle}`}>{statusLabel}</span>
+                        {s.status === 'revision_requested' && s.revision_note && (
+                          <span className="text-xs text-gray-700 border-l-2 border-rose-300 pl-2 flex-1 min-w-0 whitespace-pre-line">{s.revision_note}</span>
+                        )}
                         <span className="text-[10px] text-gray-400 ml-auto">{s.created_at.slice(0, 10)}</span>
                       </div>
                       {s.file_name && <p className="text-xs text-gray-500 break-all">{s.file_name}</p>}
@@ -576,11 +588,12 @@ export default function AdminCaseDetailPage() {
                           <a href={s.pdf_url} target="_blank" rel="noopener noreferrer"
                             className="text-xs text-[#0f4c35] font-medium hover:underline">View PDF ↗</a>
                         )}
-                        {!scheduleLocked && (
+                        {!scheduleLocked && isLatest && s.status === 'pending' && (
                           <button
                             onClick={() => deleteScheduleVersion(s.id, s.pdf_url, s.version, s.file_name)}
                             disabled={deletingScheduleId === s.id}
-                            className="text-xs text-gray-400 hover:text-red-500 transition-colors ml-auto disabled:opacity-40">
+                            className="text-xs text-gray-400 hover:text-red-500 transition-colors ml-auto disabled:opacity-40"
+                            title="Undo: only the latest upload can be deleted, before the agent reviews it.">
                             {deletingScheduleId === s.id ? 'Deleting...' : 'Delete'}
                           </button>
                         )}
@@ -601,6 +614,7 @@ export default function AdminCaseDetailPage() {
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Payment Date (optional)</label>
                 <input type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)}
+                  min={caseData.created_at.slice(0, 10)}
                   className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-[#0f4c35] bg-white" />
               </div>
               <button onClick={confirmPayment} disabled={confirmingPayment}
@@ -697,52 +711,50 @@ export default function AdminCaseDetailPage() {
         </div>
 
         {/* RIGHT — Selected Products */}
-        <div className="w-1/2 overflow-y-auto bg-gray-50/50 px-6 py-6">
+        <div className="w-1/2 overflow-y-auto px-6 py-6">
           <p className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-4">Selected Products</p>
 
           {sortedGroups.length === 0 ? (
             <p className="text-sm text-gray-300">No products selected.</p>
           ) : (
-            <div className="space-y-6">
+            <div className="space-y-4">
               {sortedGroups.map((group) => {
                 const memberCount = Math.max(group.member_count ?? 1, 1)
                 const groupTotal = group.quote_items.reduce((s, item) => s + item.final_price, 0)
                 return (
-                  <div key={group.id}>
-                    <div className="flex items-center justify-between mb-3">
-                      <span className="text-base font-semibold text-gray-700">{group.name}</span>
-                      <span className="text-xs text-gray-400">{memberCount} pax</span>
+                  <div key={group.id} className="bg-gray-50 rounded-2xl overflow-hidden">
+                    {/* Group header */}
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+                      <span className="text-sm font-semibold text-gray-800">{group.name}</span>
+                      <span className="text-[11px] text-gray-500">{memberCount} pax · {group.quote_items.length} item{group.quote_items.length !== 1 ? 's' : ''}</span>
                     </div>
-                    <div className="space-y-2.5">
+
+                    {/* Item rows */}
+                    <div className="divide-y divide-gray-200">
                       {group.quote_items.map((item) => {
                         const amtKRW = item.final_price
                         const amtUSD = amtKRW / exchangeRate
-                        const unitUSD = amtUSD / memberCount
                         return (
-                          <div key={item.id} className="bg-white rounded-xl border border-gray-100 p-4">
-                            <p className="text-sm font-medium text-gray-800 mb-1">{item.products?.name ?? '—'}</p>
-                            {item.products?.description && (
-                              <p className="text-[11px] text-gray-400 mb-2.5 line-clamp-2 whitespace-pre-line">{item.products.description}</p>
-                            )}
-                            <div className="space-y-1 text-sm text-gray-500">
-                              <div className="flex justify-between">
-                                <span>{fmtUSD(unitUSD)} × {memberCount}</span>
-                                <span className="font-semibold text-gray-800">{fmtUSD(amtUSD)}</span>
-                              </div>
-                              <div className="flex justify-between text-xs text-gray-400">
-                                <span>{fmtKRW(item.final_price / memberCount)} × {memberCount}</span>
-                                <span>{fmtKRW(amtKRW)}</span>
-                              </div>
+                          <div key={item.id} className="flex items-start gap-3 px-4 py-2.5">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-gray-800 truncate">{item.products?.name ?? '—'}</p>
+                              <p className="text-[10px] text-gray-500 mt-0.5">{fmtKRW(amtKRW / memberCount)} × {memberCount}</p>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <p className="text-sm font-semibold text-gray-800">{fmtUSD(amtUSD)}</p>
+                              <p className="text-[10px] text-gray-400">{fmtKRW(amtKRW)}</p>
                             </div>
                           </div>
                         )
                       })}
                     </div>
-                    <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-gray-200">
-                      <span className="text-sm text-gray-500">Subtotal</span>
+
+                    {/* Subtotal */}
+                    <div className="flex items-center justify-between px-4 py-2.5 bg-gray-100/70 border-t border-gray-200">
+                      <span className="text-xs font-medium text-gray-600 uppercase tracking-wide">Subtotal</span>
                       <div className="text-right">
-                        <p className="text-base font-semibold text-gray-800">{fmtUSD(groupTotal / exchangeRate)}</p>
-                        <p className="text-xs text-gray-400">{fmtKRW(groupTotal)}</p>
+                        <span className="text-sm font-semibold text-gray-900">{fmtUSD(groupTotal / exchangeRate)}</span>
+                        <span className="text-[10px] text-gray-500 ml-2">{fmtKRW(groupTotal)}</span>
                       </div>
                     </div>
                   </div>
@@ -750,7 +762,7 @@ export default function AdminCaseDetailPage() {
               })}
 
               {latestQuote && (
-                <div className="flex items-center justify-between pt-4 border-t-2 border-gray-300">
+                <div className="flex items-center justify-between px-4 py-3 border-t-2 border-gray-300">
                   <span className="text-base font-bold text-gray-900">Total</span>
                   <div className="text-right">
                     <p className="text-lg font-bold text-gray-900">{fmtUSD(latestQuote.total_price / exchangeRate)}</p>

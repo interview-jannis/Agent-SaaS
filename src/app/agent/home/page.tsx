@@ -145,6 +145,29 @@ export default function AgentHomePage() {
     setDetailProduct(product)
   }
 
+  // Restore cart only when returning from Review via the Edit button (which sets the flag).
+  // Any other entry to Home (from another tab, fresh login, etc.) starts with an empty cart.
+  useEffect(() => {
+    const shouldRestore = sessionStorage.getItem('agent-cart-restore') === '1'
+    sessionStorage.removeItem('agent-cart-restore')
+    if (!shouldRestore) {
+      localStorage.removeItem('agent-cart')
+      return
+    }
+    try {
+      const raw = localStorage.getItem('agent-cart')
+      if (!raw) return
+      const cart = JSON.parse(raw) as { clientId?: string; dateStart?: string; dateEnd?: string; groups?: Group[] }
+      if (cart.clientId) setSelectedClientId(cart.clientId)
+      if (cart.dateStart) setDateStart(cart.dateStart)
+      if (cart.dateEnd) setDateEnd(cart.dateEnd)
+      if (cart.groups && cart.groups.length > 0) {
+        setGroups(cart.groups)
+        setActiveGroupId(cart.groups[0].id)
+      }
+    } catch { /* ignore malformed cart */ }
+  }, [])
+
   // ── Load data ──────────────────────────────────────────────────────────────
 
   useEffect(() => {

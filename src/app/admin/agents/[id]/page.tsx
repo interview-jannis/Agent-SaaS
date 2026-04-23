@@ -17,6 +17,15 @@ type Agent = {
   monthly_completed: number | null
   is_active: boolean
   bank_info: BankInfo | null
+  onboarding_status: 'pending_onboarding' | 'awaiting_approval' | 'approved' | null
+}
+
+type ContractRow = {
+  id: string
+  contract_type: 'nda' | 'partnership'
+  title_snapshot: string
+  signed_at: string
+  approved_at: string | null
 }
 
 type CaseRow = {
@@ -63,15 +72,17 @@ export default function AdminAgentDetailPage() {
   const [agent, setAgent] = useState<Agent | null>(null)
   const [cases, setCases] = useState<CaseRow[]>([])
   const [settlements, setSettlements] = useState<SettlementRow[]>([])
+  const [contracts, setContracts] = useState<ContractRow[]>([])
   const [exchangeRate, setExchangeRate] = useState(1350)
   const [loading, setLoading] = useState(true)
   const [toggling, setToggling] = useState(false)
+  const [approving, setApproving] = useState(false)
   const [error, setError] = useState('')
 
   const fetchData = useCallback(async () => {
-    const [agentRes, casesRes, settlementsRes, rateRes] = await Promise.all([
+    const [agentRes, casesRes, settlementsRes, contractsRes, rateRes] = await Promise.all([
       supabase.from('agents')
-        .select('id, agent_number, name, email, phone, country, margin_rate, monthly_completed, is_active, bank_info')
+        .select('id, agent_number, name, email, phone, country, margin_rate, monthly_completed, is_active, bank_info, onboarding_status')
         .eq('id', id).single(),
       supabase.from('cases')
         .select('id, case_number, status, travel_start_date, travel_end_date, created_at, quotes(total_price, agent_margin_rate), case_members(is_lead, clients(name))')
@@ -81,11 +92,16 @@ export default function AdminAgentDetailPage() {
         .select('id, settlement_number, case_id, amount, paid_at')
         .eq('agent_id', id)
         .order('created_at', { ascending: false }),
+      supabase.from('agent_contracts')
+        .select('id, contract_type, title_snapshot, signed_at, approved_at')
+        .eq('agent_id', id)
+        .order('contract_type', { ascending: true }),  // 'nda' < 'partnership' alphabetically
       supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single(),
     ])
     setAgent((agentRes.data as Agent) ?? null)
     setCases((casesRes.data as unknown as CaseRow[]) ?? [])
     setSettlements((settlementsRes.data as SettlementRow[]) ?? [])
+    setContracts((contractsRes.data as ContractRow[]) ?? [])
     const r = (rateRes.data?.value as { usd_krw?: number } | null)?.usd_krw
     if (r) setExchangeRate(r)
   }, [id])
@@ -106,6 +122,33 @@ export default function AdminAgentDetailPage() {
       setError((e as { message?: string })?.message ?? 'Failed.')
     } finally {
       setToggling(false)
+    }
+  }
+
+  async function approveAgent() {
+    if (!agent) return
+    if (!window.confirm(`Approve ${agent.name} and activate their account?\n\nThey will be able to sign in and start using Tiktak immediately.`)) return
+    setApproving(true); setError('')
+    try {
+      const now = new Date().toISOString()
+      const { data: { session } } = await supabase.auth.getSession()
+      const { data: adminRow } = await supabase.from('admins').select('id').eq('auth_user_id', session?.user?.id ?? '').maybeSingle()
+
+      const { error: aErr } = await supabase.from('agents')
+        .update({ onboarding_status: 'approved', is_active: true })
+        .eq('id', agent.id)
+      if (aErr) throw aErr
+
+      // Stamp approval on each contract
+      await supabase.from('agent_contracts')
+        .update({ approved_at: now, approved_by: (adminRow as { id: string } | null)?.id ?? null })
+        .eq('agent_id', agent.id)
+
+      await fetchData()
+    } catch (e: unknown) {
+      setError((e as { message?: string })?.message ?? 'Failed.')
+    } finally {
+      setApproving(false)
     }
   }
 
@@ -144,6 +187,9 @@ export default function AdminAgentDetailPage() {
 
           {error && <p className="text-xs text-red-500 bg-red-50 px-3 py-2 rounded-lg">{error}</p>}
 
+          {/* Approved-only blocks (metrics/profile/bank/cases/settlements) — skip for temp accounts */}
+          {agent.onboarding_status === 'approved' && (
+          <>
           {/* Basic + margin */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div className="bg-gray-50 rounded-2xl p-4">
@@ -188,28 +234,76 @@ export default function AdminAgentDetailPage() {
               <p className="text-xs text-amber-700">Agent has not submitted bank details. Settlement cannot be processed until they fill their profile.</p>
             )}
           </section>
+          </>
+          )}
 
-          {/* Account control */}
-          <section className="bg-gray-50 rounded-2xl p-5 flex items-center justify-between">
-            <div>
-              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Account Status</h3>
-              <p className="text-xs text-gray-500">
-                {agent.is_active
-                  ? 'Agent can log in and use the platform.'
-                  : 'Agent account is deactivated. They cannot log in.'}
-              </p>
+          {/* Contracts */}
+          <section className="bg-gray-50 rounded-2xl p-5 space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Signed Contracts</h3>
+              <span className="text-[10px] text-gray-400">{contracts.length}</span>
             </div>
-            <button onClick={toggleActive} disabled={toggling}
-              className={`px-4 py-2 text-xs font-medium rounded-lg disabled:opacity-40 ${
-                agent.is_active
-                  ? 'border border-red-200 text-red-600 hover:bg-red-50'
-                  : 'bg-[#0f4c35] text-white hover:bg-[#0a3828]'
-              }`}>
-              {toggling ? '...' : agent.is_active ? 'Deactivate' : 'Activate'}
-            </button>
+            {contracts.length === 0 ? (
+              <p className="text-xs text-gray-500">No contracts signed yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {contracts.map(c => (
+                  <button key={c.id}
+                    onClick={() => router.push(`/admin/agents/${agent.id}/contract/${c.id}`)}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 bg-white rounded-xl border border-gray-100 hover:border-[#0f4c35]/40 hover:bg-gray-50 transition-colors text-left">
+                    <svg className="w-5 h-5 text-[#0f4c35] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                    </svg>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">{c.title_snapshot}</p>
+                      <p className="text-[11px] text-gray-500">Signed {c.signed_at.slice(0, 10)}{c.approved_at ? ` · Approved ${c.approved_at.slice(0, 10)}` : ''}</p>
+                    </div>
+                    <span className="text-xs text-[#0f4c35] font-medium shrink-0">View ↗</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </section>
 
-          {/* Cases list */}
+          {/* Approval action — only while awaiting approval */}
+          {agent.onboarding_status === 'awaiting_approval' && (
+            <section className="bg-amber-50 border border-amber-200 rounded-2xl p-5 flex items-center justify-between">
+              <div>
+                <h3 className="text-xs font-semibold text-amber-800 uppercase tracking-wide mb-1">Awaiting Approval</h3>
+                <p className="text-xs text-amber-800">Review the signed contracts above. Approving will activate the account and notify the agent.</p>
+              </div>
+              <button onClick={approveAgent} disabled={approving || contracts.length < 2}
+                title={contracts.length < 2 ? 'Agent has not signed all required contracts yet.' : ''}
+                className="px-4 py-2 text-xs font-medium bg-[#0f4c35] text-white rounded-lg hover:bg-[#0a3828] disabled:opacity-40">
+                {approving ? 'Approving...' : 'Approve & Activate'}
+              </button>
+            </section>
+          )}
+
+          {/* Account control — only for approved agents */}
+          {agent.onboarding_status === 'approved' && (
+            <section className="bg-gray-50 rounded-2xl p-5 flex items-center justify-between">
+              <div>
+                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Account Status</h3>
+                <p className="text-xs text-gray-500">
+                  {agent.is_active
+                    ? 'Agent can log in and use the platform.'
+                    : 'Agent account is deactivated. They cannot log in.'}
+                </p>
+              </div>
+              <button onClick={toggleActive} disabled={toggling}
+                className={`px-4 py-2 text-xs font-medium rounded-lg disabled:opacity-40 ${
+                  agent.is_active
+                    ? 'border border-red-200 text-red-600 hover:bg-red-50'
+                    : 'bg-[#0f4c35] text-white hover:bg-[#0a3828]'
+                }`}>
+                {toggling ? '...' : agent.is_active ? 'Deactivate' : 'Activate'}
+              </button>
+            </section>
+          )}
+
+          {/* Cases list + Settlement History — approved only */}
+          {agent.onboarding_status === 'approved' && (<>
           <section className="space-y-3">
             <div className="flex items-center gap-2">
               <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Cases</h3>
@@ -295,6 +389,7 @@ export default function AdminAgentDetailPage() {
               </div>
             )}
           </section>
+          </>)}
 
         </div>
       </div>

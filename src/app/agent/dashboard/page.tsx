@@ -12,6 +12,7 @@ type CaseRow = {
   status: CaseStatus
   travel_start_date: string | null
   travel_end_date: string | null
+  travel_completed_at: string | null
   created_at: string
   case_members: { is_lead: boolean; clients: { name: string } | null }[]
   quotes: { total_price: number; agent_margin_rate: number }[]
@@ -39,10 +40,10 @@ function commissionKrw(total: number, margin: number): number {
   return Math.round(total * margin / (1 + margin))
 }
 
-// Next tier threshold — mirrors the project's margin bands
-function nextTierInfo(monthlyCompleted: number): { next: number | null; remaining: number | null; nextRate: number | null } {
-  if (monthlyCompleted < 11) return { next: 11, remaining: 11 - monthlyCompleted, nextRate: 0.20 }
-  if (monthlyCompleted < 31) return { next: 31, remaining: 31 - monthlyCompleted, nextRate: 0.25 }
+// Next tier threshold — patients/month based (0-10: 15%, 10-30: 20%, 30+: 25%)
+function nextTierInfo(monthlyPatients: number): { next: number | null; remaining: number | null; nextRate: number | null } {
+  if (monthlyPatients < 10) return { next: 10, remaining: 10 - monthlyPatients, nextRate: 0.20 }
+  if (monthlyPatients < 30) return { next: 30, remaining: 30 - monthlyPatients, nextRate: 0.25 }
   return { next: null, remaining: null, nextRate: null }
 }
 
@@ -73,7 +74,7 @@ export default function AgentDashboardPage() {
 
       const [casesRes, settlementsRes, rateRes] = await Promise.all([
         supabase.from('cases')
-          .select('id, case_number, status, travel_start_date, travel_end_date, created_at, case_members(is_lead, clients(name)), quotes(total_price, agent_margin_rate), schedules(id, status, version, created_at)')
+          .select('id, case_number, status, travel_start_date, travel_end_date, travel_completed_at, created_at, case_members(is_lead, clients(name)), quotes(total_price, agent_margin_rate), schedules(id, status, version, created_at)')
           .eq('agent_id', ag.id)
           .order('created_at', { ascending: false }),
         supabase.from('settlements').select('id, amount, paid_at, case_id').eq('agent_id', ag.id),
@@ -96,9 +97,10 @@ export default function AgentDashboardPage() {
   const now = new Date()
   const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
 
-  // Total lifetime completed cases. (Margin tier reset / per-month tracking would
-  // need a completed_at column + admin trigger — deferred to post-MVP.)
-  const completedTotal = cases.filter(c => c.status === 'travel_completed').length
+  // Patients from cases marked complete this month (tier is patients/month, not cases).
+  const monthlyPatients = cases
+    .filter(c => c.status === 'travel_completed' && c.travel_completed_at?.startsWith(monthKey))
+    .reduce((sum, c) => sum + (c.case_members?.length ?? 0), 0)
 
   const thisMonthPaid = settlements
     .filter(s => s.paid_at?.startsWith(monthKey))
@@ -120,7 +122,7 @@ export default function AgentDashboardPage() {
     .sort((a, b) => (a.travel_start_date ?? '').localeCompare(b.travel_start_date ?? ''))
     .slice(0, 5)
 
-  const tierInfo = nextTierInfo(completedTotal)
+  const tierInfo = nextTierInfo(monthlyPatients)
 
   return (
     <div className="flex flex-col h-full bg-white">
@@ -180,8 +182,8 @@ export default function AgentDashboardPage() {
                       <p className="text-sm font-semibold text-[#0f4c35]">{marginRate != null ? `${(marginRate * 100).toFixed(0)}%` : '—'}</p>
                     </div>
                     <div>
-                      <p className="text-[10px] text-gray-400 uppercase tracking-wide">Completed</p>
-                      <p className="text-sm font-semibold text-gray-900">{completedTotal}</p>
+                      <p className="text-[10px] text-gray-400 uppercase tracking-wide">Patients</p>
+                      <p className="text-sm font-semibold text-gray-900">{monthlyPatients}</p>
                     </div>
                   </div>
                 </section>
@@ -198,9 +200,9 @@ export default function AgentDashboardPage() {
                       <div className="mt-4 pt-4 border-t border-gray-200">
                         <div className="relative h-2 bg-gray-200 rounded-full overflow-hidden">
                           <div className="absolute inset-y-0 left-0 bg-[#0f4c35] transition-all"
-                            style={{ width: `${Math.min(100, (completedTotal / tierInfo.next) * 100)}%` }} />
+                            style={{ width: `${Math.min(100, (monthlyPatients / tierInfo.next) * 100)}%` }} />
                         </div>
-                        <p className="text-[10px] text-gray-400 mt-1.5">{completedTotal} / {tierInfo.next} cases</p>
+                        <p className="text-[10px] text-gray-400 mt-1.5">{monthlyPatients} / {tierInfo.next} patients this month</p>
                       </div>
                     </>
                   ) : (

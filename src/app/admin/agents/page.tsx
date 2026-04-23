@@ -187,7 +187,7 @@ export default function AdminAgentsPage() {
                 <table className="w-full text-sm">
                   <thead className="border-y border-gray-100 bg-gray-50/60">
                     <tr>
-                      {['Agent #', 'Name', 'Country', 'Cases', 'Clients', 'Margin', 'Unsettled', 'Paid Out', 'Status'].map(h => (
+                      {['Agent #', 'Name', 'Country', 'Cases', 'Margin', 'Unsettled', 'Paid Out', 'Status'].map(h => (
                         <th key={h} className="py-2.5 px-4 text-xs font-medium text-gray-400 text-left">{h}</th>
                       ))}
                     </tr>
@@ -205,7 +205,6 @@ export default function AdminAgentsPage() {
                           </td>
                           <td className="py-3.5 px-4 text-gray-500">{a.country ?? '—'}</td>
                           <td className="py-3.5 px-4 text-gray-500 text-center">{m.cases}</td>
-                          <td className="py-3.5 px-4 text-gray-500 text-center">{m.clients}</td>
                           <td className="py-3.5 px-4 text-gray-700">{a.margin_rate != null ? `${(a.margin_rate * 100).toFixed(0)}%` : '—'}</td>
                           <td className={`py-3.5 px-4 font-medium ${m.unsettledKrw > 0 ? 'text-amber-700' : 'text-gray-400'}`}>{fmtUSD(m.unsettledKrw / exchangeRate)}</td>
                           <td className="py-3.5 px-4 text-gray-600">{fmtUSD(m.paidKrw / exchangeRate)}</td>
@@ -250,8 +249,11 @@ export default function AdminAgentsPage() {
                       const label =
                         status === 'awaiting_approval' ? 'Awaiting Approval'
                         : 'Pending Onboarding'
+                      const clickable = status === 'awaiting_approval'
                       return (
-                        <tr key={a.id} className="border-b border-gray-50">
+                        <tr key={a.id}
+                          onClick={clickable ? () => router.push(`/admin/agents/${a.id}`) : undefined}
+                          className={`border-b border-gray-50 ${clickable ? 'hover:bg-gray-50 cursor-pointer' : ''}`}>
                           <td className="py-3.5 px-4 font-mono text-xs text-gray-400">{a.agent_number ?? '—'}</td>
                           <td className="py-3.5 px-4 font-mono text-xs text-gray-700">{a.email ?? '—'}</td>
                           <td className="py-3.5 px-4">
@@ -324,7 +326,7 @@ export default function AdminAgentsPage() {
                 </div>
 
                 <p className="text-[11px] text-amber-700">
-                  ⚠ Password is the same as the username — weak by design, meant only for initial onboarding. It&apos;ll be replaced after approval.
+                  ⚠ Password is the same as the username.
                 </p>
 
                 <div className="flex justify-end pt-2 border-t border-gray-100">
