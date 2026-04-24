@@ -13,17 +13,25 @@ type CaseMember = {
 type ActionCase = {
   id: string
   case_number: string
+  status: string
   travel_start_date: string | null
   travel_end_date: string | null
+  created_at: string
   case_members: CaseMember[]
+  quotes: { total_price: number; payment_due_date: string | null }[]
 }
-
-type RecentCase = ActionCase & { status: string }
 
 type AgentCaseRow = {
   agent_id: string | null
   agents: { agent_number: string; name: string } | null
   quotes: { total_price: number }[]
+}
+
+type PendingAgent = {
+  id: string
+  agent_number: string | null
+  name: string
+  onboarding_status: string
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -46,20 +54,8 @@ function fmtUSD(n: number): string {
   return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-const STATUS_EN: Record<string, string> = {
-  payment_pending: 'Payment Pending',
-  payment_completed: 'Payment Completed',
-  schedule_reviewed: 'Schedule Reviewed',
-  schedule_confirmed: 'Schedule Confirmed',
-  travel_completed: 'Travel Completed',
-}
-
-const STATUS_COLOR: Record<string, string> = {
-  payment_pending: 'bg-yellow-50 text-yellow-700',
-  payment_completed: 'bg-blue-50 text-blue-700',
-  schedule_reviewed: 'bg-purple-50 text-purple-700',
-  schedule_confirmed: 'bg-indigo-50 text-indigo-700',
-  travel_completed: 'bg-green-50 text-[#0f4c35]',
+function daysSince(iso: string): number {
+  return Math.floor((Date.now() - new Date(iso).getTime()) / 86400000)
 }
 
 // ── Page ──────────────────────────────────────────────────────────────────────
@@ -69,37 +65,72 @@ export default async function AdminOverviewPage() {
 
   const now = new Date()
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+  const todayISO = now.toISOString().slice(0, 10)
 
-  const CASE_WITH_LEAD = 'id, case_number, travel_start_date, travel_end_date, case_members(is_lead, clients(name))'
+  const CASE_WITH_ALL = 'id, case_number, status, travel_start_date, travel_end_date, created_at, case_members(is_lead, clients(name)), quotes(total_price, payment_due_date)'
+
+  const monthStartDate = monthStart.slice(0, 10)
 
   const [
     { data: paymentPending },
     { data: scheduleNeeded },
-    { data: completedThisMonth },
+    { data: allInProgressCases },
+    { data: paidCasesThisMonth },
+    { data: settlementsThisMonth },
     { data: newClients },
-    { data: recentCases },
     { data: agentCaseRows },
+    { data: pendingAgents },
     { data: rateRow },
   ] = await Promise.all([
-    supabase.from('cases').select(CASE_WITH_LEAD).eq('status', 'payment_pending').order('created_at', { ascending: false }),
-    supabase.from('cases').select(CASE_WITH_LEAD).eq('status', 'payment_completed').order('created_at', { ascending: false }),
-    supabase.from('cases').select('id, quotes(total_price)').eq('status', 'travel_completed').gte('created_at', monthStart),
+    supabase.from('cases').select(CASE_WITH_ALL).eq('status', 'payment_pending').order('created_at', { ascending: false }),
+    supabase.from('cases').select(CASE_WITH_ALL).eq('status', 'payment_completed').order('created_at', { ascending: false }),
+    // All in-progress cases — used for "stuck" detection
+    supabase.from('cases').select('id, case_number, status, created_at, case_members(is_lead, clients(name))').neq('status', 'travel_completed'),
+    // Cases whose payment landed this month (money IN basis — what client actually paid)
+    supabase.from('cases').select('id, payment_date, quotes(total_price, company_margin_rate, agent_margin_rate)').gte('payment_date', monthStartDate),
+    // Settlements paid this month (money OUT — agent payouts)
+    supabase.from('settlements').select('id, amount, paid_at').gte('paid_at', monthStartDate),
     supabase.from('clients').select('id', { count: 'exact', head: true }).gte('created_at', monthStart),
-    supabase.from('cases').select('id, case_number, status, travel_start_date, travel_end_date, case_members(is_lead, clients(name))').order('created_at', { ascending: false }).limit(5),
     supabase.from('cases').select('agent_id, agents!cases_agent_id_fkey(agent_number, name), quotes(total_price)').eq('status', 'travel_completed').gte('created_at', monthStart),
+    // Pending agent approvals
+    supabase.from('agents').select('id, agent_number, name, onboarding_status').eq('onboarding_status', 'awaiting_approval'),
     supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single(),
   ])
 
   const exchangeRate = (rateRow?.value as { usd_krw?: number } | null)?.usd_krw ?? 1350
 
-  const monthlyRevenue = (completedThisMonth ?? []).reduce((sum, c) => {
-    const quotes = (c.quotes as { total_price: number }[]) ?? []
-    return sum + quotes.reduce((s, q) => s + (q.total_price ?? 0), 0)
-  }, 0)
+  // Compute 4 financial metrics from cases paid this month
+  // total_price = base × (1+co) × (1+agent)  →  base = total / ((1+co)(1+agent))
+  //   Revenue       = total_price (gross received from client)
+  //   Partner cost  = base (paid to hospital/partner)
+  //   Company earn  = base × company_margin (our actual slice)
+  //   Agent share*  = base × (1+co) × agent_margin (owed to agent; not necessarily paid this month)
+  let revenueKrw = 0
+  let partnerCostKrw = 0
+  let companyEarningsKrw = 0
+  const paidCases = (paidCasesThisMonth as unknown as { id: string; payment_date: string | null; quotes: { total_price: number; company_margin_rate: number | null; agent_margin_rate: number | null }[] }[]) ?? []
+  for (const c of paidCases) {
+    const q = c.quotes?.[0]
+    if (!q) continue
+    const total = q.total_price ?? 0
+    const co = q.company_margin_rate ?? 0
+    const ag = q.agent_margin_rate ?? 0
+    const denom = (1 + co) * (1 + ag)
+    const base = denom > 0 ? total / denom : 0
+    revenueKrw += total
+    partnerCostKrw += base
+    companyEarningsKrw += base * co
+  }
 
-  const completedCount = completedThisMonth?.length ?? 0
+  // Actual agent payouts this month (cash out)
+  const agentPayoutsKrw = (settlementsThisMonth ?? [])
+    .filter(s => s.paid_at && s.paid_at >= monthStartDate)
+    .reduce((sum, s) => sum + (s.amount ?? 0), 0)
+
   const newClientCount = (newClients as unknown as { count: number } | null)?.count ?? 0
+  const paidCaseCount = paidCases.length
 
+  // Top agents
   const agentMap = new Map<string, { agent_number: string; name: string; count: number; revenue: number }>()
   for (const row of (agentCaseRows as unknown as AgentCaseRow[]) ?? []) {
     if (!row.agent_id || !row.agents) continue
@@ -110,188 +141,247 @@ export default async function AdminOverviewPage() {
   }
   const topAgents = [...agentMap.values()].sort((a, b) => b.revenue - a.revenue).slice(0, 3)
 
+  // Stuck cases — in the same status > 5 days, excluding normal recent ones
+  const STUCK_DAYS = 5
+  const stuckCases = ((allInProgressCases as unknown as { id: string; case_number: string; status: string; created_at: string; case_members: CaseMember[] }[]) ?? [])
+    .map(c => ({ ...c, stuckDays: daysSince(c.created_at) }))
+    .filter(c => c.stuckDays >= STUCK_DAYS)
+    .sort((a, b) => b.stuckDays - a.stuckDays)
+    .slice(0, 5)
+
+  // Overdue payments — payment_pending with payment_due_date past
+  const overduePayments = ((paymentPending as unknown as ActionCase[]) ?? [])
+    .map(c => ({ ...c, due: c.quotes?.[0]?.payment_due_date ?? null }))
+    .filter(c => c.due && c.due < todayISO)
+
+  const pendingAgentCount = pendingAgents?.length ?? 0
+  const paymentPendingCount = paymentPending?.length ?? 0
+  const scheduleNeededCount = scheduleNeeded?.length ?? 0
+
+  const totalActionCount = pendingAgentCount + paymentPendingCount + scheduleNeededCount + stuckCases.length
+
+  const STATUS_LABELS_KR: Record<string, string> = {
+    payment_pending: 'Awaiting Payment',
+    payment_completed: 'Payment Confirmed',
+    schedule_reviewed: 'Schedule Reviewed',
+    schedule_confirmed: 'Schedule Confirmed',
+  }
+
   return (
     <div className="min-h-screen bg-white">
       <div className="px-12 py-10 space-y-6">
 
-        {/* Header */}
         <h1 className="text-xl font-semibold text-gray-900">Overview</h1>
 
-        {/* ── Action Required ───────────────────────────────── */}
-        <section className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-50">
+        {/* HERO — This Month financials */}
+        <section className="bg-gray-50 rounded-2xl p-6">
+          {/* Top row: Revenue + Earnings (primary, big) */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-2">Revenue · This Month</p>
+              <p className="text-4xl font-bold text-gray-900 tracking-tight leading-none">{fmtUSD(revenueKrw / exchangeRate)}</p>
+              <p className="text-xs text-gray-500 mt-2 tabular-nums">{fmtKRW(revenueKrw)}</p>
+              <p className="text-[11px] text-gray-500 mt-1">
+                from {paidCaseCount} paid case{paidCaseCount !== 1 ? 's' : ''}
+                {newClientCount > 0 && ` · ${newClientCount} new client${newClientCount !== 1 ? 's' : ''}`}
+              </p>
+            </div>
+            <div className="md:border-l md:border-gray-200 md:pl-6">
+              <p className="text-[10px] text-emerald-700 uppercase tracking-wide mb-2">Earnings · This Month</p>
+              <p className="text-4xl font-bold text-emerald-700 tracking-tight leading-none">{fmtUSD(companyEarningsKrw / exchangeRate)}</p>
+              <p className="text-xs text-emerald-600 mt-2 tabular-nums">{fmtKRW(companyEarningsKrw)}</p>
+              <p className="text-[11px] text-gray-500 mt-1">company margin only (our actual take)</p>
+            </div>
+          </div>
+
+          {/* Bottom row: Partner Costs + Agent Payouts (secondary) */}
+          <div className="mt-5 pt-5 border-t border-gray-200 grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-1">Partner Costs · This Month</p>
+              <p className="text-xl font-semibold text-gray-700 tracking-tight">{fmtUSD(partnerCostKrw / exchangeRate)}</p>
+              <p className="text-[11px] text-gray-500 mt-1 tabular-nums">{fmtKRW(partnerCostKrw)} · paid to hospitals/partners</p>
+            </div>
+            <div className="md:border-l md:border-gray-200 md:pl-6">
+              <p className="text-[10px] text-amber-700 uppercase tracking-wide mb-1">Agent Payouts · This Month</p>
+              <p className="text-xl font-semibold text-amber-700 tracking-tight">{fmtUSD(agentPayoutsKrw / exchangeRate)}</p>
+              <p className="text-[11px] text-gray-500 mt-1 tabular-nums">{fmtKRW(agentPayoutsKrw)} · settlements sent</p>
+            </div>
+          </div>
+        </section>
+
+        {/* ACTION REQUIRED — unified queue */}
+        <section className="space-y-3">
+          <div className="flex items-baseline gap-3">
             <h2 className="text-sm font-semibold text-gray-900">Action Required</h2>
+            {totalActionCount > 0 && <span className="text-xs text-gray-400">{totalActionCount} item{totalActionCount !== 1 ? 's' : ''}</span>}
           </div>
 
-          {/* Awaiting payment confirmation */}
-          <div className="px-6 py-4">
-            <p className="text-xs font-medium text-gray-400 mb-3">
-              Awaiting Payment Confirmation{' '}
-              <span className="ml-1 bg-yellow-100 text-yellow-700 rounded-full px-2 py-0.5">
-                {paymentPending?.length ?? 0}
-              </span>
-            </p>
-            {paymentPending && paymentPending.length > 0 ? (
-              <ul className="space-y-1">
-                {(paymentPending as unknown as ActionCase[]).map((c) => (
-                  <li key={c.id}>
-                    <Link
-                      href={`/admin/cases/${c.id}`}
-                      className="flex items-center justify-between py-2.5 px-3 rounded-xl hover:bg-gray-50 transition-colors group"
-                    >
-                      <div className="flex items-center gap-3">
-                        <span className="text-xs font-mono text-gray-400">{c.case_number}</span>
-                        <span className="text-sm font-medium text-gray-800">{leadName(c.case_members)}</span>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <span className="text-xs text-gray-400">
-                          {fmtDate(c.travel_start_date)} – {fmtDate(c.travel_end_date)}
-                        </span>
-                        <svg className="w-4 h-4 text-gray-300 group-hover:text-[#0f4c35] transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-                        </svg>
-                      </div>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-sm text-gray-300 py-2">No pending items</p>
-            )}
-          </div>
+          {totalActionCount === 0 ? (
+            <div className="bg-gray-50 rounded-2xl p-8 text-center">
+              <p className="text-sm text-gray-400">All caught up. Nothing urgent right now.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
 
-          <div className="h-px bg-gray-50 mx-6" />
+              {/* Pending agent approvals */}
+              {pendingAgentCount > 0 && (
+                <Link href="/admin/agents"
+                  className="flex items-center gap-3 bg-white border border-violet-200 rounded-2xl px-4 py-3 hover:bg-violet-50/50 transition-colors">
+                  <span className="w-2 h-2 rounded-full bg-violet-500 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900">
+                      {pendingAgentCount} agent{pendingAgentCount !== 1 ? 's' : ''} awaiting approval
+                    </p>
+                    <p className="text-xs text-gray-500 truncate">
+                      {(pendingAgents as PendingAgent[] | null)?.slice(0, 3).map(a => `${a.agent_number ?? ''} ${a.name}`).join(' · ') ?? ''}
+                      {pendingAgentCount > 3 && ` · +${pendingAgentCount - 3} more`}
+                    </p>
+                  </div>
+                  <span className="text-xs text-violet-700 shrink-0">Review →</span>
+                </Link>
+              )}
 
-          {/* Schedule upload needed */}
-          <div className="px-6 py-4">
-            <p className="text-xs font-medium text-gray-400 mb-3">
-              Schedule Upload Required{' '}
-              <span className="ml-1 bg-blue-50 text-blue-600 rounded-full px-2 py-0.5">
-                {scheduleNeeded?.length ?? 0}
-              </span>
-            </p>
-            {scheduleNeeded && scheduleNeeded.length > 0 ? (
-              <ul className="space-y-1">
-                {(scheduleNeeded as unknown as ActionCase[]).map((c) => (
-                  <li key={c.id}>
-                    <Link
-                      href={`/admin/cases/${c.id}`}
-                      className="flex items-center justify-between py-2.5 px-3 rounded-xl hover:bg-gray-50 transition-colors group"
-                    >
-                      <div className="flex items-center gap-3">
-                        <span className="text-xs font-mono text-gray-400">{c.case_number}</span>
-                        <span className="text-sm font-medium text-gray-800">{leadName(c.case_members)}</span>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <span className="text-xs text-gray-400">
-                          {fmtDate(c.travel_start_date)} – {fmtDate(c.travel_end_date)}
-                        </span>
-                        <svg className="w-4 h-4 text-gray-300 group-hover:text-[#0f4c35] transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-                        </svg>
-                      </div>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-sm text-gray-300 py-2">No uploads required</p>
-            )}
-          </div>
+              {/* Overdue payments (subset of payment_pending) */}
+              {overduePayments.length > 0 && (
+                <div className="bg-white border border-red-200 rounded-2xl overflow-hidden">
+                  <div className="px-4 py-2.5 border-b border-red-100 flex items-center gap-2 bg-red-50">
+                    <span className="w-2 h-2 rounded-full bg-red-500" />
+                    <p className="text-xs font-semibold text-red-800 uppercase tracking-wide">Payments Overdue</p>
+                    <span className="text-[10px] text-red-600">{overduePayments.length}</span>
+                  </div>
+                  <ul className="divide-y divide-gray-100">
+                    {overduePayments.slice(0, 4).map(c => (
+                      <li key={c.id}>
+                        <Link href={`/admin/cases/${c.id}`}
+                          className="flex items-center gap-3 px-4 py-2.5 hover:bg-red-50/40 transition-colors">
+                          <span className="text-xs font-mono text-gray-400 shrink-0">{c.case_number}</span>
+                          <span className="text-sm text-gray-800 truncate flex-1">{leadName(c.case_members)}</span>
+                          <span className="text-xs text-red-600 shrink-0">Due {c.due ? fmtDate(c.due) : '—'}</span>
+                          <svg className="w-4 h-4 text-gray-300 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                          </svg>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Payments to confirm (not overdue) */}
+              {paymentPendingCount > 0 && (
+                <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+                  <div className="px-4 py-2.5 border-b border-gray-100 flex items-center gap-2 bg-gray-50">
+                    <span className="w-2 h-2 rounded-full bg-amber-500" />
+                    <p className="text-xs font-semibold text-gray-800 uppercase tracking-wide">Payment to Confirm</p>
+                    <span className="text-[10px] text-gray-500">{paymentPendingCount}</span>
+                  </div>
+                  <ul className="divide-y divide-gray-100">
+                    {(paymentPending as unknown as ActionCase[]).slice(0, 4).map(c => (
+                      <li key={c.id}>
+                        <Link href={`/admin/cases/${c.id}`}
+                          className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors">
+                          <span className="text-xs font-mono text-gray-400 shrink-0">{c.case_number}</span>
+                          <span className="text-sm text-gray-800 truncate flex-1">{leadName(c.case_members)}</span>
+                          <span className="text-xs text-gray-500 shrink-0">
+                            {fmtDate(c.travel_start_date)} – {fmtDate(c.travel_end_date)}
+                          </span>
+                          <svg className="w-4 h-4 text-gray-300 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                          </svg>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Schedule upload needed */}
+              {scheduleNeededCount > 0 && (
+                <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+                  <div className="px-4 py-2.5 border-b border-gray-100 flex items-center gap-2 bg-gray-50">
+                    <span className="w-2 h-2 rounded-full bg-blue-500" />
+                    <p className="text-xs font-semibold text-gray-800 uppercase tracking-wide">Schedule Upload Needed</p>
+                    <span className="text-[10px] text-gray-500">{scheduleNeededCount}</span>
+                  </div>
+                  <ul className="divide-y divide-gray-100">
+                    {(scheduleNeeded as unknown as ActionCase[]).slice(0, 4).map(c => (
+                      <li key={c.id}>
+                        <Link href={`/admin/cases/${c.id}`}
+                          className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors">
+                          <span className="text-xs font-mono text-gray-400 shrink-0">{c.case_number}</span>
+                          <span className="text-sm text-gray-800 truncate flex-1">{leadName(c.case_members)}</span>
+                          <span className="text-xs text-gray-500 shrink-0">
+                            {fmtDate(c.travel_start_date)} – {fmtDate(c.travel_end_date)}
+                          </span>
+                          <svg className="w-4 h-4 text-gray-300 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                          </svg>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Stuck cases */}
+              {stuckCases.length > 0 && (
+                <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+                  <div className="px-4 py-2.5 border-b border-gray-100 flex items-center gap-2 bg-gray-50">
+                    <span className="w-2 h-2 rounded-full bg-orange-500" />
+                    <p className="text-xs font-semibold text-gray-800 uppercase tracking-wide">Stuck Cases</p>
+                    <span className="text-[10px] text-gray-500">5+ days in same status</span>
+                  </div>
+                  <ul className="divide-y divide-gray-100">
+                    {stuckCases.map(c => (
+                      <li key={c.id}>
+                        <Link href={`/admin/cases/${c.id}`}
+                          className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors">
+                          <span className="text-xs font-mono text-gray-400 shrink-0">{c.case_number}</span>
+                          <span className="text-sm text-gray-800 truncate flex-1">{leadName(c.case_members)}</span>
+                          <span className="text-xs text-gray-500 shrink-0">{STATUS_LABELS_KR[c.status] ?? c.status}</span>
+                          <span className="text-xs text-orange-600 shrink-0">{c.stuckDays}d</span>
+                          <svg className="w-4 h-4 text-gray-300 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                          </svg>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+            </div>
+          )}
         </section>
 
-        {/* ── This Month ────────────────────────────────────── */}
-        <section className="bg-white rounded-2xl border border-gray-100 shadow-sm">
-          <div className="px-6 py-4 border-b border-gray-50">
-            <h2 className="text-sm font-semibold text-gray-900">This Month</h2>
+        {/* TOP AGENTS */}
+        <section className="space-y-3">
+          <div className="flex items-baseline justify-between">
+            <h2 className="text-sm font-semibold text-gray-900">Top Agents · This Month</h2>
+            <Link href="/admin/agents" className="text-xs text-[#0f4c35] font-medium hover:underline">View all →</Link>
           </div>
-          <div className="grid grid-cols-3 divide-x divide-gray-100">
-            <div className="px-6 py-5">
-              <p className="text-xs text-gray-400 mb-1">Total Revenue</p>
-              <p className="text-xl font-semibold text-gray-900">{fmtKRW(monthlyRevenue)}</p>
-              <p className="text-[11px] text-gray-400 mt-0.5">≈ {fmtUSD(monthlyRevenue / exchangeRate)}</p>
-            </div>
-            <div className="px-6 py-5">
-              <p className="text-xs text-gray-400 mb-1">Completed Cases</p>
-              <p className="text-xl font-semibold text-gray-900">{completedCount}</p>
-            </div>
-            <div className="px-6 py-5">
-              <p className="text-xs text-gray-400 mb-1">New Clients</p>
-              <p className="text-xl font-semibold text-gray-900">{newClientCount}</p>
-            </div>
-          </div>
-        </section>
-
-        {/* ── Top Agents ────────────────────────────────────── */}
-        <section className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-50 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-gray-900">Top Agents This Month</h2>
-            <Link href="/admin/agents" className="text-xs text-[#0f4c35] font-medium hover:underline">
-              View all →
-            </Link>
-          </div>
-          <div className="px-6 py-4">
+          <div className="bg-white border border-gray-100 rounded-2xl">
             {topAgents.length > 0 ? (
-              <ul className="space-y-3">
+              <ul className="divide-y divide-gray-50">
                 {topAgents.map((agent, i) => (
-                  <li key={agent.agent_number} className="flex items-center gap-4">
+                  <li key={agent.agent_number} className="flex items-center gap-4 px-5 py-3.5">
                     <span className="w-5 text-sm font-semibold text-gray-300">{i + 1}</span>
                     <div className="flex-1 min-w-0 flex items-center gap-2">
                       <span className="text-xs font-mono text-gray-400">{agent.agent_number}</span>
                       <span className="text-sm font-medium text-gray-800">{agent.name}</span>
                     </div>
-                    <span className="text-xs text-gray-400">{agent.count} cases</span>
+                    <span className="text-xs text-gray-400">{agent.count} case{agent.count !== 1 ? 's' : ''}</span>
                     <span className="flex flex-col items-end">
-                      <span className="text-sm font-semibold text-gray-800 tabular-nums">{fmtKRW(agent.revenue)}</span>
-                      <span className="text-[10px] text-gray-400">≈ {fmtUSD(agent.revenue / exchangeRate)}</span>
+                      <span className="text-sm font-semibold text-gray-800 tabular-nums">{fmtUSD(agent.revenue / exchangeRate)}</span>
+                      <span className="text-[10px] text-gray-400">{fmtKRW(agent.revenue)}</span>
                     </span>
                   </li>
                 ))}
               </ul>
             ) : (
-              <p className="text-sm text-gray-300 py-2">No completed cases this month</p>
+              <p className="text-sm text-gray-300 p-6 text-center">No completed cases this month</p>
             )}
           </div>
-        </section>
-
-        {/* ── Recent Cases ──────────────────────────────────── */}
-        <section className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-50 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-gray-900">Recent Cases</h2>
-            <Link href="/admin/cases" className="text-xs text-[#0f4c35] font-medium hover:underline">
-              View all →
-            </Link>
-          </div>
-          <ul className="divide-y divide-gray-50">
-            {recentCases && (recentCases as unknown as RecentCase[]).length > 0 ? (
-              (recentCases as unknown as RecentCase[]).map((c) => (
-                <li key={c.id}>
-                  <Link
-                    href={`/admin/cases/${c.id}`}
-                    className="flex items-center justify-between px-6 py-3.5 hover:bg-gray-50 transition-colors group"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <span className="text-xs font-mono text-gray-400 shrink-0">{c.case_number}</span>
-                      <span className="text-sm font-medium text-gray-800 truncate">{leadName(c.case_members)}</span>
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLOR[c.status] ?? 'bg-gray-100 text-gray-500'}`}>
-                        {STATUS_EN[c.status] ?? c.status}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-3 shrink-0">
-                      <span className="text-xs text-gray-400">
-                        {fmtDate(c.travel_start_date)} – {fmtDate(c.travel_end_date)}
-                      </span>
-                      <svg className="w-4 h-4 text-gray-300 group-hover:text-[#0f4c35] transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-                      </svg>
-                    </div>
-                  </Link>
-                </li>
-              ))
-            ) : (
-              <li className="px-6 py-4 text-sm text-gray-300">No cases yet</li>
-            )}
-          </ul>
         </section>
 
       </div>
