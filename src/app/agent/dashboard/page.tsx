@@ -25,6 +25,12 @@ const STATUS_LABELS: Record<CaseStatus, string> = {
   payment_pending: 'Awaiting Payment', payment_completed: 'Payment Confirmed',
   schedule_reviewed: 'Schedule Reviewed', schedule_confirmed: 'Schedule Confirmed', travel_completed: 'Travel Completed',
 }
+
+// Pipeline-specific labels (when the Travel Completed cell means "unsettled only")
+const PIPELINE_LABELS: Record<CaseStatus, string> = {
+  ...STATUS_LABELS,
+  travel_completed: 'Travel Done · Unpaid',
+}
 const STATUS_STYLES: Record<CaseStatus, string> = {
   payment_pending: 'bg-amber-50 text-amber-700 border-amber-200',
   payment_completed: 'bg-blue-50 text-blue-700 border-blue-200',
@@ -94,6 +100,10 @@ export default function AgentDashboardPage() {
   const statusCounts = new Map<CaseStatus, number>()
   for (const c of cases) statusCounts.set(c.status, (statusCounts.get(c.status) ?? 0) + 1)
 
+  // Travel Completed pipeline cell shows unsettled only — settled ones belong to "Settlement Paid"
+  const settledCaseIds = new Set(settlements.filter(s => s.case_id).map(s => s.case_id!))
+  const unsettledCompletedCount = cases.filter(c => c.status === 'travel_completed' && !settledCaseIds.has(c.id)).length
+
   const now = new Date()
   const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
 
@@ -134,7 +144,7 @@ export default function AgentDashboardPage() {
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        <div className="max-w-6xl mx-auto px-6 py-6 space-y-6">
+        <div className="px-12 py-8 space-y-6">
 
           {loading ? (
             <p className="text-sm text-gray-400 text-center py-16">Loading...</p>
@@ -214,8 +224,10 @@ export default function AgentDashboardPage() {
                 </section>
               </div>
 
-              {/* Recent Cases + Upcoming Travel — 2 column */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {/* Left: Recent+Upcoming stacked  |  Right: Pipeline 6 cells horizontal */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+                {/* Left column (1/3) — Recent Cases on top, Upcoming Travel below */}
+                <div className="space-y-3">
                 <section className="space-y-3">
                   <div className="flex items-center justify-between">
                     <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Recent Cases</h3>
@@ -299,25 +311,40 @@ export default function AgentDashboardPage() {
                     </div>
                   )}
                 </section>
-              </div>
-
-              {/* Pipeline — 5 status cells */}
-              <section className="space-y-3">
-                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Pipeline</h3>
-                <div className="grid grid-cols-5 gap-2">
-                  {ORDERED_STATUSES.map(s => {
-                    const count = statusCounts.get(s) ?? 0
-                    const active = count > 0
-                    return (
-                      <button key={s} onClick={() => router.push('/agent/cases')}
-                        className={`rounded-2xl p-4 text-left border transition-colors ${active ? STATUS_STYLES[s] : 'bg-gray-50 border-gray-100 text-gray-400'} hover:brightness-95`}>
-                        <p className="text-3xl font-bold">{count}</p>
-                        <p className="text-[10px] uppercase tracking-wide mt-1 truncate">{STATUS_LABELS[s]}</p>
-                      </button>
-                    )
-                  })}
                 </div>
-              </section>
+
+                {/* Right column (2/3) — Pipeline 6 cells horizontal, timeline style */}
+                <section className="lg:col-span-2 space-y-3">
+                  <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Pipeline</h3>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+                    {ORDERED_STATUSES.map(s => {
+                      // travel_completed cell counts ONLY unsettled ones; settled ones go in Settlement Paid
+                      const rawCount = statusCounts.get(s) ?? 0
+                      const count = s === 'travel_completed' ? unsettledCompletedCount : rawCount
+                      const active = count > 0
+                      return (
+                        <button key={s} onClick={() => router.push('/agent/cases')}
+                          className={`rounded-2xl px-4 py-6 text-left border transition-colors ${active ? STATUS_STYLES[s] : 'bg-gray-50 border-gray-100 text-gray-400'} hover:brightness-95`}>
+                          <p className="text-4xl font-bold leading-tight">{count}</p>
+                          <p className="text-[10px] uppercase tracking-wide mt-2 truncate">{PIPELINE_LABELS[s]}</p>
+                        </button>
+                      )
+                    })}
+                    {/* Settlement Paid — final stage, derived from settlements with paid_at */}
+                    {(() => {
+                      const paidCount = settlements.filter(st => st.paid_at).length
+                      const active = paidCount > 0
+                      return (
+                        <button onClick={() => router.push('/agent/payouts')}
+                          className={`rounded-2xl px-4 py-6 text-left border transition-colors ${active ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-gray-50 border-gray-100 text-gray-400'} hover:brightness-95`}>
+                          <p className="text-4xl font-bold leading-tight">{paidCount}</p>
+                          <p className="text-[10px] uppercase tracking-wide mt-2 truncate">Settlement Paid</p>
+                        </button>
+                      )
+                    })()}
+                  </div>
+                </section>
+              </div>
             </>
           )}
         </div>
