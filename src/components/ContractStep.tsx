@@ -85,7 +85,7 @@ function renderBody(body: string): Block[] {
   return blocks
 }
 
-const TEMP_NAME_PREFIX = /^temp\d+$/i
+const TEMP_NAME_PREFIX = /^(temp\d+|Invited Agent)$/i
 
 export default function ContractStep({ type, step, nextHref, nextLabel, isFinal = false, collectIdentity = false }: Props) {
   const router = useRouter()
@@ -165,9 +165,28 @@ export default function ContractStep({ type, step, nextHref, nextLabel, isFinal 
       if (insErr) throw insErr
 
       if (isFinal) {
-        await supabase.from('agents').update({ onboarding_status: 'awaiting_approval' })
-          .eq('id', (agent as { id: string }).id)
-        await notifyAllAdmins(`${agentNumber} signed contracts — review needed`, '/admin/agents')
+        await supabase.from('agents').update({
+          onboarding_status: 'awaiting_approval',
+          // Clear rejection markers so a re-signed agent doesn't look rejected anymore.
+          rejection_reason: null,
+          rejected_at: null,
+        }).eq('id', (agent as { id: string }).id)
+
+        // Server-side notify (service role) — more reliable than client-side broadcast.
+        try {
+          const res = await fetch('/api/onboarding/notify-signed', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ agent_id: (agent as { id: string }).id }),
+          })
+          if (!res.ok) {
+            // Fall back to client-side broadcast so we don't lose the notification.
+            await notifyAllAdmins(`${agentNumber} signed contracts — review needed`, '/admin/agents')
+          }
+        } catch {
+          await notifyAllAdmins(`${agentNumber} signed contracts — review needed`, '/admin/agents')
+        }
+
         await logAsCurrentUser('agent.contracts_signed', { type: 'agent', id: (agent as { id: string }).id, label: agentNumber })
       }
 

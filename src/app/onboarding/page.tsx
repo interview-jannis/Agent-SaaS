@@ -14,11 +14,19 @@ export default function OnboardingEntryPage() {
     async function load() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session?.user?.id) return
-      const { data } = await supabase.from('agents').select('onboarding_status').eq('auth_user_id', session.user.id).maybeSingle()
-      setStatus((data as { onboarding_status?: Status } | null)?.onboarding_status ?? 'pending_onboarding')
+      const { data } = await supabase.from('agents')
+        .select('onboarding_status, rejection_reason')
+        .eq('auth_user_id', session.user.id).maybeSingle()
+      const row = data as { onboarding_status?: Status; rejection_reason?: string | null } | null
+      // If rejected (reason present and not yet re-signed), show the reason screen first.
+      if (row?.rejection_reason) {
+        router.replace('/onboarding/waiting')
+        return
+      }
+      setStatus(row?.onboarding_status ?? 'pending_onboarding')
     }
     load()
-  }, [])
+  }, [router])
 
   if (status === 'awaiting_approval') {
     // Already signed everything — send to waiting screen

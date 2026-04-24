@@ -61,6 +61,9 @@ export async function POST(req: Request) {
     phone: phone?.trim() || null,
     bank_info,
     setup_completed_at: new Date().toISOString(),
+    // Invalidate invite token — real credentials are now set
+    invite_token: null,
+    invite_secret: null,
   }).eq('id', (agent as { id: string }).id)
   if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 })
 

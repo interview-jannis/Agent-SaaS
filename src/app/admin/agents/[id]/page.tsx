@@ -19,6 +19,10 @@ type Agent = {
   is_active: boolean
   bank_info: BankInfo | null
   onboarding_status: 'pending_onboarding' | 'awaiting_approval' | 'approved' | null
+  rejection_reason: string | null
+  rejected_at: string | null
+  invite_token: string | null
+  invite_expires_at: string | null
 }
 
 type ContractRow = {
@@ -83,7 +87,7 @@ export default function AdminAgentDetailPage() {
   const fetchData = useCallback(async () => {
     const [agentRes, casesRes, settlementsRes, contractsRes, rateRes] = await Promise.all([
       supabase.from('agents')
-        .select('id, agent_number, name, email, phone, country, margin_rate, monthly_completed, is_active, bank_info, onboarding_status')
+        .select('id, agent_number, name, email, phone, country, margin_rate, monthly_completed, is_active, bank_info, onboarding_status, rejection_reason, rejected_at, invite_token, invite_expires_at')
         .eq('id', id).single(),
       supabase.from('cases')
         .select('id, case_number, status, travel_start_date, travel_end_date, created_at, quotes(total_price, agent_margin_rate), case_members(is_lead, clients(name))')
@@ -143,7 +147,7 @@ export default function AdminAgentDetailPage() {
       const { data: adminRow } = await supabase.from('admins').select('id').eq('auth_user_id', session?.user?.id ?? '').maybeSingle()
 
       const { error: aErr } = await supabase.from('agents')
-        .update({ onboarding_status: 'approved', is_active: true })
+        .update({ onboarding_status: 'approved', is_active: true, rejection_reason: null, rejected_at: null })
         .eq('id', agent.id)
       if (aErr) throw aErr
 
@@ -166,13 +170,18 @@ export default function AdminAgentDetailPage() {
     if (!rejectReason.trim()) { setError('Please enter a reason.'); return }
     setRejecting(true); setError('')
     try {
-      // Revert contracts + status back to pending_onboarding so agent can re-sign if needed,
-      // or admin can delete them. Audit captures the reason.
+      const reason = rejectReason.trim()
+      const now = new Date().toISOString()
+      // Wipe contracts + stamp rejection on the agent row so they see the reason on Waiting page.
       await supabase.from('agent_contracts').delete().eq('agent_id', agent.id)
-      await supabase.from('agents').update({ onboarding_status: 'pending_onboarding' }).eq('id', agent.id)
+      await supabase.from('agents').update({
+        onboarding_status: 'pending_onboarding',
+        rejection_reason: reason,
+        rejected_at: now,
+      }).eq('id', agent.id)
       await logAsCurrentUser('agent.rejected',
         { type: 'agent', id: agent.id, label: `${agent.name}${agent.agent_number ? ` · ${agent.agent_number}` : ''}` },
-        { reason: rejectReason.trim() })
+        { reason })
       setShowReject(false)
       setRejectReason('')
       await fetchData()
@@ -180,6 +189,30 @@ export default function AdminAgentDetailPage() {
       setError((e as { message?: string })?.message ?? 'Failed to reject.')
     } finally {
       setRejecting(false)
+    }
+  }
+
+  const [showDelete, setShowDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [copiedInvite, setCopiedInvite] = useState(false)
+
+  async function deleteAgent() {
+    if (!agent) return
+    setDeleting(true); setError('')
+    try {
+      const res = await fetch('/api/admin/delete-agent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agent_id: agent.id }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error ?? 'Failed to delete.')
+      await logAsCurrentUser('agent.deleted',
+        { type: 'agent', id: agent.id, label: `${agent.name}${agent.agent_number ? ` · ${agent.agent_number}` : ''}` })
+      router.replace('/admin/agents')
+    } catch (e: unknown) {
+      setError((e as { message?: string })?.message ?? 'Failed to delete.')
+      setDeleting(false)
     }
   }
 
@@ -296,6 +329,61 @@ export default function AdminAgentDetailPage() {
             )}
           </section>
 
+          {/* Invite link — visible while agent hasn't claimed or signed yet */}
+          {agent.invite_token && agent.onboarding_status === 'pending_onboarding' && !agent.rejection_reason && (() => {
+            const inviteUrl = typeof window !== 'undefined'
+              ? `${window.location.origin}/invite/${agent.invite_token}`
+              : `/invite/${agent.invite_token}`
+            const expired = agent.invite_expires_at ? new Date(agent.invite_expires_at) < new Date() : false
+            return (
+              <section className="bg-gray-50 rounded-2xl p-5 space-y-3">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Invite Link</h3>
+                  <div className="flex items-center gap-3">
+                    {agent.invite_expires_at && (
+                      <span className={`text-[11px] ${expired ? 'text-red-500' : 'text-gray-500'}`}>
+                        {expired ? 'Expired' : 'Expires'} {new Date(agent.invite_expires_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </span>
+                    )}
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(inviteUrl)
+                        setCopiedInvite(true)
+                        setTimeout(() => setCopiedInvite(false), 2000)
+                      }}
+                      className="text-[10px] text-[#0f4c35] hover:underline">
+                      {copiedInvite ? 'Copied!' : 'Copy Link'}
+                    </button>
+                  </div>
+                </div>
+                <p className="font-mono text-[11px] text-gray-800 break-all bg-white border border-gray-200 rounded-lg px-3 py-2">
+                  {inviteUrl}
+                </p>
+                <p className="text-[11px] text-gray-500">
+                  Share this with the agent to start onboarding. The link becomes invalid once they complete the Setup Wizard.
+                </p>
+              </section>
+            )
+          })()}
+
+          {/* Previous rejection banner — visible if rejected and not yet re-signed */}
+          {agent.rejection_reason && agent.onboarding_status !== 'approved' && (
+            <section className="bg-rose-50 border border-rose-200 rounded-2xl p-4">
+              <div className="flex items-start gap-3">
+                <svg className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+                </svg>
+                <div className="flex-1">
+                  <h3 className="text-xs font-semibold text-rose-800 uppercase tracking-wide">Previously Rejected</h3>
+                  <p className="text-xs text-rose-800 mt-1">&quot;{agent.rejection_reason}&quot;</p>
+                  {agent.rejected_at && (
+                    <p className="text-[10px] text-rose-600 mt-1">Rejected {new Date(agent.rejected_at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}</p>
+                  )}
+                </div>
+              </div>
+            </section>
+          )}
+
           {/* Approval action — only while awaiting approval */}
           {agent.onboarding_status === 'awaiting_approval' && (
             <section className="bg-amber-50 border border-amber-200 rounded-2xl p-5 flex items-center justify-between flex-wrap gap-3">
@@ -340,6 +428,49 @@ export default function AdminAgentDetailPage() {
                   <button onClick={rejectAgent} disabled={rejecting || !rejectReason.trim()}
                     className="px-3 py-1.5 text-xs font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-40">
                     {rejecting ? 'Rejecting...' : 'Confirm Reject'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Danger Zone — only for non-approved agents (deletion of agents with cases is blocked server-side) */}
+          {agent.onboarding_status !== 'approved' && (
+            <section className="bg-white border border-red-200 rounded-2xl p-5 flex items-center justify-between flex-wrap gap-3">
+              <div>
+                <h3 className="text-xs font-semibold text-red-700 uppercase tracking-wide mb-1">Danger Zone</h3>
+                <p className="text-xs text-gray-600">
+                  Permanently delete this agent, their login, and any signed contracts.
+                  Cannot be undone. Only allowed when the agent has no cases.
+                </p>
+              </div>
+              <button onClick={() => { setShowDelete(true); setError('') }} disabled={deleting}
+                className="px-4 py-2 text-xs font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-40">
+                Delete Agent
+              </button>
+            </section>
+          )}
+
+          {/* Delete modal */}
+          {showDelete && (
+            <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+              onClick={() => { if (!deleting) setShowDelete(false) }}>
+              <div className="bg-white rounded-2xl max-w-md w-full p-5 space-y-4" onClick={e => e.stopPropagation()}>
+                <div>
+                  <h3 className="text-sm font-semibold text-red-700">Delete Agent</h3>
+                  <p className="text-xs text-gray-600 mt-1">
+                    This will permanently remove <span className="font-semibold">{agent.name}</span>
+                    {agent.agent_number ? <> (<span className="font-mono">{agent.agent_number}</span>)</> : null},
+                    their login, and any signed contracts. This cannot be undone.
+                  </p>
+                </div>
+                {error && <p className="text-xs text-red-500">{error}</p>}
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
+                  <button onClick={() => { setShowDelete(false); setError('') }} disabled={deleting}
+                    className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-800 disabled:opacity-40">Cancel</button>
+                  <button onClick={deleteAgent} disabled={deleting}
+                    className="px-3 py-1.5 text-xs font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-40">
+                    {deleting ? 'Deleting...' : 'Confirm Delete'}
                   </button>
                 </div>
               </div>

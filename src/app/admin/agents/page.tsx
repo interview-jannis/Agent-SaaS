@@ -16,6 +16,7 @@ type Agent = {
   monthly_completed: number | null
   is_active: boolean
   onboarding_status: OnboardingStatus | null
+  rejection_reason: string | null
 }
 
 type CaseRow = {
@@ -46,16 +47,17 @@ export default function AdminAgentsPage() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all')
 
-  // Create Temp Agent modal
+  // Invite Agent modal
   const [showCreate, setShowCreate] = useState(false)
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState('')
-  const [createdCreds, setCreatedCreds] = useState<{ agent_number: string; username: string; email: string; password: string } | null>(null)
+  const [createdInvite, setCreatedInvite] = useState<{ agent_number: string; invite_url: string; expires_at: string } | null>(null)
+  const [copiedInvite, setCopiedInvite] = useState(false)
 
   async function fetchAll() {
     const [agentsRes, casesRes, clientsRes, settlementsRes, rateRes] = await Promise.all([
       supabase.from('agents')
-        .select('id, agent_number, name, email, country, margin_rate, monthly_completed, is_active, onboarding_status')
+        .select('id, agent_number, name, email, country, margin_rate, monthly_completed, is_active, onboarding_status, rejection_reason')
         .order('name'),
       supabase.from('cases').select('id, agent_id, status, quotes(total_price, agent_margin_rate)'),
       supabase.from('clients').select('id, agent_id'),
@@ -76,13 +78,18 @@ export default function AdminAgentsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  async function createTempAgent() {
+  async function createInvite() {
     setCreating(true); setCreateError('')
     try {
-      const res = await fetch('/api/admin/create-agent', { method: 'POST' })
+      const res = await fetch('/api/admin/invite-agent', { method: 'POST' })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed')
-      setCreatedCreds(data)
+      const origin = typeof window !== 'undefined' ? window.location.origin : ''
+      setCreatedInvite({
+        agent_number: data.agent_number,
+        invite_url: `${origin}${data.invite_path}`,
+        expires_at: data.expires_at,
+      })
       await fetchAll()
     } catch (e: unknown) {
       setCreateError((e as { message?: string })?.message ?? 'Failed.')
@@ -93,7 +100,7 @@ export default function AdminAgentsPage() {
 
   function closeCreateModal() {
     setShowCreate(false)
-    setCreateError(''); setCreatedCreds(null)
+    setCreateError(''); setCreatedInvite(null); setCopiedInvite(false)
   }
 
   // Per-agent aggregates
@@ -163,7 +170,7 @@ export default function AdminAgentsPage() {
           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
           </svg>
-          Create Temp Agent
+          Invite Agent
         </button>
       </div>
 
@@ -227,7 +234,7 @@ export default function AdminAgentsPage() {
               <div className="px-6 pt-2 pb-2 flex items-center gap-2 bg-gray-50/30 sticky top-0">
                 <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Onboarding</h2>
                 <span className="text-[10px] text-gray-400">{tempAgents.length}</span>
-                <p className="text-[11px] text-gray-400 ml-3">Temp accounts — pending signature or awaiting approval.</p>
+                <p className="text-[11px] text-gray-400 ml-3">Pending signature, awaiting approval, or rejected.</p>
               </div>
               {tempAgents.length === 0 ? (
                 <p className="text-xs text-gray-400 px-6 py-8">No temp agents in onboarding.</p>
@@ -243,17 +250,19 @@ export default function AdminAgentsPage() {
                   <tbody>
                     {tempAgents.map(a => {
                       const status = a.onboarding_status
+                      const isRejected = !!a.rejection_reason && status !== 'awaiting_approval'
                       const style =
-                        status === 'awaiting_approval' ? 'bg-amber-50 text-amber-700 border-amber-200'
+                        isRejected ? 'bg-rose-50 text-rose-700 border-rose-200'
+                        : status === 'awaiting_approval' ? 'bg-amber-50 text-amber-700 border-amber-200'
                         : 'bg-gray-100 text-gray-600 border-gray-200'
                       const label =
-                        status === 'awaiting_approval' ? 'Awaiting Approval'
+                        isRejected ? 'Rejected'
+                        : status === 'awaiting_approval' ? 'Awaiting Approval'
                         : 'Pending Onboarding'
-                      const clickable = status === 'awaiting_approval'
                       return (
                         <tr key={a.id}
-                          onClick={clickable ? () => router.push(`/admin/agents/${a.id}`) : undefined}
-                          className={`border-b border-gray-50 ${clickable ? 'hover:bg-gray-50 cursor-pointer' : ''}`}>
+                          onClick={() => router.push(`/admin/agents/${a.id}`)}
+                          className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer">
                           <td className="py-3.5 px-4 font-mono text-xs text-gray-400">{a.agent_number ?? '—'}</td>
                           <td className="py-3.5 px-4 font-mono text-xs text-gray-700">{a.email ?? '—'}</td>
                           <td className="py-3.5 px-4">
@@ -270,17 +279,17 @@ export default function AdminAgentsPage() {
         )}
       </div>
 
-      {/* Create Temp Agent Modal */}
+      {/* Invite Agent Modal */}
       {showCreate && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => !creating && closeCreateModal()}>
           <div className="bg-white rounded-2xl max-w-md w-full p-5 space-y-4" onClick={e => e.stopPropagation()}>
-            {!createdCreds ? (
+            {!createdInvite ? (
               <>
                 <div>
-                  <h3 className="text-sm font-semibold text-gray-900">Create Temporary Agent</h3>
+                  <h3 className="text-sm font-semibold text-gray-900">Invite a New Agent</h3>
                   <p className="text-xs text-gray-500 mt-1">
-                    Generates a throwaway login (e.g. <code className="bg-gray-100 px-1 rounded">temp05</code>) for the agent to see OT + sign contracts.
-                    Real profile is set up after you approve.
+                    Generates a one-use invite link. Share it via WhatsApp / email — the agent opens
+                    it and goes straight into Orientation and contract signing. The link expires in 7 days.
                   </p>
                 </div>
 
@@ -289,44 +298,53 @@ export default function AdminAgentsPage() {
                 <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
                   <button onClick={closeCreateModal} disabled={creating}
                     className="text-xs text-gray-500 hover:text-gray-800 px-3 py-1.5 rounded-lg disabled:opacity-40">Cancel</button>
-                  <button onClick={createTempAgent} disabled={creating}
+                  <button onClick={createInvite} disabled={creating}
                     className="text-xs font-medium bg-[#0f4c35] text-white hover:bg-[#0a3828] px-4 py-1.5 rounded-lg disabled:opacity-40">
-                    {creating ? 'Creating...' : 'Generate'}
+                    {creating ? 'Generating...' : 'Generate Invite Link'}
                   </button>
                 </div>
               </>
             ) : (
               <>
                 <div>
-                  <h3 className="text-sm font-semibold text-gray-900">Temp Agent Created</h3>
-                  <p className="text-xs text-gray-500 mt-1">Use these credentials to log the agent in for onboarding.</p>
+                  <h3 className="text-sm font-semibold text-gray-900">Invite Link Ready</h3>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Share this link with the agent. They&apos;ll start onboarding immediately.
+                  </p>
                 </div>
 
                 <div className="bg-gray-50 rounded-xl p-4 space-y-3">
                   <div className="flex justify-between items-center">
                     <span className="text-xs text-gray-500">Agent #</span>
-                    <span className="font-mono text-sm text-gray-800">{createdCreds.agent_number}</span>
+                    <span className="font-mono text-sm text-gray-800">{createdInvite.agent_number}</span>
                   </div>
-                  <div className="flex justify-between items-center gap-2">
-                    <span className="text-xs text-gray-500 shrink-0">Email</span>
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="font-mono text-sm text-gray-900 break-all">{createdCreds.email}</span>
-                      <button onClick={() => navigator.clipboard.writeText(createdCreds.email)}
-                        className="text-[10px] text-[#0f4c35] hover:underline shrink-0">Copy</button>
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs text-gray-500">Invite Link</span>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(createdInvite.invite_url)
+                          setCopiedInvite(true)
+                          setTimeout(() => setCopiedInvite(false), 2000)
+                        }}
+                        className="text-[10px] text-[#0f4c35] hover:underline">
+                        {copiedInvite ? 'Copied!' : 'Copy Link'}
+                      </button>
                     </div>
+                    <p className="font-mono text-[11px] text-gray-800 break-all bg-white border border-gray-200 rounded-lg px-3 py-2">
+                      {createdInvite.invite_url}
+                    </p>
                   </div>
-                  <div className="flex justify-between items-center gap-2">
-                    <span className="text-xs text-gray-500 shrink-0">Password</span>
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono font-semibold text-lg text-gray-900">{createdCreds.password}</span>
-                      <button onClick={() => navigator.clipboard.writeText(createdCreds.password)}
-                        className="text-[10px] text-[#0f4c35] hover:underline">Copy</button>
-                    </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-gray-500">Expires</span>
+                    <span className="text-xs text-gray-700">
+                      {new Date(createdInvite.expires_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </span>
                   </div>
                 </div>
 
-                <p className="text-[11px] text-amber-700">
-                  ⚠ Password is the same as the username.
+                <p className="text-[11px] text-gray-500">
+                  The agent sets their own email and password at the end of onboarding — no credentials to hand over.
                 </p>
 
                 <div className="flex justify-end pt-2 border-t border-gray-100">

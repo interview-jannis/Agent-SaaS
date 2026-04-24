@@ -9,21 +9,74 @@ export default async function SchedulePage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>
-  searchParams: Promise<{ autoprint?: string }>
+  searchParams: Promise<{ autoprint?: string; preview?: string }>
 }) {
   const { slug } = await params
-  const { autoprint } = await searchParams
+  const { autoprint, preview } = await searchParams
   const supabase = createServerClient()
 
   const { data: schedules } = await supabase
     .from('schedules')
-    .select('pdf_url, version')
+    .select(`
+      id, pdf_url, version,
+      first_opened_at, open_count,
+      cases(id, agent_id)
+    `)
     .eq('slug', slug)
     .order('version', { ascending: false })
     .limit(1)
 
-  const schedule = schedules?.[0]
+  const schedule = schedules?.[0] as {
+    id: string
+    pdf_url: string | null
+    version: number
+    first_opened_at: string | null
+    open_count: number | null
+    cases: { id: string; agent_id: string | null } | null
+  } | undefined
+
   if (!schedule) notFound()
+
+  // Record open + notify agent (skip for internal autoprint/preview views)
+  const isInternal = autoprint === '1' || preview === '1'
+  if (!isInternal) {
+    const caseRef = schedule.cases
+    const isFirstOpen = !schedule.first_opened_at
+
+    if (isFirstOpen) {
+      await supabase
+        .from('schedules')
+        .update({
+          first_opened_at: new Date().toISOString(),
+          open_count: 1,
+        })
+        .eq('id', schedule.id)
+
+      if (caseRef?.agent_id) {
+        const { data: agent } = await supabase
+          .from('agents')
+          .select('auth_user_id')
+          .eq('id', caseRef.agent_id)
+          .single()
+
+        if (agent?.auth_user_id) {
+          await supabase.from('notifications').insert({
+            auth_user_id: agent.auth_user_id,
+            target_type: 'agent',
+            target_id: caseRef.agent_id,
+            message: `Schedule v${schedule.version} was opened by client`,
+            link_url: caseRef.id ? `/agent/cases/${caseRef.id}` : null,
+            is_read: false,
+          })
+        }
+      }
+    } else {
+      await supabase
+        .from('schedules')
+        .update({ open_count: (schedule.open_count ?? 0) + 1 })
+        .eq('id', schedule.id)
+    }
+  }
 
   if (!schedule.pdf_url) {
     return (
