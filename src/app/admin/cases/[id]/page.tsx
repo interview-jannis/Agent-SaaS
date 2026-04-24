@@ -537,6 +537,46 @@ export default function AdminCaseDetailPage() {
                 </div>
                 <div><p className="text-[10px] text-gray-400 mb-0.5">Margins</p><p className="text-gray-700 text-xs">Co. {(latestQuote.company_margin_rate * 100).toFixed(0)}% / Agent {(latestQuote.agent_margin_rate * 100).toFixed(0)}%</p></div>
               </div>
+
+              {/* Revenue breakdown */}
+              {(() => {
+                const total = latestQuote.total_price ?? 0
+                const co = latestQuote.company_margin_rate ?? 0
+                const ag = latestQuote.agent_margin_rate ?? 0
+                const denom = (1 + co) * (1 + ag)
+                const base = denom > 0 ? total / denom : 0
+                const companyShare = base * co
+                const agentShare = base * (1 + co) * ag
+                return (
+                  <div className="pt-3 border-t border-gray-100 space-y-2">
+                    <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Revenue Breakdown</p>
+                    <div className="space-y-1.5">
+                      <div className="flex items-baseline justify-between">
+                        <span className="text-xs text-gray-600">Partner Cost (원가)</span>
+                        <span className="text-right tabular-nums">
+                          <span className="text-sm font-medium text-gray-800">{fmtUSD(base / exchangeRate)}</span>
+                          <span className="text-[10px] text-gray-400 ml-2">{fmtKRW(base)}</span>
+                        </span>
+                      </div>
+                      <div className="flex items-baseline justify-between">
+                        <span className="text-xs text-gray-600">Company Revenue ({(co * 100).toFixed(0)}%)</span>
+                        <span className="text-right tabular-nums">
+                          <span className="text-sm font-medium text-[#0f4c35]">{fmtUSD(companyShare / exchangeRate)}</span>
+                          <span className="text-[10px] text-gray-400 ml-2">{fmtKRW(companyShare)}</span>
+                        </span>
+                      </div>
+                      <div className="flex items-baseline justify-between">
+                        <span className="text-xs text-gray-600">Agent Payout ({(ag * 100).toFixed(0)}%)</span>
+                        <span className="text-right tabular-nums">
+                          <span className="text-sm font-medium text-amber-700">{fmtUSD(agentShare / exchangeRate)}</span>
+                          <span className="text-[10px] text-gray-400 ml-2">{fmtKRW(agentShare)}</span>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()}
+
               {caseData.payment_date && (
                 <div className="pt-2 border-t border-gray-100">
                   <p className="text-[10px] text-gray-400 mb-0.5">Payment Received</p>

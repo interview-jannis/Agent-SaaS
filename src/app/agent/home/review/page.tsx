@@ -490,12 +490,31 @@ export default function QuoteReviewPage() {
                 </div>
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">Dietary Restriction</label>
-                <select value={newClientForm.dietary_restriction} onChange={(e) => setNewClientForm((p) => ({ ...p, dietary_restriction: e.target.value as NewClientForm['dietary_restriction'] }))}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-[#0f4c35] bg-white">
-                  {DIETARY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
+                <label className="block text-xs text-gray-500 mb-1">Muslim?</label>
+                <div className="flex gap-4">
+                  {([true, false] as const).map(v => (
+                    <label key={String(v)} className="flex items-center gap-1.5 cursor-pointer">
+                      <input type="radio" checked={newClientForm.needs_muslim_friendly === v}
+                        onChange={() => setNewClientForm(p => ({
+                          ...p,
+                          needs_muslim_friendly: v,
+                          ...(v ? {} : { dietary_restriction: 'none' as NewClientForm['dietary_restriction'] }),
+                        }))}
+                        className="accent-[#0f4c35]" />
+                      <span className="text-sm text-gray-700">{v ? 'Yes' : 'No'}</span>
+                    </label>
+                  ))}
+                </div>
               </div>
+              {newClientForm.needs_muslim_friendly && (
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Dietary Restriction</label>
+                  <select value={newClientForm.dietary_restriction} onChange={(e) => setNewClientForm((p) => ({ ...p, dietary_restriction: e.target.value as NewClientForm['dietary_restriction'] }))}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-[#0f4c35] bg-white">
+                    {DIETARY_OPTIONS.filter(o => o.value !== 'none').map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </div>
+              )}
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Special Requests</label>
                 <textarea value={newClientForm.special_requests} onChange={(e) => setNewClientForm((p) => ({ ...p, special_requests: e.target.value }))}
