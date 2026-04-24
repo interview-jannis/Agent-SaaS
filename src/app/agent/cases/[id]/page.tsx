@@ -1427,7 +1427,7 @@ export default function CaseDetailPage() {
                   <div className="flex items-center gap-2">
                     {/* Preview — open invoice in new tab */}
                     <a
-                      href={`${typeof window !== 'undefined' ? window.location.origin : ''}/quote/${quote.slug}`}
+                      href={`${typeof window !== 'undefined' ? window.location.origin : ''}/quote/${quote.slug}?preview=1`}
                       target="_blank" rel="noopener noreferrer"
                       className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-[#0f4c35] transition-colors px-2 py-1.5 rounded-lg hover:bg-gray-100">
                       <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

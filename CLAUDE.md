@@ -4,7 +4,8 @@
 
 ## 프로젝트 개요
 (주)인터뷰가 개발 중인 글로벌·중동 VIP 의료관광 에이전트 전용 SaaS.
-- 회사명: Interview
+- 법인명: Interview Co., Ltd. (법적 계약 당사자)
+- SaaS 브랜드명: **Tiktak** (UI 전역)
 - 개발 방식: 바이블코딩, 2인 개발, 2주 MVP (4/16 ~ 4/29)
 
 ## 기술 스택
@@ -26,61 +27,114 @@
 
 ## 마진율 구조
 - 고객 견적가 = 원가 × (1 + 회사 마진율) × (1 + 에이전트 마진율)
-- 에이전트 마진율 자동 적용 (당월 여행완료 고객 수 기준)
+- 에이전트 마진율 자동 적용 (당월 travel_completed 환자 수 기준, case_members 합산)
   - 0~10명: 15%
   - 11~30명: 20%
-  - 31명+: 25%
+  - 30명+: 25%
+- 단위는 케이스가 아니라 **환자(patient)**. 그룹 4명 케이스 = 4명으로 카운트.
 
 ## 비즈니스 플로우
-견적 생성 → 결제 대기 → 결제 완료 → 스케줄 업로드 → 스케줄 확정 → 여행 완료
 
-Admin 수동 개입 4회:
-1. 결제 완료 확인
-2. 스케줄 업로드
-3. 여행 완료 처리
-4. 결제 입금일 수동 입력
+### Agent 온보딩
+Temp 계정 생성(Admin) → Orientation(PDF) → NDA(신원+서명) → Partnership(서명)
+→ awaiting_approval → Admin 승인 → Setup Wizard(email/password/bank) → Agent Home
+
+### 케이스 진행
+견적 생성 → 결제 대기 → 결제 완료 → 스케줄 업로드(pending) → 스케줄 확정 → 여행 완료
+
+Admin 수동 개입:
+1. Agent 승인 (계약 검토 후 Approve / Reject)
+2. 결제 완료 확인 (payment_date 입력)
+3. 스케줄 업로드 (버전 관리, 2단계 프리뷰→Confirm)
+4. Settlement 지급 처리 (송금 후 paid_at 입력)
+
+Agent 수동 개입:
+1. Schedule Confirm / Request Revision
+2. Mark Travel Complete (travel_completed_at 기록)
+3. Cancel Case (payment_pending 상태에서만)
 
 ## 화면 구조
-- Agent (5탭): Home / Clients / Payouts / Dashboard / Profile
-- Admin (5탭): Overview / Cases / Products / Agents / Settlement
-- 고객용 URL 페이지: /quote/[slug] (견적서) / /schedule/[slug] (스케줄)
+- Agent (6탭): Home / Cases / Clients / Payouts / Dashboard / Profile
+- Admin: Overview / Cases / Clients / Products / Categories / Agents / Settlement / Contracts / Settings / Audit Log
+- 고객용 URL 페이지: /quote/[slug] (Invoice) / /schedule/[slug] (Schedule PDF)
+- 온보딩: /onboarding (Welcome/Orientation/NDA/Partnership/Waiting/Setup)
+- 계약 뷰어: /onboarding/contract/[id] (Agent 본인), /admin/agents/[id]/contract/[cid] (Admin)
+- 비밀번호: /reset-password (Supabase recovery flow)
 
-## 역할 분기
-- 로그인 후 admins 테이블에 있으면 → /admin/overview
-- 로그인 후 agents 테이블에 있으면 → /agent/home
+## 역할 분기 (Login 3-way)
+- admins 테이블에 있음 → /admin/overview
+- agents.onboarding_status = 'pending_onboarding' 또는 'awaiting_approval' → /onboarding
+- agents.onboarding_status = 'approved' && setup_completed_at IS NULL → /onboarding/setup
+- agents.onboarding_status = 'approved' && setup_completed_at → /agent/home
 
-## DB 스키마 (ERD v5 — 16개 테이블)
+라우팅 가드 3곳(Login / AgentOnboardingGuard / Onboarding layout) 동일 로직 유지 필수.
 
-### ENUM 타입
-- case_status: payment_pending / payment_completed / schedule_reviewed / schedule_confirmed / travel_completed
-- dietary_type: halal_certified / halal_friendly / muslim_friendly / pork_free / none
+## DB 스키마
 
-### 테이블 목록
-- product_categories: id, name
-- products: id, product_number, category_id, name, description, base_price, duration_value, duration_unit, has_female_doctor, has_prayer_room, dietary_type, location_address, contact_channels(jsonb), is_active
-- product_images: id, product_id, image_url, is_primary, order
-- admins: id, auth_user_id, name, email, created_at
-- agents: id, agent_number, auth_user_id, name, email, phone, country, bank_info(jsonb), margin_rate, monthly_completed, margin_reset_at, is_active
-- clients: id, client_number, agent_id, name, nationality, gender, date_of_birth, phone, email, passport_number, needs_muslim_friendly, dietary_restriction, arrival_date, departure_date, flight_info, accommodation_name, accommodation_addr, special_requests, created_at
-- cases: id, case_number, agent_id, status(case_status), travel_start_date, travel_end_date, payment_date, payment_confirmed_at, created_at
-- case_members: id, case_id, client_id, is_lead
-- quotes: id, quote_number, case_id, slug, company_margin_rate, agent_margin_rate, total_price, payment_due_date, first_opened_at, open_count
-- quote_groups: id, quote_id, name, order
-- quote_group_members: id, quote_group_id, case_member_id
-- quote_items: id, quote_id, quote_group_id, product_id, base_price, final_price
-- schedules: id, case_id, quote_id, slug, pdf_url, status, version, created_at
-- settlements: id, settlement_number, agent_id, amount, paid_at, created_at
-- system_settings: id, key, value(jsonb)
-- notifications: id, target_type, target_id, auth_user_id, message, is_read
+### 정책
+- **RLS 전체 비활성화** (MVP 단계). 새 테이블 생성 시마다 즉시 disable + GRANT ALL 필요.
+- ENUM 대신 TEXT + CHECK constraint 사용 (변경 용이).
+- Storage 버킷: `schedules`, `product-images` (Public, 버킷별 RLS 정책 있음).
+
+### CHECK 제약 값
+- cases.status: payment_pending / payment_completed / schedule_reviewed / schedule_confirmed / travel_completed
+- schedules.status: pending / confirmed / revision_requested
+- agents.onboarding_status: pending_onboarding / awaiting_approval / approved
+- contract_templates.contract_type / agent_contracts.contract_type: nda / partnership
+- clients.dietary_restriction: halal_certified / halal_friendly / muslim_friendly / pork_free / none
+- clients.prayer_frequency: all_five_daily / flexible / not_applicable
+- clients.prayer_location: hotel / vehicle / external_prayer_room / mosque / not_applicable
+- clients.pregnancy_status: not_applicable / none / pregnant / unknown
+- clients.smoking_status: non_smoker / occasional / regular / former / not_applicable
+- clients.alcohol_status: none / occasional / regular / not_applicable
+- clients.same_gender_doctor / same_gender_therapist: required / preferred / no_preference / not_applicable
+- clients.mixed_gender_activities: comfortable / prefer_to_limit / not_comfortable / not_applicable
+- audit_logs.actor_type: agent / admin / system
+
+### 테이블 목록 (현재 스키마)
+- **product_categories**: id, name, sort_order
+- **products**: id, product_number, category_id, name, description, base_price, price_currency, partner_name, duration_value, duration_unit, has_female_doctor, has_prayer_room, dietary_type, location_address, contact_channels(jsonb), sort_order, is_active
+- **product_images**: id, product_id, image_url, is_primary, order
+- **admins**: id, auth_user_id, name, email, created_at
+- **agents**: id, agent_number, auth_user_id, name, email, phone, country, bank_info(jsonb), margin_rate, monthly_completed, margin_reset_at, onboarding_status, setup_completed_at, is_active
+  - ⚠️ `created_at` 컬럼 없음 (name으로 정렬)
+  - ⚠️ `monthly_completed` 자동 업데이트 트리거 없음. Dashboard는 travel_completed_at 기반 계산
+- **clients**: id, client_number, agent_id, name, nationality, gender, date_of_birth, phone, email, passport_number, arrival_date, departure_date, flight_info, accommodation_name, accommodation_addr, special_requests, created_at
+  - 확장: emergency_contact_name/relation/phone, blood_type, allergies, current_medications, health_conditions, medical_restrictions, height_cm, weight_kg, preferred_language, mobility_limitations, cultural_religious_notes, prior_aesthetic_procedures, recent_health_checkup_notes
+  - Lifestyle: pregnancy_status, smoking_status, alcohol_status
+  - Muslim prefs: needs_muslim_friendly, dietary_restriction, prayer_frequency, prayer_location, same_gender_doctor, same_gender_therapist, mixed_gender_activities
+- **cases**: id, case_number, agent_id, status, travel_start_date, travel_end_date, payment_date, payment_confirmed_at, created_at, concept, meeting_date(deprecated, UI 미사용), outbound_flight(jsonb), inbound_flight(jsonb), **travel_completed_at**(Mark Complete 시점)
+- **case_members**: id, case_id, client_id, is_lead, UNIQUE(case_id, client_id)
+- **quotes**: id, quote_number, case_id, slug, company_margin_rate, agent_margin_rate, total_price, payment_due_date, first_opened_at, open_count
+- **quote_groups**: id, quote_id, name, order, member_count
+- **quote_group_members**: id, quote_group_id, case_member_id
+- **quote_items**: id, quote_id, quote_group_id, product_id, base_price, final_price
+- **schedules**: id, case_id, quote_id, slug, pdf_url, status, version, created_at, file_name, revision_note, confirmed_at, UNIQUE(case_id, version)
+- **settlements**: id, settlement_number, agent_id, **case_id**(UNIQUE, 1:1), amount(KRW), paid_at, created_at
+- **system_settings**: id, key, value(jsonb). Keys: exchange_rate / company_margin_rate / bank_details / onboarding_ot
+- **notifications**: id, target_type, target_id, auth_user_id, message, **link_url**, is_read, **created_at**. Realtime publication 등록됨.
+- **contract_templates**: id, contract_type(UNIQUE), title, body, updated_at
+- **agent_contracts**: id, agent_id, contract_type, title_snapshot, body_snapshot, ot_acknowledged_at, signature_data_url, signed_at, ip_address, user_agent, approved_at, approved_by(FK admins ON DELETE SET NULL)
+- **audit_logs**: id, actor_type, actor_id, actor_label, action, target_type, target_id, target_label, details(jsonb), created_at
 
 ## 코딩 규칙
+- Next.js App Router. **AGENTS.md 참조**: 이 Next.js는 훈련 데이터와 다른 버전, 코드 작성 전 `node_modules/next/dist/docs/` 확인 필수
 - 컴포넌트는 src/components/ 에 위치
-- 페이지는 src/app/ 에 위치 (App Router)
-- Supabase 클라이언트는 src/lib/supabase.ts 사용
+- 페이지는 src/app/ 에 위치
+- Supabase 클라이언트는 src/lib/supabase.ts
 - Agent 페이지: src/app/agent/
 - Admin 페이지: src/app/admin/
+- 온보딩: src/app/onboarding/
 - 고객 URL 페이지: src/app/quote/[slug]/ , src/app/schedule/[slug]/
-- 타입 정의는 src/types/ 에 위치
+- API 라우트: src/app/api/ (service role 필요한 작업용 — agent setup, create-agent 등)
+- 타입 정의는 src/types/
+
+### 공용 유틸/컴포넌트
+- `src/lib/clientCompleteness.ts` — Client 필수 필드 체크
+- `src/lib/notifications.ts` — `createNotification`, `notifyAgent`, `notifyAllAdmins`
+- `src/lib/audit.ts` — `logAudit`, `getActor`, `logAsCurrentUser`
+- `src/hooks/useNotifications.ts` — Realtime 구독
+- `src/components/`: NotificationBell, DOBPicker, DateTime24Picker, SignaturePad, ContractStep, AgentOnboardingGuard, ChangePasswordCard, PrintPdfButton, AutoPrint, PrintButton
 
 ## 언어 규칙
 - **모든 UI 텍스트는 영어만 사용** (버튼, 라벨, 에러 메시지, placeholder 포함)
@@ -89,4 +143,12 @@ Admin 수동 개입 4회:
 ## 디자인 가이드
 - 프리미엄하고 깔끔한 느낌
 - Tailwind CSS 사용
-- 모바일 대응 필요 (에이전트가 모바일로도 사용)
+- Main bg: white (sidebar만 gray). Admin/Agent 동일.
+- input/textarea/date-input은 명시적 `text-gray-900` (브라우저 기본 회색 override)
+- Date input 색상은 CSS로 gray-900 강제
+- 모바일 대응은 Post-MVP (VIP B2B 우선순위 낮음, 서명 캔버스 등 미검증)
+
+## 진행 현황 참조
+- 최신 진행 상황: `notes/PROGRESS.md`
+- 일일 연구노트: `notes/26.04.YY.md` (최신순)
+- 미팅 노트: `notes/meetings/`

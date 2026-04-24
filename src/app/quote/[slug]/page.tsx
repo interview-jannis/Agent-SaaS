@@ -49,8 +49,15 @@ function fmtUSD(n: number): string {
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
-export default async function QuotePage({ params }: { params: Promise<{ slug: string }> }) {
+export default async function QuotePage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ slug: string }>
+  searchParams: Promise<{ preview?: string }>
+}) {
   const { slug } = await params
+  const { preview } = await searchParams
   const supabase = createServerClient()
 
   const { data: quote } = await supabase
@@ -58,8 +65,9 @@ export default async function QuotePage({ params }: { params: Promise<{ slug: st
     .select(`
       id, quote_number, total_price, payment_due_date,
       company_margin_rate, agent_margin_rate,
+      first_opened_at, open_count,
       cases(
-        id, created_at,
+        id, agent_id, created_at,
         agents!cases_agent_id_fkey(name, email, phone),
         case_members(is_lead, clients(name, nationality, needs_muslim_friendly))
       ),
@@ -72,6 +80,46 @@ export default async function QuotePage({ params }: { params: Promise<{ slug: st
     .single()
 
   if (!quote) notFound()
+
+  // Record open + notify agent (skip in preview mode)
+  if (!preview) {
+    const caseRef = quote.cases as unknown as { id: string; agent_id: string | null } | null
+    const isFirstOpen = !quote.first_opened_at
+
+    if (isFirstOpen) {
+      await supabase
+        .from('quotes')
+        .update({
+          first_opened_at: new Date().toISOString(),
+          open_count: 1,
+        })
+        .eq('id', quote.id)
+
+      if (caseRef?.agent_id) {
+        const { data: agent } = await supabase
+          .from('agents')
+          .select('auth_user_id')
+          .eq('id', caseRef.agent_id)
+          .single()
+
+        if (agent?.auth_user_id) {
+          await supabase.from('notifications').insert({
+            auth_user_id: agent.auth_user_id,
+            target_type: 'agent',
+            target_id: caseRef.agent_id,
+            message: `Invoice ${quote.quote_number} was opened by client`,
+            link_url: caseRef.id ? `/agent/cases/${caseRef.id}` : null,
+            is_read: false,
+          })
+        }
+      }
+    } else {
+      await supabase
+        .from('quotes')
+        .update({ open_count: (quote.open_count ?? 0) + 1 })
+        .eq('id', quote.id)
+    }
+  }
 
   const [rateRes, bankRes] = await Promise.all([
     supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single(),

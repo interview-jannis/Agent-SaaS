@@ -522,7 +522,7 @@ export default function AdminCaseDetailPage() {
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Financials</p>
                 <div className="flex items-center gap-3">
                   <span className="text-[10px] font-mono text-gray-400">{latestQuote.quote_number}</span>
-                  <a href={`${baseUrl}/quote/${latestQuote.slug}`} target="_blank" rel="noopener noreferrer"
+                  <a href={`${baseUrl}/quote/${latestQuote.slug}?preview=1`} target="_blank" rel="noopener noreferrer"
                     className="text-xs text-gray-400 hover:text-[#0f4c35] transition-colors">View ↗</a>
                 </div>
               </div>

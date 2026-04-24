@@ -38,6 +38,8 @@ export default function AdminProductsPage() {
   const [partnerFilter, setPartnerFilter] = useState('')
   const [activeFilter, setActiveFilter] = useState('')
   const [imageIndexes, setImageIndexes] = useState<Record<string, number>>({})
+  const [exporting, setExporting] = useState(false)
+  const [exportProgress, setExportProgress] = useState('')
 
   useEffect(() => {
     async function load() {
@@ -119,6 +121,156 @@ export default function AdminProductsPage() {
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
+  function extFromUrl(url: string): string {
+    try {
+      const pathname = new URL(url).pathname
+      const match = pathname.match(/\.([a-zA-Z0-9]+)$/)
+      return match ? match[1].toLowerCase() : 'jpg'
+    } catch {
+      return 'jpg'
+    }
+  }
+
+  async function handleExportBackup() {
+    setExporting(true)
+    setExportProgress('preparing…')
+    try {
+      const [{ default: JSZip }, XLSX] = await Promise.all([
+        import('jszip'),
+        import('xlsx'),
+      ])
+      const zip = new JSZip()
+      const imagesFolder = zip.folder('images')!
+
+      // Build ordered product list (category sort_order) + collect image tasks
+      const orderedProducts: Product[] = []
+      for (const cat of categories) {
+        const items = groupedByCategory.get(cat.id) ?? []
+        orderedProducts.push(...items)
+      }
+
+      // Fetch images in parallel with limited concurrency
+      type ImgTask = { productNumber: string; index: number; isPrimary: boolean; url: string; filename: string }
+      const imgTasks: ImgTask[] = []
+      for (const p of orderedProducts) {
+        const sorted = [...(p.product_images ?? [])].sort(
+          (a, b) => (b.is_primary ? 1 : 0) - (a.is_primary ? 1 : 0)
+        )
+        sorted.forEach((img, idx) => {
+          const tag = img.is_primary ? 'primary' : String(idx + 1)
+          const ext = extFromUrl(img.image_url)
+          imgTasks.push({
+            productNumber: p.product_number,
+            index: idx,
+            isPrimary: img.is_primary,
+            url: img.image_url,
+            filename: `${p.product_number}_${tag}.${ext}`,
+          })
+        })
+      }
+
+      // Track filenames per product for the excel
+      const filenamesByProduct = new Map<string, string[]>()
+
+      let done = 0
+      const CONCURRENCY = 6
+      async function worker(queue: ImgTask[]) {
+        while (queue.length > 0) {
+          const task = queue.shift()
+          if (!task) return
+          try {
+            const res = await fetch(task.url)
+            if (res.ok) {
+              const blob = await res.blob()
+              imagesFolder.file(task.filename, blob)
+              const arr = filenamesByProduct.get(task.productNumber) ?? []
+              arr.push(task.filename)
+              filenamesByProduct.set(task.productNumber, arr)
+            }
+          } catch {
+            // skip failed
+          }
+          done += 1
+          setExportProgress(`images ${done}/${imgTasks.length}`)
+        }
+      }
+      const queue = [...imgTasks]
+      await Promise.all(Array.from({ length: CONCURRENCY }, () => worker(queue)))
+
+      // Build excel rows
+      setExportProgress('writing excel…')
+      const rows: Record<string, string | number>[] = []
+      for (const cat of categories) {
+        const items = groupedByCategory.get(cat.id) ?? []
+        for (const p of items) {
+          const baseUSD = toUSD(p.base_price, p.price_currency)
+          const files = filenamesByProduct.get(p.product_number) ?? []
+          rows.push({
+            'Number': p.product_number,
+            'Category': cat.name,
+            'Partner': p.partner_name ?? '',
+            'Product Name': p.name,
+            'Description': p.description ?? '',
+            'Base Price': Number(p.base_price),
+            'Currency': p.price_currency ?? 'KRW',
+            'Base (USD)': Number(baseUSD.toFixed(2)),
+            'Tier 15% (USD)': Number((baseUSD * (1 + companyMargin) * 1.15).toFixed(2)),
+            'Tier 20% (USD)': Number((baseUSD * (1 + companyMargin) * 1.20).toFixed(2)),
+            'Tier 25% (USD)': Number((baseUSD * (1 + companyMargin) * 1.25).toFixed(2)),
+            'Status': p.is_active ? 'Active' : 'Inactive',
+            'Image Count': files.length,
+            'Image Files': files.join(' | '),
+          })
+        }
+      }
+
+      const ws = XLSX.utils.json_to_sheet(rows)
+      ws['!cols'] = [
+        { wch: 10 }, { wch: 18 }, { wch: 20 }, { wch: 32 }, { wch: 48 },
+        { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 14 }, { wch: 14 },
+        { wch: 14 }, { wch: 10 }, { wch: 12 }, { wch: 40 },
+      ]
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'Products')
+      const excelBuffer = XLSX.write(wb, { type: 'array', bookType: 'xlsx' })
+      zip.file('products.xlsx', excelBuffer)
+
+      // README
+      const readme = [
+        'Products Backup',
+        '===============',
+        '',
+        'products.xlsx — product data (filtered view at export time)',
+        'images/       — all product images, named {product_number}_{primary|N}.{ext}',
+        '',
+        'To restore: re-upload images to Supabase Storage bucket "product-images"',
+        'and re-insert rows from the spreadsheet.',
+        '',
+        `Exported: ${new Date().toISOString()}`,
+        `Products: ${orderedProducts.length}`,
+        `Images:   ${imgTasks.length}`,
+      ].join('\n')
+      zip.file('README.txt', readme)
+
+      setExportProgress('zipping…')
+      const blob = await zip.generateAsync({ type: 'blob' })
+
+      const now = new Date()
+      const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `products_backup_${stamp}.zip`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } finally {
+      setExporting(false)
+      setExportProgress('')
+    }
+  }
+
   return (
     <div className="min-h-screen bg-white">
       <div className="px-12 py-10 space-y-6">
@@ -127,6 +279,16 @@ export default function AdminProductsPage() {
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-semibold text-gray-900">Products</h1>
           <div className="flex items-center gap-2">
+            <button
+              onClick={handleExportBackup}
+              disabled={loading || exporting || filtered.length === 0}
+              className="flex items-center gap-1.5 px-4 py-2 border border-gray-200 text-gray-600 text-sm font-medium rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+              </svg>
+              {exporting ? `Exporting… ${exportProgress}` : 'Export Backup'}
+            </button>
             <button
               onClick={() => router.push('/admin/categories')}
               className="flex items-center gap-1.5 px-4 py-2 border border-gray-200 text-gray-600 text-sm font-medium rounded-xl hover:bg-gray-50 transition-colors"
