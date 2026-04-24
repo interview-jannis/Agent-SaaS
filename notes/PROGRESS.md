@@ -1,12 +1,13 @@
 # Project Progress
 
 ## 현재 상태
-- **Phase**: 온보딩 E2E + Realtime 알림 완성. Dashboard 지표 교정, 계약서 시스템 법무 정리. 최종 테스트 진입.
-- **마지막 작업**: 온보딩 E2E(Orientation/NDA/Partnership/Setup Wizard), Realtime 알림 9개 트리거, Admin Clients 탭, 계약서 뷰어(Admin/Agent), Members+Readiness 통합
-- **마지막 업데이트**: 2026-04-23 (D-6, MVP 4/29 마감)
+- **Phase**: UX 대폭 재설계 완료 (Payouts / Dashboard / Overview / Settlement). 온보딩 초대 링크로 전환. 최종 테스트 대기.
+- **마지막 작업**: Admin Overview/Settlement 재설계 (4지표 Hero, Agent 그룹핑). Agent Dashboard Kanban Pipeline. Agent Payouts 차트. 초대 링크 온보딩. Invoice/Schedule 열람 알림. Audit Log 타임라인 개편.
+- **마지막 업데이트**: 2026-04-24 (D-5, MVP 4/29 마감)
 - **SaaS 브랜드명**: **Tiktak** (UI 전역, 법인명 Interview Co., Ltd)
 
-> 2026-04-23 상세: `notes/26.04.23.md` (최신)
+> 2026-04-24 상세: `notes/26.04.24.md` (최신)
+> 2026-04-23 상세: `notes/26.04.23.md`
 > 2026-04-22 상세: `notes/26.04.22.md`
 > 2026-04-21 상세: `notes/26.04.21.md`
 > 2026-04-17 회사 미팅 피드백: `notes/meetings/26.04.17-kickoff-feedback.md`
@@ -16,25 +17,30 @@
 ## 다음 할 일
 
 ### 안정화 (MVP 마감 전)
-- [ ] End-to-end 전체 플로우 테스트 (temp 생성 → 온보딩 → 승인 → Setup → 견적 → 스케줄 → 정산)
-- [ ] Vercel 배포 환경 점검 (`SUPABASE_SERVICE_ROLE_KEY` 환경변수 확인)
-- [ ] CLAUDE.md 현재 스키마에 맞춰 업데이트 (travel_completed_at, setup_completed_at, link_url 등)
+- [ ] End-to-end 전체 플로우 테스트 (초대 → 온보딩 → 승인 → Setup → 견적 → 스케줄 → 정산)
+- [ ] 배포 환경 최종 점검 (`SUPABASE_SERVICE_ROLE_KEY`, Resend 키 등)
 - [ ] 법무 검토: NDA / Partnership Agreement 초안 (사내 고문변호사 or SIAC 전문가)
+- [x] CLAUDE.md 스키마 최신화 (travel_completed_at, setup_completed_at, link_url, invite_*, rejection_*, first_opened_at 등)
 
-### 4/23 검토 결과 — D-6 내 추가 작업
-- [x] **Audit log** 테이블 + `/admin/audit` + 15개 액션 지점 로그 삽입
-- [x] **Forgot Password** — Login 링크 + 모달 + `/reset-password` 페이지
-- [x] **Agent Reject** — Admin Agent 상세에 Reject 버튼 (사유 + audit log)
-- [x] **Agent 본인 Case 삭제** — payment_pending만, 사유 입력 + Admin 알림 + audit log
-- [x] **Sidebar 접기** — Agent/Admin 양쪽 collapse 토글, localStorage 유지
-- [ ] Products Excel Export (남음)
-- [ ] 모바일 bottom-nav (Post-MVP로)
+### 4/24 완료
+- [x] **Products Export ZIP 백업** — 엑셀 + images/ + README
+- [x] **Invoice opened by client 알림** (Realtime 9개 완성)
+- [x] **Schedule opened by client 알림** (동일 패턴)
+- [x] **초대 링크 온보딩** — `/invite/[token]` + Temp 계정 방식 제거
+- [x] **Agent Reject (soft)** + **Delete Agent (hard)** — Danger Zone 포함
+- [x] **Admin Case 상세 Revenue Breakdown** — 원가/회사/에이전트 분해
+- [x] **Audit Log 타임라인 개편** — 날짜 그룹 + 아이콘
+- [x] **레이아웃 듀얼 모드** 정립 (작업 좌측 / 설정 중앙)
+- [x] **Agent Payouts 재설계** — Hero + Monthly Chart 콤보 + Bank 이동
+- [x] **Agent Dashboard 재설계** — Hero + Kanban Pipeline 3섹션
+- [x] **Admin Overview 재설계** — 4지표 Hero + 통합 Action Queue
+- [x] **Admin Settlement 재설계** — Hero + Agent별 그룹핑
+- [x] Review 페이지 신규 고객 등록 폼에 Muslim 라디오 추가
 
 ### 기능 보완 (시간 되면)
-- [ ] Admin Products Excel Export (`xlsx` 라이브러리)
-- [ ] `agents.monthly_completed` 자동 업데이트 트리거 or 월말 리셋 (현재는 travel_completed_at 기반 당월 환자수로 계산)
-- [ ] Invoice opened by client 알림 트리거 (서버 컴포넌트라 별도 처리 필요)
+- [ ] `agents.monthly_completed` 자동 업데이트 트리거 or 월말 리셋 (현재는 travel_completed_at 기반 계산)
 - [ ] Case ready for schedule 알림 (모든 조건 충족 시 최초 1회)
+- [ ] 계약서 템플릿 검증 로직 (토큰 미치환/오입력 방지)
 
 ### Post-MVP (다음 스프린트)
 - [ ] Resend 이메일 연동 (Invoice/Schedule 링크 고객에 자동 발송, 서명 PDF 첨부)
@@ -149,6 +155,67 @@
 - [x] `ChangePasswordCard` (Agent Profile + Admin Settings)
 - [x] `DateTime24Picker` (비행 datetime 24시간 고정)
 
+### 4/24 — UX 재설계 + 온보딩 구조 변경
+
+#### 온보딩: Temp 계정 → 초대 링크
+- [x] `/api/admin/invite-agent` — 토큰 + placeholder auth user 생성
+- [x] `/api/onboarding/claim` — 토큰 검증 후 credentials 반환
+- [x] `/invite/[token]` 루트 경로 페이지 — claim → signIn → /onboarding
+- [x] Admin Agent 상세에 "Invite Link" 섹션 (복사 놓쳐도 재확인 가능)
+- [x] Setup 완료 시 invite_token/secret 자동 null
+- [x] `/api/admin/create-agent` 제거
+
+#### Agent Reject + Delete
+- [x] `rejection_reason/rejected_at` 저장 → Waiting 페이지가 감지해 Rejected UI + Start Over 버튼
+- [x] `/api/admin/delete-agent` — auth.users까지 제거, 케이스 있으면 409 차단
+- [x] Admin Agent 상세 "Danger Zone" 섹션
+- [x] Admin Agent 리스트 "Rejected" rose 뱃지
+- [x] 재서명/승인 시 rejection 자동 클리어
+
+#### 알림 확장
+- [x] Invoice opened (`quotes.first_opened_at/open_count`) → Agent Realtime
+- [x] Schedule opened (`schedules.first_opened_at/open_count`) → Agent Realtime
+- [x] `?preview=1`로 Agent/Admin 내부 프리뷰 기록 스킵
+- [x] `/api/onboarding/notify-signed` — service role로 admin broadcast (client-side fallback)
+
+#### Agent Payouts 재설계
+- [x] Hero: Total Received (큰 숫자) + This Month
+- [x] Monthly Performance 콤보 차트 — 금액 바 + 환자 수 선 (dual Y-axis, nice-number scaling, hover 툴팁)
+- [x] Settlement History 주인공 배치 (Paid On 정렬)
+- [x] Bank Information을 Profile에서 Payouts로 이동
+- [x] Waiting to be Paid 보조 섹션 (amber 제거, 중립 톤)
+
+#### Agent Dashboard 재설계
+- [x] 헤더 Quick Actions (+ Add Client / + Create Quote)
+- [x] Hero: This Month + Expected Pipeline + 전체 폭 Tier bar
+- [x] Kanban Pipeline — 6 컬럼, 헤더만 tint 본문은 white
+- [x] 각 케이스 chip에 status-specific 맥락 + urgency 색 (overdue red, 임박 amber)
+- [x] Action Needed / Upcoming Travel / Recent Activity 전부 통합 삭제 → Pipeline 하나로
+
+#### Admin Overview 재설계
+- [x] Hero 4지표: Revenue / Earnings / Partner Costs / Agent Payouts
+- [x] 기존 "Net" 제거 (gross인데 이익으로 오해 소지)
+- [x] Action Required 통합 큐: Pending approvals / Payments overdue / Payment to confirm / Schedule upload / Stuck cases 5+ days
+- [x] Recent Cases 제거 (Cases 탭 중복)
+
+#### Admin Settlement 재설계
+- [x] Hero: Paid This Month / Pending Payouts (amber) / Total All-Time
+- [x] Pending Settlements를 **Agent별로 그룹핑** — 오래 기다린 순
+- [x] 14일+ 대기 red 뱃지
+- [x] Settlement History Paid On 컬럼 맨 왼쪽으로 정렬
+
+#### Audit Log 타임라인 개편
+- [x] 날짜 그룹 헤더 (Today / Yesterday / Mon, Oct 22)
+- [x] 카테고리별 아이콘 (24×24 tinted)
+- [x] 시간 왼쪽 고정, 문장형 레이아웃
+- [x] `agent.deleted` 액션 추가, 숫자/reason 포맷팅
+
+#### 기타
+- [x] **Products Export Backup (ZIP)** — 엑셀 + images/ + README
+- [x] **Admin Case 상세 Revenue Breakdown** — base / company / agent 분해
+- [x] Review 페이지 신규 고객 폼에 Muslim 라디오 (Yes일 때만 Dietary 노출)
+- [x] 레이아웃 듀얼 모드 정립 (작업 좌측 / 설정 중앙) — Admin Settlement/Audit Log, Agent Payouts/Dashboard 좌측정렬 전환
+
 ---
 
 ## 주요 결정사항 (이번 스프린트 추가분)
@@ -191,6 +258,29 @@
 | Members + Readiness 분리 | Member 관련만 Members 블록, Trip Info는 자체 섹션에서 경고 | 관심사 분리 |
 | Admin Temp 계정 상세 | 관련 없는 Metrics/Profile/Bank/Cases/Settlement 섹션 숨김 | 의미 없는 빈 필드 제거 |
 
+### 이번 스프린트(4/24) 추가 결정
+| 항목 | 결정 | 이유 |
+|------|------|------|
+| 온보딩 진입 방식 | Temp 계정 → **초대 링크** | 보안↑, 번호 충돌 제거, 핸드오프 깔끔 |
+| 온보딩 variant | B (placeholder 계정 → Setup에서 덮어쓰기) | 기존 auth-session 기반 가드 재사용 가능 (A는 재작성 부담) |
+| Invite 재확인 | Admin 상세에 상시 노출 섹션 | 복사 놓쳐도 회복 경로 필요 |
+| Agent Reject 정책 | Soft (사유+재시도) + Delete (완전제거) **2단계** | 유연성 확보, 케이스 있으면 Delete 차단 |
+| Admin broadcast 발송 | server API (service role) 우선 + client fallback | RLS/세션 경계에서 실패 방지 |
+| Invoice/Schedule 열람 추적 | 고객 URL 서버 컴포넌트에 직접 기록 | 간단, `?preview=1`로 내부 구분 |
+| Pipeline UI | 카운트만 → **Kanban + status-specific 맥락** | 상태 + urgency + 구체 케이스를 한 섹션에 |
+| Dashboard 섹션 구조 | 6개 → 3개 (Header / Hero / Pipeline) | "뭐 빼도 되나" 관점 — 중복 섹션 제거 |
+| Admin 재무 지표 | 1개(Revenue) → 4개(Revenue/Earnings/Partner/Agent) | Admin 관점 4가지 돈 흐름 구분 |
+| "Net" 라벨 | **제거** | base 포함된 gross라 이익으로 오해 유발 |
+| Earnings 정의 | `Σ base × company_margin_rate` | 실제 회사 마진 (gross 아닌 순수) |
+| Settlement 그룹핑 | Case → **Agent** 단위 | 실제 송금 플로우 (한 번 송금 = 한 명에게 여러 케이스) |
+| Settlement 정렬 | 오래 기다린 Agent 순 | 공평성, 14일+ red 경고 |
+| Bank Info 위치 | Profile → **Payouts** | Settlement 관련 정보 한곳에 모음 |
+| 레이아웃 정책 | 모두 `mx-auto` → **듀얼 모드** | 페이지 성격별 차등 (테이블은 좌측 / 폼은 중앙) |
+| 고객 chip에 맥락 | 모든 셀에 travel 날짜 vs 상태별 맞춤 | **상태별 맞춤** (예: Awaiting Payment엔 payment_due_date, 이후 단계엔 travel_start_date) |
+| 차트 바 vs 선 | 한 차트에 둘 다 — **콤보** | 금액은 덩어리(바) · 환자 수는 추세(선), 다른 성격 다른 모양 |
+| 차트 Y축 스케일 | nice-number ceiling (1·2·5 × 10ⁿ) | $12,686 → $20K 같이 깔끔한 눈금 |
+| SVG 원이 찌그러짐 | SVG + CSS div 혼합 (선은 SVG, 점은 div) | `preserveAspectRatio="none"`에서 circle 타원화 회피 |
+
 ### 이전 스프린트 결정
 (참고용 — 자세히는 이전 연구노트 참조)
 - UI 언어 영어, 가격 USD 2자리, Quote=Invoice, RLS 전체 비활성화, Tiktak 브랜드, 상품 카테고리 정렬 고정, ENUM 대신 TEXT+CHECK, Cases에서 신규 생성 금지 (Home 플로우만)
@@ -199,7 +289,25 @@
 
 ## DB 스키마 변경사항 누적
 
-### 금일(4/23) 추가분
+### 금일(4/24) 추가분
+
+```sql
+-- Invite flow (온보딩 구조 변경)
+ALTER TABLE agents ADD COLUMN invite_token TEXT UNIQUE;
+ALTER TABLE agents ADD COLUMN invite_secret TEXT;  -- placeholder password, cleared on setup
+ALTER TABLE agents ADD COLUMN invited_at TIMESTAMPTZ;
+ALTER TABLE agents ADD COLUMN invite_expires_at TIMESTAMPTZ;  -- +7일 만료
+
+-- Reject (soft)
+ALTER TABLE agents ADD COLUMN rejection_reason TEXT;
+ALTER TABLE agents ADD COLUMN rejected_at TIMESTAMPTZ;
+
+-- Schedule opened by client (알림용)
+ALTER TABLE schedules ADD COLUMN first_opened_at TIMESTAMPTZ;
+ALTER TABLE schedules ADD COLUMN open_count INTEGER DEFAULT 0;
+```
+
+### 4/23 추가분
 
 ```sql
 -- travel_completed_at (Mark Travel Complete 시점 기록)
@@ -372,9 +480,9 @@ ON CONFLICT (contract_type) DO NOTHING;
 - **quote_groups**: 기본 + `member_count`
 - **quote_group_members**: (quote_group_id, case_member_id)
 - **quote_items**: 기본
-- **schedules**: 기본 + `file_name`, `revision_note`, `confirmed_at`, status CHECK(pending/confirmed/revision_requested), (case_id, version) UNIQUE, slug index
+- **schedules**: 기본 + `file_name`, `revision_note`, `confirmed_at`, `first_opened_at`, `open_count`, status CHECK(pending/confirmed/revision_requested), (case_id, version) UNIQUE, slug index
 - **settlements**: 기본 + `case_id` (UNIQUE, 1:1), amount는 KRW 저장
-- **agents**: 기본 + `onboarding_status` (pending/awaiting/approved), `setup_completed_at`, `bank_info` (JSONB)
+- **agents**: 기본 + `onboarding_status` (pending/awaiting/approved), `setup_completed_at`, `bank_info` (JSONB), `invite_token`(UNIQUE), `invite_secret`, `invited_at`, `invite_expires_at`, `rejection_reason`, `rejected_at`
 - **contract_templates**: (contract_type, title, body, updated_at) — RLS off
 - **agent_contracts**: 기본 + snapshot(title/body), signature_data_url, signed_at, ip_address/user_agent, approved_at/approved_by (ON DELETE SET NULL)
 - **notifications**: (target_type, target_id, auth_user_id, message, link_url, is_read, created_at) — Realtime publication 등록됨
