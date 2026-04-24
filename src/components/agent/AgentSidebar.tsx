@@ -91,23 +91,52 @@ export default function AgentSidebar() {
     router.push('/login')
   }
 
-  return (
-    <aside className="w-56 shrink-0 flex flex-col bg-gray-50 border-r border-gray-100 h-screen">
+  const [collapsed, setCollapsed] = useState(false)
+  useEffect(() => {
+    setCollapsed(localStorage.getItem('sidebar-collapsed') === '1')
+  }, [])
+  function toggleCollapsed() {
+    setCollapsed(v => {
+      const next = !v
+      localStorage.setItem('sidebar-collapsed', next ? '1' : '0')
+      return next
+    })
+  }
 
-      {/* Logo */}
-      <div className="h-14 flex items-center px-5 border-b border-gray-100">
+  return (
+    <aside className={`${collapsed ? 'w-16' : 'w-56'} shrink-0 flex flex-col bg-gray-50 border-r border-gray-100 h-screen transition-[width] duration-200`}>
+
+      {/* Logo + collapse */}
+      <div className={`h-14 flex items-center border-b border-gray-100 ${collapsed ? 'justify-center px-2' : 'px-5 justify-between'}`}>
         <div className="flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded-lg bg-[#0f4c35] flex items-center justify-center">
+          <div className="w-7 h-7 rounded-lg bg-[#0f4c35] flex items-center justify-center shrink-0">
             <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21" />
             </svg>
           </div>
-          <span className="text-sm font-semibold text-gray-900">Tiktak</span>
+          {!collapsed && <span className="text-sm font-semibold text-gray-900">Tiktak</span>}
         </div>
+        {!collapsed && (
+          <button onClick={toggleCollapsed} title="Collapse"
+            className="text-gray-400 hover:text-gray-700 p-1 rounded-lg hover:bg-gray-100">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+            </svg>
+          </button>
+        )}
       </div>
 
+      {collapsed && (
+        <button onClick={toggleCollapsed} title="Expand"
+          className="mx-auto mt-2 text-gray-400 hover:text-gray-700 p-1 rounded-lg hover:bg-gray-100">
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+          </svg>
+        </button>
+      )}
+
       {/* Navigation */}
-      <nav className="flex-1 px-3 py-4 space-y-0.5">
+      <nav className={`flex-1 py-4 space-y-0.5 ${collapsed ? 'px-2' : 'px-3'}`}>
         {NAV.map((item) => {
           const isActive = !item.disabled && (pathname === item.href || pathname.startsWith(item.href + '/'))
 
@@ -115,10 +144,11 @@ export default function AgentSidebar() {
             return (
               <span
                 key={item.href}
-                className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-gray-300 cursor-not-allowed select-none"
+                title={collapsed ? item.label : undefined}
+                className={`flex items-center ${collapsed ? 'justify-center' : 'gap-3 px-3'} py-2.5 rounded-xl text-sm font-medium text-gray-300 cursor-not-allowed select-none`}
               >
                 <span className="text-gray-300">{item.icon}</span>
-                {item.label}
+                {!collapsed && item.label}
               </span>
             )
           }
@@ -127,43 +157,48 @@ export default function AgentSidebar() {
             <Link
               key={item.href}
               href={item.href}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+              title={collapsed ? item.label : undefined}
+              className={`flex items-center ${collapsed ? 'justify-center' : 'gap-3 px-3'} py-2.5 rounded-xl text-sm font-medium transition-all ${
                 isActive
                   ? 'bg-[#0f4c35] text-white shadow-sm'
                   : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'
               }`}
             >
               <span className={isActive ? 'text-white' : 'text-gray-400'}>{item.icon}</span>
-              {item.label}
+              {!collapsed && item.label}
             </Link>
           )
         })}
       </nav>
 
       {/* Bottom */}
-      <div className="px-4 py-4 border-t border-gray-100 space-y-2">
-        <button
-          onClick={() => router.back()}
-          className="w-full flex items-center gap-2.5 px-2 py-2 rounded-xl text-sm text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors"
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
-          </svg>
-          <span className="text-xs font-medium">Back</span>
-        </button>
+      <div className={`py-4 border-t border-gray-100 space-y-2 ${collapsed ? 'px-2' : 'px-4'}`}>
+        {!collapsed && (
+          <button
+            onClick={() => router.back()}
+            className="w-full flex items-center gap-2.5 px-2 py-2 rounded-xl text-sm text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
+            </svg>
+            <span className="text-xs font-medium">Back</span>
+          </button>
+        )}
 
-        <div className="flex items-center justify-between px-2">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-full bg-[#0f4c35]/10 flex items-center justify-center">
-              <svg className="w-4 h-4 text-[#0f4c35]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
-              </svg>
+        <div className={`flex items-center ${collapsed ? 'flex-col gap-2' : 'justify-between px-2'}`}>
+          {!collapsed && (
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-full bg-[#0f4c35]/10 flex items-center justify-center">
+                <svg className="w-4 h-4 text-[#0f4c35]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+                </svg>
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-gray-700 truncate">{agentName || 'Agent'}</p>
+                <p className="text-[10px] text-gray-400">Agent</p>
+              </div>
             </div>
-            <div className="min-w-0">
-              <p className="text-xs font-medium text-gray-700 truncate">{agentName || 'Agent'}</p>
-              <p className="text-[10px] text-gray-400">Agent</p>
-            </div>
-          </div>
+          )}
           <button
             onClick={handleLogout}
             title="Logout"

@@ -22,10 +22,13 @@
 - [ ] 법무 검토: NDA / Partnership Agreement 초안 (사내 고문변호사 or SIAC 전문가)
 
 ### 4/23 검토 결과 — D-6 내 추가 작업
-- [ ] **Forgot Password** (`supabase.auth.resetPasswordForEmail` + Login 링크)
-- [ ] **Agent Approve Reject 옵션** (admin Agent 상세에 Reject 버튼, 거절 시 온보딩 초기화 또는 삭제)
-- [ ] **Agent 본인 Case 삭제** (payment_pending 단계만, confirm dialog)
-- [ ] **Audit log** 간단 페이지 (최근 N개, 주요 상태 변경 기록)
+- [x] **Audit log** 테이블 + `/admin/audit` + 15개 액션 지점 로그 삽입
+- [x] **Forgot Password** — Login 링크 + 모달 + `/reset-password` 페이지
+- [x] **Agent Reject** — Admin Agent 상세에 Reject 버튼 (사유 + audit log)
+- [x] **Agent 본인 Case 삭제** — payment_pending만, 사유 입력 + Admin 알림 + audit log
+- [x] **Sidebar 접기** — Agent/Admin 양쪽 collapse 토글, localStorage 유지
+- [ ] Products Excel Export (남음)
+- [ ] 모바일 bottom-nav (Post-MVP로)
 
 ### 기능 보완 (시간 되면)
 - [ ] Admin Products Excel Export (`xlsx` 라이브러리)
@@ -226,6 +229,24 @@ ALTER TABLE agent_contracts ADD CONSTRAINT agent_contracts_approved_by_fkey
   FOREIGN KEY (approved_by) REFERENCES admins(id) ON DELETE SET NULL;
 
 -- Meeting date 컬럼은 UI에서 제거(DROP 미적용, post-MVP 클린업)
+
+-- Audit log (오후 추가)
+CREATE TABLE audit_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  actor_type TEXT CHECK (actor_type IN ('agent','admin','system')),
+  actor_id UUID,
+  actor_label TEXT,
+  action TEXT NOT NULL,
+  target_type TEXT,
+  target_id UUID,
+  target_label TEXT,
+  details JSONB,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX audit_logs_created_at_idx ON audit_logs(created_at DESC);
+CREATE INDEX audit_logs_action_idx ON audit_logs(action);
+ALTER TABLE audit_logs DISABLE ROW LEVEL SECURITY;
+GRANT ALL ON audit_logs TO anon, authenticated;
 ```
 
 ### 4/22 추가분
@@ -357,6 +378,7 @@ ON CONFLICT (contract_type) DO NOTHING;
 - **contract_templates**: (contract_type, title, body, updated_at) — RLS off
 - **agent_contracts**: 기본 + snapshot(title/body), signature_data_url, signed_at, ip_address/user_agent, approved_at/approved_by (ON DELETE SET NULL)
 - **notifications**: (target_type, target_id, auth_user_id, message, link_url, is_read, created_at) — Realtime publication 등록됨
+- **audit_logs**: (actor_type/id/label, action, target_type/id/label, details JSONB, created_at) — 주요 상태 변경 기록
 - **system_settings**: key=exchange_rate/company_margin_rate/bank_details/onboarding_ot
 
 ---

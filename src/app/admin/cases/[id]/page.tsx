@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { notifyAgent } from '@/lib/notifications'
+import { logAsCurrentUser } from '@/lib/audit'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -196,6 +197,8 @@ export default function AdminCaseDetailPage() {
       }).eq('id', caseData.id)
       if (error) throw error
       await notifyAgent(caseData.agent_id, `${caseData.case_number} Payment confirmed`, `/agent/cases/${caseData.id}`)
+      await logAsCurrentUser('case.payment_confirmed', { type: 'case', id: caseData.id, label: caseData.case_number },
+        paymentDate ? { paid_on: paymentDate } : undefined)
       await fetchCase()
       setPaymentDate('')
     } catch (e: unknown) { setActionError((e as { message?: string })?.message ?? 'Failed.') }
@@ -240,6 +243,7 @@ export default function AdminCaseDetailPage() {
 
       await supabase.from('cases').update({ status: 'schedule_reviewed' }).eq('id', caseData.id)
       await notifyAgent(caseData.agent_id, `${caseData.case_number} Schedule uploaded (v${version})`, `/agent/cases/${caseData.id}`)
+      await logAsCurrentUser('schedule.uploaded', { type: 'case', id: caseData.id, label: caseData.case_number }, { version, file_name: stagedFile.name })
       await fetchCase()
       setStagedFile(null)
     } catch (e: unknown) { setActionError((e as { message?: string })?.message ?? 'Failed.') }
@@ -270,6 +274,9 @@ export default function AdminCaseDetailPage() {
         await supabase.from('cases').update({ status: 'payment_completed' }).eq('id', caseData.id)
       }
 
+      if (caseData) {
+        await logAsCurrentUser('schedule.deleted', { type: 'case', id: caseData.id, label: caseData.case_number }, { version, file_name: fileName })
+      }
       await fetchCase()
     } catch (e: unknown) { setActionError((e as { message?: string })?.message ?? 'Failed.') }
     finally { setDeletingScheduleId(null) }

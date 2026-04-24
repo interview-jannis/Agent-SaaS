@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { notifyAllAdmins } from '@/lib/notifications'
+import { logAsCurrentUser } from '@/lib/audit'
 import DOBPicker from '@/components/DOBPicker'
 import PrintPdfButton from '@/components/PrintPdfButton'
 import DateTime24Picker from '@/components/DateTime24Picker'
@@ -176,6 +177,10 @@ export default function CaseDetailPage() {
   // Schedule review actions
   const [confirmingSchedule, setConfirmingSchedule] = useState(false)
   const [markingTravelComplete, setMarkingTravelComplete] = useState(false)
+  const [showCancel, setShowCancel] = useState(false)
+  const [cancelReason, setCancelReason] = useState('')
+  const [cancelling, setCancelling] = useState(false)
+  const [cancelError, setCancelError] = useState('')
   const [showRevisionModal, setShowRevisionModal] = useState(false)
   const [revisionNote, setRevisionNote] = useState('')
   const [submittingRevision, setSubmittingRevision] = useState(false)
@@ -322,6 +327,41 @@ export default function CaseDetailPage() {
     })
   }
 
+  async function cancelCase() {
+    if (!caseData) return
+    if (caseData.status !== 'payment_pending') { setCancelError('Case can only be cancelled before payment is confirmed.'); return }
+    if (!cancelReason.trim()) { setCancelError('Please enter a reason.'); return }
+    setCancelling(true); setCancelError('')
+    try {
+      const caseId = caseData.id
+      // Resolve related IDs
+      const quoteIds = caseData.quotes?.map(q => q.id) ?? []
+      const groupIds = caseData.quotes?.flatMap(q => q.quote_groups?.map(g => g.id) ?? []) ?? []
+
+      // Delete in FK-safe order
+      if (groupIds.length > 0) {
+        await supabase.from('quote_group_members').delete().in('quote_group_id', groupIds)
+        await supabase.from('quote_items').delete().in('quote_group_id', groupIds)
+      }
+      if (quoteIds.length > 0) {
+        await supabase.from('quote_groups').delete().in('quote_id', quoteIds)
+        await supabase.from('quotes').delete().in('id', quoteIds)
+      }
+      await supabase.from('case_members').delete().eq('case_id', caseId)
+      const { error } = await supabase.from('cases').delete().eq('id', caseId)
+      if (error) throw error
+
+      await notifyAllAdmins(`${caseData.case_number} cancelled by agent — "${cancelReason.trim()}"`, '/admin/cases')
+      await logAsCurrentUser('case.cancelled',
+        { type: 'case', id: caseId, label: caseData.case_number },
+        { reason: cancelReason.trim() })
+      router.replace('/agent/cases')
+    } catch (e: unknown) {
+      setCancelError((e as { message?: string })?.message ?? 'Failed to cancel.')
+      setCancelling(false)
+    }
+  }
+
   async function markTravelComplete() {
     if (!caseData) return
     if (!window.confirm('Mark this trip as completed? This will move the case to the settlement queue.')) return
@@ -330,6 +370,7 @@ export default function CaseDetailPage() {
       const { error } = await supabase.from('cases').update({ status: 'travel_completed', travel_completed_at: new Date().toISOString() }).eq('id', caseData.id)
       if (error) throw error
       await notifyAllAdmins(`${caseData.case_number} Travel completed — ready for settlement`, `/admin/settlement`)
+      await logAsCurrentUser('case.travel_completed', { type: 'case', id: caseData.id, label: caseData.case_number })
       await fetchCase()
     } catch (e: unknown) {
       setScheduleError((e as { message?: string })?.message ?? 'Failed.')
@@ -348,6 +389,7 @@ export default function CaseDetailPage() {
       if (se) throw se
       await supabase.from('cases').update({ status: 'schedule_confirmed' }).eq('id', caseData.id)
       await notifyAllAdmins(`${caseData.case_number} Schedule v${schedule.version} confirmed`, `/admin/cases/${caseData.id}`)
+      await logAsCurrentUser('schedule.confirmed', { type: 'case', id: caseData.id, label: caseData.case_number }, { version: schedule.version })
       await fetchCase()
     } catch (e: unknown) {
       setScheduleError((e as { message?: string })?.message ?? 'Failed.')
@@ -605,6 +647,9 @@ export default function CaseDetailPage() {
         .eq('id', schedule.id)
       if (se) throw se
       await notifyAllAdmins(`${caseData.case_number} Schedule v${schedule.version} revision requested`, `/admin/cases/${caseData.id}`)
+      await logAsCurrentUser('schedule.revision_requested',
+        { type: 'case', id: caseData.id, label: caseData.case_number },
+        { version: schedule.version, note: revisionNote.trim() })
       await fetchCase()
       setShowRevisionModal(false)
       setRevisionNote('')
@@ -1444,6 +1489,49 @@ export default function CaseDetailPage() {
                 </div>
               )}
             </section>
+          )}
+
+          {/* Cancel Case — agent self-service, only before payment */}
+          {caseData.status === 'payment_pending' && (
+            <section className="border border-red-100 rounded-2xl p-4 flex items-center justify-between">
+              <div>
+                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Cancel Case</h3>
+                <p className="text-xs text-gray-500">Remove this case if it was created by mistake. Admin will be notified with your reason.</p>
+              </div>
+              <button onClick={() => setShowCancel(true)}
+                className="px-3 py-1.5 text-xs font-medium text-red-600 border border-red-200 rounded-lg hover:bg-red-50">
+                Cancel Case
+              </button>
+            </section>
+          )}
+
+          {/* Cancel confirmation modal */}
+          {showCancel && (
+            <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+              onClick={() => { if (!cancelling) setShowCancel(false) }}>
+              <div className="bg-white rounded-2xl max-w-md w-full p-5 space-y-4" onClick={e => e.stopPropagation()}>
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900">Cancel Case {caseData.case_number}?</h3>
+                  <p className="text-xs text-gray-500 mt-1">This will permanently remove the case and its quote. The admin will be notified with your reason. This action cannot be undone.</p>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">Reason *</label>
+                  <textarea value={cancelReason} onChange={e => setCancelReason(e.target.value)}
+                    rows={3} placeholder="e.g. Created the wrong quote by mistake, client changed their mind, etc."
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35] resize-none" />
+                </div>
+                {cancelError && <p className="text-xs text-red-500">{cancelError}</p>}
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
+                  <button onClick={() => { setShowCancel(false); setCancelReason(''); setCancelError('') }}
+                    disabled={cancelling}
+                    className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-800">Keep Case</button>
+                  <button onClick={cancelCase} disabled={cancelling || !cancelReason.trim()}
+                    className="px-3 py-1.5 text-xs font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-40">
+                    {cancelling ? 'Cancelling...' : 'Confirm Cancel'}
+                  </button>
+                </div>
+              </div>
+            </div>
           )}
 
         </div>

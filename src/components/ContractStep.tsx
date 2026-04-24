@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import SignaturePad from './SignaturePad'
 import { notifyAllAdmins } from '@/lib/notifications'
+import { logAsCurrentUser } from '@/lib/audit'
 
 type ContractType = 'nda' | 'partnership'
 
@@ -167,6 +168,7 @@ export default function ContractStep({ type, step, nextHref, nextLabel, isFinal 
         await supabase.from('agents').update({ onboarding_status: 'awaiting_approval' })
           .eq('id', (agent as { id: string }).id)
         await notifyAllAdmins(`${agentNumber} signed contracts — review needed`, '/admin/agents')
+        await logAsCurrentUser('agent.contracts_signed', { type: 'agent', id: (agent as { id: string }).id, label: agentNumber })
       }
 
       router.push(nextHref)

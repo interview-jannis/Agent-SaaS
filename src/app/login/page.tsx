@@ -12,6 +12,27 @@ function LoginForm() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [showForgot, setShowForgot] = useState(false)
+  const [forgotEmail, setForgotEmail] = useState('')
+  const [forgotSending, setForgotSending] = useState(false)
+  const [forgotSent, setForgotSent] = useState(false)
+  const [forgotError, setForgotError] = useState('')
+
+  async function sendReset() {
+    if (!forgotEmail.trim() || !forgotEmail.includes('@')) { setForgotError('Enter a valid email.'); return }
+    setForgotSending(true); setForgotError('')
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail.trim(), {
+        redirectTo: `${window.location.origin}/reset-password`,
+      })
+      if (error) throw error
+      setForgotSent(true)
+    } catch (e: unknown) {
+      setForgotError((e as { message?: string })?.message ?? 'Failed to send reset email.')
+    } finally {
+      setForgotSending(false)
+    }
+  }
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
@@ -82,7 +103,13 @@ function LoginForm() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Password</label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-sm font-medium text-gray-700">Password</label>
+              <button type="button" onClick={() => setShowForgot(true)}
+                className="text-xs text-[#0f4c35] hover:underline">
+                Forgot password?
+              </button>
+            </div>
             <input
               type="password"
               required
@@ -134,6 +161,48 @@ function LoginForm() {
         </p>
 
       </div>
+
+      {/* Forgot Password modal */}
+      {showForgot && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+          onClick={() => { if (!forgotSending) setShowForgot(false) }}>
+          <div className="bg-white rounded-2xl max-w-md w-full p-5 space-y-4" onClick={e => e.stopPropagation()}>
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900">Reset Password</h3>
+              <p className="text-xs text-gray-500 mt-1">We&apos;ll send a reset link to your email. Follow it to choose a new password.</p>
+            </div>
+            {forgotSent ? (
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-sm text-emerald-800">
+                Reset email sent. Check your inbox (and spam folder) for the link.
+              </div>
+            ) : (
+              <>
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">Email</label>
+                  <input type="email" value={forgotEmail}
+                    onChange={e => setForgotEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
+                </div>
+                {forgotError && <p className="text-xs text-red-500">{forgotError}</p>}
+              </>
+            )}
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
+              <button onClick={() => { setShowForgot(false); setForgotSent(false); setForgotEmail(''); setForgotError('') }}
+                disabled={forgotSending}
+                className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-800 disabled:opacity-40">
+                Close
+              </button>
+              {!forgotSent && (
+                <button onClick={sendReset} disabled={forgotSending}
+                  className="px-3 py-1.5 text-xs font-medium bg-[#0f4c35] text-white rounded-lg hover:bg-[#0a3828] disabled:opacity-40">
+                  {forgotSending ? 'Sending...' : 'Send Reset Link'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

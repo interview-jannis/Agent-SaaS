@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { logAsCurrentUser } from '@/lib/audit'
 
 export default function SetupWizardPage() {
   const router = useRouter()
@@ -60,6 +61,7 @@ export default function SetupWizardPage() {
         const data = await res.json().catch(() => ({}))
         throw new Error(data.error ?? 'Setup failed.')
       }
+      await logAsCurrentUser('agent.setup_completed', null)
       // Refresh the session so subsequent requests use the new email/password context
       router.replace('/agent/home')
     } catch (e: unknown) {

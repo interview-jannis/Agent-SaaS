@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { notifyAgent } from '@/lib/notifications'
+import { logAsCurrentUser } from '@/lib/audit'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -133,6 +134,9 @@ export default function AdminSettlementPage() {
       })
       if (error) throw error
       await notifyAgent(settlingCase.agent_id, `${settlingCase.case_number} Settlement paid — ${fmtUSD(toUsd(amountKrw))}`, '/agent/payouts')
+      await logAsCurrentUser('settlement.paid',
+        { type: 'case', id: settlingCase.id, label: settlingCase.case_number },
+        { amount_krw: amountKrw, paid_at: settlePaidDate, settlement_number: settlementNumber })
       await fetchData()
       closeSettleModal()
     } catch (e: unknown) {

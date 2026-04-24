@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { logAsCurrentUser } from '@/lib/audit'
 
 type BankInfo = Record<string, string>
 
@@ -115,8 +116,11 @@ export default function AdminAgentDetailPage() {
     if (!agent) return
     setToggling(true); setError('')
     try {
-      const { error } = await supabase.from('agents').update({ is_active: !agent.is_active }).eq('id', agent.id)
+      const nextActive = !agent.is_active
+      const { error } = await supabase.from('agents').update({ is_active: nextActive }).eq('id', agent.id)
       if (error) throw error
+      await logAsCurrentUser(nextActive ? 'agent.activated' : 'agent.deactivated',
+        { type: 'agent', id: agent.id, label: `${agent.name}${agent.agent_number ? ` · ${agent.agent_number}` : ''}` })
       await fetchData()
     } catch (e: unknown) {
       setError((e as { message?: string })?.message ?? 'Failed.')
@@ -124,6 +128,10 @@ export default function AdminAgentDetailPage() {
       setToggling(false)
     }
   }
+
+  const [showReject, setShowReject] = useState(false)
+  const [rejectReason, setRejectReason] = useState('')
+  const [rejecting, setRejecting] = useState(false)
 
   async function approveAgent() {
     if (!agent) return
@@ -144,11 +152,34 @@ export default function AdminAgentDetailPage() {
         .update({ approved_at: now, approved_by: (adminRow as { id: string } | null)?.id ?? null })
         .eq('agent_id', agent.id)
 
+      await logAsCurrentUser('agent.approved', { type: 'agent', id: agent.id, label: `${agent.name}${agent.agent_number ? ` · ${agent.agent_number}` : ''}` })
       await fetchData()
     } catch (e: unknown) {
       setError((e as { message?: string })?.message ?? 'Failed.')
     } finally {
       setApproving(false)
+    }
+  }
+
+  async function rejectAgent() {
+    if (!agent) return
+    if (!rejectReason.trim()) { setError('Please enter a reason.'); return }
+    setRejecting(true); setError('')
+    try {
+      // Revert contracts + status back to pending_onboarding so agent can re-sign if needed,
+      // or admin can delete them. Audit captures the reason.
+      await supabase.from('agent_contracts').delete().eq('agent_id', agent.id)
+      await supabase.from('agents').update({ onboarding_status: 'pending_onboarding' }).eq('id', agent.id)
+      await logAsCurrentUser('agent.rejected',
+        { type: 'agent', id: agent.id, label: `${agent.name}${agent.agent_number ? ` · ${agent.agent_number}` : ''}` },
+        { reason: rejectReason.trim() })
+      setShowReject(false)
+      setRejectReason('')
+      await fetchData()
+    } catch (e: unknown) {
+      setError((e as { message?: string })?.message ?? 'Failed to reject.')
+    } finally {
+      setRejecting(false)
     }
   }
 
@@ -267,17 +298,52 @@ export default function AdminAgentDetailPage() {
 
           {/* Approval action — only while awaiting approval */}
           {agent.onboarding_status === 'awaiting_approval' && (
-            <section className="bg-amber-50 border border-amber-200 rounded-2xl p-5 flex items-center justify-between">
+            <section className="bg-amber-50 border border-amber-200 rounded-2xl p-5 flex items-center justify-between flex-wrap gap-3">
               <div>
                 <h3 className="text-xs font-semibold text-amber-800 uppercase tracking-wide mb-1">Awaiting Approval</h3>
-                <p className="text-xs text-amber-800">Review the signed contracts above. Approving will activate the account and notify the agent.</p>
+                <p className="text-xs text-amber-800">Review the signed contracts above. Approve to activate the account, or reject to send the agent back to the onboarding step.</p>
               </div>
-              <button onClick={approveAgent} disabled={approving || contracts.length < 2}
-                title={contracts.length < 2 ? 'Agent has not signed all required contracts yet.' : ''}
-                className="px-4 py-2 text-xs font-medium bg-[#0f4c35] text-white rounded-lg hover:bg-[#0a3828] disabled:opacity-40">
-                {approving ? 'Approving...' : 'Approve & Activate'}
-              </button>
+              <div className="flex items-center gap-2">
+                <button onClick={() => { setShowReject(true); setError('') }} disabled={approving || rejecting}
+                  className="px-4 py-2 text-xs font-medium border border-red-200 text-red-600 rounded-lg hover:bg-red-50 disabled:opacity-40">
+                  Reject
+                </button>
+                <button onClick={approveAgent} disabled={approving || rejecting || contracts.length < 2}
+                  title={contracts.length < 2 ? 'Agent has not signed all required contracts yet.' : ''}
+                  className="px-4 py-2 text-xs font-medium bg-[#0f4c35] text-white rounded-lg hover:bg-[#0a3828] disabled:opacity-40">
+                  {approving ? 'Approving...' : 'Approve & Activate'}
+                </button>
+              </div>
             </section>
+          )}
+
+          {/* Reject modal */}
+          {showReject && (
+            <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+              onClick={() => { if (!rejecting) setShowReject(false) }}>
+              <div className="bg-white rounded-2xl max-w-md w-full p-5 space-y-4" onClick={e => e.stopPropagation()}>
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900">Reject Agent</h3>
+                  <p className="text-xs text-gray-500 mt-1">The signed contracts will be cleared and the agent returned to onboarding. Please note the reason — it will be recorded in the audit log.</p>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">Reason *</label>
+                  <textarea value={rejectReason} onChange={e => setRejectReason(e.target.value)}
+                    rows={3} placeholder="e.g. Signature does not match the provided name"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35] resize-none" />
+                </div>
+                {error && <p className="text-xs text-red-500">{error}</p>}
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
+                  <button onClick={() => { setShowReject(false); setRejectReason(''); setError('') }}
+                    disabled={rejecting}
+                    className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-800">Cancel</button>
+                  <button onClick={rejectAgent} disabled={rejecting || !rejectReason.trim()}
+                    className="px-3 py-1.5 text-xs font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-40">
+                    {rejecting ? 'Rejecting...' : 'Confirm Reject'}
+                  </button>
+                </div>
+              </div>
+            </div>
           )}
 
           {/* Account control — only for approved agents */}

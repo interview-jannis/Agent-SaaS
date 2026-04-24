@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { notifyAllAdmins } from '@/lib/notifications'
+import { logAsCurrentUser } from '@/lib/audit'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -364,6 +365,7 @@ export default function QuoteReviewPage() {
       localStorage.removeItem('agent-cart')
       const caseNumber = `#C-${String((caseCount ?? 0) + 1).padStart(3, '0')}`
       await notifyAllAdmins(`${caseNumber} New case created by ${agentData.name}`, `/admin/cases/${caseData.id}`)
+      await logAsCurrentUser('case.created', { type: 'case', id: caseData.id, label: caseNumber }, { total_krw: totalKRW })
       router.push(`/agent/cases/${caseData.id}`)
     } catch (e: unknown) {
       setError((e as { message?: string })?.message ?? 'Failed to create quote.')
