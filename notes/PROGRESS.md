@@ -3,7 +3,7 @@
 ## 현재 상태
 - **Phase**: UX 대폭 재설계 완료 (Payouts / Dashboard / Overview / Settlement). 온보딩 초대 링크로 전환. 최종 테스트 대기.
 - **마지막 작업**: Admin Overview/Settlement 재설계 (4지표 Hero, Agent 그룹핑). Agent Dashboard Kanban Pipeline. Agent Payouts 차트. 초대 링크 온보딩. Invoice/Schedule 열람 알림. Audit Log 타임라인 개편.
-- **마지막 업데이트**: 2026-04-24 (D-5, MVP 4/29 마감)
+- **마지막 업데이트**: 2026-04-24 (개발 마감 5/8, 시뮬레이션 5/11~15, 런칭 5/18)
 - **SaaS 브랜드명**: **Tiktak** (UI 전역, 법인명 Interview Co., Ltd)
 
 > 2026-04-24 상세: `notes/26.04.24.md` (최신)
