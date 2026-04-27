@@ -3,8 +3,11 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import SparklineCard from '@/components/SparklineCard'
 
-type CaseStatus = 'payment_pending' | 'payment_completed' | 'schedule_reviewed' | 'schedule_confirmed' | 'travel_completed'
+const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+type CaseStatus = 'quote_sent' | 'payment_completed' | 'schedule_reviewed' | 'schedule_confirmed' | 'travel_completed'
 
 type CaseRow = {
   id: string
@@ -13,6 +16,7 @@ type CaseRow = {
   travel_start_date: string | null
   travel_end_date: string | null
   travel_completed_at: string | null
+  payment_date: string | null
   created_at: string
   case_members: { is_lead: boolean; clients: { name: string } | null }[]
   quotes: { total_price: number; agent_margin_rate: number; payment_due_date: string | null }[]
@@ -23,8 +27,8 @@ type CaseRow = {
 type Settlement = { id: string; amount: number; paid_at: string | null; case_id: string | null }
 
 const STATUS_LABELS: Record<CaseStatus, string> = {
-  payment_pending: 'Awaiting Payment', payment_completed: 'Payment Confirmed',
-  schedule_reviewed: 'Schedule Reviewed', schedule_confirmed: 'Schedule Confirmed', travel_completed: 'Travel Completed',
+  quote_sent: 'Awaiting Schedule', payment_completed: 'Payment Confirmed',
+  schedule_reviewed: 'Schedule Reviewed', schedule_confirmed: 'Awaiting Payment', travel_completed: 'Travel Completed',
 }
 
 // Pipeline-specific labels (when the Travel Completed cell means "unsettled only")
@@ -33,13 +37,13 @@ const PIPELINE_LABELS: Record<CaseStatus, string> = {
   travel_completed: 'Travel Done · Unpaid',
 }
 const STATUS_STYLES: Record<CaseStatus, string> = {
-  payment_pending: 'bg-amber-50 text-amber-700 border-amber-200',
-  payment_completed: 'bg-blue-50 text-blue-700 border-blue-200',
+  quote_sent: 'bg-amber-50 text-amber-700 border-amber-200',
+  payment_completed: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   schedule_reviewed: 'bg-violet-50 text-violet-700 border-violet-200',
-  schedule_confirmed: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  schedule_confirmed: 'bg-blue-50 text-blue-700 border-blue-200',
   travel_completed: 'bg-gray-50 text-gray-500 border-gray-200',
 }
-const ORDERED_STATUSES: CaseStatus[] = ['payment_pending', 'payment_completed', 'schedule_reviewed', 'schedule_confirmed', 'travel_completed']
+const ORDERED_STATUSES: CaseStatus[] = ['quote_sent', 'schedule_reviewed', 'schedule_confirmed', 'payment_completed', 'travel_completed']
 
 function fmtUSD(n: number) { return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }
 
@@ -100,7 +104,7 @@ export default function AgentDashboardPage() {
 
       const [casesRes, settlementsRes, rateRes] = await Promise.all([
         supabase.from('cases')
-          .select('id, case_number, status, travel_start_date, travel_end_date, travel_completed_at, created_at, case_members(is_lead, clients(name)), quotes(total_price, agent_margin_rate, payment_due_date), schedules(id, status, version, created_at)')
+          .select('id, case_number, status, travel_start_date, travel_end_date, travel_completed_at, payment_date, created_at, case_members(is_lead, clients(name)), quotes(total_price, agent_margin_rate, payment_due_date), schedules(id, status, version, created_at)')
           .eq('agent_id', ag.id)
           .order('created_at', { ascending: false }),
         supabase.from('settlements').select('id, amount, paid_at, case_id').eq('agent_id', ag.id),
@@ -136,6 +140,27 @@ export default function AgentDashboardPage() {
     .filter(s => s.paid_at?.startsWith(monthKey))
     .reduce((s, st) => s + (st.amount ?? 0), 0)
 
+  // 6-month performance for sparklines
+  const monthly: { key: string; label: string; cases: number; commission: number; received: number; patients: number }[] = []
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    const monthCases = cases.filter(c => c.payment_date?.startsWith(key))
+    let commission = 0, patients = 0
+    for (const c of monthCases) {
+      const q = c.quotes?.[0]
+      if (!q) continue
+      commission += commissionKrw(q.total_price ?? 0, q.agent_margin_rate ?? 0)
+      patients += c.case_members?.length ?? 0
+    }
+    const received = settlements.filter(s => s.paid_at?.startsWith(key)).reduce((sum, s) => sum + (s.amount ?? 0), 0)
+    monthly.push({ key, label: MONTH_SHORT[d.getMonth()], cases: monthCases.length, commission, received, patients })
+  }
+  const cur = monthly[monthly.length - 1]
+  const prv = monthly[monthly.length - 2]
+  const sparkLabels = monthly.map(m => m.label)
+  const toUsd = (krw: number) => krw / exchangeRate
+
   // Expected pipeline — commission on cases not yet travel-completed
   const expectedKrw = cases
     .filter(c => c.status !== 'travel_completed')
@@ -169,7 +194,19 @@ export default function AgentDashboardPage() {
     const commUsd = q ? commissionKrw(q.total_price, q.agent_margin_rate) / exchangeRate : null
 
     switch (c.status) {
-      case 'payment_pending': {
+      case 'quote_sent': {
+        // Quotation out, awaiting admin to upload schedule
+        const parts: string[] = []
+        if (totalUsd != null) parts.push(fmtUsdShort(totalUsd))
+        parts.push('Awaiting schedule')
+        return { line: parts.join(' · '), urgency: 'normal' }
+      }
+      case 'schedule_reviewed': {
+        // Schedule uploaded, agent must confirm or request revision
+        return { line: 'Pending your review', urgency: 'warn' }
+      }
+      case 'schedule_confirmed': {
+        // Schedule confirmed, awaiting client payment
         const due = q?.payment_due_date
         const overdue = !!due && due < todayISO
         const soon = !!due && !overdue && due <= threeDaysFromNow
@@ -178,16 +215,15 @@ export default function AgentDashboardPage() {
         if (totalUsd != null) parts.push(fmtUsdShort(totalUsd))
         return { line: parts.join(' · '), urgency: overdue ? 'alert' : soon ? 'warn' : 'normal' }
       }
-      case 'payment_completed':
-      case 'schedule_reviewed':
-      case 'schedule_confirmed': {
+      case 'payment_completed': {
+        // Paid, travel pending or just ended
         const start = c.travel_start_date
         const soon = !!start && start >= todayISO && start <= weekFromNow
         const ended = !!c.travel_end_date && c.travel_end_date < todayISO
         return {
           line: start ? `Travel ${fmtDateShort(start)}` : '',
-          // schedule_confirmed + trip ended = needs mark complete (alert)
-          urgency: c.status === 'schedule_confirmed' && ended ? 'alert' : soon ? 'warn' : 'normal',
+          // trip ended = needs mark complete (alert)
+          urgency: ended ? 'alert' : soon ? 'warn' : 'normal',
         }
       }
       case 'travel_completed': {
@@ -237,7 +273,7 @@ export default function AgentDashboardPage() {
                     <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-2">This Month</p>
                     <p className="text-5xl font-bold text-gray-900 tracking-tight leading-none">{fmtUSD(thisMonthPaid / exchangeRate)}</p>
                     <p className="text-sm text-gray-500 mt-3">
-                      <span className="font-semibold text-gray-700">{monthlyPatients}</span> patient{monthlyPatients !== 1 ? 's' : ''} · margin{' '}
+                      <span className="font-semibold text-gray-700">{monthlyPatients}</span> client{monthlyPatients !== 1 ? 's' : ''} · margin{' '}
                       <span className="font-semibold text-[#0f4c35]">{marginRate != null ? `${(marginRate * 100).toFixed(0)}%` : '—'}</span>
                     </p>
                   </div>
@@ -258,7 +294,7 @@ export default function AgentDashboardPage() {
                     <>
                       <div className="flex items-baseline justify-between mb-2">
                         <p className="text-xs text-gray-500">
-                          <span className="font-semibold text-gray-900">{tierInfo.remaining} more patient{tierInfo.remaining !== 1 ? 's' : ''}</span>
+                          <span className="font-semibold text-gray-900">{tierInfo.remaining} more client{tierInfo.remaining !== 1 ? 's' : ''}</span>
                           {' '}to reach <span className="font-semibold text-[#0f4c35]">{(tierInfo.nextRate * 100).toFixed(0)}%</span> margin
                         </p>
                         <p className="text-[10px] text-gray-400 tabular-nums">{monthlyPatients} / {tierInfo.next}</p>
@@ -271,6 +307,22 @@ export default function AgentDashboardPage() {
                   ) : (
                     <p className="text-xs text-[#0f4c35] font-medium">🎉 Top tier reached (25% margin)</p>
                   )}
+                </div>
+              </section>
+
+              {/* Performance — 6 month sparklines */}
+              <section className="space-y-3">
+                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Performance · Last 6 Months</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <SparklineCard label="Commission" color="#f59e0b" kind="money"
+                    value={toUsd(cur.commission)} prev={toUsd(prv?.commission ?? 0)}
+                    values={monthly.map(m => toUsd(m.commission))} labels={sparkLabels} />
+                  <SparklineCard label="Received" color="#10b981" kind="money"
+                    value={toUsd(cur.received)} prev={toUsd(prv?.received ?? 0)}
+                    values={monthly.map(m => toUsd(m.received))} labels={sparkLabels} />
+                  <SparklineCard label="Paying Clients" color="#3b82f6" kind="count"
+                    value={cur.patients} prev={prv?.patients ?? 0}
+                    values={monthly.map(m => m.patients)} labels={sparkLabels} />
                 </div>
               </section>
 

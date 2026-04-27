@@ -1,7 +1,10 @@
 import Link from 'next/link'
 import { createServerClient } from '@/lib/supabase-server'
+import ChartLab from './ChartLab'
 
 export const dynamic = 'force-dynamic'
+
+const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -70,65 +73,130 @@ export default async function AdminOverviewPage() {
   const CASE_WITH_ALL = 'id, case_number, status, travel_start_date, travel_end_date, created_at, case_members(is_lead, clients(name)), quotes(total_price, payment_due_date)'
 
   const monthStartDate = monthStart.slice(0, 10)
+  const sixMonthsAgoDate = new Date(now.getFullYear(), now.getMonth() - 5, 1).toISOString().slice(0, 10)
 
   const [
     { data: paymentPending },
     { data: scheduleNeeded },
     { data: allInProgressCases },
-    { data: paidCasesThisMonth },
-    { data: settlementsThisMonth },
-    { data: newClients },
+    { data: allPaidCases },
+    { data: allClients },
+    { count: totalAgentCount },
     { data: agentCaseRows },
     { data: pendingAgents },
     { data: rateRow },
+    { data: allPartnerPayments },
+    { data: allAgentSettlements },
   ] = await Promise.all([
-    supabase.from('cases').select(CASE_WITH_ALL).eq('status', 'payment_pending').order('created_at', { ascending: false }),
-    supabase.from('cases').select(CASE_WITH_ALL).eq('status', 'payment_completed').order('created_at', { ascending: false }),
+    // paymentPending = schedule_confirmed (in flow B, payment is awaited after agent confirms schedule)
+    supabase.from('cases').select(CASE_WITH_ALL).eq('status', 'schedule_confirmed').order('created_at', { ascending: false }),
+    // scheduleNeeded = quote_sent (in flow B, admin uploads schedule right after quote sent)
+    supabase.from('cases').select(CASE_WITH_ALL).eq('status', 'quote_sent').order('created_at', { ascending: false }),
     // All in-progress cases — used for "stuck" detection
     supabase.from('cases').select('id, case_number, status, created_at, case_members(is_lead, clients(name))').neq('status', 'travel_completed'),
-    // Cases whose payment landed this month (money IN basis — what client actually paid)
-    supabase.from('cases').select('id, payment_date, quotes(total_price, company_margin_rate, agent_margin_rate)').gte('payment_date', monthStartDate),
-    // Settlements paid this month (money OUT — agent payouts)
-    supabase.from('settlements').select('id, amount, paid_at').gte('paid_at', monthStartDate),
-    supabase.from('clients').select('id', { count: 'exact', head: true }).gte('created_at', monthStart),
+    // All paid cases ever — drives Hero (all-time totals) + 6mo sparkline trends
+    supabase.from('cases')
+      .select('id, payment_date, agent_id, case_members(id), quotes(total_price, company_margin_rate, agent_margin_rate)')
+      .not('payment_date', 'is', null),
+    // All clients (used for total count + new clients per month for sparkline)
+    supabase.from('clients').select('id, created_at'),
+    // Active agents total count
+    supabase.from('agents').select('id', { count: 'exact', head: true }).eq('is_active', true).eq('onboarding_status', 'approved'),
     supabase.from('cases').select('agent_id, agents!cases_agent_id_fkey(agent_number, name), quotes(total_price)').eq('status', 'travel_completed').gte('created_at', monthStart),
     // Pending agent approvals
     supabase.from('agents').select('id, agent_number, name, onboarding_status').eq('onboarding_status', 'awaiting_approval'),
     supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single(),
+    supabase.from('partner_payments').select('id, amount, paid_at'),
+    supabase.from('settlements').select('id, amount, paid_at').not('paid_at', 'is', null),
   ])
 
   const exchangeRate = (rateRow?.value as { usd_krw?: number } | null)?.usd_krw ?? 1350
 
-  // Compute 4 financial metrics from cases paid this month
+  // Accrual-basis financial decomposition — recognized at payment_date.
   // total_price = base × (1+co) × (1+agent)  →  base = total / ((1+co)(1+agent))
-  //   Revenue       = total_price (gross received from client)
-  //   Partner cost  = base (paid to hospital/partner)
-  //   Company earn  = base × company_margin (our actual slice)
-  //   Agent share*  = base × (1+co) × agent_margin (owed to agent; not necessarily paid this month)
-  let revenueKrw = 0
-  let partnerCostKrw = 0
-  let companyEarningsKrw = 0
-  const paidCases = (paidCasesThisMonth as unknown as { id: string; payment_date: string | null; quotes: { total_price: number; company_margin_rate: number | null; agent_margin_rate: number | null }[] }[]) ?? []
-  for (const c of paidCases) {
+  //   Revenue + Earnings + Partner + Agent = Σ total_price (reconciles)
+  type PaidCase = {
+    id: string
+    payment_date: string | null
+    agent_id: string | null
+    case_members: { id: string }[]
+    quotes: { total_price: number; company_margin_rate: number | null; agent_margin_rate: number | null }[]
+  }
+  const paidCasesAll = (allPaidCases as unknown as PaidCase[]) ?? []
+
+  function decompose(c: PaidCase) {
     const q = c.quotes?.[0]
-    if (!q) continue
+    if (!q) return { total: 0, base: 0, earn: 0, ag: 0 }
     const total = q.total_price ?? 0
     const co = q.company_margin_rate ?? 0
     const ag = q.agent_margin_rate ?? 0
     const denom = (1 + co) * (1 + ag)
     const base = denom > 0 ? total / denom : 0
-    revenueKrw += total
-    partnerCostKrw += base
-    companyEarningsKrw += base * co
+    return { total, base, earn: base * co, ag: base * (1 + co) * ag }
   }
 
-  // Actual agent payouts this month (cash out)
-  const agentPayoutsKrw = (settlementsThisMonth ?? [])
-    .filter(s => s.paid_at && s.paid_at >= monthStartDate)
-    .reduce((sum, s) => sum + (s.amount ?? 0), 0)
+  // All-time totals for Hero
+  // Revenue / Earnings: accrual (recognized when client pays)
+  // Partner / Agent: cash basis (counted only when admin actually sends money out)
+  type CashPayment = { id: string; amount: number; paid_at: string }
+  const partnerPaymentRows = (allPartnerPayments as unknown as CashPayment[]) ?? []
+  const agentSettlementRows = (allAgentSettlements as unknown as CashPayment[]) ?? []
 
-  const newClientCount = (newClients as unknown as { count: number } | null)?.count ?? 0
-  const paidCaseCount = paidCases.length
+  let revenueTotal = 0, earningsTotal = 0
+  for (const c of paidCasesAll) {
+    const d = decompose(c)
+    revenueTotal += d.total
+    earningsTotal += d.earn
+  }
+  const partnerTotal = partnerPaymentRows.reduce((sum, p) => sum + (p.amount ?? 0), 0)
+  const agentTotal = agentSettlementRows.reduce((sum, p) => sum + (p.amount ?? 0), 0)
+
+  // Monthly breakdown for sparklines
+  const clientRows = (allClients as unknown as { id: string; created_at: string }[]) ?? []
+  const monthly: {
+    key: string
+    label: string
+    revenue: number
+    earnings: number
+    partner: number
+    agent: number
+    patients: number
+    newClients: number
+    activeAgents: number
+  }[] = []
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    const monthCases = paidCasesAll.filter(c => c.payment_date?.startsWith(key))
+    let revenue = 0, earnings = 0
+    const agentSet = new Set<string>()
+    for (const c of monthCases) {
+      const dec = decompose(c)
+      revenue += dec.total
+      earnings += dec.earn
+      if (c.agent_id) agentSet.add(c.agent_id)
+    }
+    // Partner & Agent are cash basis — sum of payouts in this month
+    const partner = partnerPaymentRows
+      .filter(p => p.paid_at?.startsWith(key))
+      .reduce((s, p) => s + (p.amount ?? 0), 0)
+    const agent = agentSettlementRows
+      .filter(p => p.paid_at?.startsWith(key))
+      .reduce((s, p) => s + (p.amount ?? 0), 0)
+    const patients = monthCases.reduce((s, c) => s + (c.case_members?.length ?? 0), 0)
+    const newClientsCount = clientRows.filter(c => c.created_at?.startsWith(key)).length
+    monthly.push({
+      key,
+      label: MONTH_SHORT[d.getMonth()],
+      revenue, earnings, partner, agent,
+      patients,
+      newClients: newClientsCount,
+      activeAgents: agentSet.size,
+    })
+  }
+
+  const totalClientCount = clientRows.length
+  const agentCountTotal = totalAgentCount ?? 0
 
   // Top agents
   const agentMap = new Map<string, { agent_number: string; name: string; count: number; revenue: number }>()
@@ -161,10 +229,10 @@ export default async function AdminOverviewPage() {
   const totalActionCount = pendingAgentCount + paymentPendingCount + scheduleNeededCount + stuckCases.length
 
   const STATUS_LABELS_KR: Record<string, string> = {
-    payment_pending: 'Awaiting Payment',
+    quote_sent: 'Awaiting Schedule',
     payment_completed: 'Payment Confirmed',
     schedule_reviewed: 'Schedule Reviewed',
-    schedule_confirmed: 'Schedule Confirmed',
+    schedule_confirmed: 'Awaiting Payment',
   }
 
   return (
@@ -173,41 +241,51 @@ export default async function AdminOverviewPage() {
 
         <h1 className="text-xl font-semibold text-gray-900">Overview</h1>
 
-        {/* HERO — This Month financials */}
+        {/* HERO — All-time totals */}
         <section className="bg-gray-50 rounded-2xl p-6">
           {/* Top row: Revenue + Earnings (primary, big) */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-2">Revenue · This Month</p>
-              <p className="text-4xl font-bold text-gray-900 tracking-tight leading-none">{fmtUSD(revenueKrw / exchangeRate)}</p>
-              <p className="text-xs text-gray-500 mt-2 tabular-nums">{fmtKRW(revenueKrw)}</p>
-              <p className="text-[11px] text-gray-500 mt-1">
-                from {paidCaseCount} paid case{paidCaseCount !== 1 ? 's' : ''}
-                {newClientCount > 0 && ` · ${newClientCount} new client${newClientCount !== 1 ? 's' : ''}`}
-              </p>
+              <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-2">Revenue · All Time</p>
+              <p className="text-4xl font-bold text-gray-900 tracking-tight leading-none">{fmtUSD(revenueTotal / exchangeRate)}</p>
+              <p className="text-xs text-gray-500 mt-2 tabular-nums">{fmtKRW(revenueTotal)}</p>
+              <p className="text-[11px] text-gray-500 mt-1">from {paidCasesAll.length} paid case{paidCasesAll.length !== 1 ? 's' : ''}</p>
             </div>
             <div className="md:border-l md:border-gray-200 md:pl-6">
-              <p className="text-[10px] text-emerald-700 uppercase tracking-wide mb-2">Earnings · This Month</p>
-              <p className="text-4xl font-bold text-emerald-700 tracking-tight leading-none">{fmtUSD(companyEarningsKrw / exchangeRate)}</p>
-              <p className="text-xs text-emerald-600 mt-2 tabular-nums">{fmtKRW(companyEarningsKrw)}</p>
+              <p className="text-[10px] text-emerald-700 uppercase tracking-wide mb-2">Earnings · All Time</p>
+              <p className="text-4xl font-bold text-emerald-700 tracking-tight leading-none">{fmtUSD(earningsTotal / exchangeRate)}</p>
+              <p className="text-xs text-emerald-600 mt-2 tabular-nums">{fmtKRW(earningsTotal)}</p>
               <p className="text-[11px] text-gray-500 mt-1">company margin only (our actual take)</p>
             </div>
           </div>
 
-          {/* Bottom row: Partner Costs + Agent Payouts (secondary) */}
-          <div className="mt-5 pt-5 border-t border-gray-200 grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Bottom row: Partner / Agent / Clients / Agents */}
+          <div className="mt-5 pt-5 border-t border-gray-200 grid grid-cols-2 md:grid-cols-4 gap-6">
             <div>
-              <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-1">Partner Costs · This Month</p>
-              <p className="text-xl font-semibold text-gray-700 tracking-tight">{fmtUSD(partnerCostKrw / exchangeRate)}</p>
-              <p className="text-[11px] text-gray-500 mt-1 tabular-nums">{fmtKRW(partnerCostKrw)} · paid to hospitals/partners</p>
+              <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-1">Partner Costs</p>
+              <p className="text-xl font-semibold text-gray-700 tracking-tight">{fmtUSD(partnerTotal / exchangeRate)}</p>
+              <p className="text-[11px] text-gray-500 mt-1 tabular-nums">{fmtKRW(partnerTotal)} · sent to partners</p>
             </div>
             <div className="md:border-l md:border-gray-200 md:pl-6">
-              <p className="text-[10px] text-amber-700 uppercase tracking-wide mb-1">Agent Payouts · This Month</p>
-              <p className="text-xl font-semibold text-amber-700 tracking-tight">{fmtUSD(agentPayoutsKrw / exchangeRate)}</p>
-              <p className="text-[11px] text-gray-500 mt-1 tabular-nums">{fmtKRW(agentPayoutsKrw)} · settlements sent</p>
+              <p className="text-[10px] text-amber-700 uppercase tracking-wide mb-1">Agent Payouts</p>
+              <p className="text-xl font-semibold text-amber-700 tracking-tight">{fmtUSD(agentTotal / exchangeRate)}</p>
+              <p className="text-[11px] text-gray-500 mt-1 tabular-nums">{fmtKRW(agentTotal)} · sent to agents</p>
+            </div>
+            <div className="md:border-l md:border-gray-200 md:pl-6">
+              <p className="text-[10px] text-blue-700 uppercase tracking-wide mb-1">Registered Clients</p>
+              <p className="text-xl font-semibold text-blue-700 tracking-tight tabular-nums">{totalClientCount.toLocaleString()}</p>
+              <p className="text-[11px] text-gray-500 mt-1">across all agents</p>
+            </div>
+            <div className="md:border-l md:border-gray-200 md:pl-6">
+              <p className="text-[10px] text-purple-700 uppercase tracking-wide mb-1">Approved Agents</p>
+              <p className="text-xl font-semibold text-purple-700 tracking-tight tabular-nums">{agentCountTotal.toLocaleString()}</p>
+              <p className="text-[11px] text-gray-500 mt-1">approved &amp; active</p>
             </div>
           </div>
         </section>
+
+        {/* PERFORMANCE — 6 KPI sparkline cards */}
+        <ChartLab monthly={monthly} exchangeRate={exchangeRate} />
 
         {/* ACTION REQUIRED — unified queue */}
         <section className="space-y-3">

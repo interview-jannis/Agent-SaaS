@@ -7,6 +7,7 @@ type Props = {
   onChange: (v: string) => void
   className?: string
   minDate?: string
+  maxDate?: string
 }
 
 function parse(v: string): { date: string; hour: string; minute: string } {
@@ -21,7 +22,7 @@ function compose(date: string, hour: string, minute: string): string {
   return `${date}T${hour.padStart(2, '0')}:${minute.padStart(2, '0')}`
 }
 
-export default function DateTime24Picker({ value, onChange, className = '', minDate }: Props) {
+export default function DateTime24Picker({ value, onChange, className = '', minDate, maxDate }: Props) {
   const parsed = parse(value)
   const [date, setDate] = useState(parsed.date)
   const [hour, setHour] = useState(parsed.hour)
@@ -51,6 +52,7 @@ export default function DateTime24Picker({ value, onChange, className = '', minD
         type="date"
         value={date}
         min={minDate}
+        max={maxDate}
         onChange={e => update(e.target.value, hour, minute)}
         className={`${base} flex-1 min-w-0`}
       />

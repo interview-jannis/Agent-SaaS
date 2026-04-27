@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type CaseStatus = 'payment_pending' | 'payment_completed' | 'schedule_reviewed' | 'schedule_confirmed' | 'travel_completed'
+type CaseStatus = 'quote_sent' | 'payment_completed' | 'schedule_reviewed' | 'schedule_confirmed' | 'travel_completed'
 
 type CaseMember = {
   id: string
@@ -17,7 +17,10 @@ type CaseMember = {
 type Quote = {
   id: string
   total_price: number
-  quote_groups: { member_count: number }[]
+  quote_groups: {
+    member_count: number
+    quote_items: { products: { partner_name: string | null } | null }[]
+  }[]
 }
 
 type Agent = { id: string; agent_number: string; name: string }
@@ -43,23 +46,23 @@ function getAgent(c: { agents: Agent | Agent[] | null } | null | undefined): Age
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const STATUS_LABELS: Record<CaseStatus, string> = {
-  payment_pending: 'Awaiting Payment',
+  quote_sent: 'Awaiting Schedule',
   payment_completed: 'Payment Confirmed',
   schedule_reviewed: 'Schedule Reviewed',
-  schedule_confirmed: 'Schedule Confirmed',
+  schedule_confirmed: 'Awaiting Payment',
   travel_completed: 'Travel Completed',
 }
 
 const STATUS_STYLES: Record<CaseStatus, string> = {
-  payment_pending: 'bg-amber-50 text-amber-700 border-amber-200',
-  payment_completed: 'bg-blue-50 text-blue-700 border-blue-200',
+  quote_sent: 'bg-amber-50 text-amber-700 border-amber-200',
+  payment_completed: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   schedule_reviewed: 'bg-violet-50 text-violet-700 border-violet-200',
-  schedule_confirmed: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  schedule_confirmed: 'bg-blue-50 text-blue-700 border-blue-200',
   travel_completed: 'bg-gray-50 text-gray-500 border-gray-200',
 }
 
 const ALL_STATUSES: CaseStatus[] = [
-  'payment_pending', 'payment_completed', 'schedule_reviewed', 'schedule_confirmed', 'travel_completed',
+  'quote_sent', 'schedule_reviewed', 'schedule_confirmed', 'payment_completed', 'travel_completed',
 ]
 
 function fmtUSD(n: number) { return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }
@@ -72,26 +75,52 @@ export default function AdminCasesPage() {
   const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState<CaseStatus | 'all'>('all')
   const [exchangeRate, setExchangeRate] = useState(1350)
+  const [partnerPaidByCase, setPartnerPaidByCase] = useState<Record<string, Set<string>>>({})
+  const [settledCaseIds, setSettledCaseIds] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     async function init() {
-      const [casesRes, rateRes] = await Promise.all([
+      const [casesRes, rateRes, partnerRes, settleRes] = await Promise.all([
         supabase.from('cases').select(`
           id, case_number, status, travel_start_date, travel_end_date, created_at,
           agents!cases_agent_id_fkey(id, agent_number, name),
           case_members(id, is_lead, clients(id, name)),
-          quotes(id, total_price, quote_groups(member_count))
+          quotes(id, total_price, quote_groups(member_count, quote_items(products(partner_name))))
         `).order('created_at', { ascending: false }),
         supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single(),
+        supabase.from('partner_payments').select('case_id, partner_name'),
+        supabase.from('settlements').select('case_id').not('paid_at', 'is', null),
       ])
       if (casesRes.error) console.error('[cases] fetch error:', casesRes.error)
       setCases((casesRes.data as unknown as Case[]) ?? [])
       const r = (rateRes.data?.value as { usd_krw?: number } | null)?.usd_krw
       if (r) setExchangeRate(r)
+
+      const ppMap: Record<string, Set<string>> = {}
+      for (const row of (partnerRes.data as { case_id: string; partner_name: string }[] | null) ?? []) {
+        if (!ppMap[row.case_id]) ppMap[row.case_id] = new Set()
+        ppMap[row.case_id].add(row.partner_name)
+      }
+      setPartnerPaidByCase(ppMap)
+      setSettledCaseIds(new Set(((settleRes.data as { case_id: string | null }[] | null) ?? []).map(s => s.case_id).filter((x): x is string => !!x)))
+
       setLoading(false)
     }
     init()
   }, [])
+
+  function partnerStatusFor(c: Case): 'done' | 'pending' | 'na' {
+    const partners = new Set<string>()
+    for (const g of c.quotes?.[0]?.quote_groups ?? []) {
+      for (const item of g.quote_items ?? []) {
+        const name = item.products?.partner_name?.trim()
+        if (name) partners.add(name)
+      }
+    }
+    if (partners.size === 0) return 'na'
+    const paid = partnerPaidByCase[c.id] ?? new Set<string>()
+    return [...partners].every(p => paid.has(p)) ? 'done' : 'pending'
+  }
 
   const filteredCases = statusFilter === 'all' ? cases : cases.filter((c) => c.status === statusFilter)
 
@@ -124,7 +153,7 @@ export default function AdminCasesPage() {
           <table className="w-full text-sm">
             <thead className="border-b border-gray-100 bg-gray-50/60 sticky top-0">
               <tr>
-                {['Case #', 'Agent', 'Lead Client', 'Status', 'Members', 'Travel Period', 'Total (USD)'].map(h => (
+                {['Case #', 'Agent', 'Lead Client', 'Status', 'Members', 'Travel Period', 'Settlement', 'Total (USD)'].map(h => (
                   <th key={h} className="py-3 px-4 text-xs font-medium text-gray-400 text-left">{h}</th>
                 ))}
               </tr>
@@ -153,6 +182,28 @@ export default function AdminCasesPage() {
                       {c.travel_start_date || c.travel_end_date
                         ? `${c.travel_start_date ?? '—'} ~ ${c.travel_end_date ?? '—'}`
                         : '—'}
+                    </td>
+                    <td className="py-3.5 px-4">
+                      {(() => {
+                        const ps = partnerStatusFor(c)
+                        const agentDone = settledCaseIds.has(c.id)
+                        const dot = (state: 'done' | 'pending' | 'na') =>
+                          state === 'done' ? 'bg-emerald-500'
+                            : state === 'pending' ? 'bg-amber-400'
+                            : 'bg-gray-200'
+                        return (
+                          <div className="flex items-center gap-2 text-[10px]">
+                            <span className="flex items-center gap-1" title={`Partner ${ps}`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${dot(ps)}`} />
+                              <span className="text-gray-500">P</span>
+                            </span>
+                            <span className="flex items-center gap-1" title={`Agent ${agentDone ? 'done' : 'pending'}`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${dot(agentDone ? 'done' : 'pending')}`} />
+                              <span className="text-gray-500">A</span>
+                            </span>
+                          </div>
+                        )
+                      })()}
                     </td>
                     <td className="py-3.5 px-4 font-medium text-gray-900">
                       {quote ? fmtUSD(quote.total_price / exchangeRate) : '—'}

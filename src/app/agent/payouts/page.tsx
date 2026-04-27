@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import SparklineCard from '@/components/SparklineCard'
 
 type CaseRow = {
   id: string
@@ -45,29 +46,6 @@ function fmtUSD(n: number) {
   return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-// Compact format: $12.7K, $1.5M. Used for axis labels.
-function fmtUsdShort(n: number): string {
-  if (n === 0) return '$0'
-  if (n >= 1_000_000) {
-    const v = n / 1_000_000
-    return `$${v.toFixed(v < 10 ? 1 : 0).replace(/\.0$/, '')}M`
-  }
-  if (n >= 1000) {
-    const v = n / 1000
-    return `$${v.toFixed(v < 10 ? 1 : 0).replace(/\.0$/, '')}K`
-  }
-  return `$${Math.round(n)}`
-}
-
-// Round a number up to a "nice" value (1, 2, 5 × 10^n) — used for axis max.
-function niceCeil(n: number): number {
-  if (n <= 0) return 1
-  const exp = Math.pow(10, Math.floor(Math.log10(n)))
-  const frac = n / exp
-  const nice = frac <= 1 ? 1 : frac <= 2 ? 2 : frac <= 5 ? 5 : 10
-  return nice * exp
-}
-
 function commissionKrw(totalKrw: number, agentMargin: number): number {
   if (!agentMargin || agentMargin <= 0) return 0
   return Math.round(totalKrw * agentMargin / (1 + agentMargin))
@@ -79,9 +57,6 @@ export default function AgentPayoutsPage() {
   const [agentId, setAgentId] = useState('')
   const [cases, setCases] = useState<CaseRow[]>([])
   const [settlements, setSettlements] = useState<Settlement[]>([])
-
-  // Chart
-  const [hoveredMonth, setHoveredMonth] = useState<string | null>(null)
 
   // Bank
   const [bankInfo, setBankInfo] = useState<BankInfo | null>(null)
@@ -169,26 +144,29 @@ export default function AgentPayoutsPage() {
   const toUsd = (krw: number) => krw / exchangeRate
   const bankConfigured = bankInfo && Object.keys(bankInfo).length > 0
 
-  // 6-month monthly breakdown — amount (KRW) + patients served (from settlement's linked case)
-  const monthly: { key: string; label: string; amount: number; patients: number }[] = []
+  // 6-month monthly breakdown
+  const monthly: { key: string; label: string; amount: number; count: number; avg: number; avgDaysToReceive: number }[] = []
   for (let i = 5; i >= 0; i--) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
     const monthPayouts = paidSettlements.filter(s => s.paid_at?.startsWith(key))
     const amount = monthPayouts.reduce((sum, st) => sum + (st.amount ?? 0), 0)
-    const patients = monthPayouts.reduce((sum, st) => {
-      const c = cases.find(x => x.id === st.case_id)
-      return sum + (c?.case_members?.length ?? 0)
-    }, 0)
-    monthly.push({ key, label: MONTH_SHORT[d.getMonth()], amount, patients })
+    const count = monthPayouts.length
+    const avg = count > 0 ? amount / count : 0
+    const daysSamples = monthPayouts
+      .map(s => {
+        const c = cases.find(x => x.id === s.case_id)
+        const end = c?.travel_end_date
+        if (!end || !s.paid_at) return null
+        return Math.max(0, Math.floor((new Date(s.paid_at).getTime() - new Date(end).getTime()) / 86400000))
+      })
+      .filter((v): v is number => v !== null)
+    const avgDaysToReceive = daysSamples.length > 0 ? Math.round(daysSamples.reduce((a, b) => a + b, 0) / daysSamples.length) : 0
+    monthly.push({ key, label: MONTH_SHORT[d.getMonth()], amount, count, avg, avgDaysToReceive })
   }
-  // Axis maxes are rounded up to "nice" values for readable tick labels.
-  // Amount is in USD for axis, so round after conversion.
-  const rawMaxAmountUsd = Math.max(...monthly.map(m => toUsd(m.amount)), 1)
-  const niceMaxAmountUsd = niceCeil(rawMaxAmountUsd)
-  const niceMaxAmountKrw = niceMaxAmountUsd * exchangeRate
-  const rawMaxPatients = Math.max(...monthly.map(m => m.patients), 1)
-  const niceMaxPatients = rawMaxPatients <= 5 ? 5 : niceCeil(rawMaxPatients)
+  const cur = monthly[monthly.length - 1]
+  const prv = monthly[monthly.length - 2]
+  const sparkLabels = monthly.map(m => m.label)
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -316,144 +294,29 @@ export default function AgentPayoutsPage() {
                 )}
               </section>
 
-              {/* Bottom row: Monthly chart (2/3) + Bank Account (1/3) */}
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-                {/* Monthly chart — amount bars + patient count per month */}
-                <section className="lg:col-span-2 bg-gray-50 rounded-2xl p-5">
-                  <div className="flex items-baseline justify-between mb-4">
-                    <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Monthly Performance</h3>
-                    <div className="flex items-center gap-4 text-[10px] text-gray-500">
-                      <span className="flex items-center gap-1.5">
-                        <span className="w-3 h-2.5 rounded-sm bg-[#0f4c35]"></span>
-                        Received ($)
-                      </span>
-                      <span className="flex items-center gap-1.5">
-                        <svg width="14" height="10" viewBox="0 0 14 10" className="overflow-visible">
-                          <line x1="0" y1="5" x2="14" y2="5" stroke="rgb(59 130 246)" strokeWidth="2" />
-                          <circle cx="7" cy="5" r="2.5" fill="rgb(59 130 246)" stroke="white" strokeWidth="1" />
-                        </svg>
-                        Patients
-                      </span>
-                    </div>
-                  </div>
+              {/* Performance — 6 month sparklines */}
+              <section className="space-y-3">
+                <div className="flex items-baseline gap-3">
+                  <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Performance · Last 6 Months</h3>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <SparklineCard label="Received" color="#0f4c35" kind="money"
+                    value={toUsd(cur.amount)} prev={toUsd(prv?.amount ?? 0)}
+                    values={monthly.map(m => toUsd(m.amount))} labels={sparkLabels} />
+                  <SparklineCard label="Avg per Payout" color="#10b981" kind="money"
+                    value={toUsd(cur.avg)} prev={toUsd(prv?.avg ?? 0)}
+                    values={monthly.map(m => toUsd(m.avg))} labels={sparkLabels} />
+                  <SparklineCard label="Payouts" color="#a855f7" kind="count"
+                    value={cur.count} prev={prv?.count ?? 0}
+                    values={monthly.map(m => m.count)} labels={sparkLabels} />
+                  <SparklineCard label="Avg Days to Receive" color="#3b82f6" kind="count"
+                    value={cur.avgDaysToReceive} prev={prv?.avgDaysToReceive ?? 0}
+                    values={monthly.map(m => m.avgDaysToReceive)} labels={sparkLabels} />
+                </div>
+              </section>
 
-                  {/* Chart with dual Y-axes */}
-                  <div className="mt-4 flex gap-3 items-start">
-                    {/* Y-axis left — amount ($) */}
-                    <div className="h-40 flex flex-col justify-between items-end text-right py-0">
-                      <span className="text-[10px] text-gray-400 tabular-nums leading-none">{fmtUsdShort(niceMaxAmountUsd)}</span>
-                      <span className="text-[10px] text-gray-400 tabular-nums leading-none">{fmtUsdShort(niceMaxAmountUsd / 2)}</span>
-                      <span className="text-[10px] text-gray-400 leading-none">$0</span>
-                    </div>
-
-                    {/* Middle column — bars + month labels share same flex container → perfect alignment */}
-                    <div className="flex-1">
-                    <div className="relative h-40">
-                      {/* Horizontal gridlines */}
-                      <div className="absolute inset-0 flex flex-col justify-between pointer-events-none">
-                        <div className="border-t border-gray-200 border-dashed" />
-                        <div className="border-t border-gray-200 border-dashed" />
-                        <div className="border-t border-gray-300" />
-                      </div>
-
-                      {/* Bars (amount only) — narrower bars centered within each column */}
-                      <div className="absolute inset-0 flex items-end gap-4 z-[1]">
-                        {monthly.map(m => {
-                          const amountPct = (m.amount / niceMaxAmountKrw) * 100
-                          const isCurrent = m.key === thisMonthKey
-                          const isHovered = hoveredMonth === m.key
-                          return (
-                            <div
-                              key={m.key}
-                              className="flex-1 h-full flex items-end justify-center relative cursor-pointer"
-                              onMouseEnter={() => setHoveredMonth(m.key)}
-                              onMouseLeave={() => setHoveredMonth(null)}
-                            >
-                              <div className="absolute inset-0" />
-
-                              <div
-                                className={`w-[45%] rounded-t-md transition-all ${isCurrent ? 'bg-[#0f4c35]' : isHovered ? 'bg-[#0f4c35]/70' : 'bg-[#0f4c35]/40'}`}
-                                style={{ height: m.amount > 0 ? `${Math.max(amountPct, 4)}%` : '0%' }}
-                              />
-
-                              {isHovered && (
-                                <div className="absolute -top-[72px] left-1/2 -translate-x-1/2 bg-gray-900 text-white text-[11px] rounded-lg px-3 py-2 whitespace-nowrap z-30 shadow-lg pointer-events-none">
-                                  <p className="font-semibold mb-1">{m.label}</p>
-                                  <p className="flex items-center gap-1.5">
-                                    <span className="w-2 h-2 rounded-sm bg-[#0f4c35]" />
-                                    <span className="tabular-nums">{m.amount === 0 ? '—' : fmtUSD(toUsd(m.amount))}</span>
-                                  </p>
-                                  <p className="flex items-center gap-1.5">
-                                    <span className="w-2 h-2 rounded-full bg-blue-500" />
-                                    <span className="tabular-nums">{m.patients} patient{m.patients !== 1 ? 's' : ''}</span>
-                                  </p>
-                                  <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 rotate-45 bg-gray-900" />
-                                </div>
-                              )}
-                            </div>
-                          )
-                        })}
-                      </div>
-
-                      {/* Patient line — SVG, rendered above bars via higher z-index */}
-                      <svg
-                        className="absolute inset-0 w-full h-full overflow-visible pointer-events-none z-[2]"
-                        preserveAspectRatio="none"
-                        viewBox="0 0 100 100"
-                      >
-                        <polyline
-                          fill="none"
-                          stroke="rgb(59 130 246)"
-                          strokeWidth="2"
-                          vectorEffect="non-scaling-stroke"
-                          points={monthly.map((m, i) => {
-                            const x = ((i + 0.5) / monthly.length) * 100
-                            const y = 100 - (m.patients / niceMaxPatients) * 100
-                            return `${x},${y}`
-                          }).join(' ')}
-                        />
-                      </svg>
-
-                      {/* Dots — circular divs, top layer */}
-                      {monthly.map((m, i) => {
-                        const left = ((i + 0.5) / monthly.length) * 100
-                        const bottom = (m.patients / niceMaxPatients) * 100
-                        const isCurrent = m.key === thisMonthKey
-                        return (
-                          <div
-                            key={`dot-${m.key}`}
-                            className="absolute pointer-events-none z-[3]"
-                            style={{ left: `${left}%`, bottom: `${bottom}%`, transform: 'translate(-50%, 50%)' }}
-                          >
-                            <div className={`rounded-full border-2 border-white ${isCurrent ? 'w-3 h-3 bg-blue-600' : 'w-2.5 h-2.5 bg-blue-500'}`} />
-                          </div>
-                        )
-                      })}
-                    </div>
-
-                    {/* Month labels — inside middle column using SAME gap-4 as bars for perfect alignment */}
-                    <div className="flex gap-4 mt-2">
-                      {monthly.map(m => {
-                        const isCurrent = m.key === thisMonthKey
-                        return (
-                          <p key={`lbl-b-${m.key}`} className={`flex-1 text-center text-[11px] ${isCurrent ? 'text-[#0f4c35] font-semibold' : 'text-gray-500'}`}>
-                            {m.label}
-                          </p>
-                        )
-                      })}
-                    </div>
-                    </div>
-
-                    {/* Y-axis right — patients */}
-                    <div className="h-40 flex flex-col justify-between items-start text-left py-0">
-                      <span className="text-[10px] text-blue-500 tabular-nums leading-none">{niceMaxPatients}</span>
-                      <span className="text-[10px] text-blue-500 tabular-nums leading-none">{Math.round(niceMaxPatients / 2)}</span>
-                      <span className="text-[10px] text-blue-500 leading-none">0</span>
-                    </div>
-                  </div>
-                </section>
-
-                {/* Bank Account — original vertical format */}
+              {/* Bank Account */}
+              <div className="lg:max-w-md">
                 <section className={`rounded-2xl p-5 ${bankConfigured ? 'bg-gray-50' : 'bg-amber-50 border border-amber-200'}`}>
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-2">

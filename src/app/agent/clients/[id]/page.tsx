@@ -13,7 +13,7 @@ import {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type CaseStatus = 'payment_pending' | 'payment_completed' | 'schedule_reviewed' | 'schedule_confirmed' | 'travel_completed'
+type CaseStatus = 'quote_sent' | 'payment_completed' | 'schedule_reviewed' | 'schedule_confirmed' | 'travel_completed'
 
 type Client = {
   id: string
@@ -160,14 +160,14 @@ function labelFor<T extends string>(opts: { value: T; label: string }[], v: T | 
 }
 
 const STATUS_LABELS: Record<CaseStatus, string> = {
-  payment_pending: 'Awaiting Payment', payment_completed: 'Payment Confirmed',
-  schedule_reviewed: 'Schedule Reviewed', schedule_confirmed: 'Schedule Confirmed', travel_completed: 'Travel Completed',
+  quote_sent: 'Awaiting Schedule', payment_completed: 'Payment Confirmed',
+  schedule_reviewed: 'Schedule Reviewed', schedule_confirmed: 'Awaiting Payment', travel_completed: 'Travel Completed',
 }
 const STATUS_STYLES: Record<CaseStatus, string> = {
-  payment_pending: 'bg-amber-50 text-amber-700 border-amber-200',
-  payment_completed: 'bg-blue-50 text-blue-700 border-blue-200',
+  quote_sent: 'bg-amber-50 text-amber-700 border-amber-200',
+  payment_completed: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   schedule_reviewed: 'bg-violet-50 text-violet-700 border-violet-200',
-  schedule_confirmed: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  schedule_confirmed: 'bg-blue-50 text-blue-700 border-blue-200',
   travel_completed: 'bg-gray-50 text-gray-500 border-gray-200',
 }
 

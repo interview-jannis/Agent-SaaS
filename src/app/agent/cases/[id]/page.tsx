@@ -7,12 +7,11 @@ import { supabase } from '@/lib/supabase'
 import { notifyAllAdmins } from '@/lib/notifications'
 import { logAsCurrentUser } from '@/lib/audit'
 import DOBPicker from '@/components/DOBPicker'
-import PrintPdfButton from '@/components/PrintPdfButton'
 import DateTime24Picker from '@/components/DateTime24Picker'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type CaseStatus = 'payment_pending' | 'payment_completed' | 'schedule_reviewed' | 'schedule_confirmed' | 'travel_completed'
+type CaseStatus = 'quote_sent' | 'payment_completed' | 'schedule_reviewed' | 'schedule_confirmed' | 'travel_completed'
 type DietaryType = 'halal_certified' | 'halal_friendly' | 'muslim_friendly' | 'pork_free' | 'none'
 
 import type { ClientInfo, FlightInfo } from '@/lib/clientCompleteness'
@@ -52,6 +51,7 @@ type Quote = {
   payment_due_date: string | null
   agent_margin_rate: number
   company_margin_rate: number
+  finalized_at: string | null
   quote_groups: QuoteGroup[]
 }
 
@@ -93,14 +93,14 @@ type NewClientForm = {
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const STATUS_LABELS: Record<CaseStatus, string> = {
-  payment_pending: 'Awaiting Payment', payment_completed: 'Payment Confirmed',
-  schedule_reviewed: 'Schedule Reviewed', schedule_confirmed: 'Schedule Confirmed', travel_completed: 'Travel Completed',
+  quote_sent: 'Awaiting Schedule', payment_completed: 'Payment Confirmed',
+  schedule_reviewed: 'Schedule Reviewed', schedule_confirmed: 'Awaiting Payment', travel_completed: 'Travel Completed',
 }
 const STATUS_STYLES: Record<CaseStatus, string> = {
-  payment_pending: 'bg-amber-50 text-amber-700 border-amber-200',
-  payment_completed: 'bg-blue-50 text-blue-700 border-blue-200',
+  quote_sent: 'bg-amber-50 text-amber-700 border-amber-200',
+  payment_completed: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   schedule_reviewed: 'bg-violet-50 text-violet-700 border-violet-200',
-  schedule_confirmed: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  schedule_confirmed: 'bg-blue-50 text-blue-700 border-blue-200',
   travel_completed: 'bg-gray-50 text-gray-500 border-gray-200',
 }
 const DIETARY_OPTIONS = [
@@ -163,6 +163,7 @@ export default function CaseDetailPage() {
     groupId: string | null
   }
   const [pendingMembers, setPendingMembers] = useState<PendingMember[]>([])
+  const [pendingGroupNames, setPendingGroupNames] = useState<Record<string, string>>({})
   const [savingMembers, setSavingMembers] = useState(false)
   const [membersError, setMembersError] = useState('')
   const [editMembers, setEditMembers] = useState(false)
@@ -205,7 +206,7 @@ export default function CaseDetailPage() {
           clients(client_number, nationality, ${CLIENT_INFO_COLUMNS})
         ),
         quotes(
-          id, quote_number, slug, total_price, payment_due_date, agent_margin_rate, company_margin_rate,
+          id, quote_number, slug, total_price, payment_due_date, agent_margin_rate, company_margin_rate, finalized_at,
           quote_groups(
             id, name, order, member_count,
             quote_items(id, final_price, products(id, name, base_price, price_currency, duration_value, duration_unit)),
@@ -329,7 +330,8 @@ export default function CaseDetailPage() {
 
   async function cancelCase() {
     if (!caseData) return
-    if (caseData.status !== 'payment_pending') { setCancelError('Case can only be cancelled before payment is confirmed.'); return }
+    const cancellable: CaseStatus[] = ['quote_sent', 'schedule_reviewed', 'schedule_confirmed']
+    if (!cancellable.includes(caseData.status)) { setCancelError('Case can only be cancelled before payment is confirmed.'); return }
     if (!cancelReason.trim()) { setCancelError('Please enter a reason.'); return }
     setCancelling(true); setCancelError('')
     try {
@@ -388,7 +390,7 @@ export default function CaseDetailPage() {
         .eq('id', schedule.id)
       if (se) throw se
       await supabase.from('cases').update({ status: 'schedule_confirmed' }).eq('id', caseData.id)
-      await notifyAllAdmins(`${caseData.case_number} Schedule v${schedule.version} confirmed`, `/admin/cases/${caseData.id}`)
+      await notifyAllAdmins(`${caseData.case_number} Schedule v${schedule.version} confirmed — finalize pricing to issue invoice`, `/admin/cases/${caseData.id}`)
       await logAsCurrentUser('schedule.confirmed', { type: 'case', id: caseData.id, label: caseData.case_number }, { version: schedule.version })
       await fetchCase()
     } catch (e: unknown) {
@@ -472,10 +474,21 @@ export default function CaseDetailPage() {
     return false
   })()
 
+  const groupNamesDirty = (() => {
+    if (!caseData) return false
+    const groups = caseData.quotes[0]?.quote_groups ?? []
+    return groups.some(g => (pendingGroupNames[g.id] ?? g.name) !== g.name)
+  })()
+
+  const dirty = membersDirty || groupNamesDirty
+
   useEffect(() => {
     if (!caseData) return
-    if (membersDirty) return // preserve staged edits across refetches
+    if (dirty) return // preserve staged edits across refetches
     setPendingMembers(buildPendingFromServer(caseData))
+    const initial: Record<string, string> = {}
+    for (const g of caseData.quotes[0]?.quote_groups ?? []) initial[g.id] = g.name
+    setPendingGroupNames(initial)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [caseData])
 
@@ -594,10 +607,25 @@ export default function CaseDetailPage() {
         }
       }
 
+      // 5) Save group name changes
+      const serverGroups = caseData.quotes[0]?.quote_groups ?? []
+      for (const g of serverGroups) {
+        const newName = (pendingGroupNames[g.id] ?? g.name).trim()
+        if (newName && newName !== g.name) {
+          const { error } = await supabase.from('quote_groups').update({ name: newName }).eq('id', g.id)
+          if (error) throw error
+        }
+      }
+
       const fresh = await fetchCase()
       // Force rebuild: temp-id NEW entries are now real rows — otherwise membersDirty stays true
       // and the next Save would try to re-insert them (duplicate key).
-      if (fresh) setPendingMembers(buildPendingFromServer(fresh))
+      if (fresh) {
+        setPendingMembers(buildPendingFromServer(fresh))
+        const initial: Record<string, string> = {}
+        for (const g of fresh.quotes[0]?.quote_groups ?? []) initial[g.id] = g.name
+        setPendingGroupNames(initial)
+      }
       setEditMembers(false)
     } catch (e: unknown) {
       setMembersError((e as { message?: string })?.message ?? 'Failed to save members.')
@@ -615,6 +643,9 @@ export default function CaseDetailPage() {
   function cancelMembers() {
     if (!caseData) return
     setPendingMembers(buildPendingFromServer(caseData))
+    const initial: Record<string, string> = {}
+    for (const g of caseData.quotes[0]?.quote_groups ?? []) initial[g.id] = g.name
+    setPendingGroupNames(initial)
     setMembersError('')
     setShowNewClient(false)
     setEditMembers(false)
@@ -830,19 +861,33 @@ export default function CaseDetailPage() {
                   <label className="block text-xs text-gray-500 mb-1">Concept *</label>
                   <input type="text" value={tripForm.concept}
                     onChange={e => setTripForm(p => ({ ...p, concept: e.target.value }))}
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-[#0f4c35] bg-white" />
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35] bg-white" />
                 </div>
-                {([
-                  ['Outbound', 'out'],
-                  ['Inbound', 'in'],
-                ] as const).map(([label, prefix]) => (
+                {(() => {
+                  // ±3 day buffer around travel period for flight dates
+                  const travelStart = caseData.travel_start_date
+                  const travelEnd = caseData.travel_end_date
+                  const shiftDate = (iso: string | null, days: number): string | undefined => {
+                    if (!iso) return undefined
+                    const d = new Date(iso)
+                    d.setDate(d.getDate() + days)
+                    return d.toISOString().slice(0, 10)
+                  }
+                  const outboundMin = shiftDate(travelStart, -3)
+                  const outboundMax = travelEnd ?? undefined
+                  const inboundMin = travelStart ?? undefined
+                  const inboundMax = shiftDate(travelEnd, 3)
+                  return ([
+                    ['Outbound', 'out', outboundMin, outboundMax],
+                    ['Inbound', 'in', inboundMin, inboundMax],
+                  ] as const).map(([label, prefix, minD, maxD]) => (
                   <div key={prefix} className="col-span-2 bg-white border border-gray-200 rounded-xl p-3 space-y-2">
                     <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">{label} Flight *</p>
                     <div className="grid grid-cols-2 gap-2">
                       <div>
                         <label className="block text-[10px] text-gray-500 mb-0.5">Departure Date & Time</label>
                         <DateTime24Picker value={tripForm[`${prefix}_departure_datetime`]}
-                          minDate={caseData.created_at.slice(0, 10)}
+                          minDate={minD} maxDate={maxD}
                           onChange={v => setTripForm(p => ({ ...p, [`${prefix}_departure_datetime`]: v }))} />
                       </div>
                       <div>
@@ -850,12 +895,12 @@ export default function CaseDetailPage() {
                         <input type="text" value={tripForm[`${prefix}_departure_airport`]}
                           onChange={e => setTripForm(p => ({ ...p, [`${prefix}_departure_airport`]: e.target.value }))}
                           placeholder="e.g. Dubai (DXB)"
-                          className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-[#0f4c35]" />
+                          className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
                       </div>
                       <div>
                         <label className="block text-[10px] text-gray-500 mb-0.5">Arrival Date & Time</label>
                         <DateTime24Picker value={tripForm[`${prefix}_arrival_datetime`]}
-                          minDate={caseData.created_at.slice(0, 10)}
+                          minDate={minD} maxDate={maxD}
                           onChange={v => setTripForm(p => ({ ...p, [`${prefix}_arrival_datetime`]: v }))} />
                       </div>
                       <div>
@@ -863,11 +908,12 @@ export default function CaseDetailPage() {
                         <input type="text" value={tripForm[`${prefix}_arrival_airport`]}
                           onChange={e => setTripForm(p => ({ ...p, [`${prefix}_arrival_airport`]: e.target.value }))}
                           placeholder="e.g. Incheon (ICN)"
-                          className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-[#0f4c35]" />
+                          className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
                       </div>
                     </div>
                   </div>
-                ))}
+                  ))
+                })()}
                 {tripError && <p className="col-span-2 text-xs text-red-500">{tripError}</p>}
               </div>
             )}
@@ -907,7 +953,7 @@ export default function CaseDetailPage() {
                 {!memberReady
                   ? <span className="text-[10px] font-medium text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">{memberIssueCount} issue{memberIssueCount > 1 ? 's' : ''}</span>
                   : <span className="text-[10px] font-medium text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">Ready</span>}
-                {editMembers && membersDirty && <span className="text-[10px] font-medium text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">Unsaved</span>}
+                {editMembers && dirty && <span className="text-[10px] font-medium text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">Unsaved</span>}
               </div>
               {!editMembers ? (
                 <button onClick={() => setEditMembers(true)}
@@ -1138,7 +1184,11 @@ export default function CaseDetailPage() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       {groupedMembers.map(({ group, members }) => (
                         <div key={group.id} className="space-y-2">
-                          <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">{group.name}</p>
+                          <input
+                            value={pendingGroupNames[group.id] ?? group.name}
+                            onChange={(e) => setPendingGroupNames(p => ({ ...p, [group.id]: e.target.value }))}
+                            placeholder="Group name"
+                            className="w-full text-[11px] font-semibold text-gray-700 uppercase tracking-wide bg-transparent border-b border-gray-200 focus:outline-none focus:border-[#0f4c35] py-1" />
                           {members.length === 0 ? (
                             <p className="text-xs text-gray-300 italic">No members assigned</p>
                           ) : (
@@ -1165,7 +1215,7 @@ export default function CaseDetailPage() {
                     className="text-xs font-medium text-gray-500 hover:text-gray-800 px-3 py-1.5 rounded-lg disabled:opacity-40">
                     Cancel
                   </button>
-                  <button onClick={saveMembers} disabled={savingMembers || !membersDirty}
+                  <button onClick={saveMembers} disabled={savingMembers || !dirty}
                     className="text-xs font-medium bg-[#0f4c35] text-white hover:bg-[#0a3828] px-3 py-1.5 rounded-lg disabled:opacity-40">
                     {savingMembers ? 'Saving...' : 'Save Changes'}
                   </button>
@@ -1341,7 +1391,6 @@ export default function CaseDetailPage() {
                     </div>
                     <p className="text-xs text-gray-400 mt-0.5">Uploaded {schedule.created_at.slice(0, 10)}</p>
                   </div>
-                  {schedule.pdf_url && schedule.slug && <PrintPdfButton scheduleSlug={schedule.slug} />}
                 </div>
 
                 {schedule.status === 'revision_requested' && schedule.revision_note && (
@@ -1358,8 +1407,8 @@ export default function CaseDetailPage() {
 
                 {scheduleError && <p className="text-xs text-red-500">{scheduleError}</p>}
 
-                {/* Mark Travel Complete — only after schedule_confirmed, before travel_completed */}
-                {caseData.status === 'schedule_confirmed' && (
+                {/* Mark Travel Complete — only after payment_completed, before travel_completed */}
+                {caseData.status === 'payment_completed' && (
                   <div className="flex items-center justify-end pt-1">
                     <button onClick={markTravelComplete} disabled={markingTravelComplete}
                       className="px-3 py-1.5 text-xs font-medium bg-white text-[#0f4c35] border border-[#0f4c35] rounded-lg hover:bg-[#0f4c35]/5 disabled:opacity-40 transition-colors">
@@ -1436,26 +1485,32 @@ export default function CaseDetailPage() {
                       </svg>
                       Preview
                     </a>
-                    {/* Send Invoice — copy link to clipboard */}
-                    <button onClick={sendInvoice}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors
-                        bg-[#0f4c35] text-white border-[#0f4c35] hover:bg-[#0a3828]">
-                      {copied ? (
-                        <>
-                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                          </svg>
-                          Copied!
-                        </>
-                      ) : (
-                        <>
-                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0 0a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186zm0-12.814a2.25 2.25 0 103.933-2.185 2.25 2.25 0 00-3.933 2.185z" />
-                          </svg>
-                          Send Invoice
-                        </>
-                      )}
-                    </button>
+                    {/* Send — copy quote/invoice link to clipboard. Label flips once admin finalizes pricing. */}
+                    {(() => {
+                      const isInvoiceStage = !!quote.finalized_at
+                      const sendLabel = isInvoiceStage ? 'Send Invoice' : 'Send Quotation'
+                      return (
+                        <button onClick={sendInvoice}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors
+                            bg-[#0f4c35] text-white border-[#0f4c35] hover:bg-[#0a3828]">
+                          {copied ? (
+                            <>
+                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                              </svg>
+                              Copied!
+                            </>
+                          ) : (
+                            <>
+                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0 0a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186zm0-12.814a2.25 2.25 0 103.933-2.185 2.25 2.25 0 00-3.933 2.185z" />
+                              </svg>
+                              {sendLabel}
+                            </>
+                          )}
+                        </button>
+                      )
+                    })()}
                   </div>
                 )}
               </div>
@@ -1467,10 +1522,10 @@ export default function CaseDetailPage() {
                 {quote.payment_due_date && (
                   <div className="bg-white rounded-xl border border-gray-100 p-3">
                     <p className="text-[10px] text-gray-400 mb-1">Payment Due</p>
-                    <p className={`text-sm font-medium ${caseData.status === 'payment_pending' && new Date(quote.payment_due_date) < new Date() ? 'text-red-500' : 'text-gray-900'}`}>
+                    <p className={`text-sm font-medium ${caseData.status === 'schedule_confirmed' && new Date(quote.payment_due_date) < new Date() ? 'text-red-500' : 'text-gray-900'}`}>
                       {quote.payment_due_date}
                     </p>
-                    {caseData.status === 'payment_pending' && new Date(quote.payment_due_date) < new Date() && (
+                    {caseData.status === 'schedule_confirmed' && new Date(quote.payment_due_date) < new Date() && (
                       <p className="text-[10px] text-red-400 mt-0.5">Overdue</p>
                     )}
                   </div>
@@ -1492,7 +1547,7 @@ export default function CaseDetailPage() {
           )}
 
           {/* Cancel Case — agent self-service, only before payment */}
-          {caseData.status === 'payment_pending' && (
+          {(caseData.status === 'quote_sent' || caseData.status === 'schedule_reviewed' || caseData.status === 'schedule_confirmed') && (
             <section className="border border-red-100 rounded-2xl p-4 flex items-center justify-between">
               <div>
                 <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Cancel Case</h3>

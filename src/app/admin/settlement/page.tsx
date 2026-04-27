@@ -15,6 +15,11 @@ type Agent = {
   bank_info: Record<string, string> | null
 }
 
+type QuoteItem = {
+  base_price: number
+  products: { partner_name: string | null } | null
+}
+
 type CompletedCase = {
   id: string
   case_number: string
@@ -24,7 +29,11 @@ type CompletedCase = {
   agent_id: string
   agents: Agent | Agent[] | null
   case_members: { is_lead: boolean; clients: { name: string } | null }[]
-  quotes: { total_price: number; agent_margin_rate: number }[]
+  quotes: {
+    total_price: number
+    agent_margin_rate: number
+    quote_groups: { quote_items: QuoteItem[] }[]
+  }[]
 }
 
 type Settlement = {
@@ -36,6 +45,16 @@ type Settlement = {
   paid_at: string | null
   created_at: string
   agents: Agent | Agent[] | null
+}
+
+type PartnerPayment = {
+  id: string
+  case_id: string
+  partner_name: string
+  amount: number
+  paid_at: string
+  note: string | null
+  created_at: string
 }
 
 function pickAgent(a: Agent | Agent[] | null | undefined): Agent | null {
@@ -62,6 +81,7 @@ export default function AdminSettlementPage() {
   const [exchangeRate, setExchangeRate] = useState(1350)
   const [cases, setCases] = useState<CompletedCase[]>([])
   const [settlements, setSettlements] = useState<Settlement[]>([])
+  const [partnerPayments, setPartnerPayments] = useState<PartnerPayment[]>([])
 
   // Settle modal state
   const [settlingCase, setSettlingCase] = useState<CompletedCase | null>(null)
@@ -70,20 +90,24 @@ export default function AdminSettlementPage() {
   const [modalError, setModalError] = useState('')
 
   const fetchData = useCallback(async () => {
-    const [casesRes, settlementsRes, rateRes] = await Promise.all([
+    const [casesRes, settlementsRes, rateRes, partnerRes] = await Promise.all([
       supabase.from('cases')
-        .select('id, case_number, travel_start_date, travel_end_date, travel_completed_at, agent_id, agents!cases_agent_id_fkey(id, agent_number, name, email, bank_info), case_members(is_lead, clients(name)), quotes(total_price, agent_margin_rate)')
+        .select('id, case_number, travel_start_date, travel_end_date, travel_completed_at, agent_id, agents!cases_agent_id_fkey(id, agent_number, name, email, bank_info), case_members(is_lead, clients(name)), quotes(total_price, agent_margin_rate, quote_groups(quote_items(base_price, products(partner_name))))')
         .eq('status', 'travel_completed')
         .order('travel_end_date', { ascending: false }),
       supabase.from('settlements')
         .select('id, settlement_number, agent_id, case_id, amount, paid_at, created_at, agents!settlements_agent_id_fkey(id, agent_number, name, email, bank_info)')
         .order('created_at', { ascending: false }),
       supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single(),
+      supabase.from('partner_payments')
+        .select('id, case_id, partner_name, amount, paid_at, note, created_at')
+        .order('paid_at', { ascending: false }),
     ])
     if (casesRes.error) console.error('[settlement] cases error:', casesRes.error)
     if (settlementsRes.error) console.error('[settlement] settlements error:', settlementsRes.error)
     setCases((casesRes.data as unknown as CompletedCase[]) ?? [])
     setSettlements((settlementsRes.data as unknown as Settlement[]) ?? [])
+    setPartnerPayments((partnerRes.data as PartnerPayment[]) ?? [])
     const r = (rateRes.data?.value as { usd_krw?: number } | null)?.usd_krw
     if (r) setExchangeRate(r)
   }, [])
@@ -105,16 +129,56 @@ export default function AdminSettlementPage() {
 
   const toUsd = (krw: number) => krw / exchangeRate
 
-  // Hero stats
+  // Hero stats — combined Partner + Agent
   const now = new Date()
   const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-  const paidThisMonthKrw = settlements
+
+  // Agent settlement stats
+  const agentPaidThisMonthKrw = settlements
     .filter(s => s.paid_at?.startsWith(monthKey))
     .reduce((sum, s) => sum + (s.amount ?? 0), 0)
-  const paidThisMonthCount = settlements.filter(s => s.paid_at?.startsWith(monthKey)).length
+  const agentTotalPaidKrw = settlements.filter(s => s.paid_at).reduce((sum, s) => sum + (s.amount ?? 0), 0)
   const unsettledTotalKrw = unsettled.reduce((sum, c) => sum + caseCommissionKrw(c), 0)
-  const totalPaidKrw = settlements.filter(s => s.paid_at).reduce((sum, s) => sum + (s.amount ?? 0), 0)
-  const totalPaidCount = settlements.filter(s => s.paid_at).length
+
+  // Partner payment stats
+  const partnerPaidThisMonthKrw = partnerPayments
+    .filter(p => p.paid_at?.startsWith(monthKey))
+    .reduce((sum, p) => sum + (p.amount ?? 0), 0)
+  const partnerTotalPaidKrw = partnerPayments.reduce((sum, p) => sum + (p.amount ?? 0), 0)
+
+  // Per-case partner status (for travel_completed cases)
+  type PartnerCaseInfo = { partners: string[]; paid: Set<string>; suggestedKrw: number; pendingKrw: number }
+  const partnerInfoByCase = new Map<string, PartnerCaseInfo>()
+  for (const c of cases) {
+    const partners = new Set<string>()
+    let suggested = 0
+    for (const g of c.quotes?.[0]?.quote_groups ?? []) {
+      for (const item of g.quote_items ?? []) {
+        const name = item.products?.partner_name?.trim()
+        if (!name) continue
+        partners.add(name)
+        suggested += item.base_price ?? 0
+      }
+    }
+    const paid = new Set(partnerPayments.filter(p => p.case_id === c.id).map(p => p.partner_name))
+    const paidAmount = partnerPayments.filter(p => p.case_id === c.id).reduce((s, p) => s + (p.amount ?? 0), 0)
+    partnerInfoByCase.set(c.id, {
+      partners: [...partners],
+      paid,
+      suggestedKrw: suggested,
+      pendingKrw: Math.max(0, suggested - paidAmount),
+    })
+  }
+
+  // Partner-pending = travel_completed cases with at least one unpaid partner
+  const partnerPendingCases = cases.filter(c => {
+    const info = partnerInfoByCase.get(c.id)
+    if (!info || info.partners.length === 0) return false
+    return info.partners.some(p => !info.paid.has(p))
+  })
+  const partnerPendingKrw = partnerPendingCases.reduce((s, c) => s + (partnerInfoByCase.get(c.id)?.pendingKrw ?? 0), 0)
+
+
 
   // Group unsettled cases by agent
   type AgentGroup = { agent: Agent; cases: CompletedCase[]; totalKrw: number; oldestDaysWaiting: number }
@@ -194,154 +258,273 @@ export default function AdminSettlementPage() {
             <p className="text-sm text-gray-400 text-center py-16">Loading...</p>
           ) : (
             <>
-              {/* HERO — Payout activity */}
-              <section className="bg-gray-50 rounded-2xl p-6">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  {/* Paid This Month */}
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+              {/* ════════════════════ PARTNER ════════════════════ */}
+              <section className="border-l-4 border-slate-400 pl-5 space-y-4 min-w-0">
+                <div className="flex items-center gap-2">
+                  <svg className="w-4 h-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m4.5-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21" />
+                  </svg>
+                  <h2 className="text-base font-bold text-gray-900">Partner Payouts</h2>
+                  <span className="text-[10px] text-slate-500">cash sent to hospitals/hotels/etc</span>
+                </div>
+
+                {/* Partner mini-hero */}
+                <div className="bg-gray-50 rounded-2xl p-4 grid grid-cols-3 gap-3">
                   <div>
-                    <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-2">Paid This Month</p>
-                    <p className="text-4xl font-bold text-gray-900 tracking-tight leading-none">{fmtUSD(toUsd(paidThisMonthKrw))}</p>
-                    <p className="text-xs text-gray-500 mt-2 tabular-nums">{fmtKRW(paidThisMonthKrw)}</p>
-                    <p className="text-xs text-gray-500 mt-1">{paidThisMonthCount} payout{paidThisMonthCount !== 1 ? 's' : ''}</p>
+                    <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">This Month</p>
+                    <p className="text-xl font-bold text-gray-900 tracking-tight leading-none">{fmtUSD(toUsd(partnerPaidThisMonthKrw))}</p>
                   </div>
-
-                  {/* Pending Payouts — primary action focus */}
-                  <div className="md:border-l md:border-gray-200 md:pl-6">
-                    <p className="text-[10px] text-amber-700 uppercase tracking-wide mb-2">Pending Payouts</p>
-                    <p className="text-4xl font-bold text-amber-700 tracking-tight leading-none">{fmtUSD(toUsd(unsettledTotalKrw))}</p>
-                    <p className="text-xs text-amber-600 mt-2 tabular-nums">{fmtKRW(unsettledTotalKrw)}</p>
-                    <p className="text-xs text-gray-500 mt-1">
-                      {unsettled.length} case{unsettled.length !== 1 ? 's' : ''} · {byAgent.size} agent{byAgent.size !== 1 ? 's' : ''}
-                    </p>
+                  <div className="border-l border-gray-200 pl-3">
+                    <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Pending</p>
+                    <p className="text-xl font-bold text-amber-700 tracking-tight leading-none">{fmtUSD(toUsd(partnerPendingKrw))}</p>
+                    <p className="text-[10px] text-gray-500 mt-1">{partnerPendingCases.length} case{partnerPendingCases.length !== 1 ? 's' : ''}</p>
                   </div>
-
-                  {/* Total All-Time */}
-                  <div className="md:border-l md:border-gray-200 md:pl-6">
-                    <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-2">Total Paid · All Time</p>
-                    <p className="text-2xl font-bold text-emerald-700 tracking-tight leading-none">{fmtUSD(toUsd(totalPaidKrw))}</p>
-                    <p className="text-xs text-gray-500 mt-2">{totalPaidCount} payout{totalPaidCount !== 1 ? 's' : ''} across {new Set(settlements.filter(s => s.paid_at).map(s => s.agent_id)).size} agent{new Set(settlements.filter(s => s.paid_at).map(s => s.agent_id)).size !== 1 ? 's' : ''}</p>
+                  <div className="border-l border-gray-200 pl-3">
+                    <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">All Time</p>
+                    <p className="text-xl font-bold text-gray-900 tracking-tight leading-none">{fmtUSD(toUsd(partnerTotalPaidKrw))}</p>
+                    <p className="text-[10px] text-gray-500 mt-1">{partnerPayments.length} payment{partnerPayments.length !== 1 ? 's' : ''}</p>
                   </div>
                 </div>
-              </section>
 
-              {/* UNSETTLED CASES — grouped by agent, oldest first (primary action area) */}
-              <section className="space-y-3">
-                <div className="flex items-baseline gap-3">
-                  <h2 className="text-sm font-semibold text-gray-900">Pending Settlements</h2>
-                  {unsettled.length > 0 && (
-                    <span className="text-xs text-gray-500">grouped by agent · oldest waiting first</span>
+                {/* Partner Pending */}
+                <div className="space-y-2">
+                  <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Pending</h3>
+                  {partnerPendingCases.length === 0 ? (
+                    <div className="bg-gray-50 rounded-xl p-5 text-center">
+                      <p className="text-sm text-gray-400">All partners settled.</p>
+                    </div>
+                  ) : (
+                    <div className="border border-gray-100 rounded-xl overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-slate-50 border-b border-gray-100">
+                          <tr>
+                            {['Case', 'Lead', 'Travel End', 'Partners', 'Pending', ''].map(h => (
+                              <th key={h} className="py-2.5 px-4 text-xs font-medium text-gray-500 text-left">{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {partnerPendingCases.map(c => {
+                            const info = partnerInfoByCase.get(c.id)!
+                            const lead = c.case_members?.find(m => m.is_lead)
+                            const unpaid = info.partners.filter(p => !info.paid.has(p))
+                            return (
+                              <tr key={c.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50">
+                                <td className="py-3 px-4 font-mono text-xs text-gray-500">{c.case_number}</td>
+                                <td className="py-3 px-4 text-gray-800">{lead?.clients?.name ?? '—'}</td>
+                                <td className="py-3 px-4 text-xs text-gray-500">{c.travel_end_date ?? '—'}</td>
+                                <td className="py-3 px-4 text-xs text-gray-600">
+                                  <span className="text-amber-700 font-medium">{unpaid.length}</span>
+                                  <span className="text-gray-400"> / {info.partners.length}</span>
+                                  {unpaid.length > 0 && (
+                                    <span className="ml-2 text-gray-500 truncate">{unpaid.slice(0, 2).join(', ')}{unpaid.length > 2 ? `, +${unpaid.length - 2}` : ''}</span>
+                                  )}
+                                </td>
+                                <td className="py-3 px-4 tabular-nums">
+                                  <span className="text-sm font-semibold text-gray-900">{fmtUSD(toUsd(info.pendingKrw))}</span>
+                                </td>
+                                <td className="py-3 px-4 text-right">
+                                  <a href={`/admin/cases/${c.id}`} className="text-xs text-[#0f4c35] hover:underline">Open →</a>
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
                   )}
                 </div>
-                {groupedUnsettled.length === 0 ? (
-                  <div className="bg-gray-50 rounded-2xl p-8 text-center">
-                    <p className="text-sm text-gray-400">No cases awaiting settlement. All completed cases have been paid out.</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {groupedUnsettled.map(group => {
-                      const hasBank = group.agent.bank_info && Object.keys(group.agent.bank_info).length > 0
-                      const overdue = group.oldestDaysWaiting >= 14
-                      return (
-                        <div key={group.agent.id} className="border border-gray-200 rounded-2xl overflow-hidden">
-                          {/* Agent group header */}
-                          <div className="bg-gray-50 px-4 py-3 border-b border-gray-100 flex items-center gap-3 flex-wrap">
-                            <div className="flex items-baseline gap-2">
-                              <span className="text-sm font-semibold text-gray-900">{group.agent.name}</span>
-                              <span className="text-xs font-mono text-gray-400">{group.agent.agent_number ?? ''}</span>
-                            </div>
-                            {!hasBank && (
-                              <span className="text-[10px] font-medium text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">Bank info missing</span>
-                            )}
-                            {overdue && (
-                              <span className="text-[10px] font-medium text-red-700 bg-red-100 px-1.5 py-0.5 rounded">{group.oldestDaysWaiting}d waiting</span>
-                            )}
-                            <div className="ml-auto text-right">
-                              <p className="text-sm font-bold text-gray-900">{fmtUSD(toUsd(group.totalKrw))}</p>
-                              <p className="text-[10px] text-gray-500">{group.cases.length} case{group.cases.length !== 1 ? 's' : ''} · {fmtKRW(group.totalKrw)}</p>
-                            </div>
-                          </div>
 
-                          {/* Cases in group */}
-                          <div className="divide-y divide-gray-100">
-                            {group.cases.map(c => {
-                              const lead = c.case_members?.find(m => m.is_lead)
-                              const commKrw = caseCommissionKrw(c)
-                              const days = daysWaiting(c.travel_end_date)
-                              const margin = c.quotes?.[0]?.agent_margin_rate ?? 0
-                              return (
-                                <div key={c.id} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50/50">
-                                  <span className="text-xs font-mono text-gray-400 shrink-0">{c.case_number}</span>
-                                  <span className="text-sm text-gray-800 truncate flex-1">{lead?.clients?.name ?? '—'}</span>
-                                  <span className="text-xs text-gray-500 shrink-0">
-                                    {c.travel_end_date ?? '—'}
-                                    {days !== null && days > 0 && <span className="ml-1 text-gray-400">({days}d ago)</span>}
-                                  </span>
-                                  <span className="text-xs text-gray-500 shrink-0">{(margin * 100).toFixed(0)}%</span>
-                                  <span className="text-sm font-semibold text-gray-900 shrink-0 tabular-nums min-w-[90px] text-right">{fmtUSD(toUsd(commKrw))}</span>
-                                  <button onClick={() => openSettleModal(c)}
-                                    className="px-3 py-1 text-xs font-medium bg-[#0f4c35] text-white rounded-lg hover:bg-[#0a3828] shrink-0">
-                                    Settle
-                                  </button>
-                                </div>
-                              )
-                            })}
-                          </div>
-                        </div>
-                      )
-                    })}
+                {/* Partner History */}
+                <div className="space-y-2">
+                  <div className="flex items-baseline gap-2">
+                    <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">History</h3>
+                    <span className="text-[10px] text-gray-400">{partnerPayments.length}</span>
                   </div>
-                )}
-              </section>
-
-              {/* SETTLEMENT HISTORY (reference) */}
-              <section className="space-y-3">
-                <div className="flex items-baseline gap-3">
-                  <h2 className="text-sm font-semibold text-gray-900">Settlement History</h2>
-                  <span className="text-xs text-gray-400">{settlements.length}</span>
+                  {partnerPayments.length === 0 ? (
+                    <div className="bg-gray-50 rounded-xl p-5 text-center">
+                      <p className="text-sm text-gray-400">No partner payments logged yet.</p>
+                    </div>
+                  ) : (
+                    <div className="border border-gray-100 rounded-xl overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-slate-50 border-b border-gray-100">
+                          <tr>
+                            {['Paid On', 'Partner', 'Case', 'Note', 'Amount'].map(h => (
+                              <th key={h} className="py-2.5 px-4 text-xs font-medium text-gray-500 text-left">{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {partnerPayments.map(p => {
+                            const linkedCase = cases.find(c => c.id === p.case_id)
+                            const lead = linkedCase?.case_members?.find(m => m.is_lead)
+                            return (
+                              <tr key={p.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50">
+                                <td className="py-3 px-4 text-gray-800">{p.paid_at?.slice(0, 10) ?? '—'}</td>
+                                <td className="py-3 px-4 text-gray-800">{p.partner_name}</td>
+                                <td className="py-3 px-4 text-xs">
+                                  {linkedCase
+                                    ? <a href={`/admin/cases/${linkedCase.id}`} className="text-[#0f4c35] hover:underline">{linkedCase.case_number} · {lead?.clients?.name ?? '—'}</a>
+                                    : <span className="text-gray-400">—</span>}
+                                </td>
+                                <td className="py-3 px-4 text-xs text-gray-500 truncate max-w-[200px]">{p.note ?? '—'}</td>
+                                <td className="py-3 px-4 text-right">
+                                  <p className="text-sm font-semibold text-gray-900">{fmtUSD(toUsd(p.amount))}</p>
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
-                {settlements.length === 0 ? (
-                  <div className="bg-gray-50 rounded-2xl p-6 text-center">
-                    <p className="text-sm text-gray-400">No settlements yet.</p>
-                  </div>
-                ) : (
-                  <div className="border border-gray-100 rounded-2xl overflow-hidden">
-                    <table className="w-full text-sm">
-                      <thead className="bg-gray-50 border-b border-gray-100">
-                        <tr>
-                          {['Paid On', '#', 'Agent', 'Case', 'Margin', 'Amount'].map(h => (
-                            <th key={h} className="py-2.5 px-4 text-xs font-medium text-gray-500 text-left">{h}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {settlements.map(s => {
-                          const agent = pickAgent(s.agents)
-                          const linkedCase = cases.find(c => c.id === s.case_id)
-                          const lead = linkedCase?.case_members?.find(m => m.is_lead)
-                          const margin = linkedCase?.quotes?.[0]?.agent_margin_rate
-                          return (
-                            <tr key={s.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50">
-                              <td className="py-3 px-4 text-gray-800">{s.paid_at?.slice(0, 10) ?? '—'}</td>
-                              <td className="py-3 px-4 font-mono text-xs text-gray-500">{s.settlement_number ?? '—'}</td>
-                              <td className="py-3 px-4 text-gray-800">{agent?.name ?? '—'}</td>
-                              <td className="py-3 px-4 text-xs">
-                                {linkedCase
-                                  ? <span className="text-gray-500">{linkedCase.case_number} · {lead?.clients?.name ?? '—'}</span>
-                                  : <span className="text-gray-400">—</span>}
-                              </td>
-                              <td className="py-3 px-4 text-gray-600 text-xs">{margin != null ? `${(margin * 100).toFixed(0)}%` : '—'}</td>
-                              <td className="py-3 px-4 text-right">
-                                <p className="text-base font-semibold text-gray-900">{fmtUSD(toUsd(s.amount))}</p>
-                                <p className="text-[10px] text-gray-400">{fmtKRW(s.amount)}</p>
-                              </td>
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
               </section>
+
+              {/* ════════════════════ AGENT ════════════════════ */}
+              <section className="border-l-4 border-amber-400 pl-5 space-y-4 min-w-0">
+                <div className="flex items-center gap-2">
+                  <svg className="w-4 h-4 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
+                  </svg>
+                  <h2 className="text-base font-bold text-gray-900">Agent Settlements</h2>
+                  <span className="text-[10px] text-amber-700">commission paid to agents</span>
+                </div>
+
+                {/* Agent mini-hero */}
+                <div className="bg-gray-50 rounded-2xl p-4 grid grid-cols-3 gap-3">
+                  <div>
+                    <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">This Month</p>
+                    <p className="text-xl font-bold text-gray-900 tracking-tight leading-none">{fmtUSD(toUsd(agentPaidThisMonthKrw))}</p>
+                  </div>
+                  <div className="border-l border-gray-200 pl-3">
+                    <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Pending</p>
+                    <p className="text-xl font-bold text-amber-700 tracking-tight leading-none">{fmtUSD(toUsd(unsettledTotalKrw))}</p>
+                    <p className="text-[10px] text-gray-500 mt-1">{unsettled.length} case{unsettled.length !== 1 ? 's' : ''} · {byAgent.size} agent{byAgent.size !== 1 ? 's' : ''}</p>
+                  </div>
+                  <div className="border-l border-gray-200 pl-3">
+                    <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">All Time</p>
+                    <p className="text-xl font-bold text-gray-900 tracking-tight leading-none">{fmtUSD(toUsd(agentTotalPaidKrw))}</p>
+                    <p className="text-[10px] text-gray-500 mt-1">{settlements.filter(s => s.paid_at).length} settlement{settlements.filter(s => s.paid_at).length !== 1 ? 's' : ''}</p>
+                  </div>
+                </div>
+
+                {/* Agent Pending */}
+                <div className="space-y-2">
+                  <div className="flex items-baseline gap-2">
+                    <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Pending</h3>
+                    {unsettled.length > 0 && <span className="text-[10px] text-gray-400">grouped by agent · oldest waiting first</span>}
+                  </div>
+                  {groupedUnsettled.length === 0 ? (
+                    <div className="bg-gray-50 rounded-xl p-5 text-center">
+                      <p className="text-sm text-gray-400">No cases awaiting settlement.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {groupedUnsettled.map(group => {
+                        const hasBank = group.agent.bank_info && Object.keys(group.agent.bank_info).length > 0
+                        const overdue = group.oldestDaysWaiting >= 14
+                        return (
+                          <div key={group.agent.id} className="border border-gray-100 rounded-xl overflow-x-auto">
+                            <div className="bg-gray-50 px-4 py-2.5 border-b border-gray-100 flex items-center gap-3 flex-wrap">
+                              <div className="flex items-baseline gap-2">
+                                <span className="text-sm font-semibold text-gray-900">{group.agent.name}</span>
+                                <span className="text-xs font-mono text-gray-400">{group.agent.agent_number ?? ''}</span>
+                              </div>
+                              {!hasBank && (
+                                <span className="text-[10px] font-medium text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">Bank info missing</span>
+                              )}
+                              {overdue && (
+                                <span className="text-[10px] font-medium text-red-700 bg-red-100 px-1.5 py-0.5 rounded">{group.oldestDaysWaiting}d waiting</span>
+                              )}
+                              <div className="ml-auto text-right">
+                                <p className="text-sm font-bold text-gray-900">{fmtUSD(toUsd(group.totalKrw))}</p>
+                                <p className="text-[10px] text-gray-500">{group.cases.length} case{group.cases.length !== 1 ? 's' : ''}</p>
+                              </div>
+                            </div>
+                            <div className="divide-y divide-gray-50">
+                              {group.cases.map(c => {
+                                const lead = c.case_members?.find(m => m.is_lead)
+                                const commKrw = caseCommissionKrw(c)
+                                const days = daysWaiting(c.travel_end_date)
+                                const margin = c.quotes?.[0]?.agent_margin_rate ?? 0
+                                return (
+                                  <div key={c.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50/50">
+                                    <span className="text-xs font-mono text-gray-400 shrink-0">{c.case_number}</span>
+                                    <span className="text-sm text-gray-800 truncate flex-1">{lead?.clients?.name ?? '—'}</span>
+                                    <span className="text-xs text-gray-500 shrink-0">
+                                      {c.travel_end_date ?? '—'}
+                                      {days !== null && days > 0 && <span className="ml-1 text-gray-400">({days}d ago)</span>}
+                                    </span>
+                                    <span className="text-xs text-gray-500 shrink-0">{(margin * 100).toFixed(0)}%</span>
+                                    <span className="text-sm font-semibold text-gray-900 shrink-0 tabular-nums min-w-[90px] text-right">{fmtUSD(toUsd(commKrw))}</span>
+                                    <button onClick={() => openSettleModal(c)}
+                                      className="px-3 py-1 text-xs font-medium bg-[#0f4c35] text-white rounded-lg hover:bg-[#0a3828] shrink-0">
+                                      Settle
+                                    </button>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Agent History */}
+                <div className="space-y-2">
+                  <div className="flex items-baseline gap-2">
+                    <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">History</h3>
+                    <span className="text-[10px] text-gray-400">{settlements.length}</span>
+                  </div>
+                  {settlements.length === 0 ? (
+                    <div className="bg-gray-50 rounded-xl p-5 text-center">
+                      <p className="text-sm text-gray-400">No settlements yet.</p>
+                    </div>
+                  ) : (
+                    <div className="border border-gray-100 rounded-xl overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-amber-50/50 border-b border-gray-100">
+                          <tr>
+                            {['Paid On', '#', 'Agent', 'Case', 'Margin', 'Amount'].map(h => (
+                              <th key={h} className="py-2.5 px-4 text-xs font-medium text-gray-500 text-left">{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {settlements.map(s => {
+                            const agent = pickAgent(s.agents)
+                            const linkedCase = cases.find(c => c.id === s.case_id)
+                            const lead = linkedCase?.case_members?.find(m => m.is_lead)
+                            const margin = linkedCase?.quotes?.[0]?.agent_margin_rate
+                            return (
+                              <tr key={s.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50">
+                                <td className="py-3 px-4 text-gray-800">{s.paid_at?.slice(0, 10) ?? '—'}</td>
+                                <td className="py-3 px-4 font-mono text-xs text-gray-500">{s.settlement_number ?? '—'}</td>
+                                <td className="py-3 px-4 text-gray-800">{agent?.name ?? '—'}</td>
+                                <td className="py-3 px-4 text-xs">
+                                  {linkedCase
+                                    ? <span className="text-gray-500">{linkedCase.case_number} · {lead?.clients?.name ?? '—'}</span>
+                                    : <span className="text-gray-400">—</span>}
+                                </td>
+                                <td className="py-3 px-4 text-gray-600 text-xs">{margin != null ? `${(margin * 100).toFixed(0)}%` : '—'}</td>
+                                <td className="py-3 px-4 text-right">
+                                  <p className="text-sm font-semibold text-gray-900">{fmtUSD(toUsd(s.amount))}</p>
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </section>
+              </div>
             </>
           )}
         </div>

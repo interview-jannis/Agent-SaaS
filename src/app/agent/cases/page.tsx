@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
-type CaseStatus = 'payment_pending' | 'payment_completed' | 'schedule_reviewed' | 'schedule_confirmed' | 'travel_completed'
+type CaseStatus = 'quote_sent' | 'payment_completed' | 'schedule_reviewed' | 'schedule_confirmed' | 'travel_completed'
 
 type CaseRow = {
   id: string
@@ -18,14 +18,14 @@ type CaseRow = {
 }
 
 const STATUS_LABELS: Record<CaseStatus, string> = {
-  payment_pending: 'Awaiting Payment', payment_completed: 'Payment Confirmed',
-  schedule_reviewed: 'Schedule Reviewed', schedule_confirmed: 'Schedule Confirmed', travel_completed: 'Travel Completed',
+  quote_sent: 'Awaiting Schedule', payment_completed: 'Payment Confirmed',
+  schedule_reviewed: 'Schedule Reviewed', schedule_confirmed: 'Awaiting Payment', travel_completed: 'Travel Completed',
 }
 const STATUS_STYLES: Record<CaseStatus, string> = {
-  payment_pending: 'bg-amber-50 text-amber-700 border-amber-200',
-  payment_completed: 'bg-blue-50 text-blue-700 border-blue-200',
+  quote_sent: 'bg-amber-50 text-amber-700 border-amber-200',
+  payment_completed: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   schedule_reviewed: 'bg-violet-50 text-violet-700 border-violet-200',
-  schedule_confirmed: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  schedule_confirmed: 'bg-blue-50 text-blue-700 border-blue-200',
   travel_completed: 'bg-gray-50 text-gray-500 border-gray-200',
 }
 
@@ -34,14 +34,21 @@ export default function AgentCasesPage() {
   const [cases, setCases] = useState<CaseRow[]>([])
   const [exchangeRate, setExchangeRate] = useState(1350)
   const [loading, setLoading] = useState(true)
+  const [settledCaseIds, setSettledCaseIds] = useState<Set<string>>(new Set())
 
   const fetchCases = useCallback(async (aid: string) => {
-    const { data } = await supabase
-      .from('cases')
-      .select('id, case_number, status, travel_start_date, travel_end_date, created_at, case_members(is_lead, clients(name)), quotes(total_price, quote_groups(member_count))')
-      .eq('agent_id', aid)
-      .order('created_at', { ascending: false })
-    setCases((data as unknown as CaseRow[]) ?? [])
+    const [casesRes, settleRes] = await Promise.all([
+      supabase.from('cases')
+        .select('id, case_number, status, travel_start_date, travel_end_date, created_at, case_members(is_lead, clients(name)), quotes(total_price, quote_groups(member_count))')
+        .eq('agent_id', aid)
+        .order('created_at', { ascending: false }),
+      supabase.from('settlements')
+        .select('case_id')
+        .eq('agent_id', aid)
+        .not('paid_at', 'is', null),
+    ])
+    setCases((casesRes.data as unknown as CaseRow[]) ?? [])
+    setSettledCaseIds(new Set(((settleRes.data as { case_id: string | null }[] | null) ?? []).map(s => s.case_id).filter((x): x is string => !!x)))
   }, [])
 
   useEffect(() => {
@@ -82,8 +89,8 @@ export default function AgentCasesPage() {
           <table className="w-full text-sm">
             <thead className="border-b border-gray-100 bg-gray-50/60 sticky top-0">
               <tr>
-                {['Case #', 'Lead Client', 'Status', 'Members', 'Created', 'Travel Start', 'Travel End', 'Amount (USD)'].map((h, i) => (
-                  <th key={h} className={`py-3 px-4 text-xs font-medium text-gray-400 ${i === 7 ? 'text-right' : 'text-left'}`}>{h}</th>
+                {['Case #', 'Lead Client', 'Status', 'Members', 'Created', 'Travel Start', 'Travel End', 'Settlement', 'Amount (USD)'].map((h, i) => (
+                  <th key={h} className={`py-3 px-4 text-xs font-medium text-gray-400 ${i === 8 ? 'text-right' : 'text-left'}`}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -105,6 +112,17 @@ export default function AgentCasesPage() {
                     <td className="py-3.5 px-4 text-xs text-gray-500">{c.created_at?.slice(0, 10) ?? '—'}</td>
                     <td className="py-3.5 px-4 text-xs text-gray-500">{c.travel_start_date ?? '—'}</td>
                     <td className="py-3.5 px-4 text-xs text-gray-500">{c.travel_end_date ?? '—'}</td>
+                    <td className="py-3.5 px-4">
+                      {c.status === 'travel_completed' ? (
+                        settledCaseIds.has(c.id) ? (
+                          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full border bg-emerald-50 text-emerald-700 border-emerald-200">Received</span>
+                        ) : (
+                          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full border bg-amber-50 text-amber-700 border-amber-200">Pending</span>
+                        )
+                      ) : (
+                        <span className="text-[10px] text-gray-300">—</span>
+                      )}
+                    </td>
                     <td className="py-3.5 px-4 text-right font-medium text-gray-900">
                       {amountUsd !== null ? `$${amountUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
                     </td>

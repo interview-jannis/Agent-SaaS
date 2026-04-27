@@ -54,20 +54,20 @@ export default async function QuotePage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>
-  searchParams: Promise<{ preview?: string }>
+  searchParams: Promise<{ preview?: string; as?: string }>
 }) {
   const { slug } = await params
-  const { preview } = await searchParams
+  const { preview, as: forcedMode } = await searchParams
   const supabase = createServerClient()
 
   const { data: quote } = await supabase
     .from('quotes')
     .select(`
-      id, quote_number, total_price, payment_due_date,
-      company_margin_rate, agent_margin_rate,
-      first_opened_at, open_count,
+      id, quote_number, invoice_number, total_price, payment_due_date,
+      company_margin_rate, agent_margin_rate, finalized_at,
+      first_opened_at, invoice_first_opened_at, open_count,
       cases(
-        id, agent_id, created_at,
+        id, agent_id, status, created_at,
         agents!cases_agent_id_fkey(name, email, phone),
         case_members(is_lead, clients(name, nationality, needs_muslim_friendly))
       ),
@@ -84,40 +84,43 @@ export default async function QuotePage({
   // Record open + notify agent (skip in preview mode)
   if (!preview) {
     const caseRef = quote.cases as unknown as { id: string; agent_id: string | null } | null
-    const isFirstOpen = !quote.first_opened_at
+    const q = quote as unknown as { first_opened_at: string | null; invoice_first_opened_at: string | null; finalized_at: string | null; open_count: number | null }
+    const isFirstOpen = !q.first_opened_at
+    const isFinalized = !!q.finalized_at
+    const isFirstInvoiceOpen = isFinalized && !q.invoice_first_opened_at
 
-    if (isFirstOpen) {
-      await supabase
-        .from('quotes')
-        .update({
-          first_opened_at: new Date().toISOString(),
-          open_count: 1,
+    let notifyMessage: string | null = null
+    const updates: Record<string, unknown> = { open_count: (q.open_count ?? 0) + 1 }
+
+    const invoiceNo = (quote as { invoice_number?: string | null }).invoice_number
+    if (isFirstInvoiceOpen) {
+      updates.invoice_first_opened_at = new Date().toISOString()
+      if (isFirstOpen) updates.first_opened_at = updates.invoice_first_opened_at
+      notifyMessage = `${invoiceNo ?? quote.quote_number} Invoice opened by client`
+    } else if (isFirstOpen) {
+      updates.first_opened_at = new Date().toISOString()
+      notifyMessage = `${quote.quote_number} Quotation opened by client`
+    }
+
+    await supabase.from('quotes').update(updates).eq('id', quote.id)
+
+    if (notifyMessage && caseRef?.agent_id) {
+      const { data: agent } = await supabase
+        .from('agents')
+        .select('auth_user_id')
+        .eq('id', caseRef.agent_id)
+        .single()
+
+      if (agent?.auth_user_id) {
+        await supabase.from('notifications').insert({
+          auth_user_id: agent.auth_user_id,
+          target_type: 'agent',
+          target_id: caseRef.agent_id,
+          message: notifyMessage,
+          link_url: caseRef.id ? `/agent/cases/${caseRef.id}` : null,
+          is_read: false,
         })
-        .eq('id', quote.id)
-
-      if (caseRef?.agent_id) {
-        const { data: agent } = await supabase
-          .from('agents')
-          .select('auth_user_id')
-          .eq('id', caseRef.agent_id)
-          .single()
-
-        if (agent?.auth_user_id) {
-          await supabase.from('notifications').insert({
-            auth_user_id: agent.auth_user_id,
-            target_type: 'agent',
-            target_id: caseRef.agent_id,
-            message: `Invoice ${quote.quote_number} was opened by client`,
-            link_url: caseRef.id ? `/agent/cases/${caseRef.id}` : null,
-            is_read: false,
-          })
-        }
       }
-    } else {
-      await supabase
-        .from('quotes')
-        .update({ open_count: (quote.open_count ?? 0) + 1 })
-        .eq('id', quote.id)
     }
   }
 
@@ -130,10 +133,18 @@ export default async function QuotePage({
   const bank = (bankRes.data?.value as BankDetails | null) ?? {}
 
   const caseData = quote.cases as unknown as {
+    status: string | null
     created_at: string | null
     agents: { name: string } | null
     case_members: { is_lead: boolean; clients: { name: string; nationality: string | null; needs_muslim_friendly: boolean | null } | null }[]
   } | null
+
+  // Quotation vs Invoice — defaults to finalized_at, can be forced via ?as= param (admin preview)
+  const finalized = !!(quote as { finalized_at?: string | null }).finalized_at
+  const isInvoice = forcedMode === 'invoice' ? true
+    : forcedMode === 'quotation' ? false
+    : finalized
+  const docTitle = isInvoice ? 'Commercial Invoice' : 'Quotation'
 
   const agentName = caseData?.agents?.name ?? '—'
   const leadClient = caseData?.case_members?.find((m) => m.is_lead)?.clients ?? null
@@ -167,9 +178,8 @@ export default async function QuotePage({
   // Due date comes from quote.payment_due_date which is pre-computed as issue + 7 days.
   const issuedAt = caseData?.created_at ?? new Date().toISOString()
 
-  const qNum = quote.quote_number.replace('#Q-', '').replace('#', '')
-  const year = new Date(issuedAt).getFullYear()
-  const refNo = `INTERVIEW-${qNum}-${year}`
+  const invoiceNumber = (quote as { invoice_number?: string | null }).invoice_number ?? null
+  const refNo = isInvoice ? (invoiceNumber ?? quote.quote_number) : quote.quote_number
 
   const issueDate = fmtDate(issuedAt)
   const dueDate = quote.payment_due_date ? fmtDate(quote.payment_due_date) : addDays(issuedAt, 7)
@@ -201,9 +211,20 @@ export default async function QuotePage({
               </div>
             </div>
             <div className="text-right">
-              <h1 className="text-2xl font-bold text-gray-900 underline underline-offset-4">Commercial Invoice</h1>
+              <h1 className={`text-2xl font-bold underline underline-offset-4 ${isInvoice ? 'text-gray-900' : 'text-[#0f4c35]'}`}>{docTitle}</h1>
+              {!isInvoice && (
+                <p className="text-[10px] text-gray-500 italic mt-1">Estimated · Subject to confirmation</p>
+              )}
             </div>
           </div>
+
+          {/* Quotation disclaimer banner — only for non-invoice */}
+          {!isInvoice && (
+            <div className="mb-7 border-l-4 border-amber-400 bg-amber-50 px-4 py-3 rounded-r print:border-l-2">
+              <p className="text-xs text-amber-900 font-medium mb-0.5">This is a tentative quotation</p>
+              <p className="text-xs text-amber-800">Pricing reflects an estimate based on the proposed itinerary. Final pricing may adjust once the schedule is confirmed. A formal invoice with payment instructions will be issued at that time.</p>
+            </div>
+          )}
 
           {/* ── To / Ref block ── */}
           <div className="grid grid-cols-2 gap-0 mb-7 border border-gray-300">
@@ -228,14 +249,22 @@ export default async function QuotePage({
                 <span className="w-24 shrink-0 font-semibold text-gray-700">Ref. No.</span>
                 <span className="text-gray-900 font-mono text-xs">: {refNo}</span>
               </div>
+              {isInvoice && invoiceNumber && (
+                <div className="flex gap-3">
+                  <span className="w-24 shrink-0 font-semibold text-gray-700">Quote Ref</span>
+                  <span className="text-gray-500 font-mono text-xs">: {quote.quote_number}</span>
+                </div>
+              )}
               <div className="flex gap-3">
                 <span className="w-24 shrink-0 font-semibold text-gray-700">Issue Date</span>
                 <span className="text-gray-900">: {issueDate}</span>
               </div>
-              <div className="flex gap-3">
-                <span className="w-24 shrink-0 font-semibold text-gray-700">Due Date</span>
-                <span className="text-gray-900">: {dueDate}</span>
-              </div>
+              {isInvoice && (
+                <div className="flex gap-3">
+                  <span className="w-24 shrink-0 font-semibold text-gray-700">Due Date</span>
+                  <span className="text-gray-900">: {dueDate}</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -293,7 +322,7 @@ export default async function QuotePage({
                 <tr className="bg-gray-100">
                   <td colSpan={3} className="py-3 px-3 border border-gray-300" />
                   <td className="py-3 px-3 text-right font-bold text-gray-900 border border-gray-300">
-                    Total Amount (USD)
+                    {isInvoice ? 'Total Amount (USD)' : 'Estimated Total (USD)'}
                   </td>
                   <td className="py-3 px-3 text-right font-bold text-gray-900 font-mono border border-gray-300 text-base whitespace-nowrap tracking-tight">
                     $ {fmtUSD(totalUSD)}
@@ -307,11 +336,14 @@ export default async function QuotePage({
           {/* ── Body text ── */}
           <div className="mb-8">
             <p className="text-sm text-gray-700 leading-relaxed italic">
-              We are pleased to submit an invoice for the K-Beauty &amp; Medical Premium Tour Package for your VIP clients.
+              {isInvoice
+                ? 'We are pleased to submit an invoice for the K-Beauty & Medical Premium Tour Package for your VIP clients.'
+                : 'We are pleased to share this quotation for the K-Beauty & Medical Premium Tour Package for your VIP clients. The pricing below is an estimate; we will finalize once the schedule is confirmed.'}
             </p>
           </div>
 
-          {/* ── Bank Account Details ── */}
+          {/* ── Bank Account Details — Invoice only ── */}
+          {isInvoice && (
           <div className="mb-10">
             <h3 className="text-sm font-bold text-gray-900 mb-3">Bank Account Details</h3>
             {(bank.bank_name || bank.account_number) ? (
@@ -363,6 +395,7 @@ export default async function QuotePage({
               <p className="text-sm text-gray-400 italic">Bank details not configured. Please set them in Admin &gt; Settings.</p>
             )}
           </div>
+          )}
 
           {/* ── Signature ── */}
           <div className="mb-12">

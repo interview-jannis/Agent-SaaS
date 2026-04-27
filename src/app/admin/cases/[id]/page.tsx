@@ -8,7 +8,7 @@ import { logAsCurrentUser } from '@/lib/audit'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type CaseStatus = 'payment_pending' | 'payment_completed' | 'schedule_reviewed' | 'schedule_confirmed' | 'travel_completed'
+type CaseStatus = 'quote_sent' | 'payment_completed' | 'schedule_reviewed' | 'schedule_confirmed' | 'travel_completed'
 
 import type { ClientInfo, FlightInfo } from '@/lib/clientCompleteness'
 import { getMissingClientFields, getMissingCaseFields, CLIENT_INFO_COLUMNS } from '@/lib/clientCompleteness'
@@ -32,7 +32,27 @@ type QuoteItem = {
   id: string
   base_price: number
   final_price: number
-  products: { id: string; name: string; description: string | null } | null
+  products: { id: string; name: string; description: string | null; partner_name: string | null } | null
+}
+
+type PartnerPayment = {
+  id: string
+  case_id: string
+  partner_name: string
+  amount: number
+  paid_at: string
+  note: string | null
+  created_at: string
+}
+
+type AgentSettlement = {
+  id: string
+  settlement_number: string | null
+  agent_id: string
+  case_id: string | null
+  amount: number
+  paid_at: string | null
+  created_at: string
 }
 
 type QuoteGroup = {
@@ -47,11 +67,13 @@ type QuoteGroup = {
 type Quote = {
   id: string
   quote_number: string
+  invoice_number: string | null
   slug: string
   total_price: number
   payment_due_date: string | null
   agent_margin_rate: number
   company_margin_rate: number
+  finalized_at: string | null
   quote_groups: QuoteGroup[]
 }
 
@@ -99,18 +121,18 @@ function getAgent(c: { agents: Agent | Agent[] | null } | null | undefined): Age
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const STATUS_LABELS: Record<CaseStatus, string> = {
-  payment_pending: 'Awaiting Payment',
+  quote_sent: 'Awaiting Schedule',
   payment_completed: 'Payment Confirmed',
   schedule_reviewed: 'Schedule Reviewed',
-  schedule_confirmed: 'Schedule Confirmed',
+  schedule_confirmed: 'Awaiting Payment',
   travel_completed: 'Travel Completed',
 }
 
 const STATUS_STYLES: Record<CaseStatus, string> = {
-  payment_pending: 'bg-amber-50 text-amber-700 border-amber-200',
-  payment_completed: 'bg-blue-50 text-blue-700 border-blue-200',
+  quote_sent: 'bg-amber-50 text-amber-700 border-amber-200',
+  payment_completed: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   schedule_reviewed: 'bg-violet-50 text-violet-700 border-violet-200',
-  schedule_confirmed: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  schedule_confirmed: 'bg-blue-50 text-blue-700 border-blue-200',
   travel_completed: 'bg-gray-50 text-gray-500 border-gray-200',
 }
 
@@ -125,13 +147,31 @@ export default function AdminCaseDetailPage() {
   const router = useRouter()
 
   const [caseData, setCaseData] = useState<Case | null>(null)
+  const [partnerPayments, setPartnerPayments] = useState<PartnerPayment[]>([])
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
   const [exchangeRate, setExchangeRate] = useState(1350)
 
+  // Partner payments — local edit state by partner_name
+  const [partnerEdits, setPartnerEdits] = useState<Record<string, { amount: string; paid_at: string; note: string }>>({})
+  const [savingPartner, setSavingPartner] = useState<string | null>(null)
+  const [partnerError, setPartnerError] = useState('')
+
+  // Agent settlement — single row per case
+  const [agentSettlement, setAgentSettlement] = useState<AgentSettlement | null>(null)
+  const [agentSettlePaidAt, setAgentSettlePaidAt] = useState(new Date().toISOString().slice(0, 10))
+  const [savingAgentSettle, setSavingAgentSettle] = useState(false)
+  const [agentSettleError, setAgentSettleError] = useState('')
+
   // Action states
   const [confirmingPayment, setConfirmingPayment] = useState(false)
-  const [paymentDate, setPaymentDate] = useState('')
+  const [paymentDate, setPaymentDate] = useState(() => new Date().toISOString().slice(0, 10))
+
+  // Pricing finalize state — keyed by quote_item.id
+  const [pricingEdits, setPricingEdits] = useState<Record<string, string>>({})
+  const [editingPricing, setEditingPricing] = useState(false)
+  const [savingPricing, setSavingPricing] = useState(false)
+  const [pricingError, setPricingError] = useState('')
   const [stagedFile, setStagedFile] = useState<File | null>(null)
   const [uploadingSchedule, setUploadingSchedule] = useState(false)
   const [deletingScheduleId, setDeletingScheduleId] = useState<string | null>(null)
@@ -158,8 +198,8 @@ export default function AdminCaseDetailPage() {
           clients(client_number, nationality, date_of_birth, phone, email, special_requests, ${CLIENT_INFO_COLUMNS})
         ),
         quotes(
-          id, quote_number, slug, total_price, payment_due_date, agent_margin_rate, company_margin_rate,
-          quote_groups(id, name, order, member_count, quote_items(id, base_price, final_price, products(id, name, description)), quote_group_members(id, case_member_id))
+          id, quote_number, invoice_number, slug, total_price, payment_due_date, agent_margin_rate, company_margin_rate, finalized_at,
+          quote_groups(id, name, order, member_count, quote_items(id, base_price, final_price, products(id, name, description, partner_name)), quote_group_members(id, case_member_id))
         ),
         schedules(id, slug, pdf_url, status, version, file_name, revision_note, confirmed_at, created_at)
       `)
@@ -169,6 +209,18 @@ export default function AdminCaseDetailPage() {
     if (error) console.error('[case] fetch error:', error)
     if (!data) { setNotFound(true); return }
     setCaseData(data as unknown as Case)
+
+    const [{ data: pp }, { data: ss }] = await Promise.all([
+      supabase.from('partner_payments')
+        .select('id, case_id, partner_name, amount, paid_at, note, created_at')
+        .eq('case_id', id),
+      supabase.from('settlements')
+        .select('id, settlement_number, agent_id, case_id, amount, paid_at, created_at')
+        .eq('case_id', id)
+        .maybeSingle(),
+    ])
+    setPartnerPayments((pp as PartnerPayment[]) ?? [])
+    setAgentSettlement((ss as AgentSettlement | null) ?? null)
   }, [id])
 
   useEffect(() => {
@@ -200,7 +252,7 @@ export default function AdminCaseDetailPage() {
       await logAsCurrentUser('case.payment_confirmed', { type: 'case', id: caseData.id, label: caseData.case_number },
         paymentDate ? { paid_on: paymentDate } : undefined)
       await fetchCase()
-      setPaymentDate('')
+      setPaymentDate(new Date().toISOString().slice(0, 10))
     } catch (e: unknown) { setActionError((e as { message?: string })?.message ?? 'Failed.') }
     finally { setConfirmingPayment(false) }
   }
@@ -271,7 +323,8 @@ export default function AdminCaseDetailPage() {
 
       const remaining = (caseData?.schedules ?? []).filter(s => s.id !== scheduleId)
       if (remaining.length === 0 && caseData?.status === 'schedule_reviewed') {
-        await supabase.from('cases').update({ status: 'payment_completed' }).eq('id', caseData.id)
+        // No schedule left → revert to quote_sent so admin can re-upload
+        await supabase.from('cases').update({ status: 'quote_sent' }).eq('id', caseData.id)
       }
 
       if (caseData) {
@@ -307,10 +360,13 @@ export default function AdminCaseDetailPage() {
   const missingCaseFields = getMissingCaseFields(caseData)
   const caseInfoComplete = missingCaseFields.length === 0
   const scheduleReady = allClientsComplete && groupsComplete && caseInfoComplete
-  // Schedule is locked once the agent confirms (or travel is complete) — no more uploads or deletes.
-  const scheduleLocked = caseData.status === 'schedule_confirmed' || caseData.status === 'travel_completed'
+  // Schedule is locked once the agent confirms (or beyond) — no more uploads or deletes.
+  const scheduleLocked =
+    caseData.status === 'schedule_confirmed'
+    || caseData.status === 'payment_completed'
+    || caseData.status === 'travel_completed'
   const canUploadSchedule = !scheduleLocked
-    && (caseData.status === 'payment_completed' || caseData.status === 'schedule_reviewed')
+    && (caseData.status === 'quote_sent' || caseData.status === 'schedule_reviewed')
     && (latestSchedule === null || latestSchedule.status === 'revision_requested')
     && scheduleReady
   const sortedGroups = latestQuote?.quote_groups ? [...latestQuote.quote_groups].sort((a, b) => a.order - b.order) : []
@@ -521,9 +577,22 @@ export default function AdminCaseDetailPage() {
               <div className="flex items-center justify-between">
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Financials</p>
                 <div className="flex items-center gap-3">
-                  <span className="text-[10px] font-mono text-gray-400">{latestQuote.quote_number}</span>
-                  <a href={`${baseUrl}/quote/${latestQuote.slug}?preview=1`} target="_blank" rel="noopener noreferrer"
-                    className="text-xs text-gray-400 hover:text-[#0f4c35] transition-colors">View ↗</a>
+                  <span className="text-[10px] font-mono text-gray-400">
+                    {latestQuote.quote_number}
+                    {latestQuote.invoice_number && <span className="ml-1.5 text-gray-300">·</span>}
+                    {latestQuote.invoice_number && <span className="ml-1.5 text-[#0f4c35]">{latestQuote.invoice_number}</span>}
+                  </span>
+                  {latestQuote.finalized_at ? (
+                    <>
+                      <a href={`${baseUrl}/quote/${latestQuote.slug}?preview=1&as=quotation`} target="_blank" rel="noopener noreferrer"
+                        className="text-xs text-gray-400 hover:text-[#0f4c35] transition-colors">Quotation ↗</a>
+                      <a href={`${baseUrl}/quote/${latestQuote.slug}?preview=1&as=invoice`} target="_blank" rel="noopener noreferrer"
+                        className="text-xs text-gray-400 hover:text-[#0f4c35] transition-colors">Invoice ↗</a>
+                    </>
+                  ) : (
+                    <a href={`${baseUrl}/quote/${latestQuote.slug}?preview=1`} target="_blank" rel="noopener noreferrer"
+                      className="text-xs text-gray-400 hover:text-[#0f4c35] transition-colors">Preview ↗</a>
+                  )}
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3 text-sm">
@@ -531,7 +600,7 @@ export default function AdminCaseDetailPage() {
                 <div><p className="text-[10px] text-gray-400 mb-0.5">Total (USD)</p><p className="font-semibold text-gray-900">{fmtUSD(latestQuote.total_price / exchangeRate)}</p></div>
                 <div>
                   <p className="text-[10px] text-gray-400 mb-0.5">Payment Due</p>
-                  <p className={`font-medium text-sm ${caseData.status === 'payment_pending' && latestQuote.payment_due_date && new Date(latestQuote.payment_due_date) < new Date() ? 'text-red-500' : 'text-gray-800'}`}>
+                  <p className={`font-medium text-sm ${caseData.status === 'schedule_confirmed' && latestQuote.payment_due_date && new Date(latestQuote.payment_due_date) < new Date() ? 'text-red-500' : 'text-gray-800'}`}>
                     {latestQuote.payment_due_date ?? '—'}
                   </p>
                 </div>
@@ -585,6 +654,7 @@ export default function AdminCaseDetailPage() {
               )}
             </section>
           )}
+
 
           {/* Schedule History */}
           {sortedSchedules.length > 0 && (
@@ -655,16 +725,156 @@ export default function AdminCaseDetailPage() {
           {/* Admin Actions */}
           {actionError && <p className="text-xs text-red-500 px-1">{actionError}</p>}
 
-          {caseData.status === 'payment_pending' && (
+          {/* Finalize Pricing — admin adjusts final prices after agent confirms schedule */}
+          {caseData.status === 'schedule_confirmed' && latestQuote && (!latestQuote.finalized_at || editingPricing) && (
+            <section className="border border-violet-200 bg-violet-50 rounded-2xl p-4 space-y-3">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <p className="text-xs font-semibold text-violet-700 uppercase tracking-wide">
+                  {latestQuote.finalized_at ? 'Edit Final Pricing' : 'Finalize Pricing'}
+                </p>
+                {latestQuote.finalized_at && (
+                  <button onClick={() => { setEditingPricing(false); setPricingEdits({}); setPricingError('') }}
+                    className="text-xs text-gray-500 hover:text-gray-800">Cancel</button>
+                )}
+              </div>
+              <p className="text-[11px] text-gray-600">Adjust each line item to reflect the actual final price before issuing the invoice.</p>
+
+              {pricingError && <p className="text-xs text-red-500">{pricingError}</p>}
+
+              <div className="bg-white rounded-xl border border-violet-100 divide-y divide-gray-100">
+                {sortedGroups.flatMap(g => g.quote_items.map(item => {
+                  const currentVal = pricingEdits[item.id] ?? String(item.final_price)
+                  return (
+                    <div key={item.id} className="flex items-center gap-3 px-3 py-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-gray-900 truncate">{item.products?.name ?? 'Item'}</p>
+                        <p className="text-[10px] text-gray-400">{g.name}</p>
+                      </div>
+                      <span className="text-[10px] text-gray-400 tabular-nums shrink-0">orig {fmtKRW(item.final_price)}</span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={currentVal}
+                        onChange={(e) => {
+                          const cleaned = e.target.value.replace(/[^0-9]/g, '')
+                          setPricingEdits(p => ({ ...p, [item.id]: cleaned }))
+                        }}
+                        className="w-32 border border-gray-200 rounded-lg px-2 py-1 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35] tabular-nums text-right" />
+                      <span className="text-[10px] text-gray-400 shrink-0 w-3">₩</span>
+                    </div>
+                  )
+                }))}
+              </div>
+
+              {(() => {
+                const newTotal = sortedGroups
+                  .flatMap(g => g.quote_items)
+                  .reduce((s, item) => s + (Number(pricingEdits[item.id] ?? item.final_price) || 0), 0)
+                const diff = newTotal - latestQuote.total_price
+                return (
+                  <div className="flex items-baseline justify-between bg-white rounded-xl border border-violet-100 px-3 py-2">
+                    <span className="text-xs text-gray-500">New Total</span>
+                    <div className="flex items-baseline gap-3">
+                      <span className="text-sm font-bold text-gray-900 tabular-nums">{fmtUSD(newTotal / exchangeRate)}</span>
+                      <span className="text-[11px] text-gray-400 tabular-nums">{fmtKRW(newTotal)}</span>
+                      {diff !== 0 && (
+                        <span className={`text-[10px] font-medium tabular-nums ${diff > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                          {diff > 0 ? '+' : ''}{fmtKRW(diff)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )
+              })()}
+
+              {(() => {
+                const hasPricingChanges = sortedGroups
+                  .flatMap(g => g.quote_items)
+                  .some(item => {
+                    const v = pricingEdits[item.id]
+                    return v !== undefined && Number(v) !== item.final_price
+                  })
+                const isFirstFinalize = !latestQuote.finalized_at
+                const buttonDisabled = savingPricing || (!isFirstFinalize && !hasPricingChanges)
+                return (
+              <button
+                disabled={buttonDisabled}
+                onClick={async () => {
+                  if (!latestQuote) return
+                  setSavingPricing(true); setPricingError('')
+                  try {
+                    const items = sortedGroups.flatMap(g => g.quote_items)
+                    const newTotal = items.reduce((s, item) => s + (Number(pricingEdits[item.id] ?? item.final_price) || 0), 0)
+
+                    // Update each item that changed
+                    for (const item of items) {
+                      const newVal = Number(pricingEdits[item.id] ?? item.final_price) || 0
+                      if (newVal !== item.final_price) {
+                        const { error } = await supabase.from('quote_items').update({ final_price: newVal }).eq('id', item.id)
+                        if (error) throw error
+                      }
+                    }
+                    // Generate invoice_number on first finalize (preserve on edit)
+                    const isFirstFinalize = !latestQuote.finalized_at
+                    let invoiceNumber = latestQuote.invoice_number
+                    if (!invoiceNumber) {
+                      const { count } = await supabase.from('quotes').select('*', { count: 'exact', head: true }).not('invoice_number', 'is', null)
+                      const next = (count ?? 0) + 1
+                      invoiceNumber = `#INV-${String(next).padStart(3, '0')}`
+                    }
+                    const totalChanged = newTotal !== latestQuote.total_price
+                    const updates: Record<string, unknown> = {
+                      total_price: newTotal,
+                      finalized_at: latestQuote.finalized_at ?? new Date().toISOString(),
+                      invoice_number: invoiceNumber,
+                    }
+                    // Reprice with real change → re-arm the "invoice opened" notification
+                    if (!isFirstFinalize && totalChanged) {
+                      updates.invoice_first_opened_at = null
+                    }
+                    const { error: qe } = await supabase.from('quotes').update(updates).eq('id', latestQuote.id)
+                    if (qe) throw qe
+
+                    const ref = invoiceNumber ?? caseData.case_number
+                    const notifyMessage = isFirstFinalize
+                      ? `${ref} Pricing finalized — invoice ready to send`
+                      : totalChanged
+                        ? `${ref} Invoice pricing updated — please review before resending`
+                        : `${ref} Invoice updated`
+                    await notifyAgent(caseData.agent_id, notifyMessage, `/agent/cases/${caseData.id}`)
+                    await logAsCurrentUser(isFirstFinalize ? 'quote.finalized' : 'quote.repriced',
+                      { type: 'case', id: caseData.id, label: caseData.case_number },
+                      { total_krw: newTotal, ...(totalChanged && !isFirstFinalize ? { previous_total_krw: latestQuote.total_price } : {}) })
+                    setPricingEdits({})
+                    setEditingPricing(false)
+                    await fetchCase()
+                  } catch (e: unknown) {
+                    setPricingError((e as { message?: string })?.message ?? 'Failed.')
+                  } finally { setSavingPricing(false) }
+                }}
+                className="w-full py-2.5 text-sm font-medium bg-violet-600 text-white rounded-xl hover:bg-violet-700 disabled:opacity-40 transition-colors">
+                {savingPricing ? 'Saving...' : latestQuote.finalized_at ? 'Save Pricing Changes' : 'Finalize Pricing & Issue Invoice'}
+              </button>
+                )
+              })()}
+            </section>
+          )}
+
+          {/* Confirm Payment — only after pricing finalized */}
+          {caseData.status === 'schedule_confirmed' && latestQuote?.finalized_at && !editingPricing && (
             <section className="border border-amber-200 bg-amber-50 rounded-2xl p-4 space-y-3">
-              <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide">Confirm Payment</p>
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide">Confirm Payment</p>
+                <button onClick={() => { setEditingPricing(true); setPricingEdits({}); setPricingError('') }}
+                  className="text-[10px] text-violet-700 hover:underline">Edit pricing</button>
+              </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">Payment Date (optional)</label>
+                <label className="block text-xs text-gray-500 mb-1">Payment Date <span className="text-amber-700">*</span></label>
                 <input type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)}
                   min={caseData.created_at.slice(0, 10)}
                   className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-[#0f4c35] bg-white" />
               </div>
-              <button onClick={confirmPayment} disabled={confirmingPayment}
+              <button onClick={confirmPayment} disabled={confirmingPayment || !paymentDate}
                 className="w-full py-2.5 text-sm font-medium bg-[#0f4c35] text-white rounded-xl hover:bg-[#0a3828] disabled:opacity-40 transition-colors">
                 {confirmingPayment ? 'Confirming...' : 'Confirm Payment'}
               </button>
@@ -673,7 +883,7 @@ export default function AdminCaseDetailPage() {
 
           {/* Blocked upload placeholder when schedule isn't ready */}
           {!scheduleReady
-            && (caseData.status === 'payment_completed' || caseData.status === 'schedule_reviewed')
+            && (caseData.status === 'quote_sent' || caseData.status === 'schedule_reviewed')
             && (latestSchedule === null || latestSchedule.status === 'revision_requested') && (
             <section className="border border-gray-200 bg-gray-50 rounded-2xl p-4 space-y-2 opacity-80">
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Upload Schedule</p>
@@ -692,8 +902,8 @@ export default function AdminCaseDetailPage() {
           )}
 
           {canUploadSchedule && (
-            <section className={`border rounded-2xl p-4 space-y-3 ${caseData.status === 'payment_completed' ? 'border-blue-200 bg-blue-50' : 'border-violet-200 bg-violet-50'}`}>
-              <p className={`text-xs font-semibold uppercase tracking-wide ${caseData.status === 'payment_completed' ? 'text-blue-700' : 'text-violet-700'}`}>
+            <section className={`border rounded-2xl p-4 space-y-3 ${caseData.status === 'quote_sent' ? 'border-blue-200 bg-blue-50' : 'border-violet-200 bg-violet-50'}`}>
+              <p className={`text-xs font-semibold uppercase tracking-wide ${caseData.status === 'quote_sent' ? 'text-blue-700' : 'text-violet-700'}`}>
                 {sortedSchedules.length === 0 ? 'Upload Schedule' : `Upload New Version (v${(latestSchedule?.version ?? 0) + 1})`}
               </p>
               {!stagedFile && sortedSchedules.length === 0 && (
@@ -711,7 +921,7 @@ export default function AdminCaseDetailPage() {
                     const f = e.dataTransfer.files?.[0]
                     if (f) stageFile(f)
                   }}
-                  className={`flex flex-col items-center justify-center gap-1 w-full py-6 text-sm font-medium rounded-xl border-2 border-dashed cursor-pointer ring-offset-1 transition-all ${caseData.status === 'payment_completed' ? 'border-blue-300 text-blue-700 hover:bg-blue-100 ring-blue-300' : 'border-violet-300 text-violet-700 hover:bg-violet-100 ring-violet-300'}`}>
+                  className={`flex flex-col items-center justify-center gap-1 w-full py-6 text-sm font-medium rounded-xl border-2 border-dashed cursor-pointer ring-offset-1 transition-all ${caseData.status === 'quote_sent' ? 'border-blue-300 text-blue-700 hover:bg-blue-100 ring-blue-300' : 'border-violet-300 text-violet-700 hover:bg-violet-100 ring-violet-300'}`}>
                   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" /></svg>
                   <span>Click or drag PDF here</span>
                   <input type="file" accept="application/pdf" className="hidden"
@@ -754,6 +964,317 @@ export default function AdminCaseDetailPage() {
               <p className="text-xs text-emerald-700">Agent will mark travel complete after the trip.</p>
             </section>
           )}
+          {/* Partner Payouts — track cash sent to hospitals/hotels/etc per partner */}
+          {latestQuote && (() => {
+            type PartnerItem = { name: string; price: number; group: string; qty: number }
+            type PartnerGroup = { name: string; suggested: number; items: PartnerItem[] }
+            const groups = new Map<string, PartnerGroup>()
+            for (const g of latestQuote.quote_groups ?? []) {
+              for (const item of g.quote_items ?? []) {
+                const pname = item.products?.partner_name?.trim()
+                if (!pname) continue
+                const prev = groups.get(pname) ?? { name: pname, suggested: 0, items: [] }
+                prev.suggested += item.base_price ?? 0
+                prev.items.push({
+                  name: item.products?.name ?? 'Service',
+                  price: item.base_price ?? 0,
+                  group: g.name,
+                  qty: g.member_count ?? 1,
+                })
+                groups.set(pname, prev)
+              }
+            }
+            const partnerList = [...groups.values()].sort((a, b) => a.name.localeCompare(b.name))
+            if (partnerList.length === 0) return null
+
+            const totalPaid = partnerPayments.reduce((s, p) => s + (p.amount ?? 0), 0)
+            const totalSuggested = partnerList.reduce((s, g) => s + g.suggested, 0)
+            const allPaid = partnerList.every(g => partnerPayments.some(p => p.partner_name === g.name))
+            // Partners can only be paid out after we've received client payment
+            const paymentReceived = caseData.status === 'payment_completed' || caseData.status === 'travel_completed'
+
+            return (
+              <section className="bg-gray-50 rounded-2xl p-4 space-y-3">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Partner Payouts</p>
+                  <div className="flex items-baseline gap-3 text-[10px] text-gray-500">
+                    <span>Paid <span className="font-semibold tabular-nums text-gray-700">{fmtUSD(totalPaid / exchangeRate)}</span> of {fmtUSD(totalSuggested / exchangeRate)}</span>
+                    {allPaid && <span className="text-emerald-700 font-medium">All settled ✓</span>}
+                  </div>
+                </div>
+
+                {!paymentReceived && (
+                  <div className="bg-white border border-gray-200 rounded-xl p-3 text-xs text-gray-500">
+                    Partner payouts are unlocked once client payment is confirmed.
+                  </div>
+                )}
+
+                {partnerError && <p className="text-xs text-red-500">{partnerError}</p>}
+
+                <div className="space-y-2">
+                  {!paymentReceived && partnerList.map(g => (
+                    <div key={g.name} className="bg-white rounded-xl border border-gray-100 p-3 space-y-2 opacity-60">
+                      <div className="flex items-center gap-3">
+                        <span className="w-2 h-2 rounded-full bg-gray-300 shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-gray-700">{g.name}</p>
+                          <p className="text-[10px] text-gray-400">{g.items.length} item{g.items.length !== 1 ? 's' : ''} · suggested {fmtUSD(g.suggested / exchangeRate)}</p>
+                        </div>
+                        <span className="text-sm text-gray-500 tabular-nums">{fmtUSD(g.suggested / exchangeRate)}</span>
+                      </div>
+                      <ul className="text-[10px] text-gray-500 space-y-0.5 pl-4 border-l border-gray-100">
+                        {g.items.map((it, i) => (
+                          <li key={i} className="flex justify-between gap-2">
+                            <span className="truncate">
+                              {it.name}
+                              <span className="text-gray-400"> · {it.group} ({it.qty} pax)</span>
+                            </span>
+                            <span className="text-gray-400 tabular-nums shrink-0">{fmtKRW(it.price)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+
+                  {paymentReceived && partnerList.map(g => {
+                    const existing = partnerPayments.find(p => p.partner_name === g.name)
+                    const edit = partnerEdits[g.name]
+                    const editing = !!edit
+                    const saving = savingPartner === g.name
+
+                    if (existing && !editing) {
+                      // Paid view
+                      return (
+                        <div key={g.name} className="bg-white rounded-xl border border-emerald-200 p-3 flex items-center gap-3 flex-wrap">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-900">{g.name}</p>
+                            <p className="text-[10px] text-gray-500">{g.items.length} item{g.items.length !== 1 ? 's' : ''} · paid {existing.paid_at}{existing.note ? ` · ${existing.note}` : ''}</p>
+                          </div>
+                          <span className="text-right tabular-nums">
+                            <span className="text-sm font-semibold text-emerald-700">{fmtUSD(existing.amount / exchangeRate)}</span>
+                            <span className="text-[10px] text-gray-400 ml-2">{fmtKRW(existing.amount)}</span>
+                          </span>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <button
+                              onClick={() => setPartnerEdits(p => ({ ...p, [g.name]: { amount: String(existing.amount), paid_at: existing.paid_at, note: existing.note ?? '' } }))}
+                              className="text-[10px] text-gray-400 hover:text-gray-700">Edit</button>
+                            <button
+                              onClick={async () => {
+                                if (!confirm(`Delete partner payment for ${g.name}?`)) return
+                                setSavingPartner(g.name); setPartnerError('')
+                                try {
+                                  const { error } = await supabase.from('partner_payments').delete().eq('id', existing.id)
+                                  if (error) throw error
+                                  await fetchCase()
+                                } catch (e: unknown) {
+                                  setPartnerError((e as { message?: string })?.message ?? 'Failed.')
+                                } finally { setSavingPartner(null) }
+                              }}
+                              className="text-[10px] text-red-500 hover:text-red-700">Delete</button>
+                          </div>
+                        </div>
+                      )
+                    }
+
+                    // Edit / unpaid input
+                    const amount = edit?.amount ?? String(Math.round(g.suggested))
+                    const paid_at = edit?.paid_at ?? new Date().toISOString().slice(0, 10)
+                    const note = edit?.note ?? ''
+                    const setField = (key: 'amount' | 'paid_at' | 'note', v: string) =>
+                      setPartnerEdits(p => ({ ...p, [g.name]: { ...{ amount, paid_at, note }, ...(p[g.name] ?? {}), [key]: v } }))
+
+                    return (
+                      <div key={g.name} className={`bg-white rounded-xl border p-3 space-y-2 ${existing ? 'border-emerald-200' : 'border-gray-200'}`}>
+                        <div className="flex items-center gap-3 flex-wrap">
+                          <span className={`w-2 h-2 rounded-full shrink-0 ${existing ? 'bg-emerald-500' : 'bg-amber-400'}`} />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-900">{g.name}</p>
+                            <p className="text-[10px] text-gray-500">{g.items.length} item{g.items.length !== 1 ? 's' : ''} · suggested {fmtUSD(g.suggested / exchangeRate)} · {fmtKRW(g.suggested)}</p>
+                          </div>
+                        </div>
+                        <ul className="text-[10px] text-gray-500 space-y-0.5 pl-4 border-l border-gray-100">
+                          {g.items.map((it, i) => (
+                            <li key={i} className="flex justify-between gap-2">
+                              <span className="truncate">
+                                {it.name}
+                                <span className="text-gray-400"> · {it.group} ({it.qty} pax)</span>
+                              </span>
+                              <span className="text-gray-400 tabular-nums shrink-0">{fmtKRW(it.price)}</span>
+                            </li>
+                          ))}
+                        </ul>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                          <div>
+                            <label className="block text-[10px] text-gray-500 mb-1">Amount (KRW)</label>
+                            <input value={amount} onChange={e => setField('amount', e.target.value.replace(/[^0-9]/g, ''))} type="text" inputMode="numeric"
+                              className="w-full border border-gray-200 rounded-lg px-2 py-1 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] text-gray-500 mb-1">Paid On</label>
+                            <input value={paid_at} onChange={e => setField('paid_at', e.target.value)} type="date"
+                              className="w-full border border-gray-200 rounded-lg px-2 py-1 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] text-gray-500 mb-1">Note (optional)</label>
+                            <input value={note} onChange={e => setField('note', e.target.value)} placeholder="Bank ref, etc."
+                              className="w-full border border-gray-200 rounded-lg px-2 py-1 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-end gap-2">
+                          {edit && (
+                            <button onClick={() => setPartnerEdits(p => { const n = { ...p }; delete n[g.name]; return n })}
+                              className="text-xs text-gray-400 hover:text-gray-700">Cancel</button>
+                          )}
+                          <button
+                            disabled={saving || !amount || Number(amount) <= 0 || !paid_at}
+                            onClick={async () => {
+                              setSavingPartner(g.name); setPartnerError('')
+                              try {
+                                const { data: { session } } = await supabase.auth.getSession()
+                                const { data: adminRow } = await supabase.from('admins').select('id').eq('auth_user_id', session?.user?.id ?? '').maybeSingle()
+                                const payload = {
+                                  case_id: caseData.id,
+                                  partner_name: g.name,
+                                  amount: Number(amount),
+                                  paid_at,
+                                  note: note.trim() || null,
+                                  paid_by: adminRow?.id ?? null,
+                                }
+                                if (existing) {
+                                  const { error } = await supabase.from('partner_payments').update(payload).eq('id', existing.id)
+                                  if (error) throw error
+                                } else {
+                                  const { error } = await supabase.from('partner_payments').insert(payload)
+                                  if (error) throw error
+                                }
+                                await logAsCurrentUser('partner.paid',
+                                  { type: 'case', id: caseData.id, label: caseData.case_number },
+                                  { partner_name: g.name, amount_krw: Number(amount), paid_at })
+                                setPartnerEdits(p => { const n = { ...p }; delete n[g.name]; return n })
+                                await fetchCase()
+                              } catch (e: unknown) {
+                                setPartnerError((e as { message?: string })?.message ?? 'Failed.')
+                              } finally { setSavingPartner(null) }
+                            }}
+                            className="px-3 py-1 text-xs font-medium bg-[#0f4c35] text-white rounded-lg hover:bg-[#0a3828] disabled:opacity-40">
+                            {saving ? 'Saving...' : existing ? 'Save' : 'Mark Paid'}
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </section>
+            )
+          })()}
+
+          {/* Agent Settlement — commission paid to the agent (1 per case) */}
+          {latestQuote && (() => {
+            const total = latestQuote.total_price ?? 0
+            const ag = latestQuote.agent_margin_rate ?? 0
+            const commissionAmount = ag > 0 ? Math.round(total * ag / (1 + ag)) : 0
+            const isCompleted = caseData.status === 'travel_completed'
+            const paid = !!agentSettlement?.paid_at
+
+            const agent = getAgent(caseData)
+
+            return (
+              <section className="bg-gray-50 rounded-2xl p-4 space-y-3">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Agent Settlement</p>
+                  {paid ? (
+                    <span className="text-[10px] text-emerald-700 font-medium">Settled ✓</span>
+                  ) : !isCompleted ? (
+                    <span className="text-[10px] text-gray-400">Available after travel completion</span>
+                  ) : (
+                    <span className="text-[10px] text-amber-700 font-medium">Pending</span>
+                  )}
+                </div>
+
+                {agentSettleError && <p className="text-xs text-red-500">{agentSettleError}</p>}
+
+                {paid && agentSettlement ? (
+                  <div className="bg-white rounded-xl border border-emerald-200 p-3 flex items-center gap-3 flex-wrap">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900">{agent?.name ?? '—'}</p>
+                      <p className="text-[10px] text-gray-500">
+                        {agentSettlement.settlement_number ?? ''} · paid {agentSettlement.paid_at}
+                      </p>
+                    </div>
+                    <span className="text-right tabular-nums">
+                      <span className="text-sm font-semibold text-emerald-700">{fmtUSD(agentSettlement.amount / exchangeRate)}</span>
+                      <span className="text-[10px] text-gray-400 ml-2">{fmtKRW(agentSettlement.amount)}</span>
+                    </span>
+                  </div>
+                ) : isCompleted ? (
+                  <div className="bg-white rounded-xl border border-gray-200 p-3 space-y-2">
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900">{agent?.name ?? '—'}</p>
+                        <p className="text-[10px] text-gray-500">commission @ {(ag * 100).toFixed(0)}% margin</p>
+                      </div>
+                      <span className="text-right tabular-nums">
+                        <span className="text-sm font-semibold text-gray-900">{fmtUSD(commissionAmount / exchangeRate)}</span>
+                        <span className="text-[10px] text-gray-400 ml-2">{fmtKRW(commissionAmount)}</span>
+                      </span>
+                    </div>
+                    <div className="flex items-end gap-2">
+                      <div className="flex-1">
+                        <label className="block text-[10px] text-gray-500 mb-1">Paid On</label>
+                        <input value={agentSettlePaidAt} onChange={e => setAgentSettlePaidAt(e.target.value)} type="date"
+                          className="w-full border border-gray-200 rounded-lg px-2 py-1 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
+                      </div>
+                      <button
+                        disabled={savingAgentSettle || !agentSettlePaidAt || commissionAmount <= 0}
+                        onClick={async () => {
+                          if (!caseData) return
+                          setSavingAgentSettle(true); setAgentSettleError('')
+                          try {
+                            const { count } = await supabase.from('settlements').select('*', { count: 'exact', head: true })
+                            const next = (count ?? 0) + 1
+                            const settlementNumber = `#S-${String(next).padStart(3, '0')}`
+                            const { error } = await supabase.from('settlements').insert({
+                              settlement_number: settlementNumber,
+                              agent_id: caseData.agent_id,
+                              case_id: caseData.id,
+                              amount: commissionAmount,
+                              paid_at: agentSettlePaidAt,
+                            })
+                            if (error) throw error
+                            await notifyAgent(caseData.agent_id,
+                              `${caseData.case_number} Settlement paid — ${fmtUSD(commissionAmount / exchangeRate)}`,
+                              '/agent/payouts')
+                            await logAsCurrentUser('settlement.paid',
+                              { type: 'case', id: caseData.id, label: caseData.case_number },
+                              { amount_krw: commissionAmount, paid_at: agentSettlePaidAt, settlement_number: settlementNumber })
+                            await fetchCase()
+                          } catch (e: unknown) {
+                            setAgentSettleError((e as { message?: string })?.message ?? 'Failed.')
+                          } finally { setSavingAgentSettle(false) }
+                        }}
+                        className="px-3 py-1.5 text-xs font-medium bg-[#0f4c35] text-white rounded-lg hover:bg-[#0a3828] disabled:opacity-40 shrink-0">
+                        {savingAgentSettle ? 'Saving...' : 'Mark Paid'}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-white rounded-xl border border-gray-100 p-3 flex items-center gap-3 opacity-60">
+                    <span className="w-2 h-2 rounded-full bg-gray-300 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-gray-500">{agent?.name ?? '—'} · {(ag * 100).toFixed(0)}% margin</p>
+                      <p className="text-[10px] text-gray-400">Mark Travel Complete first to settle</p>
+                    </div>
+                    <span className="text-right tabular-nums">
+                      <span className="text-sm text-gray-500">{fmtUSD(commissionAmount / exchangeRate)}</span>
+                    </span>
+                  </div>
+                )}
+              </section>
+            )
+          })()}
 
         </div>
 

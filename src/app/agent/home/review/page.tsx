@@ -285,7 +285,7 @@ export default function QuoteReviewPage() {
         .insert({
           case_number: `#C-${String((caseCount ?? 0) + 1).padStart(3, '0')}`,
           agent_id: agentData.id,
-          status: 'payment_pending',
+          status: 'quote_sent',
           travel_start_date: cart.dateStart || null,
           travel_end_date: cart.dateEnd || null,
         })

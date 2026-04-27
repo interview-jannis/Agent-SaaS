@@ -4,6 +4,9 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { logAsCurrentUser } from '@/lib/audit'
+import SparklineCard from '@/components/SparklineCard'
+
+const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 type BankInfo = Record<string, string>
 
@@ -39,8 +42,9 @@ type CaseRow = {
   status: string
   travel_start_date: string | null
   travel_end_date: string | null
+  payment_date: string | null
   created_at: string
-  quotes: { total_price: number; agent_margin_rate: number }[]
+  quotes: { total_price: number; company_margin_rate: number | null; agent_margin_rate: number }[]
   case_members: { is_lead: boolean; clients: { name: string } | null }[]
 }
 
@@ -53,14 +57,14 @@ type SettlementRow = {
 }
 
 const STATUS_LABELS: Record<string, string> = {
-  payment_pending: 'Awaiting Payment', payment_completed: 'Payment Confirmed',
-  schedule_reviewed: 'Schedule Reviewed', schedule_confirmed: 'Schedule Confirmed', travel_completed: 'Travel Completed',
+  quote_sent: 'Awaiting Schedule', payment_completed: 'Payment Confirmed',
+  schedule_reviewed: 'Schedule Reviewed', schedule_confirmed: 'Awaiting Payment', travel_completed: 'Travel Completed',
 }
 const STATUS_STYLES: Record<string, string> = {
-  payment_pending: 'bg-amber-50 text-amber-700 border-amber-200',
-  payment_completed: 'bg-blue-50 text-blue-700 border-blue-200',
+  quote_sent: 'bg-amber-50 text-amber-700 border-amber-200',
+  payment_completed: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   schedule_reviewed: 'bg-violet-50 text-violet-700 border-violet-200',
-  schedule_confirmed: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  schedule_confirmed: 'bg-blue-50 text-blue-700 border-blue-200',
   travel_completed: 'bg-gray-50 text-gray-500 border-gray-200',
 }
 
@@ -90,7 +94,7 @@ export default function AdminAgentDetailPage() {
         .select('id, agent_number, name, email, phone, country, margin_rate, monthly_completed, is_active, bank_info, onboarding_status, rejection_reason, rejected_at, invite_token, invite_expires_at')
         .eq('id', id).single(),
       supabase.from('cases')
-        .select('id, case_number, status, travel_start_date, travel_end_date, created_at, quotes(total_price, agent_margin_rate), case_members(is_lead, clients(name))')
+        .select('id, case_number, status, travel_start_date, travel_end_date, payment_date, created_at, quotes(total_price, company_margin_rate, agent_margin_rate), case_members(is_lead, clients(name))')
         .eq('agent_id', id)
         .order('created_at', { ascending: false }),
       supabase.from('settlements')
@@ -225,7 +229,33 @@ export default function AdminAgentDetailPage() {
   const unsettledKrw = completedCases
     .filter(c => !settledCaseIds.has(c.id))
     .reduce((sum, c) => sum + commissionKrw(c.quotes?.[0]?.total_price ?? 0, c.quotes?.[0]?.agent_margin_rate ?? 0), 0)
-  const paidKrw = settlements.reduce((s, st) => s + (st.amount ?? 0), 0)
+
+  // 6-month performance — for sparklines
+  const now = new Date()
+  const monthly: { key: string; label: string; revenue: number; commission: number; settled: number; patients: number }[] = []
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    const monthCases = cases.filter(c => c.payment_date?.startsWith(key))
+    let revenue = 0, commission = 0, patients = 0
+    for (const c of monthCases) {
+      const q = c.quotes?.[0]
+      if (!q) continue
+      const total = q.total_price ?? 0
+      const ag = q.agent_margin_rate ?? 0
+      revenue += total
+      commission += commissionKrw(total, ag)
+      patients += c.case_members?.length ?? 0
+    }
+    const settled = settlements
+      .filter(s => s.paid_at?.startsWith(key))
+      .reduce((sum, s) => sum + (s.amount ?? 0), 0)
+    monthly.push({ key, label: MONTH_SHORT[d.getMonth()], revenue, commission, settled, patients })
+  }
+  const toUsd = (krw: number) => krw / exchangeRate
+  const cur = monthly[monthly.length - 1]
+  const prv = monthly[monthly.length - 2]
+  const sparkLabels = monthly.map(m => m.label)
 
   return (
     <div className="flex flex-col h-full bg-white">
@@ -254,8 +284,8 @@ export default function AdminAgentDetailPage() {
           {/* Approved-only blocks (metrics/profile/bank/cases/settlements) — skip for temp accounts */}
           {agent.onboarding_status === 'approved' && (
           <>
-          {/* Basic + margin */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {/* Basic + margin (snapshot) */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div className="bg-gray-50 rounded-2xl p-4">
               <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-1">Margin Rate</p>
               <p className="text-lg font-bold text-[#0f4c35]">{agent.margin_rate != null ? `${(agent.margin_rate * 100).toFixed(0)}%` : '—'}</p>
@@ -265,12 +295,52 @@ export default function AdminAgentDetailPage() {
               <p className="text-[10px] text-amber-700 uppercase tracking-wide mb-1">Unsettled</p>
               <p className="text-lg font-bold text-amber-800">{fmtUSD(unsettledKrw / exchangeRate)}</p>
             </div>
-            <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4">
-              <p className="text-[10px] text-emerald-700 uppercase tracking-wide mb-1">Paid Out</p>
-              <p className="text-lg font-bold text-emerald-800">{fmtUSD(paidKrw / exchangeRate)}</p>
-              <p className="text-[10px] text-emerald-600 mt-0.5">{settlements.length} settlement{settlements.length !== 1 ? 's' : ''}</p>
-            </div>
           </div>
+
+          {/* Performance — 6 month sparklines */}
+          <section className="space-y-3">
+            <div className="flex items-baseline gap-3">
+              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Performance · Last 6 Months</h3>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <SparklineCard
+                label="Revenue Brought"
+                color="#0f4c35"
+                kind="money"
+                value={toUsd(cur.revenue)}
+                prev={toUsd(prv?.revenue ?? 0)}
+                values={monthly.map(m => toUsd(m.revenue))}
+                labels={sparkLabels}
+              />
+              <SparklineCard
+                label="Commission Earned"
+                color="#f59e0b"
+                kind="money"
+                value={toUsd(cur.commission)}
+                prev={toUsd(prv?.commission ?? 0)}
+                values={monthly.map(m => toUsd(m.commission))}
+                labels={sparkLabels}
+              />
+              <SparklineCard
+                label="Settled"
+                color="#10b981"
+                kind="money"
+                value={toUsd(cur.settled)}
+                prev={toUsd(prv?.settled ?? 0)}
+                values={monthly.map(m => toUsd(m.settled))}
+                labels={sparkLabels}
+              />
+              <SparklineCard
+                label="Paying Clients"
+                color="#3b82f6"
+                kind="count"
+                value={cur.patients}
+                prev={prv?.patients ?? 0}
+                values={monthly.map(m => m.patients)}
+                labels={sparkLabels}
+              />
+            </div>
+          </section>
 
           {/* Profile */}
           <section className="bg-gray-50 rounded-2xl p-5">
