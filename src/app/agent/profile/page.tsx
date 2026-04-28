@@ -12,12 +12,12 @@ type AgentProfile = {
   phone: string | null
   country: string | null
   margin_rate: number | null
-  monthly_completed: number | null
   is_active: boolean
 }
 
 export default function AgentProfilePage() {
   const [profile, setProfile] = useState<AgentProfile | null>(null)
+  const [monthlyPatients, setMonthlyPatients] = useState(0)
   const [loading, setLoading] = useState(true)
 
   // Contact edit
@@ -33,9 +33,24 @@ export default function AgentProfilePage() {
     const uid = session?.user?.id
     if (!uid) return
     const { data } = await supabase.from('agents')
-      .select('id, agent_number, name, email, phone, country, margin_rate, monthly_completed, is_active')
+      .select('id, agent_number, name, email, phone, country, margin_rate, is_active')
       .eq('auth_user_id', uid).single()
-    if (data) setProfile(data as AgentProfile)
+    if (!data) return
+    const ag = data as AgentProfile
+    setProfile(ag)
+
+    // Tier basis: patients on completed cases this month (case_members count)
+    const now = new Date()
+    const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+    const { data: caseRows } = await supabase.from('cases')
+      .select('travel_completed_at, case_members(id)')
+      .eq('agent_id', ag.id)
+      .eq('status', 'completed')
+    const rows = (caseRows as { travel_completed_at: string | null; case_members: { id: string }[] }[] | null) ?? []
+    const patients = rows
+      .filter(r => r.travel_completed_at?.startsWith(monthKey))
+      .reduce((sum, r) => sum + (r.case_members?.length ?? 0), 0)
+    setMonthlyPatients(patients)
   }
 
   useEffect(() => {
@@ -83,7 +98,7 @@ export default function AgentProfilePage() {
               <div className="text-right">
                 <p className="text-[10px] text-gray-400 uppercase tracking-wide">Current Margin Rate</p>
                 <p className="text-lg font-bold text-[#0f4c35]">{(profile.margin_rate * 100).toFixed(0)}%</p>
-                <p className="text-[10px] text-gray-400">{profile.monthly_completed ?? 0} completed this month</p>
+                <p className="text-[10px] text-gray-400">{monthlyPatients} patients this month</p>
               </div>
             )}
           </div>

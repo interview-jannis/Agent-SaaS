@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { createServerClient } from '@/lib/supabase-server'
 import ChartLab from './ChartLab'
+import { STATUS_LABELS } from '@/lib/caseStatus'
 
 export const dynamic = 'force-dynamic'
 
@@ -77,6 +78,7 @@ export default async function AdminOverviewPage() {
 
   const [
     { data: paymentPending },
+    { data: pricingNeeded },
     { data: scheduleNeeded },
     { data: allInProgressCases },
     { data: allPaidCases },
@@ -88,12 +90,15 @@ export default async function AdminOverviewPage() {
     { data: allPartnerPayments },
     { data: allAgentSettlements },
   ] = await Promise.all([
-    // paymentPending = schedule_confirmed (in flow B, payment is awaited after agent confirms schedule)
-    supabase.from('cases').select(CASE_WITH_ALL).eq('status', 'schedule_confirmed').order('created_at', { ascending: false }),
-    // scheduleNeeded = quote_sent (in flow B, admin uploads schedule right after quote sent)
-    supabase.from('cases').select(CASE_WITH_ALL).eq('status', 'quote_sent').order('created_at', { ascending: false }),
-    // All in-progress cases — used for "stuck" detection
-    supabase.from('cases').select('id, case_number, status, created_at, case_members(is_lead, clients(name))').neq('status', 'travel_completed'),
+    // paymentPending — admin needs to confirm payment received from client
+    supabase.from('cases').select(CASE_WITH_ALL).eq('status', 'awaiting_payment').order('created_at', { ascending: false }),
+    // pricingNeeded — admin needs to finalize line-item prices and issue invoice
+    supabase.from('cases').select(CASE_WITH_ALL).eq('status', 'awaiting_pricing').order('created_at', { ascending: false }),
+    // scheduleNeeded — admin needs to upload itinerary PDF
+    supabase.from('cases').select(CASE_WITH_ALL).eq('status', 'awaiting_schedule').order('created_at', { ascending: false }),
+    // All in-progress cases — used for "stuck" detection. Exclude terminal states.
+    supabase.from('cases').select('id, case_number, status, created_at, case_members(is_lead, clients(name))')
+      .not('status', 'in', '(completed,canceled)'),
     // All paid cases ever — drives Hero (all-time totals) + 6mo sparkline trends
     supabase.from('cases')
       .select('id, payment_date, agent_id, case_members(id), quotes(total_price, company_margin_rate, agent_margin_rate)')
@@ -102,7 +107,7 @@ export default async function AdminOverviewPage() {
     supabase.from('clients').select('id, created_at'),
     // Active agents total count
     supabase.from('agents').select('id', { count: 'exact', head: true }).eq('is_active', true).eq('onboarding_status', 'approved'),
-    supabase.from('cases').select('agent_id, agents!cases_agent_id_fkey(agent_number, name), quotes(total_price)').eq('status', 'travel_completed').gte('created_at', monthStart),
+    supabase.from('cases').select('agent_id, agents!cases_agent_id_fkey(agent_number, name), quotes(total_price)').eq('status', 'completed').gte('created_at', monthStart),
     // Pending agent approvals
     supabase.from('agents').select('id, agent_number, name, onboarding_status').eq('onboarding_status', 'awaiting_approval'),
     supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single(),
@@ -217,23 +222,17 @@ export default async function AdminOverviewPage() {
     .sort((a, b) => b.stuckDays - a.stuckDays)
     .slice(0, 5)
 
-  // Overdue payments — payment_pending with payment_due_date past
+  // Overdue payments — awaiting_payment with payment_due_date past
   const overduePayments = ((paymentPending as unknown as ActionCase[]) ?? [])
     .map(c => ({ ...c, due: c.quotes?.[0]?.payment_due_date ?? null }))
     .filter(c => c.due && c.due < todayISO)
 
   const pendingAgentCount = pendingAgents?.length ?? 0
   const paymentPendingCount = paymentPending?.length ?? 0
+  const pricingNeededCount = pricingNeeded?.length ?? 0
   const scheduleNeededCount = scheduleNeeded?.length ?? 0
 
-  const totalActionCount = pendingAgentCount + paymentPendingCount + scheduleNeededCount + stuckCases.length
-
-  const STATUS_LABELS_KR: Record<string, string> = {
-    quote_sent: 'Awaiting Schedule',
-    payment_completed: 'Payment Confirmed',
-    schedule_reviewed: 'Schedule Reviewed',
-    schedule_confirmed: 'Awaiting Payment',
-  }
+  const totalActionCount = pendingAgentCount + paymentPendingCount + pricingNeededCount + scheduleNeededCount + stuckCases.length
 
   return (
     <div className="min-h-screen bg-white">
@@ -373,6 +372,34 @@ export default async function AdminOverviewPage() {
                 </div>
               )}
 
+              {/* Pricing finalize needed */}
+              {pricingNeededCount > 0 && (
+                <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+                  <div className="px-4 py-2.5 border-b border-gray-100 flex items-center gap-2 bg-gray-50">
+                    <span className="w-2 h-2 rounded-full bg-violet-500" />
+                    <p className="text-xs font-semibold text-gray-800 uppercase tracking-wide">Pricing to Finalize</p>
+                    <span className="text-[10px] text-gray-500">{pricingNeededCount}</span>
+                  </div>
+                  <ul className="divide-y divide-gray-100">
+                    {(pricingNeeded as unknown as ActionCase[]).slice(0, 4).map(c => (
+                      <li key={c.id}>
+                        <Link href={`/admin/cases/${c.id}`}
+                          className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors">
+                          <span className="text-xs font-mono text-gray-400 shrink-0">{c.case_number}</span>
+                          <span className="text-sm text-gray-800 truncate flex-1">{leadName(c.case_members)}</span>
+                          <span className="text-xs text-gray-500 shrink-0">
+                            {fmtDate(c.travel_start_date)} – {fmtDate(c.travel_end_date)}
+                          </span>
+                          <svg className="w-4 h-4 text-gray-300 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                          </svg>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
               {/* Schedule upload needed */}
               {scheduleNeededCount > 0 && (
                 <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
@@ -416,7 +443,7 @@ export default async function AdminOverviewPage() {
                           className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors">
                           <span className="text-xs font-mono text-gray-400 shrink-0">{c.case_number}</span>
                           <span className="text-sm text-gray-800 truncate flex-1">{leadName(c.case_members)}</span>
-                          <span className="text-xs text-gray-500 shrink-0">{STATUS_LABELS_KR[c.status] ?? c.status}</span>
+                          <span className="text-xs text-gray-500 shrink-0">{STATUS_LABELS[c.status as keyof typeof STATUS_LABELS] ?? c.status}</span>
                           <span className="text-xs text-orange-600 shrink-0">{c.stuckDays}d</span>
                           <svg className="w-4 h-4 text-gray-300 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />

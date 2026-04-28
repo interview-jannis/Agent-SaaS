@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { logAsCurrentUser } from '@/lib/audit'
 import SparklineCard from '@/components/SparklineCard'
+import { STATUS_LABELS, STATUS_STYLES } from '@/lib/caseStatus'
 
 const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
@@ -18,7 +19,6 @@ type Agent = {
   phone: string | null
   country: string | null
   margin_rate: number | null
-  monthly_completed: number | null
   is_active: boolean
   bank_info: BankInfo | null
   onboarding_status: 'pending_onboarding' | 'awaiting_approval' | 'approved' | null
@@ -42,6 +42,7 @@ type CaseRow = {
   status: string
   travel_start_date: string | null
   travel_end_date: string | null
+  travel_completed_at: string | null
   payment_date: string | null
   created_at: string
   quotes: { total_price: number; company_margin_rate: number | null; agent_margin_rate: number }[]
@@ -54,18 +55,6 @@ type SettlementRow = {
   case_id: string | null
   amount: number
   paid_at: string | null
-}
-
-const STATUS_LABELS: Record<string, string> = {
-  quote_sent: 'Awaiting Schedule', payment_completed: 'Payment Confirmed',
-  schedule_reviewed: 'Schedule Reviewed', schedule_confirmed: 'Awaiting Payment', travel_completed: 'Travel Completed',
-}
-const STATUS_STYLES: Record<string, string> = {
-  quote_sent: 'bg-amber-50 text-amber-700 border-amber-200',
-  payment_completed: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  schedule_reviewed: 'bg-violet-50 text-violet-700 border-violet-200',
-  schedule_confirmed: 'bg-blue-50 text-blue-700 border-blue-200',
-  travel_completed: 'bg-gray-50 text-gray-500 border-gray-200',
 }
 
 function fmtUSD(n: number) { return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }
@@ -91,10 +80,10 @@ export default function AdminAgentDetailPage() {
   const fetchData = useCallback(async () => {
     const [agentRes, casesRes, settlementsRes, contractsRes, rateRes] = await Promise.all([
       supabase.from('agents')
-        .select('id, agent_number, name, email, phone, country, margin_rate, monthly_completed, is_active, bank_info, onboarding_status, rejection_reason, rejected_at, invite_token, invite_expires_at')
+        .select('id, agent_number, name, email, phone, country, margin_rate, is_active, bank_info, onboarding_status, rejection_reason, rejected_at, invite_token, invite_expires_at')
         .eq('id', id).single(),
       supabase.from('cases')
-        .select('id, case_number, status, travel_start_date, travel_end_date, payment_date, created_at, quotes(total_price, company_margin_rate, agent_margin_rate), case_members(is_lead, clients(name))')
+        .select('id, case_number, status, travel_start_date, travel_end_date, travel_completed_at, payment_date, created_at, quotes(total_price, company_margin_rate, agent_margin_rate), case_members(is_lead, clients(name))')
         .eq('agent_id', id)
         .order('created_at', { ascending: false }),
       supabase.from('settlements')
@@ -225,10 +214,17 @@ export default function AdminAgentDetailPage() {
 
   // Metrics
   const settledCaseIds = new Set(settlements.filter(s => s.case_id).map(s => s.case_id!))
-  const completedCases = cases.filter(c => c.status === 'travel_completed')
+  const completedCases = cases.filter(c => c.status === 'completed')
   const unsettledKrw = completedCases
     .filter(c => !settledCaseIds.has(c.id))
     .reduce((sum, c) => sum + commissionKrw(c.quotes?.[0]?.total_price ?? 0, c.quotes?.[0]?.agent_margin_rate ?? 0), 0)
+
+  // Tier basis: patients on cases marked completed this month
+  const nowForMonth = new Date()
+  const monthKey = `${nowForMonth.getFullYear()}-${String(nowForMonth.getMonth() + 1).padStart(2, '0')}`
+  const monthlyPatients = cases
+    .filter(c => c.status === 'completed' && c.travel_completed_at?.startsWith(monthKey))
+    .reduce((sum, c) => sum + (c.case_members?.length ?? 0), 0)
 
   // 6-month performance — for sparklines
   const now = new Date()
@@ -289,7 +285,7 @@ export default function AdminAgentDetailPage() {
             <div className="bg-gray-50 rounded-2xl p-4">
               <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-1">Margin Rate</p>
               <p className="text-lg font-bold text-[#0f4c35]">{agent.margin_rate != null ? `${(agent.margin_rate * 100).toFixed(0)}%` : '—'}</p>
-              <p className="text-[10px] text-gray-400 mt-0.5">{agent.monthly_completed ?? 0} completed this month · {completedCases.length} total</p>
+              <p className="text-[10px] text-gray-400 mt-0.5">{monthlyPatients} patients this month · {completedCases.length} cases total</p>
             </div>
             <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
               <p className="text-[10px] text-amber-700 uppercase tracking-wide mb-1">Unsettled</p>

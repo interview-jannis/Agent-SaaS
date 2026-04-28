@@ -4,10 +4,9 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import SparklineCard from '@/components/SparklineCard'
+import { type CaseStatus, STATUS_LABELS, STATUS_STYLES, PIPELINE_ORDER, ACTIVE_STATUSES } from '@/lib/caseStatus'
 
 const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-
-type CaseStatus = 'quote_sent' | 'payment_completed' | 'schedule_reviewed' | 'schedule_confirmed' | 'travel_completed'
 
 type CaseRow = {
   id: string
@@ -19,31 +18,18 @@ type CaseRow = {
   payment_date: string | null
   created_at: string
   case_members: { is_lead: boolean; clients: { name: string } | null }[]
-  quotes: { total_price: number; agent_margin_rate: number; payment_due_date: string | null }[]
+  quotes: { total_price: number; agent_margin_rate: number; payment_due_date: string | null; finalized_at: string | null }[]
   schedules: { id: string; status: string; version: number; created_at: string }[]
 }
 
 
 type Settlement = { id: string; amount: number; paid_at: string | null; case_id: string | null }
 
-const STATUS_LABELS: Record<CaseStatus, string> = {
-  quote_sent: 'Awaiting Schedule', payment_completed: 'Payment Confirmed',
-  schedule_reviewed: 'Schedule Reviewed', schedule_confirmed: 'Awaiting Payment', travel_completed: 'Travel Completed',
-}
-
-// Pipeline-specific labels (when the Travel Completed cell means "unsettled only")
+// Pipeline-specific labels — the "completed" cell here actually shows unsettled-only
 const PIPELINE_LABELS: Record<CaseStatus, string> = {
   ...STATUS_LABELS,
-  travel_completed: 'Travel Done · Unpaid',
+  completed: 'Travel Done · Unpaid',
 }
-const STATUS_STYLES: Record<CaseStatus, string> = {
-  quote_sent: 'bg-amber-50 text-amber-700 border-amber-200',
-  payment_completed: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  schedule_reviewed: 'bg-violet-50 text-violet-700 border-violet-200',
-  schedule_confirmed: 'bg-blue-50 text-blue-700 border-blue-200',
-  travel_completed: 'bg-gray-50 text-gray-500 border-gray-200',
-}
-const ORDERED_STATUSES: CaseStatus[] = ['quote_sent', 'schedule_reviewed', 'schedule_confirmed', 'payment_completed', 'travel_completed']
 
 function fmtUSD(n: number) { return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }
 
@@ -104,7 +90,7 @@ export default function AgentDashboardPage() {
 
       const [casesRes, settlementsRes, rateRes] = await Promise.all([
         supabase.from('cases')
-          .select('id, case_number, status, travel_start_date, travel_end_date, travel_completed_at, payment_date, created_at, case_members(is_lead, clients(name)), quotes(total_price, agent_margin_rate, payment_due_date), schedules(id, status, version, created_at)')
+          .select('id, case_number, status, travel_start_date, travel_end_date, travel_completed_at, payment_date, created_at, case_members(is_lead, clients(name)), quotes(total_price, agent_margin_rate, payment_due_date, finalized_at), schedules(id, status, version, created_at)')
           .eq('agent_id', ag.id)
           .order('created_at', { ascending: false }),
         supabase.from('settlements').select('id, amount, paid_at, case_id').eq('agent_id', ag.id),
@@ -124,16 +110,16 @@ export default function AgentDashboardPage() {
   const statusCounts = new Map<CaseStatus, number>()
   for (const c of cases) statusCounts.set(c.status, (statusCounts.get(c.status) ?? 0) + 1)
 
-  // Travel Completed pipeline cell shows unsettled only — settled ones belong to "Settlement Paid"
+  // Completed pipeline cell shows unsettled only — settled ones belong to "Settlement Paid"
   const settledCaseIds = new Set(settlements.filter(s => s.case_id).map(s => s.case_id!))
-  const unsettledCompletedCount = cases.filter(c => c.status === 'travel_completed' && !settledCaseIds.has(c.id)).length
+  const unsettledCompletedCount = cases.filter(c => c.status === 'completed' && !settledCaseIds.has(c.id)).length
 
   const now = new Date()
   const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
 
   // Patients from cases marked complete this month (tier is patients/month, not cases).
   const monthlyPatients = cases
-    .filter(c => c.status === 'travel_completed' && c.travel_completed_at?.startsWith(monthKey))
+    .filter(c => c.status === 'completed' && c.travel_completed_at?.startsWith(monthKey))
     .reduce((sum, c) => sum + (c.case_members?.length ?? 0), 0)
 
   const thisMonthPaid = settlements
@@ -161,19 +147,21 @@ export default function AgentDashboardPage() {
   const sparkLabels = monthly.map(m => m.label)
   const toUsd = (krw: number) => krw / exchangeRate
 
-  // Expected pipeline — commission on cases not yet travel-completed
+  // Expected pipeline — commission on active cases (not completed/canceled)
+  const activeSet = new Set<CaseStatus>(ACTIVE_STATUSES)
   const expectedKrw = cases
-    .filter(c => c.status !== 'travel_completed')
+    .filter(c => activeSet.has(c.status))
     .reduce((sum, c) => {
       const q = c.quotes?.[0]
       return sum + (q ? commissionKrw(q.total_price, q.agent_margin_rate) : 0)
     }, 0)
 
-  // Pipeline case chips — group cases by status, excluding settled travel_completed
+  // Pipeline case chips — group cases by status, excluding settled completed + canceled
   const casesByStatus = new Map<CaseStatus, CaseRow[]>()
-  for (const s of ORDERED_STATUSES) casesByStatus.set(s, [])
+  for (const s of PIPELINE_ORDER) casesByStatus.set(s, [])
   for (const c of cases) {
-    if (c.status === 'travel_completed' && settledCaseIds.has(c.id)) continue
+    if (c.status === 'completed' && settledCaseIds.has(c.id)) continue
+    if (c.status === 'canceled') continue
     casesByStatus.get(c.status)?.push(c)
   }
   // Settled case list for the "Settlement Paid" cell
@@ -194,28 +182,38 @@ export default function AgentDashboardPage() {
     const commUsd = q ? commissionKrw(q.total_price, q.agent_margin_rate) / exchangeRate : null
 
     switch (c.status) {
-      case 'quote_sent': {
-        // Quotation out, awaiting admin to upload schedule
+      case 'awaiting_info': {
+        // Agent must finish client/trip info before admin can upload schedule
+        return { line: 'Fill client + trip info', urgency: 'warn' }
+      }
+      case 'awaiting_schedule': {
+        // Info complete, admin building schedule
         const parts: string[] = []
         if (totalUsd != null) parts.push(fmtUsdShort(totalUsd))
-        parts.push('Awaiting schedule')
+        parts.push('Admin preparing schedule')
         return { line: parts.join(' · '), urgency: 'normal' }
       }
-      case 'schedule_reviewed': {
+      case 'reviewing_schedule': {
         // Schedule uploaded, agent must confirm or request revision
         return { line: 'Pending your review', urgency: 'warn' }
       }
-      case 'schedule_confirmed': {
-        // Schedule confirmed, awaiting client payment
+      case 'awaiting_pricing': {
+        // Admin needs to finalize prices and issue invoice
+        return { line: 'Admin finalizing invoice', urgency: 'normal' }
+      }
+      case 'awaiting_payment': {
+        // Invoice ready (or sent) — waiting on client payment
         const due = q?.payment_due_date
         const overdue = !!due && due < todayISO
         const soon = !!due && !overdue && due <= threeDaysFromNow
         const parts: string[] = []
+        const action = q?.finalized_at ? 'Send invoice' : 'Awaiting invoice'
+        parts.push(action)
         if (due) parts.push(overdue ? `Overdue ${fmtDateShort(due)}` : `Due ${fmtDateShort(due)}`)
         if (totalUsd != null) parts.push(fmtUsdShort(totalUsd))
         return { line: parts.join(' · '), urgency: overdue ? 'alert' : soon ? 'warn' : 'normal' }
       }
-      case 'payment_completed': {
+      case 'awaiting_travel': {
         // Paid, travel pending or just ended
         const start = c.travel_start_date
         const soon = !!start && start >= todayISO && start <= weekFromNow
@@ -226,12 +224,15 @@ export default function AgentDashboardPage() {
           urgency: ended ? 'alert' : soon ? 'warn' : 'normal',
         }
       }
-      case 'travel_completed': {
+      case 'completed': {
         const end = c.travel_end_date
         const parts: string[] = []
         if (end) parts.push(`Ended ${fmtDateShort(end)}`)
         if (commUsd != null) parts.push(fmtUsdShort(commUsd))
         return { line: parts.join(' · '), urgency: 'normal' }
+      }
+      case 'canceled': {
+        return { line: 'Canceled', urgency: 'normal' }
       }
     }
   }
@@ -283,7 +284,7 @@ export default function AgentDashboardPage() {
                     <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-2">Expected Pipeline</p>
                     <p className="text-2xl font-bold text-blue-700 tracking-tight leading-none">{fmtUSD(expectedKrw / exchangeRate)}</p>
                     <p className="text-xs text-gray-500 mt-2">
-                      {cases.filter(c => c.status !== 'travel_completed').length} in-progress case{cases.filter(c => c.status !== 'travel_completed').length !== 1 ? 's' : ''}
+                      {cases.filter(c => activeSet.has(c.status)).length} in-progress case{cases.filter(c => activeSet.has(c.status)).length !== 1 ? 's' : ''}
                     </p>
                   </div>
                 </div>
@@ -329,10 +330,10 @@ export default function AgentDashboardPage() {
               {/* PIPELINE — Kanban-style mini columns per status */}
               <section className="space-y-3">
                 <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Pipeline</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-2">
-                  {ORDERED_STATUSES.map(s => {
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-2">
+                  {PIPELINE_ORDER.map(s => {
                     const rawCount = statusCounts.get(s) ?? 0
-                    const count = s === 'travel_completed' ? unsettledCompletedCount : rawCount
+                    const count = s === 'completed' ? unsettledCompletedCount : rawCount
                     const active = count > 0
                     const list = casesByStatus.get(s) ?? []
                     const visible = list.slice(0, 4)

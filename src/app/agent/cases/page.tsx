@@ -3,8 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-
-type CaseStatus = 'quote_sent' | 'payment_completed' | 'schedule_reviewed' | 'schedule_confirmed' | 'travel_completed'
+import { type CaseStatus, STATUS_LABELS, STATUS_STYLES } from '@/lib/caseStatus'
 
 type CaseRow = {
   id: string
@@ -15,18 +14,6 @@ type CaseRow = {
   created_at: string
   case_members: { is_lead: boolean; clients: { name: string } | null }[]
   quotes: { total_price: number; quote_groups: { member_count: number }[] }[]
-}
-
-const STATUS_LABELS: Record<CaseStatus, string> = {
-  quote_sent: 'Awaiting Schedule', payment_completed: 'Payment Confirmed',
-  schedule_reviewed: 'Schedule Reviewed', schedule_confirmed: 'Awaiting Payment', travel_completed: 'Travel Completed',
-}
-const STATUS_STYLES: Record<CaseStatus, string> = {
-  quote_sent: 'bg-amber-50 text-amber-700 border-amber-200',
-  payment_completed: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  schedule_reviewed: 'bg-violet-50 text-violet-700 border-violet-200',
-  schedule_confirmed: 'bg-blue-50 text-blue-700 border-blue-200',
-  travel_completed: 'bg-gray-50 text-gray-500 border-gray-200',
 }
 
 export default function AgentCasesPage() {
@@ -113,7 +100,7 @@ export default function AgentCasesPage() {
                     <td className="py-3.5 px-4 text-xs text-gray-500">{c.travel_start_date ?? '—'}</td>
                     <td className="py-3.5 px-4 text-xs text-gray-500">{c.travel_end_date ?? '—'}</td>
                     <td className="py-3.5 px-4">
-                      {c.status === 'travel_completed' ? (
+                      {c.status === 'completed' ? (
                         settledCaseIds.has(c.id) ? (
                           <span className="text-[10px] font-medium px-2 py-0.5 rounded-full border bg-emerald-50 text-emerald-700 border-emerald-200">Received</span>
                         ) : (

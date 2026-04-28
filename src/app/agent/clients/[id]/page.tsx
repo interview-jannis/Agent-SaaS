@@ -10,10 +10,8 @@ import {
   type GenderPref, type MixedGenderPref,
   getMissingClientFields, CLIENT_INFO_COLUMNS,
 } from '@/lib/clientCompleteness'
-
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-type CaseStatus = 'quote_sent' | 'payment_completed' | 'schedule_reviewed' | 'schedule_confirmed' | 'travel_completed'
+import { type CaseStatus, STATUS_LABELS, STATUS_STYLES } from '@/lib/caseStatus'
+import { notifyCaseInfoChanged } from '@/lib/caseTransitions'
 
 type Client = {
   id: string
@@ -157,18 +155,6 @@ const MIXED_GENDER_OPTIONS: { value: MixedGenderPref; label: string }[] = [
 function labelFor<T extends string>(opts: { value: T; label: string }[], v: T | null | undefined): string {
   if (!v) return '—'
   return opts.find(o => o.value === v)?.label ?? v
-}
-
-const STATUS_LABELS: Record<CaseStatus, string> = {
-  quote_sent: 'Awaiting Schedule', payment_completed: 'Payment Confirmed',
-  schedule_reviewed: 'Schedule Reviewed', schedule_confirmed: 'Awaiting Payment', travel_completed: 'Travel Completed',
-}
-const STATUS_STYLES: Record<CaseStatus, string> = {
-  quote_sent: 'bg-amber-50 text-amber-700 border-amber-200',
-  payment_completed: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  schedule_reviewed: 'bg-violet-50 text-violet-700 border-violet-200',
-  schedule_confirmed: 'bg-blue-50 text-blue-700 border-blue-200',
-  travel_completed: 'bg-gray-50 text-gray-500 border-gray-200',
 }
 
 function toEditForm(c: Client): EditForm {
@@ -345,6 +331,12 @@ export default function ClientDetailPage() {
         recent_health_checkup_notes: editForm.recent_health_checkup_notes || null,
       }).eq('id', id)
       if (error) throw error
+      // Re-evaluate every non-terminal case this client belongs to:
+      // promotes if awaiting_info+complete, or sends "info updated" if past that point.
+      const targetCaseIds = cases
+        .filter(c => c.status !== 'completed' && c.status !== 'canceled')
+        .map(c => c.id)
+      await Promise.all(targetCaseIds.map(cid => notifyCaseInfoChanged(cid)))
       await fetchData()
       setEditing(false)
     } catch (e: unknown) {

@@ -5,10 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { notifyAgent } from '@/lib/notifications'
 import { logAsCurrentUser } from '@/lib/audit'
-
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-type CaseStatus = 'quote_sent' | 'payment_completed' | 'schedule_reviewed' | 'schedule_confirmed' | 'travel_completed'
+import { type CaseStatus, STATUS_LABELS, STATUS_STYLES } from '@/lib/caseStatus'
 
 import type { ClientInfo, FlightInfo } from '@/lib/clientCompleteness'
 import { getMissingClientFields, getMissingCaseFields, CLIENT_INFO_COLUMNS } from '@/lib/clientCompleteness'
@@ -120,22 +117,6 @@ function getAgent(c: { agents: Agent | Agent[] | null } | null | undefined): Age
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const STATUS_LABELS: Record<CaseStatus, string> = {
-  quote_sent: 'Awaiting Schedule',
-  payment_completed: 'Payment Confirmed',
-  schedule_reviewed: 'Schedule Reviewed',
-  schedule_confirmed: 'Awaiting Payment',
-  travel_completed: 'Travel Completed',
-}
-
-const STATUS_STYLES: Record<CaseStatus, string> = {
-  quote_sent: 'bg-amber-50 text-amber-700 border-amber-200',
-  payment_completed: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  schedule_reviewed: 'bg-violet-50 text-violet-700 border-violet-200',
-  schedule_confirmed: 'bg-blue-50 text-blue-700 border-blue-200',
-  travel_completed: 'bg-gray-50 text-gray-500 border-gray-200',
-}
-
 function fmtKRW(n: number) { return '₩' + n.toLocaleString('ko-KR') }
 function fmtUSD(n: number) { return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }
 
@@ -243,7 +224,7 @@ export default function AdminCaseDetailPage() {
     setConfirmingPayment(true); setActionError('')
     try {
       const { error } = await supabase.from('cases').update({
-        status: 'payment_completed',
+        status: 'awaiting_travel',
         payment_date: paymentDate || null,
         payment_confirmed_at: new Date().toISOString(),
       }).eq('id', caseData.id)
@@ -272,7 +253,15 @@ export default function AdminCaseDetailPage() {
     if (!caseData || !stagedFile) return
     setUploadingSchedule(true); setActionError('')
     try {
-      const path = `${caseData.id}/${Date.now()}_${stagedFile.name}`
+      // Sanitize for Supabase Storage key: ASCII alphanumerics, dot, dash, underscore only.
+      // Non-ASCII (e.g. Korean) and chars like comma/space get stripped/replaced.
+      const safeName = stagedFile.name
+        .normalize('NFKD')
+        .replace(/[^\x20-\x7E]/g, '')        // drop non-ASCII
+        .replace(/[^a-zA-Z0-9._-]+/g, '_')   // replace runs of unsupported chars with _
+        .replace(/^_+|_+$/g, '')              // trim leading/trailing underscores
+        || 'schedule.pdf'
+      const path = `${caseData.id}/${Date.now()}_${safeName}`
       const { error: uploadError } = await supabase.storage.from('schedules').upload(path, stagedFile, { upsert: false })
       if (uploadError) throw uploadError
       const { data: urlData } = supabase.storage.from('schedules').getPublicUrl(path)
@@ -293,7 +282,7 @@ export default function AdminCaseDetailPage() {
       })
       if (insertError) throw insertError
 
-      await supabase.from('cases').update({ status: 'schedule_reviewed' }).eq('id', caseData.id)
+      await supabase.from('cases').update({ status: 'reviewing_schedule' }).eq('id', caseData.id)
       await notifyAgent(caseData.agent_id, `${caseData.case_number} Schedule uploaded (v${version})`, `/agent/cases/${caseData.id}`)
       await logAsCurrentUser('schedule.uploaded', { type: 'case', id: caseData.id, label: caseData.case_number }, { version, file_name: stagedFile.name })
       await fetchCase()
@@ -322,9 +311,9 @@ export default function AdminCaseDetailPage() {
       if (error) throw error
 
       const remaining = (caseData?.schedules ?? []).filter(s => s.id !== scheduleId)
-      if (remaining.length === 0 && caseData?.status === 'schedule_reviewed') {
-        // No schedule left → revert to quote_sent so admin can re-upload
-        await supabase.from('cases').update({ status: 'quote_sent' }).eq('id', caseData.id)
+      if (remaining.length === 0 && caseData?.status === 'reviewing_schedule') {
+        // No schedule left → revert to awaiting_schedule so admin can re-upload
+        await supabase.from('cases').update({ status: 'awaiting_schedule' }).eq('id', caseData.id)
       }
 
       if (caseData) {
@@ -362,11 +351,13 @@ export default function AdminCaseDetailPage() {
   const scheduleReady = allClientsComplete && groupsComplete && caseInfoComplete
   // Schedule is locked once the agent confirms (or beyond) — no more uploads or deletes.
   const scheduleLocked =
-    caseData.status === 'schedule_confirmed'
-    || caseData.status === 'payment_completed'
-    || caseData.status === 'travel_completed'
+    caseData.status === 'awaiting_pricing'
+    || caseData.status === 'awaiting_payment'
+    || caseData.status === 'awaiting_travel'
+    || caseData.status === 'completed'
+    || caseData.status === 'canceled'
   const canUploadSchedule = !scheduleLocked
-    && (caseData.status === 'quote_sent' || caseData.status === 'schedule_reviewed')
+    && (caseData.status === 'awaiting_schedule' || caseData.status === 'reviewing_schedule')
     && (latestSchedule === null || latestSchedule.status === 'revision_requested')
     && scheduleReady
   const sortedGroups = latestQuote?.quote_groups ? [...latestQuote.quote_groups].sort((a, b) => a.order - b.order) : []
@@ -600,7 +591,7 @@ export default function AdminCaseDetailPage() {
                 <div><p className="text-[10px] text-gray-400 mb-0.5">Total (USD)</p><p className="font-semibold text-gray-900">{fmtUSD(latestQuote.total_price / exchangeRate)}</p></div>
                 <div>
                   <p className="text-[10px] text-gray-400 mb-0.5">Payment Due</p>
-                  <p className={`font-medium text-sm ${caseData.status === 'schedule_confirmed' && latestQuote.payment_due_date && new Date(latestQuote.payment_due_date) < new Date() ? 'text-red-500' : 'text-gray-800'}`}>
+                  <p className={`font-medium text-sm ${caseData.status === 'awaiting_payment' && latestQuote.payment_due_date && new Date(latestQuote.payment_due_date) < new Date() ? 'text-red-500' : 'text-gray-800'}`}>
                     {latestQuote.payment_due_date ?? '—'}
                   </p>
                 </div>
@@ -670,7 +661,7 @@ export default function AdminCaseDetailPage() {
                     <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
                   </svg>
                   <p className="text-xs text-emerald-800">
-                    {caseData.status === 'travel_completed'
+                    {caseData.status === 'completed'
                       ? 'Travel complete — schedule is locked.'
                       : 'Agent has confirmed the schedule — no further edits allowed.'}
                   </p>
@@ -726,7 +717,7 @@ export default function AdminCaseDetailPage() {
           {actionError && <p className="text-xs text-red-500 px-1">{actionError}</p>}
 
           {/* Finalize Pricing — admin adjusts final prices after agent confirms schedule */}
-          {caseData.status === 'schedule_confirmed' && latestQuote && (!latestQuote.finalized_at || editingPricing) && (
+          {((caseData.status === 'awaiting_pricing') || (caseData.status === 'awaiting_payment' && editingPricing)) && latestQuote && (
             <section className="border border-violet-200 bg-violet-50 rounded-2xl p-4 space-y-3">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <p className="text-xs font-semibold text-violet-700 uppercase tracking-wide">
@@ -835,6 +826,11 @@ export default function AdminCaseDetailPage() {
                     const { error: qe } = await supabase.from('quotes').update(updates).eq('id', latestQuote.id)
                     if (qe) throw qe
 
+                    // First finalize → bump case to awaiting_payment so confirm-payment block opens.
+                    if (isFirstFinalize) {
+                      await supabase.from('cases').update({ status: 'awaiting_payment' }).eq('id', caseData.id)
+                    }
+
                     const ref = invoiceNumber ?? caseData.case_number
                     const notifyMessage = isFirstFinalize
                       ? `${ref} Pricing finalized — invoice ready to send`
@@ -861,7 +857,7 @@ export default function AdminCaseDetailPage() {
           )}
 
           {/* Confirm Payment — only after pricing finalized */}
-          {caseData.status === 'schedule_confirmed' && latestQuote?.finalized_at && !editingPricing && (
+          {caseData.status === 'awaiting_payment' && !editingPricing && (
             <section className="border border-amber-200 bg-amber-50 rounded-2xl p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide">Confirm Payment</p>
@@ -883,7 +879,7 @@ export default function AdminCaseDetailPage() {
 
           {/* Blocked upload placeholder when schedule isn't ready */}
           {!scheduleReady
-            && (caseData.status === 'quote_sent' || caseData.status === 'schedule_reviewed')
+            && (caseData.status === 'awaiting_info' || caseData.status === 'awaiting_schedule' || caseData.status === 'reviewing_schedule')
             && (latestSchedule === null || latestSchedule.status === 'revision_requested') && (
             <section className="border border-gray-200 bg-gray-50 rounded-2xl p-4 space-y-2 opacity-80">
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Upload Schedule</p>
@@ -902,8 +898,8 @@ export default function AdminCaseDetailPage() {
           )}
 
           {canUploadSchedule && (
-            <section className={`border rounded-2xl p-4 space-y-3 ${caseData.status === 'quote_sent' ? 'border-blue-200 bg-blue-50' : 'border-violet-200 bg-violet-50'}`}>
-              <p className={`text-xs font-semibold uppercase tracking-wide ${caseData.status === 'quote_sent' ? 'text-blue-700' : 'text-violet-700'}`}>
+            <section className={`border rounded-2xl p-4 space-y-3 ${caseData.status === 'awaiting_schedule' ? 'border-blue-200 bg-blue-50' : 'border-violet-200 bg-violet-50'}`}>
+              <p className={`text-xs font-semibold uppercase tracking-wide ${caseData.status === 'awaiting_schedule' ? 'text-blue-700' : 'text-violet-700'}`}>
                 {sortedSchedules.length === 0 ? 'Upload Schedule' : `Upload New Version (v${(latestSchedule?.version ?? 0) + 1})`}
               </p>
               {!stagedFile && sortedSchedules.length === 0 && (
@@ -921,7 +917,7 @@ export default function AdminCaseDetailPage() {
                     const f = e.dataTransfer.files?.[0]
                     if (f) stageFile(f)
                   }}
-                  className={`flex flex-col items-center justify-center gap-1 w-full py-6 text-sm font-medium rounded-xl border-2 border-dashed cursor-pointer ring-offset-1 transition-all ${caseData.status === 'quote_sent' ? 'border-blue-300 text-blue-700 hover:bg-blue-100 ring-blue-300' : 'border-violet-300 text-violet-700 hover:bg-violet-100 ring-violet-300'}`}>
+                  className={`flex flex-col items-center justify-center gap-1 w-full py-6 text-sm font-medium rounded-xl border-2 border-dashed cursor-pointer ring-offset-1 transition-all ${caseData.status === 'awaiting_schedule' ? 'border-blue-300 text-blue-700 hover:bg-blue-100 ring-blue-300' : 'border-violet-300 text-violet-700 hover:bg-violet-100 ring-violet-300'}`}>
                   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" /></svg>
                   <span>Click or drag PDF here</span>
                   <input type="file" accept="application/pdf" className="hidden"
@@ -959,7 +955,7 @@ export default function AdminCaseDetailPage() {
             </section>
           )}
 
-          {caseData.status === 'schedule_confirmed' && (
+          {caseData.status === 'awaiting_travel' && (
             <section className="border border-emerald-200 bg-emerald-50 rounded-2xl p-4">
               <p className="text-xs text-emerald-700">Agent will mark travel complete after the trip.</p>
             </section>
@@ -991,7 +987,7 @@ export default function AdminCaseDetailPage() {
             const totalSuggested = partnerList.reduce((s, g) => s + g.suggested, 0)
             const allPaid = partnerList.every(g => partnerPayments.some(p => p.partner_name === g.name))
             // Partners can only be paid out after we've received client payment
-            const paymentReceived = caseData.status === 'payment_completed' || caseData.status === 'travel_completed'
+            const paymentReceived = caseData.status === 'awaiting_travel' || caseData.status === 'completed'
 
             return (
               <section className="bg-gray-50 rounded-2xl p-4 space-y-3">
@@ -1174,7 +1170,7 @@ export default function AdminCaseDetailPage() {
             const total = latestQuote.total_price ?? 0
             const ag = latestQuote.agent_margin_rate ?? 0
             const commissionAmount = ag > 0 ? Math.round(total * ag / (1 + ag)) : 0
-            const isCompleted = caseData.status === 'travel_completed'
+            const isCompleted = caseData.status === 'completed'
             const paid = !!agentSettlement?.paid_at
 
             const agent = getAgent(caseData)

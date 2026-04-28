@@ -93,7 +93,7 @@ export default function AdminSettlementPage() {
     const [casesRes, settlementsRes, rateRes, partnerRes] = await Promise.all([
       supabase.from('cases')
         .select('id, case_number, travel_start_date, travel_end_date, travel_completed_at, agent_id, agents!cases_agent_id_fkey(id, agent_number, name, email, bank_info), case_members(is_lead, clients(name)), quotes(total_price, agent_margin_rate, quote_groups(quote_items(base_price, products(partner_name))))')
-        .eq('status', 'travel_completed')
+        .eq('status', 'completed')
         .order('travel_end_date', { ascending: false }),
       supabase.from('settlements')
         .select('id, settlement_number, agent_id, case_id, amount, paid_at, created_at, agents!settlements_agent_id_fkey(id, agent_number, name, email, bank_info)')
@@ -146,7 +146,7 @@ export default function AdminSettlementPage() {
     .reduce((sum, p) => sum + (p.amount ?? 0), 0)
   const partnerTotalPaidKrw = partnerPayments.reduce((sum, p) => sum + (p.amount ?? 0), 0)
 
-  // Per-case partner status (for travel_completed cases)
+  // Per-case partner status (for completed cases)
   type PartnerCaseInfo = { partners: string[]; paid: Set<string>; suggestedKrw: number; pendingKrw: number }
   const partnerInfoByCase = new Map<string, PartnerCaseInfo>()
   for (const c of cases) {
@@ -170,7 +170,7 @@ export default function AdminSettlementPage() {
     })
   }
 
-  // Partner-pending = travel_completed cases with at least one unpaid partner
+  // Partner-pending = completed cases with at least one unpaid partner
   const partnerPendingCases = cases.filter(c => {
     const info = partnerInfoByCase.get(c.id)
     if (!info || info.partners.length === 0) return false

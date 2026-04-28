@@ -8,10 +8,16 @@ import { notifyAllAdmins } from '@/lib/notifications'
 import { logAsCurrentUser } from '@/lib/audit'
 import DOBPicker from '@/components/DOBPicker'
 import DateTime24Picker from '@/components/DateTime24Picker'
+import {
+  type CaseStatus,
+  STATUS_LABELS,
+  STATUS_STYLES,
+  CANCELLABLE_STATUSES,
+} from '@/lib/caseStatus'
+import { notifyCaseInfoChanged } from '@/lib/caseTransitions'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type CaseStatus = 'quote_sent' | 'payment_completed' | 'schedule_reviewed' | 'schedule_confirmed' | 'travel_completed'
 type DietaryType = 'halal_certified' | 'halal_friendly' | 'muslim_friendly' | 'pork_free' | 'none'
 
 import type { ClientInfo, FlightInfo } from '@/lib/clientCompleteness'
@@ -92,17 +98,6 @@ type NewClientForm = {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const STATUS_LABELS: Record<CaseStatus, string> = {
-  quote_sent: 'Awaiting Schedule', payment_completed: 'Payment Confirmed',
-  schedule_reviewed: 'Schedule Reviewed', schedule_confirmed: 'Awaiting Payment', travel_completed: 'Travel Completed',
-}
-const STATUS_STYLES: Record<CaseStatus, string> = {
-  quote_sent: 'bg-amber-50 text-amber-700 border-amber-200',
-  payment_completed: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  schedule_reviewed: 'bg-violet-50 text-violet-700 border-violet-200',
-  schedule_confirmed: 'bg-blue-50 text-blue-700 border-blue-200',
-  travel_completed: 'bg-gray-50 text-gray-500 border-gray-200',
-}
 const DIETARY_OPTIONS = [
   { value: 'halal_certified', label: 'Halal Certified' }, { value: 'halal_friendly', label: 'Halal Friendly' },
   { value: 'muslim_friendly', label: 'Muslim Friendly' }, { value: 'pork_free', label: 'Pork Free' }, { value: 'none', label: 'None' },
@@ -330,32 +325,26 @@ export default function CaseDetailPage() {
 
   async function cancelCase() {
     if (!caseData) return
-    const cancellable: CaseStatus[] = ['quote_sent', 'schedule_reviewed', 'schedule_confirmed']
-    if (!cancellable.includes(caseData.status)) { setCancelError('Case can only be cancelled before payment is confirmed.'); return }
+    if (!CANCELLABLE_STATUSES.includes(caseData.status)) {
+      setCancelError('Case can only be cancelled before payment is confirmed.'); return
+    }
     if (!cancelReason.trim()) { setCancelError('Please enter a reason.'); return }
     setCancelling(true); setCancelError('')
     try {
-      const caseId = caseData.id
-      // Resolve related IDs
-      const quoteIds = caseData.quotes?.map(q => q.id) ?? []
-      const groupIds = caseData.quotes?.flatMap(q => q.quote_groups?.map(g => g.id) ?? []) ?? []
-
-      // Delete in FK-safe order
-      if (groupIds.length > 0) {
-        await supabase.from('quote_group_members').delete().in('quote_group_id', groupIds)
-        await supabase.from('quote_items').delete().in('quote_group_id', groupIds)
-      }
-      if (quoteIds.length > 0) {
-        await supabase.from('quote_groups').delete().in('quote_id', quoteIds)
-        await supabase.from('quotes').delete().in('id', quoteIds)
-      }
-      await supabase.from('case_members').delete().eq('case_id', caseId)
-      const { error } = await supabase.from('cases').delete().eq('id', caseId)
+      const { data: { session } } = await supabase.auth.getSession()
+      const { data: agentRow } = await supabase.from('agents').select('id').eq('auth_user_id', session?.user?.id ?? '').maybeSingle()
+      const { error } = await supabase.from('cases').update({
+        status: 'canceled',
+        cancelled_at: new Date().toISOString(),
+        cancellation_reason: cancelReason.trim(),
+        cancelled_by_actor_type: 'agent',
+        cancelled_by_actor_id: (agentRow as { id: string } | null)?.id ?? null,
+      }).eq('id', caseData.id)
       if (error) throw error
 
-      await notifyAllAdmins(`${caseData.case_number} cancelled by agent — "${cancelReason.trim()}"`, '/admin/cases')
+      await notifyAllAdmins(`${caseData.case_number} cancelled by agent — "${cancelReason.trim()}"`, `/admin/cases/${caseData.id}`)
       await logAsCurrentUser('case.cancelled',
-        { type: 'case', id: caseId, label: caseData.case_number },
+        { type: 'case', id: caseData.id, label: caseData.case_number },
         { reason: cancelReason.trim() })
       router.replace('/agent/cases')
     } catch (e: unknown) {
@@ -369,7 +358,7 @@ export default function CaseDetailPage() {
     if (!window.confirm('Mark this trip as completed? This will move the case to the settlement queue.')) return
     setMarkingTravelComplete(true); setScheduleError('')
     try {
-      const { error } = await supabase.from('cases').update({ status: 'travel_completed', travel_completed_at: new Date().toISOString() }).eq('id', caseData.id)
+      const { error } = await supabase.from('cases').update({ status: 'completed', travel_completed_at: new Date().toISOString() }).eq('id', caseData.id)
       if (error) throw error
       await notifyAllAdmins(`${caseData.case_number} Travel completed — ready for settlement`, `/admin/settlement`)
       await logAsCurrentUser('case.travel_completed', { type: 'case', id: caseData.id, label: caseData.case_number })
@@ -389,7 +378,7 @@ export default function CaseDetailPage() {
         .update({ status: 'confirmed', confirmed_at: new Date().toISOString() })
         .eq('id', schedule.id)
       if (se) throw se
-      await supabase.from('cases').update({ status: 'schedule_confirmed' }).eq('id', caseData.id)
+      await supabase.from('cases').update({ status: 'awaiting_pricing' }).eq('id', caseData.id)
       await notifyAllAdmins(`${caseData.case_number} Schedule v${schedule.version} confirmed — finalize pricing to issue invoice`, `/admin/cases/${caseData.id}`)
       await logAsCurrentUser('schedule.confirmed', { type: 'case', id: caseData.id, label: caseData.case_number }, { version: schedule.version })
       await fetchCase()
@@ -428,6 +417,7 @@ export default function CaseDetailPage() {
         inbound_flight: inb,
       }).eq('id', caseData.id)
       if (error) throw error
+      await notifyCaseInfoChanged(caseData.id)
       await fetchCase()
       setEditTrip(false)
     } catch (e: unknown) {
@@ -617,6 +607,7 @@ export default function CaseDetailPage() {
         }
       }
 
+      await notifyCaseInfoChanged(caseData.id)
       const fresh = await fetchCase()
       // Force rebuild: temp-id NEW entries are now real rows — otherwise membersDirty stays true
       // and the next Save would try to re-insert them (duplicate key).
@@ -677,6 +668,8 @@ export default function CaseDetailPage() {
         .update({ status: 'revision_requested', revision_note: revisionNote.trim() })
         .eq('id', schedule.id)
       if (se) throw se
+      // Bump case back to awaiting_schedule so admin queue picks it up for re-upload.
+      await supabase.from('cases').update({ status: 'awaiting_schedule' }).eq('id', caseData.id)
       await notifyAllAdmins(`${caseData.case_number} Schedule v${schedule.version} revision requested`, `/admin/cases/${caseData.id}`)
       await logAsCurrentUser('schedule.revision_requested',
         { type: 'case', id: caseData.id, label: caseData.case_number },
@@ -1407,8 +1400,8 @@ export default function CaseDetailPage() {
 
                 {scheduleError && <p className="text-xs text-red-500">{scheduleError}</p>}
 
-                {/* Mark Travel Complete — only after payment_completed, before travel_completed */}
-                {caseData.status === 'payment_completed' && (
+                {/* Mark Travel Complete — only after payment confirmed, before completion */}
+                {caseData.status === 'awaiting_travel' && (
                   <div className="flex items-center justify-end pt-1">
                     <button onClick={markTravelComplete} disabled={markingTravelComplete}
                       className="px-3 py-1.5 text-xs font-medium bg-white text-[#0f4c35] border border-[#0f4c35] rounded-lg hover:bg-[#0f4c35]/5 disabled:opacity-40 transition-colors">
@@ -1416,7 +1409,7 @@ export default function CaseDetailPage() {
                     </button>
                   </div>
                 )}
-                {caseData.status === 'travel_completed' && (
+                {caseData.status === 'completed' && (
                   <p className="text-xs text-gray-500">Travel completed. Commission pending settlement.</p>
                 )}
 
@@ -1522,10 +1515,10 @@ export default function CaseDetailPage() {
                 {quote.payment_due_date && (
                   <div className="bg-white rounded-xl border border-gray-100 p-3">
                     <p className="text-[10px] text-gray-400 mb-1">Payment Due</p>
-                    <p className={`text-sm font-medium ${caseData.status === 'schedule_confirmed' && new Date(quote.payment_due_date) < new Date() ? 'text-red-500' : 'text-gray-900'}`}>
+                    <p className={`text-sm font-medium ${caseData.status === 'awaiting_payment' && new Date(quote.payment_due_date) < new Date() ? 'text-red-500' : 'text-gray-900'}`}>
                       {quote.payment_due_date}
                     </p>
-                    {caseData.status === 'schedule_confirmed' && new Date(quote.payment_due_date) < new Date() && (
+                    {caseData.status === 'awaiting_payment' && new Date(quote.payment_due_date) < new Date() && (
                       <p className="text-[10px] text-red-400 mt-0.5">Overdue</p>
                     )}
                   </div>
@@ -1547,7 +1540,7 @@ export default function CaseDetailPage() {
           )}
 
           {/* Cancel Case — agent self-service, only before payment */}
-          {(caseData.status === 'quote_sent' || caseData.status === 'schedule_reviewed' || caseData.status === 'schedule_confirmed') && (
+          {CANCELLABLE_STATUSES.includes(caseData.status) && (
             <section className="border border-red-100 rounded-2xl p-4 flex items-center justify-between">
               <div>
                 <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Cancel Case</h3>

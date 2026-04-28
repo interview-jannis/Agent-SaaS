@@ -3,10 +3,9 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { type CaseStatus, STATUS_LABELS, STATUS_STYLES, ALL_STATUSES } from '@/lib/caseStatus'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-
-type CaseStatus = 'quote_sent' | 'payment_completed' | 'schedule_reviewed' | 'schedule_confirmed' | 'travel_completed'
 
 type CaseMember = {
   id: string
@@ -44,26 +43,6 @@ function getAgent(c: { agents: Agent | Agent[] | null } | null | undefined): Age
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-
-const STATUS_LABELS: Record<CaseStatus, string> = {
-  quote_sent: 'Awaiting Schedule',
-  payment_completed: 'Payment Confirmed',
-  schedule_reviewed: 'Schedule Reviewed',
-  schedule_confirmed: 'Awaiting Payment',
-  travel_completed: 'Travel Completed',
-}
-
-const STATUS_STYLES: Record<CaseStatus, string> = {
-  quote_sent: 'bg-amber-50 text-amber-700 border-amber-200',
-  payment_completed: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  schedule_reviewed: 'bg-violet-50 text-violet-700 border-violet-200',
-  schedule_confirmed: 'bg-blue-50 text-blue-700 border-blue-200',
-  travel_completed: 'bg-gray-50 text-gray-500 border-gray-200',
-}
-
-const ALL_STATUSES: CaseStatus[] = [
-  'quote_sent', 'schedule_reviewed', 'schedule_confirmed', 'payment_completed', 'travel_completed',
-]
 
 function fmtUSD(n: number) { return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }
 

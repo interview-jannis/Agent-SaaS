@@ -13,7 +13,6 @@ type Agent = {
   email: string | null
   country: string | null
   margin_rate: number | null
-  monthly_completed: number | null
   is_active: boolean
   onboarding_status: OnboardingStatus | null
   rejection_reason: string | null
@@ -57,7 +56,7 @@ export default function AdminAgentsPage() {
   async function fetchAll() {
     const [agentsRes, casesRes, clientsRes, settlementsRes, rateRes] = await Promise.all([
       supabase.from('agents')
-        .select('id, agent_number, name, email, country, margin_rate, monthly_completed, is_active, onboarding_status, rejection_reason')
+        .select('id, agent_number, name, email, country, margin_rate, is_active, onboarding_status, rejection_reason')
         .order('name'),
       supabase.from('cases').select('id, agent_id, status, quotes(total_price, agent_margin_rate)'),
       supabase.from('clients').select('id, agent_id'),
@@ -116,7 +115,7 @@ export default function AdminAgentsPage() {
   }
   const settledCaseIds = new Set(settlements.filter(s => s.case_id).map(s => s.case_id!))
   for (const c of cases) {
-    if (c.status !== 'travel_completed') continue
+    if (c.status !== 'completed') continue
     if (settledCaseIds.has(c.id)) continue
     const q = c.quotes?.[0]
     if (!q) continue

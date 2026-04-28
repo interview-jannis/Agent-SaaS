@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { notifyAllAdmins } from '@/lib/notifications'
 import { logAsCurrentUser } from '@/lib/audit'
+import { notifyCaseInfoChanged } from '@/lib/caseTransitions'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -285,7 +286,7 @@ export default function QuoteReviewPage() {
         .insert({
           case_number: `#C-${String((caseCount ?? 0) + 1).padStart(3, '0')}`,
           agent_id: agentData.id,
-          status: 'quote_sent',
+          status: 'awaiting_info',
           travel_start_date: cart.dateStart || null,
           travel_end_date: cart.dateEnd || null,
         })
@@ -364,8 +365,15 @@ export default function QuoteReviewPage() {
 
       localStorage.removeItem('agent-cart')
       const caseNumber = `#C-${String((caseCount ?? 0) + 1).padStart(3, '0')}`
-      await notifyAllAdmins(`${caseNumber} New case created by ${agentData.name}`, `/admin/cases/${caseData.id}`)
       await logAsCurrentUser('case.created', { type: 'case', id: caseData.id, label: caseNumber }, { total_krw: totalKRW })
+      // Visibility: admin should know a new case exists, even though it's not actionable yet.
+      await notifyAllAdmins(
+        `${caseNumber} new case from ${agentData.name} — awaiting client info`,
+        `/admin/cases/${caseData.id}`
+      )
+      // If everything's already filled (rare — usually trip info is missing), bump status
+      // and emit the "ready for schedule" follow-up.
+      await notifyCaseInfoChanged(caseData.id)
       router.push(`/agent/cases/${caseData.id}`)
     } catch (e: unknown) {
       setError((e as { message?: string })?.message ?? 'Failed to create quote.')
