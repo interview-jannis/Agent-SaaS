@@ -65,7 +65,7 @@ export default async function QuoteDocument({
     .from('quotes')
     .select(`
       id, quote_number, invoice_number, total_price, payment_due_date,
-      company_margin_rate, agent_margin_rate, finalized_at,
+      company_margin_rate, agent_margin_rate, finalized_at, signer_snapshot,
       first_opened_at, invoice_first_opened_at, open_count,
       cases(
         id, agent_id, status, created_at,
@@ -156,7 +156,7 @@ export default async function QuoteDocument({
   let no = 1
   groups.forEach((group, gi) => {
     const memberCount = Math.max(group.member_count ?? 1, 1)
-    const groupLabel = `Group ${gi + 1}: ${group.name}`
+    const groupLabel = `Group ${gi + 1}: ${group.name} · ${memberCount} pax`
     for (const item of group.quote_items) {
       const amtUSD = item.final_price / exchangeRate
       const unitUSD = amtUSD / memberCount
@@ -239,7 +239,22 @@ export default async function QuoteDocument({
               </div>
               <div className="flex gap-3">
                 <span className="w-20 shrink-0 font-semibold text-gray-700">From</span>
-                <span className="text-[#0f4c35] font-semibold">: Interview Co., Ltd</span>
+                <span className="text-[#0f4c35] font-semibold">
+                  {(() => {
+                    const signer = isInvoice
+                      ? (quote as { signer_snapshot?: { name?: string | null; title?: string | null } | null }).signer_snapshot ?? null
+                      : null
+                    if (signer?.name) {
+                      return (
+                        <>
+                          : {signer.name}{signer.title && <span className="font-normal text-gray-600"> ({signer.title})</span>}
+                          <span className="block ml-3 font-normal text-gray-600 text-xs mt-0.5">Interview Co., Ltd</span>
+                        </>
+                      )
+                    }
+                    return ': Interview Co., Ltd'
+                  })()}
+                </span>
               </div>
             </div>
             {/* Right column */}
@@ -397,10 +412,23 @@ export default async function QuoteDocument({
           )}
 
           {/* ── Signature ── */}
-          <div className="mb-12">
-            <p className="text-sm text-gray-600 italic mb-5">Yours Faithfully,</p>
-            <p className="text-base font-bold text-gray-900">Interview Co.,Ltd.</p>
-          </div>
+          {(() => {
+            const signer = isInvoice
+              ? (quote as { signer_snapshot?: { name?: string | null; title?: string | null } | null }).signer_snapshot ?? null
+              : null
+            return (
+              <div className="mb-12">
+                <p className="text-sm text-gray-600 italic mb-5">Yours Faithfully,</p>
+                {signer?.name && (
+                  <>
+                    <p className="text-base font-semibold text-gray-900">{signer.name}</p>
+                    {signer.title && <p className="text-sm text-gray-600 mb-1">{signer.title}</p>}
+                  </>
+                )}
+                <p className="text-base font-bold text-gray-900">Interview Co.,Ltd.</p>
+              </div>
+            )
+          })()}
 
           {/* ── Footer ── */}
           <div className="border-t-4 pt-4" style={{ borderColor: '#0f4c35' }}>

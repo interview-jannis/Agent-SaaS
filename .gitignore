@@ -42,3 +42,6 @@ next-env.d.ts
 
 # test fixtures
 schedule_v*.pdf
+
+# local business reference data (product photos, source materials)
+/data

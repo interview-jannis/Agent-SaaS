@@ -5,7 +5,15 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
-const NAV = [
+type NavItem = {
+  label: string
+  href: string
+  disabled: boolean
+  icon: React.ReactNode
+  superAdminOnly?: boolean
+}
+
+const NAV: NavItem[] = [
   {
     label: 'Overview',
     href: '/admin/overview',
@@ -77,6 +85,17 @@ const NAV = [
     ),
   },
   {
+    label: 'Admins',
+    href: '/admin/admins',
+    disabled: false,
+    superAdminOnly: true,
+    icon: (
+      <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+      </svg>
+    ),
+  },
+  {
     label: 'Audit Log',
     href: '/admin/audit',
     disabled: false,
@@ -103,6 +122,7 @@ export default function AdminSidebar() {
   const pathname = usePathname()
   const router = useRouter()
   const [adminName, setAdminName] = useState('')
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -110,12 +130,18 @@ export default function AdminSidebar() {
       if (!userId) return
       supabase
         .from('admins')
-        .select('name')
+        .select('name, is_super_admin')
         .eq('auth_user_id', userId)
         .single()
-        .then(({ data }) => { if (data?.name) setAdminName(data.name) })
+        .then(({ data }) => {
+          const row = data as { name: string | null; is_super_admin: boolean | null } | null
+          if (row?.name) setAdminName(row.name)
+          setIsSuperAdmin(!!row?.is_super_admin)
+        })
     })
   }, [])
+
+  const visibleNav = NAV.filter(item => !item.superAdminOnly || isSuperAdmin)
 
   async function handleLogout() {
     await supabase.auth.signOut()
@@ -164,7 +190,7 @@ export default function AdminSidebar() {
 
       {/* 네비게이션 */}
       <nav className={`flex-1 py-4 space-y-0.5 ${collapsed ? 'px-2' : 'px-3'}`}>
-        {NAV.map((item) => {
+        {visibleNav.map((item) => {
           const isActive = !item.disabled && (pathname === item.href || pathname.startsWith(item.href + '/'))
 
           if (item.disabled) {
@@ -225,7 +251,7 @@ export default function AdminSidebar() {
               </div>
               <div className="min-w-0">
                 <p className="text-xs font-medium text-gray-700 truncate">{adminName || 'Admin'}</p>
-                <p className="text-[10px] text-gray-400">Administrator</p>
+                <p className="text-[10px] text-gray-400">{isSuperAdmin ? 'Super Administrator' : 'Administrator'}</p>
               </div>
             </div>
           )}

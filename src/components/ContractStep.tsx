@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import SignaturePad from './SignaturePad'
 import { notifyAllAdmins } from '@/lib/notifications'
 import { logAsCurrentUser } from '@/lib/audit'
+import { COUNTRIES, COUNTRY_DATALIST_ID } from '@/lib/countries'
 
 type ContractType = 'nda' | 'partnership'
 
@@ -258,9 +259,12 @@ export default function ContractStep({ type, step, nextHref, nextLabel, isFinal 
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Country of Residence *</label>
-              <input type="text" value={agentCountry} onChange={e => setAgentCountry(e.target.value)}
+              <input type="text" list={COUNTRY_DATALIST_ID} value={agentCountry} onChange={e => setAgentCountry(e.target.value)}
                 placeholder="United Arab Emirates"
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
+              <datalist id={COUNTRY_DATALIST_ID}>
+                {COUNTRIES.map(c => <option key={c} value={c} />)}
+              </datalist>
             </div>
           </div>
         </section>

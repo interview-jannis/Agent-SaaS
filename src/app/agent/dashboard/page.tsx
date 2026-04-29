@@ -315,13 +315,13 @@ export default function AgentDashboardPage() {
               <section className="space-y-3">
                 <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Performance · Last 6 Months</h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <SparklineCard label="Commission" color="#f59e0b" kind="money"
+                  <SparklineCard label="Commission" color="#0f4c35" kind="money"
                     value={toUsd(cur.commission)} prev={toUsd(prv?.commission ?? 0)}
                     values={monthly.map(m => toUsd(m.commission))} labels={sparkLabels} />
-                  <SparklineCard label="Received" color="#10b981" kind="money"
+                  <SparklineCard label="Received" color="#0f4c35" kind="money"
                     value={toUsd(cur.received)} prev={toUsd(prv?.received ?? 0)}
                     values={monthly.map(m => toUsd(m.received))} labels={sparkLabels} />
-                  <SparklineCard label="Paying Clients" color="#3b82f6" kind="count"
+                  <SparklineCard label="Paying Clients" color="#374151" kind="count"
                     value={cur.patients} prev={prv?.patients ?? 0}
                     values={monthly.map(m => m.patients)} labels={sparkLabels} />
                 </div>
@@ -330,7 +330,7 @@ export default function AgentDashboardPage() {
               {/* PIPELINE — Kanban-style mini columns per status */}
               <section className="space-y-3">
                 <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Pipeline</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-2">
                   {PIPELINE_ORDER.map(s => {
                     const rawCount = statusCounts.get(s) ?? 0
                     const count = s === 'completed' ? unsettledCompletedCount : rawCount

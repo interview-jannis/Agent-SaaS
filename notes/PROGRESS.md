@@ -1,12 +1,13 @@
 # Project Progress
 
 ## 현재 상태
-- **Phase**: 흐름 B 후속 폴리시 완료 — 편집 잠금 정책 정착 / 알림 자동 diff / /quote · /invoice 라우트 분리 / Hybrid 결제 마감일 / Schedule 재업로드 메모 / Admin broadcast 신뢰성 회복.
-- **마지막 작업**: canceled & schedule_confirmed 편집 잠금, Client 필수 필드 clear 차단, /quote vs /invoice 분리, 알림 메시지 자동 diff (old → new), schedules.admin_note + Pricing reprice diff, server-side admin broadcast, 알림 클릭 자동 새로고침.
-- **마지막 업데이트**: 2026-04-28 (개발 마감 5/8, 시뮬레이션 5/11~15, 런칭 5/18)
+- **Phase**: UI/UX 통일 폴리시 + 권한 분리(super admin) + Invoice signer 시스템 완료
+- **마지막 작업**: Cases Hero Action Bar / 톤 일관화(monochrome + 의미 SVG 아이콘) / Settings inline-edit 패턴 / PIC(signer) on invoice / Super admin 시스템 (조회 vs 수정 권한 분리)
+- **마지막 업데이트**: 2026-04-29 (개발 마감 5/8, 시뮬레이션 5/11~15, 런칭 5/18)
 - **SaaS 브랜드명**: **Tiktak** (UI 전역, 법인명 Interview Co., Ltd)
 
-> 2026-04-28 상세: `notes/26.04.28.md` (최신)
+> 2026-04-29 상세: `notes/26.04.29.md` (최신, 큰 폴리시 라운드)
+> 2026-04-28 상세: `notes/26.04.28.md`
 > 2026-04-27 상세: `notes/26.04.27.md`
 > 2026-04-24 상세: `notes/26.04.24.md`
 > 2026-04-23 상세: `notes/26.04.23.md`
@@ -24,8 +25,26 @@
 - [ ] 배포 환경 최종 점검 (`SUPABASE_SERVICE_ROLE_KEY`, Resend 키 등)
 - [ ] 법무 검토: NDA / Partnership Agreement 초안 (사내 고문변호사 or SIAC 전문가)
 - [ ] **정보 등록 단계** 분리 검토 (quote_sent 전 Concept/Trip Info/멤버 등록 흐름) — 4/27 멘션 이월
+- [ ] 고객용 Schedule 페이지 점검 (Quotation/Invoice는 4/29에 검토 완료)
 - [x] CLAUDE.md 스키마 최신화 (흐름 B 8단계 status, /invoice, partner_payments, cancellation_*, invoice_number, finalized_at 등)
 - [x] schedules.admin_note 마이그레이션
+
+### 4/29 완료 (대형 폴리시 라운드)
+- [x] **Cases Hero Action Bar** — `<CaseHeroAction>` 컴포넌트 (Agent/Admin), status별 next-action CTA + 섹션 스크롤
+- [x] **Cases 리스트 톤 통일** — 빈 status pill 유지(흐름 시각화) + body 제거(공간 절약), 헤더 monochrome, JUMP TO 헤더로 통합, Settlement 컬럼 마커-only
+- [x] **섹션 헤더 의미 아이콘** — Cases / Action Required 양쪽에 monochrome SVG (user/upload/eye/tag/banknote/check 등)
+- [x] **차트 톤 전사 통일** — money: brand green `#0f4c35`, count: gray `#374151` (Overview/Dashboard/Payouts)
+- [x] **Settings inline-edit 패턴** — GitHub Settings 스타일, 한 카드에 row들, 평소엔 값만 표시 + Edit
+- [x] **Country 자동완성** — `<datalist>` 39개국 (중동 가중), NDA + Profile 양쪽
+- [x] **Quotation/Invoice Group 인원수** — `Group 1: name · 2 pax`
+- [x] **Print 버튼 `print:hidden`** — 인쇄 시 PDF에 안 박힘
+- [x] **Audit Log 강화** — Date filter (All/Today/Yesterday/Last 7/Last 30/Custom) + Load older 페이지네이션
+- [x] **Admin Settlement** 좌측 색띠 제거 → 중앙 vertical divider
+- [x] **Admin layout** `overflow` 통일 (Agent와 동일)
+- [x] **Agent Home** 이모티콘 → ✓ 마커 + 텍스트 (VIP 톤)
+- [x] **Lead Client #CL 번호 표시** (Agent 컬럼이랑 일관)
+- [x] **PIC (Invoice Signer) 시스템** — admins.title + quotes.signer_snapshot, Pricing finalize 시 동결, From + 하단 서명에 표시
+- [x] **Super Admin 시스템** — admins.is_super_admin, /admin/admins 페이지, create/delete API, Sidebar 분기, 조회/수정 권한 분리
 
 ### 4/28 완료
 - [x] **canceled 케이스 view-only** — Travel Dates / Trip Info / Members / Send 버튼 hide + read-only 배너 (cancellation_reason 표시)
@@ -310,6 +329,23 @@
 ---
 
 ## DB 스키마 변경사항 누적
+
+### 4/29 추가분
+
+```sql
+-- Invoice signer (PIC) — 매 finalize/reprice 시 현재 admin name+title을 동결
+ALTER TABLE admins ADD COLUMN title TEXT;
+ALTER TABLE quotes ADD COLUMN signer_snapshot JSONB;
+-- signer_snapshot 형태: { name: string|null, title: string|null }
+
+-- Super admin 권한
+ALTER TABLE admins ADD COLUMN is_super_admin BOOLEAN DEFAULT false;
+-- 첫 super admin은 SQL로 직접 지정:
+-- UPDATE admins SET is_super_admin = true WHERE email = '...';
+
+-- Country 데이터 정합성 (사용자 직접 실행 완료)
+UPDATE agents SET country = 'United Arab Emirates' WHERE country = 'United Arb Emirates';
+```
 
 ### 4/28 추가분
 

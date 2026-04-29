@@ -28,10 +28,10 @@ export default function ChangePasswordCard() {
   }
 
   return (
-    <section className="bg-gray-50 rounded-2xl p-5 space-y-4">
+    <section className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-4">
       <div>
-        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Change Password</h3>
-        <p className="text-[11px] text-gray-500 mt-0.5">You will remain signed in on this device after changing.</p>
+        <h3 className="text-sm font-semibold text-gray-900">Change Password</h3>
+        <p className="text-xs text-gray-500 mt-1">You will remain signed in on this device after changing.</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">

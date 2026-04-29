@@ -80,6 +80,8 @@ export default async function AdminOverviewPage() {
     { data: paymentPending },
     { data: pricingNeeded },
     { data: scheduleNeeded },
+    { data: completedCases },
+    { data: settledCaseIdRows },
     { data: allInProgressCases },
     { data: allPaidCases },
     { data: allClients },
@@ -96,6 +98,10 @@ export default async function AdminOverviewPage() {
     supabase.from('cases').select(CASE_WITH_ALL).eq('status', 'awaiting_pricing').order('created_at', { ascending: false }),
     // scheduleNeeded — admin needs to upload itinerary PDF
     supabase.from('cases').select(CASE_WITH_ALL).eq('status', 'awaiting_schedule').order('created_at', { ascending: false }),
+    // completedCases — travel done, possibly waiting on settlement
+    supabase.from('cases').select(CASE_WITH_ALL).eq('status', 'completed').order('created_at', { ascending: false }),
+    // settledCaseIdRows — cases whose agent settlement has been paid
+    supabase.from('settlements').select('case_id').not('paid_at', 'is', null),
     // All in-progress cases — used for "stuck" detection. Exclude terminal states.
     supabase.from('cases').select('id, case_number, status, created_at, case_members(is_lead, clients(name))')
       .not('status', 'in', '(completed,canceled)'),
@@ -227,12 +233,19 @@ export default async function AdminOverviewPage() {
     .map(c => ({ ...c, due: c.quotes?.[0]?.payment_due_date ?? null }))
     .filter(c => c.due && c.due < todayISO)
 
+  // Settlement to process — completed cases whose agent settlement isn't paid yet
+  const settledIds = new Set(((settledCaseIdRows as { case_id: string | null }[] | null) ?? [])
+    .map(s => s.case_id).filter((x): x is string => !!x))
+  const pendingSettlements = ((completedCases as unknown as ActionCase[]) ?? [])
+    .filter(c => !settledIds.has(c.id))
+
   const pendingAgentCount = pendingAgents?.length ?? 0
   const paymentPendingCount = paymentPending?.length ?? 0
   const pricingNeededCount = pricingNeeded?.length ?? 0
   const scheduleNeededCount = scheduleNeeded?.length ?? 0
+  const pendingSettlementCount = pendingSettlements.length
 
-  const totalActionCount = pendingAgentCount + paymentPendingCount + pricingNeededCount + scheduleNeededCount + stuckCases.length
+  const totalActionCount = pendingAgentCount + paymentPendingCount + pricingNeededCount + scheduleNeededCount + pendingSettlementCount + stuckCases.length
 
   return (
     <div className="flex flex-col h-full bg-white">
@@ -269,25 +282,22 @@ export default async function AdminOverviewPage() {
               <p className="text-[11px] text-gray-500 mt-1 tabular-nums">{fmtKRW(partnerTotal)} · sent to partners</p>
             </div>
             <div className="md:border-l md:border-gray-200 md:pl-6">
-              <p className="text-[10px] text-amber-700 uppercase tracking-wide mb-1">Agent Payouts</p>
-              <p className="text-xl font-semibold text-amber-700 tracking-tight">{fmtUSD(agentTotal / exchangeRate)}</p>
+              <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-1">Agent Payouts</p>
+              <p className="text-xl font-semibold text-gray-700 tracking-tight">{fmtUSD(agentTotal / exchangeRate)}</p>
               <p className="text-[11px] text-gray-500 mt-1 tabular-nums">{fmtKRW(agentTotal)} · sent to agents</p>
             </div>
             <div className="md:border-l md:border-gray-200 md:pl-6">
-              <p className="text-[10px] text-blue-700 uppercase tracking-wide mb-1">Registered Clients</p>
-              <p className="text-xl font-semibold text-blue-700 tracking-tight tabular-nums">{totalClientCount.toLocaleString()}</p>
+              <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-1">Registered Clients</p>
+              <p className="text-xl font-semibold text-gray-700 tracking-tight tabular-nums">{totalClientCount.toLocaleString()}</p>
               <p className="text-[11px] text-gray-500 mt-1">across all agents</p>
             </div>
             <div className="md:border-l md:border-gray-200 md:pl-6">
-              <p className="text-[10px] text-purple-700 uppercase tracking-wide mb-1">Approved Agents</p>
-              <p className="text-xl font-semibold text-purple-700 tracking-tight tabular-nums">{agentCountTotal.toLocaleString()}</p>
+              <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-1">Approved Agents</p>
+              <p className="text-xl font-semibold text-gray-700 tracking-tight tabular-nums">{agentCountTotal.toLocaleString()}</p>
               <p className="text-[11px] text-gray-500 mt-1">approved &amp; active</p>
             </div>
           </div>
         </section>
-
-        {/* PERFORMANCE — 6 KPI sparkline cards */}
-        <ChartLab monthly={monthly} exchangeRate={exchangeRate} />
 
         {/* ACTION REQUIRED — unified queue */}
         <section className="space-y-3">
@@ -306,8 +316,10 @@ export default async function AdminOverviewPage() {
               {/* Pending agent approvals */}
               {pendingAgentCount > 0 && (
                 <Link href="/admin/agents"
-                  className="flex items-center gap-3 bg-white border border-violet-200 rounded-2xl px-4 py-3 hover:bg-violet-50/50 transition-colors">
-                  <span className="w-2 h-2 rounded-full bg-violet-500 shrink-0" />
+                  className="flex items-center gap-3 bg-white border border-gray-200 rounded-2xl px-4 py-3 hover:bg-gray-50 transition-colors">
+                  <svg className="w-4 h-4 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zM4 19.235v-.11a6.375 6.375 0 0112.75 0v.109A12.318 12.318 0 0110.374 21c-2.331 0-4.512-.645-6.374-1.766z" />
+                  </svg>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-gray-900">
                       {pendingAgentCount} agent{pendingAgentCount !== 1 ? 's' : ''} awaiting approval
@@ -317,7 +329,7 @@ export default async function AdminOverviewPage() {
                       {pendingAgentCount > 3 && ` · +${pendingAgentCount - 3} more`}
                     </p>
                   </div>
-                  <span className="text-xs text-violet-700 shrink-0">Review →</span>
+                  <span className="text-xs text-gray-500 shrink-0">Review →</span>
                 </Link>
               )}
 
@@ -325,7 +337,9 @@ export default async function AdminOverviewPage() {
               {overduePayments.length > 0 && (
                 <div className="bg-white border border-red-200 rounded-2xl overflow-hidden">
                   <div className="px-4 py-2.5 border-b border-red-100 flex items-center gap-2 bg-red-50">
-                    <span className="w-2 h-2 rounded-full bg-red-500" />
+                    <svg className="w-4 h-4 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.008v.008H12v-.008z" />
+                    </svg>
                     <p className="text-xs font-semibold text-red-800 uppercase tracking-wide">Payments Overdue</p>
                     <span className="text-[10px] text-red-600">{overduePayments.length}</span>
                   </div>
@@ -351,7 +365,9 @@ export default async function AdminOverviewPage() {
               {paymentPendingCount > 0 && (
                 <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
                   <div className="px-4 py-2.5 border-b border-gray-100 flex items-center gap-2 bg-gray-50">
-                    <span className="w-2 h-2 rounded-full bg-amber-500" />
+                    <svg className="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 12a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V12zm-12 0h.008v.008H6V12z" />
+                    </svg>
                     <p className="text-xs font-semibold text-gray-800 uppercase tracking-wide">Payment to Confirm</p>
                     <span className="text-[10px] text-gray-500">{paymentPendingCount}</span>
                   </div>
@@ -379,7 +395,10 @@ export default async function AdminOverviewPage() {
               {pricingNeededCount > 0 && (
                 <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
                   <div className="px-4 py-2.5 border-b border-gray-100 flex items-center gap-2 bg-gray-50">
-                    <span className="w-2 h-2 rounded-full bg-violet-500" />
+                    <svg className="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 6h.008v.008H6V6z" />
+                    </svg>
                     <p className="text-xs font-semibold text-gray-800 uppercase tracking-wide">Pricing to Finalize</p>
                     <span className="text-[10px] text-gray-500">{pricingNeededCount}</span>
                   </div>
@@ -407,7 +426,9 @@ export default async function AdminOverviewPage() {
               {scheduleNeededCount > 0 && (
                 <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
                   <div className="px-4 py-2.5 border-b border-gray-100 flex items-center gap-2 bg-gray-50">
-                    <span className="w-2 h-2 rounded-full bg-blue-500" />
+                    <svg className="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+                    </svg>
                     <p className="text-xs font-semibold text-gray-800 uppercase tracking-wide">Schedule Upload Needed</p>
                     <span className="text-[10px] text-gray-500">{scheduleNeededCount}</span>
                   </div>
@@ -431,11 +452,43 @@ export default async function AdminOverviewPage() {
                 </div>
               )}
 
+              {/* Pending settlements — completed cases not yet paid out to agent */}
+              {pendingSettlementCount > 0 && (
+                <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+                  <div className="px-4 py-2.5 border-b border-gray-100 flex items-center gap-2 bg-gray-50">
+                    <svg className="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12c0 1.268-.63 2.39-1.593 3.068a3.745 3.745 0 01-1.043 3.296 3.745 3.745 0 01-3.296 1.043A3.745 3.745 0 0112 21c-1.268 0-2.39-.63-3.068-1.593a3.746 3.746 0 01-3.296-1.043 3.745 3.745 0 01-1.043-3.296A3.745 3.745 0 013 12c0-1.268.63-2.39 1.593-3.068a3.745 3.745 0 011.043-3.296 3.746 3.746 0 013.296-1.043A3.746 3.746 0 0112 3c1.268 0 2.39.63 3.068 1.593a3.746 3.746 0 013.296 1.043 3.746 3.746 0 011.043 3.296A3.745 3.745 0 0121 12z" />
+                    </svg>
+                    <p className="text-xs font-semibold text-gray-800 uppercase tracking-wide">Settlement to Process</p>
+                    <span className="text-[10px] text-gray-500">{pendingSettlementCount}</span>
+                  </div>
+                  <ul className="divide-y divide-gray-100">
+                    {pendingSettlements.slice(0, 4).map(c => (
+                      <li key={c.id}>
+                        <Link href={`/admin/cases/${c.id}`}
+                          className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors">
+                          <span className="text-xs font-mono text-gray-400 shrink-0">{c.case_number}</span>
+                          <span className="text-sm text-gray-800 truncate flex-1">{leadName(c.case_members)}</span>
+                          <span className="text-xs text-gray-500 shrink-0">
+                            {fmtDate(c.travel_start_date)} – {fmtDate(c.travel_end_date)}
+                          </span>
+                          <svg className="w-4 h-4 text-gray-300 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                          </svg>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
               {/* Stuck cases */}
               {stuckCases.length > 0 && (
                 <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
                   <div className="px-4 py-2.5 border-b border-gray-100 flex items-center gap-2 bg-gray-50">
-                    <span className="w-2 h-2 rounded-full bg-orange-500" />
+                    <svg className="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
                     <p className="text-xs font-semibold text-gray-800 uppercase tracking-wide">Stuck Cases</p>
                     <span className="text-[10px] text-gray-500">5+ days in same status</span>
                   </div>
@@ -491,6 +544,9 @@ export default async function AdminOverviewPage() {
             )}
           </div>
         </section>
+
+        {/* PERFORMANCE — 6 KPI sparkline cards */}
+        <ChartLab monthly={monthly} exchangeRate={exchangeRate} />
 
         </div>
       </div>

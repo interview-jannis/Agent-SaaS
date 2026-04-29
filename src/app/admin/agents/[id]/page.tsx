@@ -581,7 +581,7 @@ export default function AdminAgentDetailPage() {
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50 border-b border-gray-100">
                     <tr>
-                      {['Case #', 'Lead', 'Status', 'Travel', 'Total'].map(h => (
+                      {['Case', 'Lead', 'Status', 'Travel', 'Total'].map(h => (
                         <th key={h} className="py-2.5 px-4 text-xs font-medium text-gray-400 text-left">{h}</th>
                       ))}
                     </tr>
@@ -602,7 +602,7 @@ export default function AdminAgentDetailPage() {
                           </td>
                           <td className="py-3 px-4 text-gray-500 text-xs">
                             {c.travel_start_date || c.travel_end_date
-                              ? `${c.travel_start_date ?? '—'} ~ ${c.travel_end_date ?? '—'}`
+                              ? `${c.travel_start_date ?? '—'} – ${c.travel_end_date ?? '—'}`
                               : '—'}
                           </td>
                           <td className="py-3 px-4 font-medium text-gray-900">{q ? fmtUSD(q.total_price / exchangeRate) : '—'}</td>

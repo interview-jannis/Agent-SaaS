@@ -29,3 +29,7 @@ input[type="month"] {
   color: rgb(17 24 39); /* gray-900 */
 }
 
+/* Hide scrollbar while keeping scroll behavior — used in dense toolbars (Cases JUMP TO). */
+.no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+

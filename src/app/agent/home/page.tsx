@@ -490,15 +490,31 @@ export default function AgentHomePage() {
             <p className="text-xs text-gray-400 line-clamp-2 leading-relaxed whitespace-pre-line">{product.description}</p>
           )}
 
-          <div className="flex items-center justify-between mt-auto pt-1">
+          <div className="mt-auto pt-1 space-y-1.5">
             <div>
               <p className="text-sm font-bold text-gray-900">{toUSD(product)}</p>
               <p className="text-[11px] text-gray-400">{product.duration_value} {product.duration_unit}</p>
             </div>
-            <div className="flex gap-1">
-              {product.has_female_doctor && <span title="Female medical staff" className="text-sm">👩‍⚕️</span>}
-              {product.has_prayer_room && <span title="Prayer room" className="text-sm">🕌</span>}
-            </div>
+            {(product.has_female_doctor || product.has_prayer_room) && (
+              <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-gray-500">
+                {product.has_female_doctor && (
+                  <span title="Female medical staff" className="inline-flex items-center gap-0.5 whitespace-nowrap">
+                    <svg className="w-3 h-3 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                    Female staff
+                  </span>
+                )}
+                {product.has_prayer_room && (
+                  <span title="Prayer room" className="inline-flex items-center gap-0.5 whitespace-nowrap">
+                    <svg className="w-3 h-3 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                    Prayer room
+                  </span>
+                )}
+              </div>
+            )}
           </div>
 
           <button
@@ -894,27 +910,32 @@ export default function AgentHomePage() {
                 <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">{detailProduct.description}</p>
               </div>
 
-              {/* Partner */}
-              {detailProduct.partner_name && (
-                <div>
-                  <p className="text-xs font-medium text-gray-500 mb-1">Partner</p>
-                  <p className="text-sm text-gray-800 font-medium">{detailProduct.partner_name}</p>
-                </div>
-              )}
-
               {/* Muslim Friendly */}
               {(detailProduct.has_prayer_room || detailProduct.has_female_doctor || detailProduct.dietary_type !== 'none') && (
                 <div>
                   <p className="text-xs font-medium text-gray-500 mb-2">Muslim Friendly</p>
                   <div className="flex flex-wrap gap-2">
                     {detailProduct.has_prayer_room && (
-                      <span className="flex items-center gap-1 px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded-lg text-xs">🕌 Prayer room</span>
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-700">
+                        <svg className="w-3 h-3 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                        Prayer room
+                      </span>
                     )}
                     {detailProduct.has_female_doctor && (
-                      <span className="flex items-center gap-1 px-2.5 py-1 bg-pink-50 text-pink-700 rounded-lg text-xs">👩‍⚕️ Female medical staff</span>
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-700">
+                        <svg className="w-3 h-3 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                        Female medical staff
+                      </span>
                     )}
                     {detailProduct.dietary_type !== 'none' && (
-                      <span className="px-2.5 py-1 bg-amber-50 text-amber-700 rounded-lg text-xs">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-700">
+                        <svg className="w-3 h-3 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
                         {DIETARY_FILTER_OPTIONS.find(o => o.value === detailProduct.dietary_type)?.label ?? detailProduct.dietary_type}
                       </span>
                     )}

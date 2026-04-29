@@ -14,14 +14,18 @@ type MonthRow = {
   activeAgents: number
 }
 
+// Unified palette — money charts use brand green, count charts use neutral gray.
+// Avoids rainbow effect when many sparklines stack on one page.
+const MONEY_COLOR = '#0f4c35'
+const COUNT_COLOR = '#374151' // gray-700, dark enough to read against gray-50 card bg
 const COLORS = {
-  revenue: '#0f4c35',
-  earnings: '#10b981',
-  partner: '#94a3b8',
-  agent: '#f59e0b',
-  patients: '#3b82f6',
-  newClients: '#a855f7',
-  activeAgents: '#ec4899',
+  revenue: MONEY_COLOR,
+  earnings: MONEY_COLOR,
+  partner: MONEY_COLOR,
+  agent: MONEY_COLOR,
+  patients: COUNT_COLOR,
+  newClients: COUNT_COLOR,
+  activeAgents: COUNT_COLOR,
 }
 
 export default function ChartLab({

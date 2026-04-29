@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { notifyAgent } from '@/lib/notifications'
 import { logAsCurrentUser } from '@/lib/audit'
 import { type CaseStatus, STATUS_LABELS, STATUS_STYLES } from '@/lib/caseStatus'
+import { AdminCaseHero } from '@/components/CaseHeroAction'
 
 import type { ClientInfo, FlightInfo } from '@/lib/clientCompleteness'
 import { getMissingClientFields, getMissingCaseFields, CLIENT_INFO_COLUMNS } from '@/lib/clientCompleteness'
@@ -416,6 +417,23 @@ export default function AdminCaseDetailPage() {
             </div>
           )}
 
+          {/* Hero: status-aware next action */}
+          <AdminCaseHero
+            status={caseData.status}
+            caseInfoComplete={caseInfoComplete}
+            allClientsComplete={allClientsComplete}
+            groupsComplete={groupsComplete}
+            scheduleVersion={latestSchedule?.version ?? null}
+            scheduleStatus={(latestSchedule?.status as 'pending' | 'confirmed' | 'revision_requested' | undefined) ?? null}
+            scheduleReady={scheduleReady}
+            hasInvoice={!!latestQuote?.finalized_at}
+            paymentDueDate={latestQuote?.payment_due_date ?? null}
+            travelStartDate={caseData.travel_start_date}
+            onScrollToScheduleUpload={() => document.getElementById('schedule-upload')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+            onScrollToPricing={() => document.getElementById('pricing')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+            onScrollToConfirmPayment={() => document.getElementById('confirm-payment')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+          />
+
           {/* Agent */}
           <section className="bg-gray-50 rounded-2xl p-4">
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Agent</p>
@@ -770,7 +788,7 @@ export default function AdminCaseDetailPage() {
             })()
             const dueDateValue = dueDateEdit || defaultDue
             return (
-            <section className="border border-violet-200 bg-violet-50 rounded-2xl p-4 space-y-3">
+            <section id="pricing" className="scroll-mt-20 border border-violet-200 bg-violet-50 rounded-2xl p-4 space-y-3">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <p className="text-xs font-semibold text-violet-700 uppercase tracking-wide">
                   {latestQuote.finalized_at ? 'Edit Final Pricing' : 'Finalize Pricing'}
@@ -885,6 +903,22 @@ export default function AdminCaseDetailPage() {
                       invoice_number: invoiceNumber,
                       payment_due_date: newDueDate,
                     }
+                    // Snapshot signer (current admin) on every save — reflects who last issued/touched
+                    // this invoice. Used as the "From" name + signature on the invoice.
+                    {
+                      const { data: { session } } = await supabase.auth.getSession()
+                      const uid = session?.user?.id
+                      if (uid) {
+                        const { data: adminRow } = await supabase.from('admins')
+                          .select('name, title').eq('auth_user_id', uid).maybeSingle()
+                        if (adminRow) {
+                          updates.signer_snapshot = {
+                            name: (adminRow as { name: string | null }).name ?? null,
+                            title: (adminRow as { title: string | null }).title ?? null,
+                          }
+                        }
+                      }
+                    }
                     // Reprice with real change → re-arm the "invoice opened" notification
                     if (!isFirstFinalize && totalChanged) {
                       updates.invoice_first_opened_at = null
@@ -941,7 +975,7 @@ export default function AdminCaseDetailPage() {
 
           {/* Confirm Payment — only after pricing finalized */}
           {caseData.status === 'awaiting_payment' && !editingPricing && (
-            <section className="border border-amber-200 bg-amber-50 rounded-2xl p-4 space-y-3">
+            <section id="confirm-payment" className="scroll-mt-20 border border-amber-200 bg-amber-50 rounded-2xl p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide">Confirm Payment</p>
                 <button onClick={() => { setEditingPricing(true); setPricingEdits({}); setPricingError('') }}
@@ -981,7 +1015,7 @@ export default function AdminCaseDetailPage() {
           )}
 
           {canUploadSchedule && (
-            <section className={`border rounded-2xl p-4 space-y-3 ${caseData.status === 'awaiting_schedule' ? 'border-blue-200 bg-blue-50' : 'border-violet-200 bg-violet-50'}`}>
+            <section id="schedule-upload" className={`scroll-mt-20 border rounded-2xl p-4 space-y-3 ${caseData.status === 'awaiting_schedule' ? 'border-blue-200 bg-blue-50' : 'border-violet-200 bg-violet-50'}`}>
               <p className={`text-xs font-semibold uppercase tracking-wide ${caseData.status === 'awaiting_schedule' ? 'text-blue-700' : 'text-violet-700'}`}>
                 {sortedSchedules.length === 0 ? 'Upload Schedule' : `Upload New Version (v${(latestSchedule?.version ?? 0) + 1})`}
               </p>

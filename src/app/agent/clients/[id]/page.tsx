@@ -751,7 +751,7 @@ export default function ClientDetailPage() {
                           {STATUS_LABELS[c.status]}
                         </span>
                         {(c.travel_start_date || c.travel_end_date) && (
-                          <span className="text-xs text-gray-400">{c.travel_start_date ?? '—'} ~ {c.travel_end_date ?? '—'}</span>
+                          <span className="text-xs text-gray-400">{c.travel_start_date ?? '—'} – {c.travel_end_date ?? '—'}</span>
                         )}
                       </div>
                       <div className="flex items-center gap-3 shrink-0">

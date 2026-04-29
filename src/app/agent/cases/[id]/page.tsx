@@ -15,6 +15,7 @@ import {
   CANCELLABLE_STATUSES,
 } from '@/lib/caseStatus'
 import { notifyCaseInfoChanged } from '@/lib/caseTransitions'
+import { AgentCaseHero } from '@/components/CaseHeroAction'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -82,6 +83,7 @@ type CaseDetail = {
   status: CaseStatus
   travel_start_date: string | null
   travel_end_date: string | null
+  travel_completed_at: string | null
   created_at: string
   concept: string | null
   outbound_flight: FlightInfo
@@ -196,7 +198,7 @@ export default function CaseDetailPage() {
     const { data } = await supabase
       .from('cases')
       .select(`
-        id, case_number, status, travel_start_date, travel_end_date, created_at,
+        id, case_number, status, travel_start_date, travel_end_date, travel_completed_at, created_at,
         concept, outbound_flight, inbound_flight, cancellation_reason,
         case_members(
           id, is_lead,
@@ -865,6 +867,33 @@ export default function CaseDetailPage() {
             </div>
           )}
 
+          {/* Hero: status-aware next action */}
+          <AgentCaseHero
+            status={caseData.status}
+            caseInfoComplete={caseInfoComplete}
+            missingCaseFields={missingCaseFields}
+            clientsMissingCount={clientsMissingInfo.length}
+            membersShortfall={Math.max(0, expectedMemberCount - caseData.case_members.length)}
+            groupsIncomplete={!groupsComplete}
+            scheduleVersion={schedule?.version ?? null}
+            scheduleStatus={(schedule?.status as 'pending' | 'confirmed' | 'revision_requested' | undefined) ?? null}
+            hasInvoice={!!quote?.finalized_at}
+            paymentDueDate={quote?.payment_due_date ?? null}
+            travelStartDate={caseData.travel_start_date}
+            travelCompletedAt={caseData.travel_completed_at}
+            onScrollToTrip={() => document.getElementById('trip-info')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+            onScrollToMembers={() => document.getElementById('members')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+            onScrollToSchedule={() => document.getElementById('schedule')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+            onScrollToFinancials={() => document.getElementById('financials')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+            onSendQuotation={sendInvoice}
+            onSendInvoice={sendInvoice}
+            onConfirmSchedule={confirmSchedule}
+            onRequestRevision={() => { setShowRevisionModal(true); setRevisionNote(''); setScheduleError('') }}
+            onMarkTravelComplete={markTravelComplete}
+            copied={copied}
+            busy={confirmingSchedule || markingTravelComplete || submittingRevision}
+          />
+
           {/* Travel Dates */}
           <section className="bg-gray-50 rounded-2xl p-5">
             <div className="flex items-center justify-between mb-3">
@@ -920,7 +949,7 @@ export default function CaseDetailPage() {
           </section>
 
           {/* Trip Info (case-level) */}
-          <section className={`rounded-2xl p-5 ${caseInfoComplete ? 'bg-gray-50' : 'bg-amber-50 border border-amber-200'}`}>
+          <section id="trip-info" className={`scroll-mt-20 rounded-2xl p-5 ${caseInfoComplete ? 'bg-gray-50' : 'bg-amber-50 border border-amber-200'}`}>
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Trip Info</h3>
@@ -1056,7 +1085,7 @@ export default function CaseDetailPage() {
             const memberIssueCount = (memberShortfall ? 1 : 0) + groupGaps.length + clientsMissingInfo.length
             const memberReady = memberIssueCount === 0 && caseData.case_members.length > 0
             return (
-          <section className="bg-gray-50 rounded-2xl p-5 space-y-3">
+          <section id="members" className="scroll-mt-20 bg-gray-50 rounded-2xl p-5 space-y-3">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div className="flex items-center gap-2">
                 <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
@@ -1445,7 +1474,7 @@ export default function CaseDetailPage() {
           )}
 
           {/* Schedule */}
-          <section className="bg-gray-50 rounded-2xl p-5">
+          <section id="schedule" className="scroll-mt-20 bg-gray-50 rounded-2xl p-5">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Schedule</h3>
               {schedule?.slug && schedule.pdf_url && (
@@ -1590,7 +1619,7 @@ export default function CaseDetailPage() {
 
           {/* Financials */}
           {quote && (
-            <section className="bg-gray-50 rounded-2xl p-5 space-y-4">
+            <section id="financials" className="scroll-mt-20 bg-gray-50 rounded-2xl p-5 space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Financials</h3>
                 {quote.slug && (

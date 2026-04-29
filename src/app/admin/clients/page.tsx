@@ -129,8 +129,14 @@ export default function AdminClientsPage() {
                     <td className="py-3.5 px-4 text-gray-500 text-center">{c.case_members?.length ?? 0}</td>
                     <td className="py-3.5 px-4">
                       {missing.length === 0
-                        ? <span className="text-[10px] px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-full border border-emerald-200">Complete</span>
-                        : <span className="text-[10px] px-2 py-0.5 bg-amber-50 text-amber-700 rounded-full border border-amber-200">{missing.length} missing</span>}
+                        ? <span className="inline-flex items-center gap-1 text-xs">
+                            <span className="text-emerald-600 font-semibold">✓</span>
+                            <span className="text-gray-500">Complete</span>
+                          </span>
+                        : <span className="inline-flex items-center gap-1 text-xs">
+                            <span className="text-amber-500 font-semibold">⋯</span>
+                            <span className="text-gray-500">{missing.length} missing</span>
+                          </span>}
                     </td>
                     <td className="py-3.5 px-4 text-xs text-gray-500">{c.created_at.slice(0, 10)}</td>
                   </tr>

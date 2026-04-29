@@ -170,7 +170,7 @@ export default function AgentClientsPage() {
           <table className="w-full text-sm">
             <thead className="border-b border-gray-100 bg-gray-50/60 sticky top-0">
               <tr>
-                {['Client #', 'Name', 'Nationality', 'Gender', 'Muslim', 'Info'].map(h => (
+                {['Client #', 'Name', 'Nationality', 'Gender', 'Muslim Friendly', 'Info'].map(h => (
                   <th key={h} className="py-3 px-4 text-xs font-medium text-gray-400 text-left">{h}</th>
                 ))}
               </tr>
@@ -187,14 +187,23 @@ export default function AgentClientsPage() {
                     <td className="py-3.5 px-4 text-gray-500 capitalize">{c.gender ?? '—'}</td>
                     <td className="py-3.5 px-4">
                       {c.needs_muslim_friendly
-                        ? <span className="text-[10px] px-2 py-0.5 bg-emerald-50 text-emerald-600 rounded-full border border-emerald-100">Yes</span>
+                        ? <span className="inline-flex items-center gap-1 text-xs text-gray-700">
+                            <span className="text-emerald-600 font-semibold">✓</span>
+                            <span className="text-gray-500">Yes</span>
+                          </span>
                         : <span className="text-gray-300 text-xs">—</span>
                       }
                     </td>
                     <td className="py-3.5 px-4">
                       {missingCount === 0
-                        ? <span className="text-[10px] px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-full border border-emerald-200">Complete</span>
-                        : <span className="text-[10px] px-2 py-0.5 bg-amber-50 text-amber-700 rounded-full border border-amber-200">{missingCount} missing</span>
+                        ? <span className="inline-flex items-center gap-1 text-xs">
+                            <span className="text-emerald-600 font-semibold">✓</span>
+                            <span className="text-gray-500">Complete</span>
+                          </span>
+                        : <span className="inline-flex items-center gap-1 text-xs">
+                            <span className="text-amber-500 font-semibold">⋯</span>
+                            <span className="text-gray-500">{missingCount} missing</span>
+                          </span>
                       }
                     </td>
                   </tr>

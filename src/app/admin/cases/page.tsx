@@ -42,6 +42,33 @@ const DISPLAY_LABELS: Record<DisplayGroup, string> = {
   canceled: STATUS_LABELS.canceled,
 }
 
+// Compact labels for the JUMP toolbar — drop "Awaiting"/"Completed ·" prefixes.
+// Full labels stay on section headers (tooltip on chips preserves them).
+const SHORT_LABELS: Record<DisplayGroup, string> = {
+  awaiting_travel: 'Travel',
+  awaiting_payment: 'Payment',
+  awaiting_pricing: 'Pricing',
+  reviewing_schedule: 'Schedule Review',
+  awaiting_schedule: 'Schedule Prep',
+  awaiting_info: 'Client Info',
+  completed_pending: 'Pending Payout',
+  completed_settled: 'Settled',
+  canceled: 'Canceled',
+}
+
+// Small monochrome icons for section headers — visual variety without color.
+const GROUP_ICON_PATHS: Record<DisplayGroup, string> = {
+  awaiting_info:      'M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z',
+  awaiting_schedule:  'M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5',
+  reviewing_schedule: 'M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178zM15 12a3 3 0 11-6 0 3 3 0 016 0z',
+  awaiting_pricing:   'M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z',
+  awaiting_payment:   'M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z',
+  awaiting_travel:    'M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5',
+  completed_pending:  'M9 12.75L11.25 15 15 9.75M21 12c0 1.268-.63 2.39-1.593 3.068a3.745 3.745 0 01-1.043 3.296 3.745 3.745 0 01-3.296 1.043A3.745 3.745 0 0112 21c-1.268 0-2.39-.63-3.068-1.593a3.746 3.746 0 01-3.296-1.043 3.745 3.745 0 01-1.043-3.296A3.745 3.745 0 013 12c0-1.268.63-2.39 1.593-3.068a3.745 3.745 0 011.043-3.296 3.746 3.746 0 013.296-1.043A3.746 3.746 0 0112 3c1.268 0 2.39.63 3.068 1.593a3.746 3.746 0 013.296 1.043 3.746 3.746 0 011.043 3.296A3.745 3.745 0 0121 12z',
+  completed_settled:  'M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
+  canceled:           'M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
+}
+
 const DISPLAY_STYLES: Record<DisplayGroup, string> = {
   awaiting_travel: STATUS_STYLES.awaiting_travel,
   awaiting_payment: STATUS_STYLES.awaiting_payment,
@@ -59,7 +86,7 @@ const DISPLAY_STYLES: Record<DisplayGroup, string> = {
 type CaseMember = {
   id: string
   is_lead: boolean
-  clients: { id: string; name: string } | null
+  clients: { id: string; client_number: string; name: string } | null
 }
 
 type Quote = {
@@ -120,7 +147,7 @@ export default function AdminCasesPage() {
         supabase.from('cases').select(`
           id, case_number, status, travel_start_date, travel_end_date, created_at,
           agents!cases_agent_id_fkey(id, agent_number, name),
-          case_members(id, is_lead, clients(id, name)),
+          case_members(id, is_lead, clients(id, client_number, name)),
           quotes(id, total_price, quote_groups(member_count, quote_items(products(partner_name))))
         `).order('created_at', { ascending: false }),
         supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single(),
@@ -200,16 +227,41 @@ export default function AdminCasesPage() {
 
       {/* Header */}
       <div className="h-14 shrink-0 flex items-center gap-4 px-6 border-b border-gray-100">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <h1 className="text-base font-semibold text-gray-900">Cases</h1>
           {!loading && <span className="text-xs text-gray-400">{filtered.length}</span>}
         </div>
+        {!loading && filtered.length > 0 && (
+          <div className="flex-1 min-w-0 flex items-center gap-1 bg-gray-50 border border-gray-100 rounded-lg px-2 py-1 overflow-x-auto no-scrollbar">
+            <span className="shrink-0 text-[10px] font-semibold text-gray-400 uppercase tracking-wider pr-1.5 mr-0.5 border-r border-gray-200">Jump</span>
+            {DISPLAY_ORDER.map((g) => {
+              const count = groupedByDisplay.get(g)?.length ?? 0
+              const empty = count === 0
+              return (
+                <button
+                  key={g}
+                  onClick={() => !empty && scrollToGroup(g)}
+                  disabled={empty}
+                  className={`shrink-0 px-2 py-0.5 rounded text-[11px] transition-colors ${
+                    empty
+                      ? 'text-gray-300 cursor-default'
+                      : 'text-gray-700 hover:bg-white hover:text-[#0f4c35] cursor-pointer'
+                  }`}
+                  title={empty ? `${DISPLAY_LABELS[g]} — no cases` : `Jump to ${DISPLAY_LABELS[g]}`}
+                >
+                  {SHORT_LABELS[g]}
+                  <span className={`ml-1 font-medium ${empty ? 'text-gray-300' : 'text-gray-400'}`}>{count}</span>
+                </button>
+              )
+            })}
+          </div>
+        )}
         <input
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search by case #, agent, or client name"
-          className="text-xs border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:border-[#0f4c35] bg-white text-gray-900 placeholder-gray-400 ml-auto w-72"
+          className="shrink-0 text-xs border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:border-[#0f4c35] bg-white text-gray-900 placeholder-gray-400 ml-auto w-72"
         />
       </div>
 
@@ -221,35 +273,11 @@ export default function AdminCasesPage() {
           <p className="text-sm text-gray-400 text-center py-24">No cases found.</p>
         ) : (
           <div className="px-12 py-8 space-y-6">
-            {/* Status jump pills (sticky) */}
-            <div className="sticky top-0 z-20 bg-[#0f4c35]/[0.04] border border-[#0f4c35]/15 rounded-xl shadow-sm px-4 py-2.5 flex flex-wrap gap-2 backdrop-blur-sm">
-              <span className="self-center text-[11px] font-semibold text-[#0f4c35]/70 uppercase tracking-wide mr-1">Jump to</span>
-              {DISPLAY_ORDER.map((g) => {
-                const count = groupedByDisplay.get(g)?.length ?? 0
-                const empty = count === 0
-                return (
-                  <button
-                    key={g}
-                    onClick={() => !empty && scrollToGroup(g)}
-                    disabled={empty}
-                    className={`px-3 py-1.5 rounded-full border text-xs transition-colors shadow-sm ${
-                      empty
-                        ? 'bg-gray-50 border-gray-100 text-gray-300 cursor-default'
-                        : 'bg-white border-gray-200 text-gray-700 hover:border-[#0f4c35] hover:text-[#0f4c35] cursor-pointer'
-                    }`}
-                  >
-                    {DISPLAY_LABELS[g]}
-                    <span className={`ml-1.5 ${empty ? 'text-gray-300' : 'text-gray-400'}`}>({count})</span>
-                  </button>
-                )
-              })}
-            </div>
-
             <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
               <table className="w-full text-sm border-collapse">
                 <thead className="border-b border-gray-100 bg-gray-50/60">
                   <tr>
-                    {['Case #', 'Agent', 'Lead Client', 'Members', 'Travel Period', 'Settlement', 'Total (USD)'].map(h => (
+                    {['Case', 'Agent', 'Lead Client', 'Members', 'Travel Period', 'Settlement', 'Total (USD)'].map(h => (
                       <th key={h} className="py-3 px-4 text-xs font-medium text-gray-400 text-left">{h}</th>
                     ))}
                   </tr>
@@ -261,20 +289,18 @@ export default function AdminCasesPage() {
                     return (
                       <Fragment key={group}>
                         <tr id={`status-section-${group}`} className="scroll-mt-20 bg-gray-100">
-                          <td colSpan={7} className="px-6 py-2 border-b border-gray-200">
+                          <td colSpan={7} className={`px-6 border-b border-gray-200 ${empty ? 'py-1' : 'py-2'}`}>
                             <div className="flex items-center gap-2">
-                              <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${empty ? 'bg-gray-50 text-gray-300 border-gray-100' : DISPLAY_STYLES[group]}`}>
+                              <svg className={`w-3.5 h-3.5 shrink-0 ${empty ? 'text-gray-300' : 'text-gray-600'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d={GROUP_ICON_PATHS[group]} />
+                              </svg>
+                              <span className={`text-[10px] uppercase tracking-wide ${empty ? 'text-gray-400' : 'text-gray-800 font-semibold'}`}>
                                 {DISPLAY_LABELS[group]}
                               </span>
-                              <span className={`text-xs ${empty ? 'text-gray-300' : 'text-gray-500'}`}>({items.length})</span>
+                              <span className={`text-[10px] tabular-nums ${empty ? 'text-gray-300' : 'text-gray-500'}`}>{items.length}</span>
                             </div>
                           </td>
                         </tr>
-                        {empty && (
-                          <tr>
-                            <td colSpan={7} className="px-6 py-3 text-xs text-gray-300 text-center italic">No cases</td>
-                          </tr>
-                        )}
                         {items.map((c) => {
                           const caseLead = c.case_members?.find((m) => m.is_lead)
                           const quote = c.quotes?.[0]
@@ -287,31 +313,36 @@ export default function AdminCasesPage() {
                                 <p className="text-gray-800 font-medium">{getAgent(c)?.name ?? '—'}</p>
                                 <p className="text-[10px] font-mono text-gray-400">{getAgent(c)?.agent_number}</p>
                               </td>
-                              <td className="py-3.5 px-4 font-medium text-gray-900">{caseLead?.clients?.name ?? '—'}</td>
-                              <td className="py-3.5 px-4 text-gray-500 text-center">{memberCount}</td>
+                              <td className="py-3.5 px-4">
+                                <p className="text-gray-900 font-medium">{caseLead?.clients?.name ?? '—'}</p>
+                                {caseLead?.clients?.client_number && (
+                                  <p className="text-[10px] font-mono text-gray-400">{caseLead.clients.client_number}</p>
+                                )}
+                              </td>
+                              <td className="py-3.5 px-4 text-gray-500">{memberCount}</td>
                               <td className="py-3.5 px-4 text-gray-500 text-xs">
                                 {c.travel_start_date || c.travel_end_date
-                                  ? `${c.travel_start_date ?? '—'} ~ ${c.travel_end_date ?? '—'}`
+                                  ? `${c.travel_start_date ?? '—'} – ${c.travel_end_date ?? '—'}`
                                   : '—'}
                               </td>
                               <td className="py-3.5 px-4">
                                 {(() => {
                                   const ps = partnerStatusFor(c)
                                   const agentDone = settledCaseIds.has(c.id)
-                                  const dot = (state: 'done' | 'pending' | 'na') =>
-                                    state === 'done' ? 'bg-emerald-500'
-                                      : state === 'pending' ? 'bg-amber-400'
-                                      : 'bg-gray-200'
+                                  const part = (label: string, state: 'done' | 'pending' | 'na', tip: string) => {
+                                    const markCls = state === 'done' ? 'text-emerald-600' : state === 'pending' ? 'text-amber-500' : 'text-gray-300'
+                                    const mark = state === 'done' ? '✓' : state === 'pending' ? '⋯' : '—'
+                                    return (
+                                      <span title={tip} className="inline-flex items-center gap-1">
+                                        <span className={`text-xs font-semibold ${markCls}`}>{mark}</span>
+                                        <span className="text-xs text-gray-500">{label}</span>
+                                      </span>
+                                    )
+                                  }
                                   return (
-                                    <div className="flex items-center gap-2 text-[10px]">
-                                      <span className="flex items-center gap-1" title={`Partner ${ps}`}>
-                                        <span className={`w-1.5 h-1.5 rounded-full ${dot(ps)}`} />
-                                        <span className="text-gray-500">P</span>
-                                      </span>
-                                      <span className="flex items-center gap-1" title={`Agent ${agentDone ? 'done' : 'pending'}`}>
-                                        <span className={`w-1.5 h-1.5 rounded-full ${dot(agentDone ? 'done' : 'pending')}`} />
-                                        <span className="text-gray-500">A</span>
-                                      </span>
+                                    <div className="flex items-center gap-3">
+                                      {part('Partner', ps, ps === 'done' ? 'All partner payouts complete' : ps === 'pending' ? 'Partner payouts pending' : 'No partners on this case')}
+                                      {part('Agent', agentDone ? 'done' : 'pending', agentDone ? 'Agent commission paid' : 'Agent commission pending')}
                                     </div>
                                   )
                                 })()}

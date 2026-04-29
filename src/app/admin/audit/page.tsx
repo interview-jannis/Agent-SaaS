@@ -147,27 +147,86 @@ function formatDetails(details: Record<string, unknown> | null): string {
     .join(' · ')
 }
 
+type DateFilter = 'all' | 'today' | 'yesterday' | 'last7' | 'last30' | 'custom'
+
+const DATE_FILTER_LABELS: Record<DateFilter, string> = {
+  all: 'All time',
+  today: 'Today',
+  yesterday: 'Yesterday',
+  last7: 'Last 7 days',
+  last30: 'Last 30 days',
+  custom: 'Custom range',
+}
+
+function dateFilterMatch(iso: string, filter: DateFilter, customFrom: string, customTo: string): boolean {
+  if (filter === 'all') return true
+  const d = new Date(iso)
+  if (filter === 'custom') {
+    if (customFrom && d < new Date(customFrom)) return false
+    if (customTo) {
+      // include the full "to" day
+      const toEnd = new Date(customTo)
+      toEnd.setHours(23, 59, 59, 999)
+      if (d > toEnd) return false
+    }
+    return true
+  }
+  const now = new Date()
+  const startOfDay = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate())
+  const today = startOfDay(now)
+  if (filter === 'today') return d >= today
+  if (filter === 'yesterday') {
+    const yesterday = new Date(today.getTime() - 86400000)
+    return d >= yesterday && d < today
+  }
+  if (filter === 'last7') return d >= new Date(today.getTime() - 7 * 86400000)
+  if (filter === 'last30') return d >= new Date(today.getTime() - 30 * 86400000)
+  return true
+}
+
+const PAGE_SIZE = 200
+
 export default function AdminAuditPage() {
   const [logs, setLogs] = useState<LogRow[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [reachedEnd, setReachedEnd] = useState(false)
   const [actionFilter, setActionFilter] = useState('')
   const [actorFilter, setActorFilter] = useState<'' | 'agent' | 'admin' | 'system'>('')
+  const [dateFilter, setDateFilter] = useState<DateFilter>('all')
+  const [customFrom, setCustomFrom] = useState('')
+  const [customTo, setCustomTo] = useState('')
+  const [limit, setLimit] = useState(PAGE_SIZE)
 
-  const fetchLogs = useCallback(async () => {
+  const fetchLogs = useCallback(async (nextLimit: number) => {
     const { data } = await supabase
       .from('audit_logs')
       .select('*')
       .order('created_at', { ascending: false })
-      .limit(200)
-    setLogs((data as LogRow[]) ?? [])
+      .limit(nextLimit)
+    const rows = (data as LogRow[]) ?? []
+    setLogs(rows)
+    setReachedEnd(rows.length < nextLimit)
     setLoading(false)
+    setLoadingMore(false)
   }, [])
 
-  useEffect(() => { fetchLogs() }, [fetchLogs])
+  useEffect(() => { fetchLogs(limit) }, [fetchLogs, limit])
+
+  function loadOlder() {
+    setLoadingMore(true)
+    setLimit(l => l + PAGE_SIZE)
+  }
+
+  function refresh() {
+    setLoading(true)
+    fetchLogs(limit)
+  }
 
   const filtered = logs.filter(l => {
     if (actionFilter && l.action !== actionFilter) return false
     if (actorFilter && l.actor_type !== actorFilter) return false
+    if (!dateFilterMatch(l.created_at, dateFilter, customFrom, customTo)) return false
     return true
   })
 
@@ -187,9 +246,23 @@ export default function AdminAuditPage() {
       <div className="h-14 shrink-0 flex items-center gap-4 px-6 border-b border-gray-100">
         <h1 className="text-base font-semibold text-gray-900">Audit Log</h1>
         {!loading && <span className="text-xs text-gray-400">{filtered.length}{filtered.length !== logs.length ? ` of ${logs.length}` : ''}</span>}
-        <p className="text-xs text-gray-500 ml-2">Last 200 events</p>
 
         <div className="ml-auto flex items-center gap-2">
+          <select value={dateFilter} onChange={e => setDateFilter(e.target.value as DateFilter)}
+            className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-700 focus:outline-none focus:border-[#0f4c35]">
+            {(Object.entries(DATE_FILTER_LABELS) as [DateFilter, string][]).map(([k, label]) => (
+              <option key={k} value={k}>{label}</option>
+            ))}
+          </select>
+          {dateFilter === 'custom' && (
+            <div className="flex items-center gap-1 text-xs text-gray-500">
+              <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)}
+                className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-700 focus:outline-none focus:border-[#0f4c35]" />
+              <span>–</span>
+              <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)}
+                className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-700 focus:outline-none focus:border-[#0f4c35]" />
+            </div>
+          )}
           <select value={actorFilter} onChange={e => setActorFilter(e.target.value as typeof actorFilter)}
             className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-700 focus:outline-none focus:border-[#0f4c35]">
             <option value="">All actors</option>
@@ -202,7 +275,7 @@ export default function AdminAuditPage() {
             <option value="">All actions</option>
             {uniqueActions.map(a => <option key={a} value={a}>{ACTION_VERB[a] ?? a}</option>)}
           </select>
-          <button onClick={fetchLogs}
+          <button onClick={refresh}
             className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-600 hover:border-gray-300">
             Refresh
           </button>
@@ -252,6 +325,18 @@ export default function AdminAuditPage() {
                 </div>
               </div>
             ))}
+
+            {/* Load older */}
+            <div className="flex items-center justify-center pt-2">
+              {reachedEnd ? (
+                <p className="text-[11px] text-gray-400">All events loaded ({logs.length})</p>
+              ) : (
+                <button onClick={loadOlder} disabled={loadingMore}
+                  className="text-xs border border-gray-200 rounded-lg px-3 py-1.5 bg-white text-gray-600 hover:border-gray-300 hover:text-gray-800 disabled:opacity-40 transition-colors">
+                  {loadingMore ? 'Loading…' : `Load ${PAGE_SIZE} older`}
+                </button>
+              )}
+            </div>
           </div>
         )}
       </div>

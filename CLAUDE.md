@@ -75,7 +75,8 @@ Agent 수동 개입:
 
 ## 화면 구조
 - Agent (6탭): Home / Cases / Clients / Payouts / Dashboard / Profile
-- Admin: Overview / Cases / Clients / Products / Categories / Agents / Settlement / Contracts / Settings / Audit Log
+- Admin: Overview / Cases / Products / Agents / Clients / Settlement / Contracts / **Admins** / Audit Log / Settings
+  - 권한 분기: 일반 admin은 **Admins** 메뉴 안 보임. 모든 admin이 시스템 설정/계약서 **조회**는 가능하나 **수정**은 super admin만.
 - 고객용 URL 페이지:
   - **/quote/[slug]** — Quotation (가격 finalize 전 단계)
   - **/invoice/[slug]** — Commercial Invoice (finalize 후, 은행 정보 포함)
@@ -122,7 +123,7 @@ Agent 수동 개입:
 - **product_categories**: id, name, sort_order
 - **products**: id, product_number, category_id, name, description, base_price, price_currency, partner_name, duration_value, duration_unit, has_female_doctor, has_prayer_room, dietary_type, location_address, contact_channels(jsonb), sort_order, is_active
 - **product_images**: id, product_id, image_url, is_primary, order
-- **admins**: id, auth_user_id, name, email, created_at
+- **admins**: id, auth_user_id, name, email, **title** (signer 직책), **is_super_admin** (BOOLEAN, 권한 분기), created_at
 - **agents**: id, agent_number, auth_user_id, name, email, phone, country, bank_info(jsonb), margin_rate, monthly_completed, margin_reset_at, onboarding_status, setup_completed_at, is_active
   - 초대 플로우: invite_token(UNIQUE), invite_secret, invited_at, invite_expires_at
   - Reject 플로우: rejection_reason, rejected_at
@@ -134,7 +135,7 @@ Agent 수동 개입:
   - Muslim prefs: needs_muslim_friendly, dietary_restriction, prayer_frequency, prayer_location, same_gender_doctor, same_gender_therapist, mixed_gender_activities
 - **cases**: id, case_number, agent_id, status, travel_start_date, travel_end_date, payment_date, payment_confirmed_at, created_at, concept, meeting_date(deprecated, UI 미사용), outbound_flight(jsonb), inbound_flight(jsonb), travel_completed_at(Mark Complete 시점), **cancellation_reason, cancelled_at, cancelled_by_actor_type, cancelled_by_actor_id**
 - **case_members**: id, case_id, client_id, is_lead, UNIQUE(case_id, client_id)
-- **quotes**: id, quote_number, case_id, slug, company_margin_rate, agent_margin_rate, total_price, payment_due_date, first_opened_at, open_count, **invoice_number(UNIQUE), finalized_at, invoice_first_opened_at**
+- **quotes**: id, quote_number, case_id, slug, company_margin_rate, agent_margin_rate, total_price, payment_due_date, first_opened_at, open_count, **invoice_number(UNIQUE), finalized_at, invoice_first_opened_at, signer_snapshot(jsonb {name, title})**
 - **quote_groups**: id, quote_id, name, order, member_count
 - **quote_group_members**: id, quote_group_id, case_member_id
 - **quote_items**: id, quote_id, quote_group_id, product_id, base_price, final_price

@@ -264,7 +264,7 @@ export default function AgentPayoutsPage() {
                     <table className="w-full text-sm">
                       <thead className="bg-gray-50 border-b border-gray-100">
                         <tr>
-                          {['Case #', 'Lead Client', 'Travel', 'Commission'].map(h => (
+                          {['Case', 'Lead Client', 'Travel', 'Commission'].map(h => (
                             <th key={h} className="py-2.5 px-4 text-xs font-medium text-gray-500 text-left">{h}</th>
                           ))}
                         </tr>
@@ -281,7 +281,7 @@ export default function AgentPayoutsPage() {
                               <td className="py-3 px-4 text-gray-800">{lead?.clients?.name ?? '—'}</td>
                               <td className="py-3 px-4 text-gray-500 text-xs">
                                 {c.travel_start_date || c.travel_end_date
-                                  ? `${c.travel_start_date ?? '—'} ~ ${c.travel_end_date ?? '—'}`
+                                  ? `${c.travel_start_date ?? '—'} – ${c.travel_end_date ?? '—'}`
                                   : '—'}
                               </td>
                               <td className="py-3 px-4 text-right font-semibold text-gray-900">{fmtUSD(toUsd(comm))}</td>
@@ -303,13 +303,13 @@ export default function AgentPayoutsPage() {
                   <SparklineCard label="Received" color="#0f4c35" kind="money"
                     value={toUsd(cur.amount)} prev={toUsd(prv?.amount ?? 0)}
                     values={monthly.map(m => toUsd(m.amount))} labels={sparkLabels} />
-                  <SparklineCard label="Avg per Payout" color="#10b981" kind="money"
+                  <SparklineCard label="Avg per Payout" color="#0f4c35" kind="money"
                     value={toUsd(cur.avg)} prev={toUsd(prv?.avg ?? 0)}
                     values={monthly.map(m => toUsd(m.avg))} labels={sparkLabels} />
-                  <SparklineCard label="Payouts" color="#a855f7" kind="count"
+                  <SparklineCard label="Payouts" color="#374151" kind="count"
                     value={cur.count} prev={prv?.count ?? 0}
                     values={monthly.map(m => m.count)} labels={sparkLabels} />
-                  <SparklineCard label="Avg Days to Receive" color="#3b82f6" kind="count"
+                  <SparklineCard label="Avg Days to Receive" color="#374151" kind="count"
                     value={cur.avgDaysToReceive} prev={prv?.avgDaysToReceive ?? 0}
                     values={monthly.map(m => m.avgDaysToReceive)} labels={sparkLabels} />
                 </div>

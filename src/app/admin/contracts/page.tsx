@@ -23,6 +23,7 @@ type OtSetting = { pdf_url?: string; file_name?: string; updated_at?: string }
 export default function AdminContractsPage() {
   const [templates, setTemplates] = useState<Template[]>([])
   const [loading, setLoading] = useState(true)
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false)
   const [editingType, setEditingType] = useState<ContractType | null>(null)
   const [form, setForm] = useState<{ title: string; body: string }>({ title: '', body: '' })
   const [saving, setSaving] = useState(false)
@@ -47,7 +48,17 @@ export default function AdminContractsPage() {
   }, [])
 
   useEffect(() => {
-    async function init() { await Promise.all([fetchTemplates(), fetchOt()]); setLoading(false) }
+    async function init() {
+      const { data: { session } } = await supabase.auth.getSession()
+      const uid = session?.user?.id
+      if (uid) {
+        const { data: caller } = await supabase.from('admins')
+          .select('is_super_admin').eq('auth_user_id', uid).maybeSingle()
+        setIsSuperAdmin(!!(caller as { is_super_admin?: boolean } | null)?.is_super_admin)
+      }
+      await Promise.all([fetchTemplates(), fetchOt()])
+      setLoading(false)
+    }
     init()
   }, [fetchTemplates, fetchOt])
 
@@ -134,7 +145,7 @@ export default function AdminContractsPage() {
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        <div className="max-w-3xl mx-auto px-6 py-8 space-y-6">
+        <div className="max-w-5xl mx-auto px-6 py-8 space-y-6">
           {loading ? (
             <p className="text-sm text-gray-900 text-center py-16">Loading...</p>
           ) : (
@@ -155,15 +166,17 @@ export default function AdminContractsPage() {
                     <span className="text-sm text-gray-700 truncate flex-1 min-w-0">{ot.file_name ?? 'orientation.pdf'}</span>
                     <a href={ot.pdf_url} target="_blank" rel="noopener noreferrer"
                       className="text-xs text-[#0f4c35] font-medium hover:underline shrink-0">View ↗</a>
-                    <button onClick={deleteOt} disabled={deletingOt}
-                      className="text-xs text-gray-900 hover:text-red-500 transition-colors disabled:opacity-40">
-                      {deletingOt ? 'Deleting...' : 'Delete'}
-                    </button>
+                    {isSuperAdmin && (
+                      <button onClick={deleteOt} disabled={deletingOt}
+                        className="text-xs text-gray-900 hover:text-red-500 transition-colors disabled:opacity-40">
+                        {deletingOt ? 'Deleting...' : 'Delete'}
+                      </button>
+                    )}
                   </div>
                 )}
 
                 {/* Staged file preview (awaiting confirm) */}
-                {stagedOt && (
+                {isSuperAdmin && stagedOt && (
                   <div className="bg-white border border-[#0f4c35]/40 rounded-xl p-3 space-y-3">
                     <div className="flex items-center gap-3">
                       <svg className="w-5 h-5 text-[#0f4c35] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
@@ -187,8 +200,8 @@ export default function AdminContractsPage() {
                   </div>
                 )}
 
-                {/* Dropzone — only when no file uploaded and nothing staged */}
-                {!ot?.pdf_url && !stagedOt && (
+                {/* Dropzone — only when no file uploaded and nothing staged (super admin only) */}
+                {isSuperAdmin && !ot?.pdf_url && !stagedOt && (
                   <label
                     onDragEnter={e => { e.preventDefault(); setOtDragging(true) }}
                     onDragOver={e => { e.preventDefault(); setOtDragging(true) }}
@@ -214,6 +227,11 @@ export default function AdminContractsPage() {
                   </label>
                 )}
 
+                {/* Placeholder for non-super-admin when no PDF exists */}
+                {!isSuperAdmin && !ot?.pdf_url && !stagedOt && (
+                  <p className="text-xs text-gray-400">No orientation material uploaded yet.</p>
+                )}
+
                 {otError && <p className="text-xs text-red-500">{otError}</p>}
               </section>
 
@@ -230,8 +248,10 @@ export default function AdminContractsPage() {
                       )}
                     </div>
                     {!isEditing ? (
-                      <button onClick={() => openEdit(type)}
-                        className="text-xs font-medium text-[#0f4c35] hover:underline">Edit</button>
+                      isSuperAdmin && (
+                        <button onClick={() => openEdit(type)}
+                          className="text-xs font-medium text-[#0f4c35] hover:underline">Edit</button>
+                      )
                     ) : (
                       <div className="flex items-center gap-3">
                         <button onClick={() => setEditingType(null)}

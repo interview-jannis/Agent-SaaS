@@ -274,8 +274,28 @@ export default function AdminProductsPage() {
   return (
     <div className="flex flex-col h-full bg-white">
       <div className="h-14 shrink-0 flex items-center gap-4 px-6 border-b border-gray-100">
-        <h1 className="text-base font-semibold text-gray-900">Products</h1>
-        <div className="flex items-center gap-2 ml-auto">
+        <h1 className="text-base font-semibold text-gray-900 shrink-0">Products</h1>
+        {!loading && filtered.length > 0 && (
+          <div className="flex-1 min-w-0 flex items-center gap-1 bg-gray-50 border border-gray-100 rounded-lg px-2 py-1 overflow-x-auto no-scrollbar">
+            <span className="shrink-0 text-[10px] font-semibold text-gray-400 uppercase tracking-wider pr-1.5 mr-0.5 border-r border-gray-200">Jump</span>
+            {categories.map((cat) => {
+              const count = groupedByCategory.get(cat.id)?.length ?? 0
+              if (count === 0) return null
+              return (
+                <button
+                  key={cat.id}
+                  onClick={() => scrollToCategory(cat.id)}
+                  className="shrink-0 px-2 py-0.5 rounded text-[11px] text-gray-700 hover:bg-white hover:text-[#0f4c35] cursor-pointer transition-colors"
+                  title={`Jump to ${cat.name}`}
+                >
+                  {cat.name}
+                  <span className="ml-1 font-medium text-gray-400">{count}</span>
+                </button>
+              )
+            })}
+          </div>
+        )}
+        <div className="flex items-center gap-2 shrink-0 ml-auto">
           <button
             onClick={handleExportBackup}
             disabled={loading || exporting || filtered.length === 0}
@@ -359,27 +379,6 @@ export default function AdminProductsPage() {
           </select>
         </div>
 
-        {/* Category jump pills (sticky — always accessible while scrolling) */}
-        {!loading && filtered.length > 0 && (
-          <div className="sticky top-0 z-20 bg-[#0f4c35]/[0.04] border border-[#0f4c35]/15 rounded-xl shadow-sm px-4 py-2.5 flex flex-wrap gap-2 backdrop-blur-sm">
-            <span className="self-center text-[11px] font-semibold text-[#0f4c35]/70 uppercase tracking-wide mr-1">Jump to</span>
-            {categories.map((cat) => {
-              const count = groupedByCategory.get(cat.id)?.length ?? 0
-              if (count === 0) return null
-              return (
-                <button
-                  key={cat.id}
-                  onClick={() => scrollToCategory(cat.id)}
-                  className="px-3 py-1.5 rounded-full bg-white border border-gray-200 hover:border-[#0f4c35] hover:text-[#0f4c35] text-sm text-gray-700 transition-colors shadow-sm"
-                >
-                  {cat.name}
-                  <span className="text-gray-400 ml-1.5">({count})</span>
-                </button>
-              )
-            })}
-          </div>
-        )}
-
         {/* Table */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
           {loading ? (
@@ -412,13 +411,12 @@ export default function AdminProductsPage() {
                   if (items.length === 0) return null
                   return (
                     <Fragment key={cat.id}>
-                      <tr id={`cat-section-${cat.id}`} className="scroll-mt-20">
-                        <td
-                          colSpan={9}
-                          className="sticky top-16 z-10 bg-gray-100 border-y border-gray-200 px-6 py-2 text-xs font-bold text-gray-700 uppercase tracking-wide"
-                        >
-                          {cat.name}
-                          <span className="text-gray-400 font-normal normal-case ml-2">({items.length})</span>
+                      <tr id={`cat-section-${cat.id}`} className="scroll-mt-20 bg-gray-100">
+                        <td colSpan={9} className="border-b border-gray-200 px-6 py-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] uppercase tracking-wide text-gray-800 font-semibold">{cat.name}</span>
+                            <span className="text-[10px] tabular-nums text-gray-500">{items.length}</span>
+                          </div>
                         </td>
                       </tr>
                       {items.map((p) => (

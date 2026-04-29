@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import ChangePasswordCard from '@/components/ChangePasswordCard'
+import { COUNTRIES, COUNTRY_DATALIST_ID } from '@/lib/countries'
 
 type AgentProfile = {
   id: string
@@ -158,8 +159,11 @@ export default function AgentProfilePage() {
                 </div>
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">Country</label>
-                  <input value={country} onChange={e => setCountry(e.target.value)}
+                  <input list={COUNTRY_DATALIST_ID} value={country} onChange={e => setCountry(e.target.value)}
                     className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
+                  <datalist id={COUNTRY_DATALIST_ID}>
+                    {COUNTRIES.map(c => <option key={c} value={c} />)}
+                  </datalist>
                 </div>
               </div>
             )}
