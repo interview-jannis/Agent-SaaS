@@ -44,7 +44,8 @@
 - [x] **Agent Home** 이모티콘 → ✓ 마커 + 텍스트 (VIP 톤)
 - [x] **Lead Client #CL 번호 표시** (Agent 컬럼이랑 일관)
 - [x] **PIC (Invoice Signer) 시스템** — admins.title + quotes.signer_snapshot, Pricing finalize 시 동결, From + 하단 서명에 표시
-- [x] **Super Admin 시스템** — admins.is_super_admin, /admin/admins 페이지, create/delete API, Sidebar 분기, 조회/수정 권한 분리
+- [x] **Super Admin 시스템** — admins.is_super_admin, /admin/admins 페이지, invite/delete API, Sidebar 분기, 조회/수정 권한 분리
+- [x] **Admin 초대 링크** (agent invite 패턴 mirror) — super admin 버튼 1번 → URL 생성 → Slack 전달, 신규 admin이 본인 정보 입력. 7일 만료 + 단일 사용
 
 ### 4/28 완료
 - [x] **canceled 케이스 view-only** — Travel Dates / Trip Info / Members / Send 버튼 hide + read-only 배너 (cancellation_reason 표시)
@@ -342,6 +343,12 @@ ALTER TABLE quotes ADD COLUMN signer_snapshot JSONB;
 ALTER TABLE admins ADD COLUMN is_super_admin BOOLEAN DEFAULT false;
 -- 첫 super admin은 SQL로 직접 지정:
 -- UPDATE admins SET is_super_admin = true WHERE email = '...';
+
+-- Admin 초대 링크 (agent invite 패턴 mirror)
+ALTER TABLE admins ADD COLUMN invite_token TEXT UNIQUE;
+ALTER TABLE admins ADD COLUMN invite_secret TEXT;
+ALTER TABLE admins ADD COLUMN invited_at TIMESTAMPTZ;
+ALTER TABLE admins ADD COLUMN invite_expires_at TIMESTAMPTZ;
 
 -- Country 데이터 정합성 (사용자 직접 실행 완료)
 UPDATE agents SET country = 'United Arab Emirates' WHERE country = 'United Arb Emirates';

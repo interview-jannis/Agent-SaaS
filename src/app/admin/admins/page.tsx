@@ -11,17 +11,9 @@ type AdminRow = {
   email: string | null
   title: string | null
   is_super_admin: boolean | null
+  invite_token: string | null
+  invite_expires_at: string | null
   created_at: string | null
-}
-
-function genTempPassword(): string {
-  // Friendly-but-strong: 12 chars, alphanumeric (no confusing chars)
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789'
-  let out = ''
-  const bytes = new Uint8Array(12)
-  crypto.getRandomValues(bytes)
-  for (const b of bytes) out += chars[b % chars.length]
-  return out
 }
 
 export default function AdminAdminsPage() {
@@ -31,20 +23,19 @@ export default function AdminAdminsPage() {
   const [callerId, setCallerId] = useState<string | null>(null)
   const [accessDenied, setAccessDenied] = useState(false)
 
-  // Add modal
-  const [showAdd, setShowAdd] = useState(false)
-  const [form, setForm] = useState({ name: '', email: '', title: '', password: genTempPassword() })
-  const [creating, setCreating] = useState(false)
-  const [createError, setCreateError] = useState('')
-  const [createdInfo, setCreatedInfo] = useState<{ name: string; email: string; password: string } | null>(null)
-  const [copiedField, setCopiedField] = useState<string>('')
+  // Invite modal
+  const [showInvite, setShowInvite] = useState(false)
+  const [inviting, setInviting] = useState(false)
+  const [inviteError, setInviteError] = useState('')
+  const [createdInvite, setCreatedInvite] = useState<{ url: string; expires_at: string } | null>(null)
+  const [copied, setCopied] = useState(false)
 
   // Delete confirm
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
   const fetchAdmins = useCallback(async () => {
     const { data } = await supabase.from('admins')
-      .select('id, auth_user_id, name, email, title, is_super_admin, created_at')
+      .select('id, auth_user_id, name, email, title, is_super_admin, invite_token, invite_expires_at, created_at')
       .order('is_super_admin', { ascending: false })
       .order('name')
     setAdmins((data as AdminRow[]) ?? [])
@@ -68,32 +59,31 @@ export default function AdminAdminsPage() {
     init()
   }, [fetchAdmins, router])
 
-  function openAddModal() {
-    setForm({ name: '', email: '', title: '', password: genTempPassword() })
-    setCreateError('')
-    setCreatedInfo(null)
-    setShowAdd(true)
+  function openInviteModal() {
+    setInviteError('')
+    setCreatedInvite(null)
+    setShowInvite(true)
   }
 
-  async function createAdmin() {
-    setCreating(true); setCreateError('')
+  async function createInvite() {
+    setInviting(true); setInviteError('')
     try {
       const { data: { session } } = await supabase.auth.getSession()
       const token = session?.access_token
       if (!token) throw new Error('Not signed in.')
-      const res = await fetch('/api/admin/create-admin', {
+      const res = await fetch('/api/admin/invite-admin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', authorization: `Bearer ${token}` },
-        body: JSON.stringify(form),
       })
       const body = await res.json()
-      if (!res.ok) throw new Error(body?.error ?? 'Failed to create admin.')
-      setCreatedInfo({ name: form.name, email: form.email, password: form.password })
+      if (!res.ok) throw new Error(body?.error ?? 'Failed to create invite.')
+      const baseUrl = typeof window !== 'undefined' ? window.location.origin : ''
+      setCreatedInvite({ url: `${baseUrl}${body.invite_path}`, expires_at: body.expires_at })
       await fetchAdmins()
     } catch (e: unknown) {
-      setCreateError((e as { message?: string })?.message ?? 'Failed to create admin.')
+      setInviteError((e as { message?: string })?.message ?? 'Failed to create invite.')
     } finally {
-      setCreating(false)
+      setInviting(false)
     }
   }
 
@@ -118,10 +108,11 @@ export default function AdminAdminsPage() {
     }
   }
 
-  function copy(value: string, field: string) {
-    navigator.clipboard.writeText(value).then(() => {
-      setCopiedField(field)
-      setTimeout(() => setCopiedField(''), 2000)
+  function copyInvite() {
+    if (!createdInvite) return
+    navigator.clipboard.writeText(createdInvite.url).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
     })
   }
 
@@ -139,12 +130,12 @@ export default function AdminAdminsPage() {
       <div className="h-14 shrink-0 flex items-center gap-4 px-6 border-b border-gray-100">
         <h1 className="text-base font-semibold text-gray-900">Admins</h1>
         {!loading && <span className="text-xs text-gray-400">{admins.length}</span>}
-        <button onClick={openAddModal}
+        <button onClick={openInviteModal}
           className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-[#0f4c35] text-white text-xs font-medium rounded-lg hover:bg-[#0a3828] transition-colors">
           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
           </svg>
-          Add Admin
+          Invite Admin
         </button>
       </div>
 
@@ -157,34 +148,49 @@ export default function AdminAdminsPage() {
               {admins.map(a => {
                 const isSelf = a.id === callerId
                 const isProtected = !!a.is_super_admin
+                const isPendingInvite = !!a.invite_token
                 return (
                   <div key={a.id} className="flex items-start gap-4 px-5 py-4">
-                    <div className="w-8 h-8 rounded-full bg-[#0f4c35]/10 flex items-center justify-center shrink-0">
-                      <svg className="w-4 h-4 text-[#0f4c35]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${isPendingInvite ? 'bg-amber-50' : 'bg-[#0f4c35]/10'}`}>
+                      <svg className={`w-4 h-4 ${isPendingInvite ? 'text-amber-600' : 'text-[#0f4c35]'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
                       </svg>
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <p className="text-sm font-medium text-gray-900">{a.name}</p>
+                        <p className="text-sm font-medium text-gray-900">
+                          {isPendingInvite ? <span className="text-gray-500">Invited admin</span> : a.name}
+                        </p>
                         {isProtected && (
                           <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-[#0f4c35]/10 text-[#0f4c35]">Super Admin</span>
+                        )}
+                        {isPendingInvite && (
+                          <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-50 text-amber-700">Invite pending</span>
                         )}
                         {isSelf && (
                           <span className="text-[10px] text-gray-400">You</span>
                         )}
                       </div>
-                      <p className="text-xs text-gray-500 mt-0.5">{a.email}</p>
-                      {a.title && <p className="text-xs text-gray-400 mt-0.5">{a.title}</p>}
+                      {isPendingInvite ? (
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          Awaiting setup{a.invite_expires_at && ` · expires ${new Date(a.invite_expires_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}
+                        </p>
+                      ) : (
+                        <>
+                          <p className="text-xs text-gray-500 mt-0.5">{a.email}</p>
+                          {a.title && <p className="text-xs text-gray-400 mt-0.5">{a.title}</p>}
+                        </>
+                      )}
                     </div>
                     {!isSelf && !isProtected && (
                       <button onClick={() => {
-                        if (window.confirm(`Delete admin "${a.name}"? This removes their login and admin record. This cannot be undone.`)) {
+                        const label = isPendingInvite ? 'this pending invite' : `admin "${a.name}"`
+                        if (window.confirm(`Delete ${label}? This removes their login and admin record. This cannot be undone.`)) {
                           deleteAdmin(a.id)
                         }
                       }} disabled={deletingId === a.id}
                         className="shrink-0 text-xs text-gray-400 hover:text-red-500 disabled:opacity-40 transition-colors">
-                        {deletingId === a.id ? 'Deleting…' : 'Delete'}
+                        {deletingId === a.id ? 'Deleting…' : isPendingInvite ? 'Cancel' : 'Delete'}
                       </button>
                     )}
                   </div>
@@ -195,86 +201,46 @@ export default function AdminAdminsPage() {
         </div>
       </div>
 
-      {/* Add modal */}
-      {showAdd && (
+      {/* Invite modal */}
+      {showInvite && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
-          onClick={() => { if (!creating) setShowAdd(false) }}>
+          onClick={() => { if (!inviting) setShowInvite(false) }}>
           <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4" onClick={e => e.stopPropagation()}>
-            {!createdInfo ? (
+            {!createdInvite ? (
               <>
                 <div>
-                  <h2 className="text-base font-semibold text-gray-900">Add Admin</h2>
-                  <p className="text-xs text-gray-500 mt-1">Creates a new admin account. The new admin signs in with these credentials and changes their password in Settings.</p>
+                  <h2 className="text-base font-semibold text-gray-900">Invite Admin</h2>
+                  <p className="text-xs text-gray-500 mt-1">Generates a one-time invite link. Share it with the new admin — they&apos;ll set their own email and password from the link.</p>
                 </div>
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1.5">Name *</label>
-                    <input autoFocus type="text" value={form.name}
-                      onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
-                      placeholder="e.g. Jane Doe"
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1.5">Email *</label>
-                    <input type="email" value={form.email}
-                      onChange={e => setForm(p => ({ ...p, email: e.target.value }))}
-                      placeholder="jane@interviewcorp.co.kr"
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1.5">Title</label>
-                    <input type="text" value={form.title}
-                      onChange={e => setForm(p => ({ ...p, title: e.target.value }))}
-                      placeholder="e.g. Account Manager"
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1.5">Temporary Password *</label>
-                    <div className="flex items-center gap-2">
-                      <input type="text" value={form.password}
-                        onChange={e => setForm(p => ({ ...p, password: e.target.value }))}
-                        className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 font-mono focus:outline-none focus:border-[#0f4c35]" />
-                      <button type="button" onClick={() => setForm(p => ({ ...p, password: genTempPassword() }))}
-                        className="text-xs text-gray-500 hover:text-[#0f4c35] px-2 py-1 rounded">↻ Regen</button>
-                    </div>
-                    <p className="text-[10px] text-gray-400 mt-1">The new admin will change this on first login.</p>
-                  </div>
-                </div>
-                {createError && <p className="text-xs text-red-500">{createError}</p>}
+                {inviteError && <p className="text-xs text-red-500">{inviteError}</p>}
                 <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
-                  <button onClick={() => setShowAdd(false)} disabled={creating}
+                  <button onClick={() => setShowInvite(false)} disabled={inviting}
                     className="text-xs text-gray-500 hover:text-gray-800 px-3 py-1.5 disabled:opacity-40">Cancel</button>
-                  <button onClick={createAdmin} disabled={creating || !form.name.trim() || !form.email.trim() || form.password.length < 8}
+                  <button onClick={createInvite} disabled={inviting}
                     className="px-4 py-1.5 text-xs font-medium bg-[#0f4c35] text-white rounded-lg hover:bg-[#0a3828] disabled:opacity-40">
-                    {creating ? 'Creating…' : 'Create Admin'}
+                    {inviting ? 'Generating…' : 'Generate Invite Link'}
                   </button>
                 </div>
               </>
             ) : (
               <>
                 <div>
-                  <h2 className="text-base font-semibold text-gray-900">Admin created</h2>
-                  <p className="text-xs text-gray-500 mt-1">Share these credentials with {createdInfo.name}. They&apos;ll change the password on first login.</p>
+                  <h2 className="text-base font-semibold text-gray-900">Invite link ready</h2>
+                  <p className="text-xs text-gray-500 mt-1">Share this link via Slack or email. The invitee opens it and sets their own email + password.</p>
                 </div>
-                <div className="bg-gray-50 rounded-lg border border-gray-200 p-4 space-y-3 text-sm">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-xs text-gray-500 shrink-0">Email</span>
-                    <span className="font-mono text-gray-900 truncate flex-1 text-right">{createdInfo.email}</span>
-                    <button onClick={() => copy(createdInfo.email, 'email')}
-                      className="text-[10px] text-[#0f4c35] hover:underline shrink-0">{copiedField === 'email' ? 'Copied!' : 'Copy'}</button>
-                  </div>
-                  <div className="flex items-center justify-between gap-3 pt-3 border-t border-gray-200">
-                    <span className="text-xs text-gray-500 shrink-0">Password</span>
-                    <span className="font-mono text-gray-900 truncate flex-1 text-right">{createdInfo.password}</span>
-                    <button onClick={() => copy(createdInfo.password, 'password')}
-                      className="text-[10px] text-[#0f4c35] hover:underline shrink-0">{copiedField === 'password' ? 'Copied!' : 'Copy'}</button>
-                  </div>
+                <div className="bg-gray-50 rounded-lg border border-gray-200 p-4 space-y-2">
+                  <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Invite URL</p>
+                  <p className="font-mono text-xs text-gray-800 break-all">{createdInvite.url}</p>
+                  <button onClick={copyInvite}
+                    className="w-full mt-2 px-3 py-1.5 text-xs font-medium bg-white border border-gray-200 text-gray-700 rounded-lg hover:border-[#0f4c35] hover:text-[#0f4c35]">
+                    {copied ? '✓ Copied to clipboard' : 'Copy link'}
+                  </button>
                 </div>
-                <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                  This password is shown once. After this dialog closes you won&apos;t be able to retrieve it.
+                <p className="text-[11px] text-gray-500">
+                  Expires {new Date(createdInvite.expires_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} · single use
                 </p>
                 <div className="flex items-center justify-end pt-2 border-t border-gray-100">
-                  <button onClick={() => setShowAdd(false)}
+                  <button onClick={() => setShowInvite(false)}
                     className="px-4 py-1.5 text-xs font-medium bg-[#0f4c35] text-white rounded-lg hover:bg-[#0a3828]">Done</button>
                 </div>
               </>

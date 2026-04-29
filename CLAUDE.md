@@ -124,6 +124,7 @@ Agent 수동 개입:
 - **products**: id, product_number, category_id, name, description, base_price, price_currency, partner_name, duration_value, duration_unit, has_female_doctor, has_prayer_room, dietary_type, location_address, contact_channels(jsonb), sort_order, is_active
 - **product_images**: id, product_id, image_url, is_primary, order
 - **admins**: id, auth_user_id, name, email, **title** (signer 직책), **is_super_admin** (BOOLEAN, 권한 분기), created_at
+  - 초대 플로우: invite_token(UNIQUE), invite_secret, invited_at, invite_expires_at (agent와 동일 패턴)
 - **agents**: id, agent_number, auth_user_id, name, email, phone, country, bank_info(jsonb), margin_rate, monthly_completed, margin_reset_at, onboarding_status, setup_completed_at, is_active
   - 초대 플로우: invite_token(UNIQUE), invite_secret, invited_at, invite_expires_at
   - Reject 플로우: rejection_reason, rejected_at

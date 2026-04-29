@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { randomBytes } from 'crypto'
 
-// Super-admin-only: creates a new admin auth user + admins table row.
-// Caller passes name + email + temp password (+ optional title). The new admin
-// uses these credentials to sign in, then changes their password in Settings.
+// Super-admin-only: creates an invite link for a new admin.
+// A placeholder auth user + admins row backs the session during setup.
+// The invitee opens /admin-invite/{token}, signs in via the placeholder,
+// then sets their real email + password + name + title.
 
 export async function POST(req: Request) {
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -34,48 +36,34 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Super admin access required.' }, { status: 403 })
   }
 
-  const body = await req.json().catch(() => null) as
-    | { name?: string; email?: string; password?: string; title?: string }
-    | null
-  if (!body) return NextResponse.json({ error: 'Invalid request body.' }, { status: 400 })
+  // Generate token + placeholder credentials
+  const token = randomBytes(24).toString('base64url')
+  const placeholderPassword = randomBytes(18).toString('base64url')
+  const placeholderEmail = `admin-invite-${token.slice(0, 12).toLowerCase()}@tiktak.temp`
 
-  const name = body.name?.trim()
-  const email = body.email?.trim().toLowerCase()
-  const password = body.password
-  const title = body.title?.trim() || null
-
-  if (!name) return NextResponse.json({ error: 'Name is required.' }, { status: 400 })
-  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    return NextResponse.json({ error: 'Valid email is required.' }, { status: 400 })
-  }
-  if (!password || password.length < 8) {
-    return NextResponse.json({ error: 'Password must be at least 8 characters.' }, { status: 400 })
-  }
-
-  // Reject duplicate email in admins table
-  const { data: existing } = await supabase.from('admins').select('id').eq('email', email).maybeSingle()
-  if (existing) {
-    return NextResponse.json({ error: 'An admin with this email already exists.' }, { status: 409 })
-  }
-
-  // Create auth user
+  // Create auth user (auto-confirmed so signInWithPassword works immediately)
   const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-    email,
-    password,
+    email: placeholderEmail,
+    password: placeholderPassword,
     email_confirm: true,
-    user_metadata: { role: 'admin' },
+    user_metadata: { role: 'admin', invited: true },
   })
   if (authError || !authData?.user) {
     return NextResponse.json({ error: authError?.message ?? 'Failed to create auth user.' }, { status: 400 })
   }
 
-  // Insert admins row
+  const now = new Date()
+  const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000) // +7 days
+
   const { error: insertError } = await supabase.from('admins').insert({
     auth_user_id: authData.user.id,
-    name,
-    email,
-    title,
+    name: 'Invited Admin',
+    email: placeholderEmail,
     is_super_admin: false,
+    invite_token: token,
+    invite_secret: placeholderPassword,
+    invited_at: now.toISOString(),
+    invite_expires_at: expiresAt.toISOString(),
   })
 
   if (insertError) {
@@ -83,5 +71,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: insertError.message }, { status: 500 })
   }
 
-  return NextResponse.json({ name, email, title })
+  return NextResponse.json({
+    token,
+    invite_path: `/admin-invite/${token}`,
+    expires_at: expiresAt.toISOString(),
+  })
 }
