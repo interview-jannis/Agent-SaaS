@@ -272,40 +272,40 @@ export default function AdminProductsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-white">
-      <div className="px-12 py-10 space-y-6">
-
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <h1 className="text-xl font-semibold text-gray-900">Products</h1>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleExportBackup}
-              disabled={loading || exporting || filtered.length === 0}
-              className="flex items-center gap-1.5 px-4 py-2 border border-gray-200 text-gray-600 text-sm font-medium rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-              </svg>
-              {exporting ? `Exporting… ${exportProgress}` : 'Export Backup'}
-            </button>
-            <button
-              onClick={() => router.push('/admin/categories')}
-              className="flex items-center gap-1.5 px-4 py-2 border border-gray-200 text-gray-600 text-sm font-medium rounded-xl hover:bg-gray-50 transition-colors"
-            >
-              Manage Categories
-            </button>
-            <button
-              onClick={() => router.push('/admin/products/new')}
-              className="flex items-center gap-1.5 px-4 py-2 bg-[#0f4c35] text-white text-sm font-medium rounded-xl hover:bg-[#0a3828] transition-colors"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-              </svg>
-              Add Product
-            </button>
-          </div>
+    <div className="flex flex-col h-full bg-white">
+      <div className="h-14 shrink-0 flex items-center gap-4 px-6 border-b border-gray-100">
+        <h1 className="text-base font-semibold text-gray-900">Products</h1>
+        <div className="flex items-center gap-2 ml-auto">
+          <button
+            onClick={handleExportBackup}
+            disabled={loading || exporting || filtered.length === 0}
+            className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 text-gray-600 text-xs font-medium rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+            </svg>
+            {exporting ? `Exporting… ${exportProgress}` : 'Export Backup'}
+          </button>
+          <button
+            onClick={() => router.push('/admin/categories')}
+            className="px-3 py-1.5 border border-gray-200 text-gray-600 text-xs font-medium rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            Manage Categories
+          </button>
+          <button
+            onClick={() => router.push('/admin/products/new')}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#0f4c35] text-white text-xs font-medium rounded-lg hover:bg-[#0a3828] transition-colors"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+            Add Product
+          </button>
         </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto">
+        <div className="px-12 py-8 space-y-6">
 
         {/* Filters */}
         <div className="flex items-center gap-3">
@@ -544,6 +544,7 @@ export default function AdminProductsPage() {
           )}
         </div>
 
+        </div>
       </div>
     </div>
   )

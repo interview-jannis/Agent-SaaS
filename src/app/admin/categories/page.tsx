@@ -53,10 +53,13 @@ export default function AdminCategoriesPage() {
   }
 
   return (
-    <div className="min-h-screen bg-white">
-      <div className="px-12 py-10 max-w-xl space-y-6">
+    <div className="flex flex-col h-full bg-white">
+      <div className="h-14 shrink-0 flex items-center gap-4 px-6 border-b border-gray-100">
+        <h1 className="text-base font-semibold text-gray-900">Manage Categories</h1>
+      </div>
 
-        <h1 className="text-xl font-semibold text-gray-900">Manage Categories</h1>
+      <div className="flex-1 overflow-y-auto">
+        <div className="max-w-xl mx-auto px-6 py-8 space-y-6">
 
         {/* Add new */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-4">
@@ -139,6 +142,7 @@ export default function AdminCategoriesPage() {
 
         {error && <p className="text-sm text-red-500">{error}</p>}
 
+        </div>
       </div>
     </div>
   )

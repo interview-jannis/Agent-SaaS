@@ -71,7 +71,7 @@ export default function AdminClientsPage() {
   return (
     <div className="flex flex-col h-full bg-white">
       <div className="h-14 shrink-0 flex items-center gap-4 px-6 border-b border-gray-100">
-        <h1 className="text-sm font-semibold text-gray-900">Clients</h1>
+        <h1 className="text-base font-semibold text-gray-900">Clients</h1>
         {!loading && <span className="text-xs text-gray-400">{filtered.length}{filtered.length !== clients.length ? ` of ${clients.length}` : ''}</span>}
 
         <div className="ml-auto flex items-center gap-2">

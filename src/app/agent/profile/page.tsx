@@ -82,11 +82,11 @@ export default function AgentProfilePage() {
     <div className="flex flex-col h-full bg-white">
       {/* Header */}
       <div className="h-14 shrink-0 flex items-center gap-4 px-6 border-b border-gray-100">
-        <h1 className="text-sm font-semibold text-gray-900">Profile</h1>
+        <h1 className="text-base font-semibold text-gray-900">Profile</h1>
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        <div className="max-w-2xl mx-auto px-6 py-6 space-y-5">
+        <div className="max-w-2xl mx-auto px-6 py-8 space-y-6">
 
           {/* Header info */}
           <div className="flex items-start justify-between">

@@ -235,10 +235,13 @@ export default async function AdminOverviewPage() {
   const totalActionCount = pendingAgentCount + paymentPendingCount + pricingNeededCount + scheduleNeededCount + stuckCases.length
 
   return (
-    <div className="min-h-screen bg-white">
-      <div className="px-12 py-10 space-y-6">
+    <div className="flex flex-col h-full bg-white">
+      <div className="h-14 shrink-0 flex items-center gap-4 px-6 border-b border-gray-100">
+        <h1 className="text-base font-semibold text-gray-900">Overview</h1>
+      </div>
 
-        <h1 className="text-xl font-semibold text-gray-900">Overview</h1>
+      <div className="flex-1 overflow-y-auto">
+        <div className="px-12 py-8 space-y-6">
 
         {/* HERO — All-time totals */}
         <section className="bg-gray-50 rounded-2xl p-6">
@@ -489,6 +492,7 @@ export default async function AdminOverviewPage() {
           </div>
         </section>
 
+        </div>
       </div>
     </div>
   )

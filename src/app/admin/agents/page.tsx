@@ -143,7 +143,7 @@ export default function AdminAgentsPage() {
       {/* Header */}
       <div className="h-14 shrink-0 flex items-center gap-4 px-6 border-b border-gray-100">
         <div className="flex items-center gap-2">
-          <h1 className="text-sm font-semibold text-gray-900">Agents</h1>
+          <h1 className="text-base font-semibold text-gray-900">Agents</h1>
           {!loading && (
             <span className="text-xs text-gray-400">
               {approvedAgents.length} approved
@@ -151,26 +151,23 @@ export default function AdminAgentsPage() {
             </span>
           )}
         </div>
-        <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg w-64">
-          <svg className="w-3.5 h-3.5 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
-          </svg>
+        <div className="ml-auto flex items-center gap-2">
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search..."
-            className="flex-1 text-sm bg-transparent focus:outline-none text-gray-700 placeholder-gray-400" />
+            className="text-xs border border-gray-200 rounded-lg px-3 py-1.5 w-48 text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
+          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as typeof statusFilter)}
+            className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-[#0f4c35] bg-white text-gray-600">
+            <option value="all">All statuses</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </select>
+          <button onClick={() => setShowCreate(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#0f4c35] text-white text-xs font-medium rounded-lg hover:bg-[#0a3828]">
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+            Invite Agent
+          </button>
         </div>
-        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as typeof statusFilter)}
-          className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-[#0f4c35] bg-white text-gray-600 ml-auto">
-          <option value="all">All statuses</option>
-          <option value="active">Active</option>
-          <option value="inactive">Inactive</option>
-        </select>
-        <button onClick={() => setShowCreate(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-[#0f4c35] text-white text-xs font-medium rounded-lg hover:bg-[#0a3828]">
-          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-          </svg>
-          Invite Agent
-        </button>
       </div>
 
       {/* Table — split layout: approved (scrollable) on top, onboarding pinned to bottom */}

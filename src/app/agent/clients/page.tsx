@@ -129,7 +129,7 @@ export default function AgentClientsPage() {
       {/* Header */}
       <div className="h-14 shrink-0 flex items-center gap-4 px-6 border-b border-gray-100">
         <div className="flex items-center gap-2">
-          <h1 className="text-sm font-semibold text-gray-900">Clients</h1>
+          <h1 className="text-base font-semibold text-gray-900">Clients</h1>
           {!loading && <span className="text-xs text-gray-400">{clients.length}</span>}
         </div>
         <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg w-64">

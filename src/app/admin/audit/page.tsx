@@ -185,7 +185,7 @@ export default function AdminAuditPage() {
   return (
     <div className="flex flex-col h-full bg-white">
       <div className="h-14 shrink-0 flex items-center gap-4 px-6 border-b border-gray-100">
-        <h1 className="text-sm font-semibold text-gray-900">Audit Log</h1>
+        <h1 className="text-base font-semibold text-gray-900">Audit Log</h1>
         {!loading && <span className="text-xs text-gray-400">{filtered.length}{filtered.length !== logs.length ? ` of ${logs.length}` : ''}</span>}
         <p className="text-xs text-gray-500 ml-2">Last 200 events</p>
 
@@ -215,7 +215,7 @@ export default function AdminAuditPage() {
         ) : filtered.length === 0 ? (
           <p className="text-sm text-gray-400 text-center py-16">No events match the filter.</p>
         ) : (
-          <div className="px-12 py-6 space-y-6">
+          <div className="px-12 py-8 space-y-6">
             {groupedByDay.map(group => (
               <div key={group.key}>
                 <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm flex items-center gap-3 py-2 mb-1">
