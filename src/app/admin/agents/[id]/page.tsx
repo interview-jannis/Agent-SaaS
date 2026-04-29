@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { logAsCurrentUser } from '@/lib/audit'
 import SparklineCard from '@/components/SparklineCard'
-import { STATUS_LABELS, STATUS_STYLES } from '@/lib/caseStatus'
+import { STATUS_LABELS, STATUS_STYLES, type CaseStatus } from '@/lib/caseStatus'
 
 const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
@@ -39,7 +39,7 @@ type ContractRow = {
 type CaseRow = {
   id: string
   case_number: string
-  status: string
+  status: CaseStatus
   travel_start_date: string | null
   travel_end_date: string | null
   travel_completed_at: string | null
