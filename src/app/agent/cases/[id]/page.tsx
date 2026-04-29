@@ -72,6 +72,7 @@ type Schedule = {
   created_at: string
   file_name: string | null
   revision_note: string | null
+  admin_note: string | null
   confirmed_at: string | null
 }
 
@@ -85,6 +86,7 @@ type CaseDetail = {
   concept: string | null
   outbound_flight: FlightInfo
   inbound_flight: FlightInfo
+  cancellation_reason: string | null
   case_members: CaseMember[]
   quotes: Quote[]
   schedules: Schedule[]
@@ -195,7 +197,7 @@ export default function CaseDetailPage() {
       .from('cases')
       .select(`
         id, case_number, status, travel_start_date, travel_end_date, created_at,
-        concept, outbound_flight, inbound_flight,
+        concept, outbound_flight, inbound_flight, cancellation_reason,
         case_members(
           id, is_lead,
           clients(client_number, nationality, ${CLIENT_INFO_COLUMNS})
@@ -208,7 +210,7 @@ export default function CaseDetailPage() {
             quote_group_members(id, case_member_id)
           )
         ),
-        schedules(id, slug, pdf_url, status, version, created_at, file_name, revision_note, confirmed_at)
+        schedules(id, slug, pdf_url, status, version, created_at, file_name, revision_note, admin_note, confirmed_at)
       `)
       .eq('id', id)
       .single()
@@ -245,6 +247,7 @@ export default function CaseDetailPage() {
 
   async function saveDates() {
     if (!caseData) return
+    if (['canceled', 'awaiting_pricing', 'awaiting_payment', 'awaiting_travel', 'completed'].includes(caseData.status)) return
     setSavingDates(true)
     await supabase.from('cases').update({ travel_start_date: dateStart || null, travel_end_date: dateEnd || null }).eq('id', caseData.id)
     await fetchCase()
@@ -303,11 +306,12 @@ export default function CaseDetailPage() {
     }
   }
 
-  // Send Invoice
+  // Send Invoice — route picks Quotation vs Invoice based on finalize state.
   function sendInvoice() {
     if (!quote?.slug) return
     const baseUrl = typeof window !== 'undefined' ? window.location.origin : ''
-    navigator.clipboard.writeText(`${baseUrl}/quote/${quote.slug}`).then(() => {
+    const path = quote.finalized_at ? 'invoice' : 'quote'
+    navigator.clipboard.writeText(`${baseUrl}/${path}/${quote.slug}`).then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     })
@@ -391,8 +395,10 @@ export default function CaseDetailPage() {
 
   async function saveTripInfo() {
     if (!caseData) return
+    if (['canceled', 'awaiting_pricing', 'awaiting_payment', 'awaiting_travel', 'completed'].includes(caseData.status)) return
     setSavingTrip(true); setTripError('')
     try {
+      const newConcept = tripForm.concept.trim() || null
       const out: FlightInfo = (tripForm.out_departure_datetime || tripForm.out_departure_airport
         || tripForm.out_arrival_datetime || tripForm.out_arrival_airport)
         ? {
@@ -411,13 +417,49 @@ export default function CaseDetailPage() {
             arrival_airport: tripForm.in_arrival_airport || undefined,
           }
         : null
+
+      // Once status > awaiting_info, admin has acted on this info — block clearing required fields.
+      const wasComplete = caseData.status !== 'awaiting_info'
+      if (wasComplete) {
+        const flightFilled = (f: FlightInfo) => !!(f && f.departure_datetime && f.departure_airport && f.arrival_datetime && f.arrival_airport)
+        const cleared: string[] = []
+        if (caseData.concept && !newConcept) cleared.push('Concept')
+        const oldOutFilled = !!(caseData.outbound_flight && caseData.outbound_flight.departure_datetime && caseData.outbound_flight.departure_airport && caseData.outbound_flight.arrival_datetime && caseData.outbound_flight.arrival_airport)
+        const oldInFilled = !!(caseData.inbound_flight && caseData.inbound_flight.departure_datetime && caseData.inbound_flight.departure_airport && caseData.inbound_flight.arrival_datetime && caseData.inbound_flight.arrival_airport)
+        if (oldOutFilled && !flightFilled(out)) cleared.push('Outbound Flight')
+        if (oldInFilled && !flightFilled(inb)) cleared.push('Inbound Flight')
+        if (cleared.length > 0) {
+          throw new Error(`Cannot clear required fields once set: ${cleared.join(', ')}. Update the value instead.`)
+        }
+      }
+
+      // Build detailed diff for admin notification (only meaningful past awaiting_info)
+      const showVal = (v: string | null | undefined) => v && v.trim() ? v : '—'
+      const flightDiff = (label: string, a: FlightInfo, b: FlightInfo, out: string[]): void => {
+        const subFields: { key: 'departure_datetime' | 'departure_airport' | 'arrival_datetime' | 'arrival_airport'; name: string }[] = [
+          { key: 'departure_airport', name: 'departure airport' },
+          { key: 'departure_datetime', name: 'departure' },
+          { key: 'arrival_airport', name: 'arrival airport' },
+          { key: 'arrival_datetime', name: 'arrival' },
+        ]
+        for (const f of subFields) {
+          const oldV = a?.[f.key] ?? null
+          const newV = b?.[f.key] ?? null
+          if (oldV !== newV) out.push(`${label} ${f.name}: ${showVal(oldV)} → ${showVal(newV)}`)
+        }
+      }
+      const items: string[] = []
+      if (caseData.concept !== newConcept) items.push(`Concept: ${showVal(caseData.concept)} → ${showVal(newConcept)}`)
+      flightDiff('Outbound', caseData.outbound_flight, out, items)
+      flightDiff('Inbound', caseData.inbound_flight, inb, items)
+
       const { error } = await supabase.from('cases').update({
-        concept: tripForm.concept.trim() || null,
+        concept: newConcept,
         outbound_flight: out,
         inbound_flight: inb,
       }).eq('id', caseData.id)
       if (error) throw error
-      await notifyCaseInfoChanged(caseData.id)
+      await notifyCaseInfoChanged(caseData.id, items.length > 0 ? { header: 'Trip info updated', items } : undefined)
       await fetchCase()
       setEditTrip(false)
     } catch (e: unknown) {
@@ -519,6 +561,7 @@ export default function CaseDetailPage() {
 
   async function saveMembers() {
     if (!caseData) return
+    if (['canceled', 'awaiting_pricing', 'awaiting_payment', 'awaiting_travel', 'completed'].includes(caseData.status)) return
 
     // Validation
     const activeMembers = pendingMembers.filter(p => !p.isRemoved)
@@ -529,6 +572,22 @@ export default function CaseDetailPage() {
     const leadCount = activeMembers.filter(p => p.isLead).length
     if (leadCount === 0) { setMembersError('A lead must be designated.'); return }
     if (leadCount > 1) { setMembersError('Only one lead allowed.'); return }
+
+    // Once status > awaiting_info, every group slot was filled — block saves that leave gaps.
+    if (caseData.status !== 'awaiting_info') {
+      const groups = caseData.quotes[0]?.quote_groups ?? []
+      const shortfalls: string[] = []
+      groups.forEach((g, gi) => {
+        const assigned = activeMembers.filter(p => p.groupId === g.id).length
+        if (assigned < g.member_count) {
+          shortfalls.push(`Group ${gi + 1} (${g.name}) ${assigned}/${g.member_count}`)
+        }
+      })
+      if (shortfalls.length > 0) {
+        setMembersError(`Cannot leave group slots empty once schedule work has begun: ${shortfalls.join(', ')}. Replace the missing member instead.`)
+        return
+      }
+    }
 
     setSavingMembers(true); setMembersError('')
     try {
@@ -607,7 +666,49 @@ export default function CaseDetailPage() {
         }
       }
 
-      await notifyCaseInfoChanged(caseData.id)
+      // Build summary for admin: added/removed names, lead change, group reassignments, group rename
+      const groupNameById = new Map<string, string>()
+      ;(caseData.quotes[0]?.quote_groups ?? []).forEach(g => {
+        const newName = (pendingGroupNames[g.id] ?? g.name).trim() || g.name
+        groupNameById.set(g.id, newName)
+      })
+      const groupLabel = (gid: string | null | undefined) => gid ? (groupNameById.get(gid) ?? '—') : 'Unassigned'
+
+      const added = pendingMembers.filter(p => p.isNew && !p.isRemoved).map(p => p.clientName).filter(Boolean)
+      const removed = pendingMembers.filter(p => !p.isNew && p.isRemoved).map(p => p.clientName).filter(Boolean)
+      // Lead transfer — name old/new lead
+      const oldLead = server.find(s => s.isLead)?.clientName ?? '—'
+      const newLead = pendingMembers.find(p => !p.isRemoved && p.isLead)?.clientName ?? '—'
+      const leadDiff = oldLead !== newLead ? `Lead: ${oldLead} → ${newLead}` : null
+      // Per-member group reassignments (only existing, non-removed members)
+      const groupMoves: string[] = []
+      for (const p of pendingMembers) {
+        if (p.isNew || p.isRemoved) continue
+        const prior = server.find(s => s.id === p.id)
+        if (!prior) continue
+        if ((prior.groupId ?? null) !== (p.groupId ?? null)) {
+          // Resolve old group name from server snapshot's group ids
+          const oldName = prior.groupId
+            ? (caseData.quotes[0]?.quote_groups ?? []).find(g => g.id === prior.groupId)?.name ?? '—'
+            : 'Unassigned'
+          groupMoves.push(`${p.clientName}: ${oldName} → ${groupLabel(p.groupId)}`)
+        }
+      }
+      // Group renames — show old → new per group
+      const renames: string[] = []
+      for (const g of caseData.quotes[0]?.quote_groups ?? []) {
+        const newName = (pendingGroupNames[g.id] ?? g.name).trim()
+        if (newName && newName !== g.name) renames.push(`Group renamed: "${g.name}" → "${newName}"`)
+      }
+
+      const items: string[] = []
+      if (added.length > 0) items.push(`Added ${added.join(', ')}`)
+      if (removed.length > 0) items.push(`Removed ${removed.join(', ')}`)
+      if (leadDiff) items.push(leadDiff)
+      items.push(...groupMoves)
+      items.push(...renames)
+
+      await notifyCaseInfoChanged(caseData.id, items.length > 0 ? { header: 'Members updated', items } : undefined)
       const fresh = await fetchCase()
       // Force rebuild: temp-id NEW entries are now real rows — otherwise membersDirty stays true
       // and the next Save would try to re-insert them (duplicate key).
@@ -689,6 +790,9 @@ export default function CaseDetailPage() {
   if (loading) return <div className="flex-1 flex items-center justify-center"><p className="text-sm text-gray-400">Loading...</p></div>
   if (!caseData) return <div className="flex-1 flex items-center justify-center"><p className="text-sm text-gray-400">Case not found.</p></div>
 
+  const isCanceled = caseData.status === 'canceled'
+  // Trip Info / Members / Travel Dates lock — once schedule is confirmed, this info is set in stone.
+  const tripMembersLocked = isCanceled || ['awaiting_pricing', 'awaiting_payment', 'awaiting_travel', 'completed'].includes(caseData.status)
   const lead = caseData.case_members.find(m => m.is_lead)
   const companions = caseData.case_members.filter(m => !m.is_lead)
   const quote = caseData.quotes[0] ?? null
@@ -750,13 +854,26 @@ export default function CaseDetailPage() {
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-3xl mx-auto px-6 py-6 space-y-5">
 
+          {/* Canceled banner — read-only mode */}
+          {isCanceled && (
+            <div className="border-l-4 border-rose-400 bg-rose-50 rounded-r-xl px-4 py-3 space-y-1">
+              <p className="text-xs font-semibold text-rose-800">This case has been canceled</p>
+              {caseData.cancellation_reason && (
+                <p className="text-xs text-rose-700"><span className="font-medium">Cancellation reason:</span> {caseData.cancellation_reason}</p>
+              )}
+              <p className="text-xs text-rose-700">Editing is disabled. View-only.</p>
+            </div>
+          )}
+
           {/* Travel Dates */}
           <section className="bg-gray-50 rounded-2xl p-5">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Travel Period</h3>
               {!editDates ? (
-                <button onClick={() => { setEditDates(true); setDateStart(caseData.travel_start_date ?? ''); setDateEnd(caseData.travel_end_date ?? '') }}
-                  className="text-xs text-[#0f4c35] hover:underline font-medium">Edit</button>
+                !tripMembersLocked && (
+                  <button onClick={() => { setEditDates(true); setDateStart(caseData.travel_start_date ?? ''); setDateEnd(caseData.travel_end_date ?? '') }}
+                    className="text-xs text-[#0f4c35] hover:underline font-medium">Edit</button>
+                )
               ) : (
                 <div className="flex items-center gap-3">
                   <button onClick={() => setEditDates(false)} className="text-xs text-gray-400 hover:text-gray-600">Cancel</button>
@@ -810,9 +927,11 @@ export default function CaseDetailPage() {
                 {!caseInfoComplete && <span className="text-[10px] font-medium text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">Required</span>}
               </div>
               {!editTrip ? (
-                <button onClick={openTripEditor} className="text-xs text-[#0f4c35] hover:underline font-medium">
-                  {caseInfoComplete ? 'Edit' : 'Add info'}
-                </button>
+                !tripMembersLocked && (
+                  <button onClick={openTripEditor} className="text-xs text-[#0f4c35] hover:underline font-medium">
+                    {caseInfoComplete ? 'Edit' : 'Add info'}
+                  </button>
+                )
               ) : (
                 <div className="flex items-center gap-3">
                   <button onClick={() => { setEditTrip(false); setTripError('') }} className="text-xs text-gray-400 hover:text-gray-600">Cancel</button>
@@ -949,8 +1068,10 @@ export default function CaseDetailPage() {
                 {editMembers && dirty && <span className="text-[10px] font-medium text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">Unsaved</span>}
               </div>
               {!editMembers ? (
-                <button onClick={() => setEditMembers(true)}
-                  className="text-xs font-medium text-[#0f4c35] hover:underline">Edit</button>
+                !tripMembersLocked && (
+                  <button onClick={() => setEditMembers(true)}
+                    className="text-xs font-medium text-[#0f4c35] hover:underline">Edit</button>
+                )
               ) : (
                 <button onClick={() => setShowNewClient(v => !v)}
                   className="text-xs font-medium text-[#0f4c35] hover:underline">+ Register new client</button>
@@ -1394,6 +1515,13 @@ export default function CaseDetailPage() {
                   </div>
                 )}
 
+                {schedule.admin_note && schedule.status !== 'revision_requested' && (
+                  <div className="border border-blue-200 bg-blue-50 rounded-xl p-3">
+                    <p className="text-[10px] font-semibold text-blue-700 uppercase tracking-wide mb-1">Admin Note</p>
+                    <p className="text-xs text-blue-900 whitespace-pre-line">{schedule.admin_note}</p>
+                  </div>
+                )}
+
                 {schedule.status === 'confirmed' && schedule.confirmed_at && (
                   <p className="text-xs text-emerald-600">Confirmed on {schedule.confirmed_at.slice(0, 10)}</p>
                 )}
@@ -1469,7 +1597,7 @@ export default function CaseDetailPage() {
                   <div className="flex items-center gap-2">
                     {/* Preview — open invoice in new tab */}
                     <a
-                      href={`${typeof window !== 'undefined' ? window.location.origin : ''}/quote/${quote.slug}?preview=1`}
+                      href={`${typeof window !== 'undefined' ? window.location.origin : ''}/${quote.finalized_at ? 'invoice' : 'quote'}/${quote.slug}?preview=1`}
                       target="_blank" rel="noopener noreferrer"
                       className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-[#0f4c35] transition-colors px-2 py-1.5 rounded-lg hover:bg-gray-100">
                       <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -1478,8 +1606,9 @@ export default function CaseDetailPage() {
                       </svg>
                       Preview
                     </a>
-                    {/* Send — copy quote/invoice link to clipboard. Label flips once admin finalizes pricing. */}
-                    {(() => {
+                    {/* Send — copy quote/invoice link to clipboard. Label flips once admin finalizes pricing.
+                        Hidden during awaiting_pricing since the new invoice isn't ready yet. */}
+                    {!isCanceled && caseData.status !== 'awaiting_pricing' && (() => {
                       const isInvoiceStage = !!quote.finalized_at
                       const sendLabel = isInvoiceStage ? 'Send Invoice' : 'Send Quotation'
                       return (
@@ -1507,6 +1636,15 @@ export default function CaseDetailPage() {
                   </div>
                 )}
               </div>
+
+              {/* Awaiting final invoice — schedule is confirmed, admin is finalizing pricing */}
+              {caseData.status === 'awaiting_pricing' && (
+                <div className="border-l-4 border-blue-400 bg-blue-50 rounded-r-xl px-4 py-3">
+                  <p className="text-xs font-semibold text-blue-800">Final invoice in preparation</p>
+                  <p className="text-xs text-blue-700 mt-0.5">Schedule has been confirmed. Admin is finalizing the pricing — the official invoice will be ready shortly. You&apos;ll be notified once it&apos;s available to send to your client.</p>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-white rounded-xl border border-gray-100 p-3">
                   <p className="text-[10px] text-gray-400 mb-1">Total Amount</p>

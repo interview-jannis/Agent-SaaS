@@ -32,10 +32,28 @@ export async function createNotification(input: InsertInput) {
 }
 
 // Notify every admin (broadcast). One row per admin so is_read is per-user.
+// Server-first: calls /api/notifications/broadcast-admins (service role) to avoid
+// RLS/session edge cases on cross-user INSERTs. Falls back to client-side insert
+// if the API isn't reachable (e.g. during static prerender or service key unset).
 export async function notifyAllAdmins(message: string, link_url?: string | null) {
+  // Server path — only meaningful in browser (relative fetch needs an origin)
+  if (typeof window !== 'undefined') {
+    try {
+      const res = await fetch('/api/notifications/broadcast-admins', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message, link_url: link_url ?? null }),
+      })
+      if (res.ok) return
+      console.warn('[notification] server broadcast non-OK, falling back to client', await res.text().catch(() => ''))
+    } catch (e) {
+      console.warn('[notification] server broadcast threw, falling back to client', e)
+    }
+  }
+
+  // Client fallback
   const { data: admins } = await supabase.from('admins').select('id, auth_user_id')
   if (!admins || admins.length === 0) return
-  // Deduplicate by auth_user_id — if a user has multiple admin rows, only notify them once.
   const seen = new Set<string>()
   const rows = admins
     .filter(a => a.auth_user_id && !seen.has(a.auth_user_id) && seen.add(a.auth_user_id))

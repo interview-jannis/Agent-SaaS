@@ -1,16 +1,19 @@
 # Project Progress
 
 ## 현재 상태
-- **Phase**: UX 대폭 재설계 완료 (Payouts / Dashboard / Overview / Settlement). 온보딩 초대 링크로 전환. 최종 테스트 대기.
-- **마지막 작업**: Admin Overview/Settlement 재설계 (4지표 Hero, Agent 그룹핑). Agent Dashboard Kanban Pipeline. Agent Payouts 차트. 초대 링크 온보딩. Invoice/Schedule 열람 알림. Audit Log 타임라인 개편.
-- **마지막 업데이트**: 2026-04-24 (개발 마감 5/8, 시뮬레이션 5/11~15, 런칭 5/18)
+- **Phase**: 흐름 B 후속 폴리시 완료 — 편집 잠금 정책 정착 / 알림 자동 diff / /quote · /invoice 라우트 분리 / Hybrid 결제 마감일 / Schedule 재업로드 메모 / Admin broadcast 신뢰성 회복.
+- **마지막 작업**: canceled & schedule_confirmed 편집 잠금, Client 필수 필드 clear 차단, /quote vs /invoice 분리, 알림 메시지 자동 diff (old → new), schedules.admin_note + Pricing reprice diff, server-side admin broadcast, 알림 클릭 자동 새로고침.
+- **마지막 업데이트**: 2026-04-28 (개발 마감 5/8, 시뮬레이션 5/11~15, 런칭 5/18)
 - **SaaS 브랜드명**: **Tiktak** (UI 전역, 법인명 Interview Co., Ltd)
 
-> 2026-04-24 상세: `notes/26.04.24.md` (최신)
+> 2026-04-28 상세: `notes/26.04.28.md` (최신)
+> 2026-04-27 상세: `notes/26.04.27.md`
+> 2026-04-24 상세: `notes/26.04.24.md`
 > 2026-04-23 상세: `notes/26.04.23.md`
 > 2026-04-22 상세: `notes/26.04.22.md`
 > 2026-04-21 상세: `notes/26.04.21.md`
-> 2026-04-17 회사 미팅 피드백: `notes/meetings/26.04.17-kickoff-feedback.md`
+> 2026-04-24 데모 미팅: `notes/meetings/26.04.24-demo-meeting.md`
+> 2026-04-17 회사 미팅 피드백: `notes/meetings/26.04.17-meeting-feedback.md`
 
 ---
 
@@ -20,7 +23,26 @@
 - [ ] End-to-end 전체 플로우 테스트 (초대 → 온보딩 → 승인 → Setup → 견적 → 스케줄 → 정산)
 - [ ] 배포 환경 최종 점검 (`SUPABASE_SERVICE_ROLE_KEY`, Resend 키 등)
 - [ ] 법무 검토: NDA / Partnership Agreement 초안 (사내 고문변호사 or SIAC 전문가)
-- [x] CLAUDE.md 스키마 최신화 (travel_completed_at, setup_completed_at, link_url, invite_*, rejection_*, first_opened_at 등)
+- [ ] **정보 등록 단계** 분리 검토 (quote_sent 전 Concept/Trip Info/멤버 등록 흐름) — 4/27 멘션 이월
+- [x] CLAUDE.md 스키마 최신화 (흐름 B 8단계 status, /invoice, partner_payments, cancellation_*, invoice_number, finalized_at 등)
+- [x] schedules.admin_note 마이그레이션
+
+### 4/28 완료
+- [x] **canceled 케이스 view-only** — Travel Dates / Trip Info / Members / Send 버튼 hide + read-only 배너 (cancellation_reason 표시)
+- [x] **Client 필수 필드 clear 차단** — 한 번 채워진 필드는 빈값 저장 차단 (값 변경은 OK)
+- [x] **schedule_confirmed 이후 Trip/Members 잠금** — `tripMembersLocked` 플래그
+- [x] **`isComplete()` 그룹 슬롯 검증 추가** — 자동 승격 버그 수정
+- [x] **/quote vs /invoice 라우트 분리** — `QuoteDocument` 공용 component, `?as=` 제거
+- [x] **알림 메시지 자동 diff** — Trip Info / Members / Pricing reprice old → new bullet 형식
+- [x] **schedules.admin_note** — 재업로드 시 "What changed?" 메모 입력, 알림 + Schedule History 표시
+- [x] **Pricing reprice diff 알림** — Total / item count / Due date 변경 명세
+- [x] **Hybrid 결제 마감일** — Finalize Pricing에 due date input (default 7일)
+- [x] **Admin broadcast 신뢰성 회복** — `/api/notifications/broadcast-admins` (service role) + client fallback
+- [x] **알림 클릭 자동 새로고침** — 같은 페이지면 reload, 다른 페이지면 push
+- [x] **Schedule History UX** — 각 박스 상단 우측 Preview(eye 아이콘), `?v=` 파라미터로 버전 명시, Delete 게이트 강화 (`!first_opened_at`)
+- [x] **Quotation/Invoice 그룹 라벨** — "Group 1: Smith Family" 인덱스 prefix
+- [x] **Financials awaiting_pricing 안내 배너** — "Final invoice in preparation"
+- [x] **알림 줄바꿈 + bullet 통일** — `whitespace-pre-line`, 단일 변경도 bullet
 
 ### 4/24 완료
 - [x] **Products Export ZIP 백업** — 엑셀 + images/ + README
@@ -289,7 +311,14 @@
 
 ## DB 스키마 변경사항 누적
 
-### 금일(4/24) 추가분
+### 4/28 추가분
+
+```sql
+-- Schedule 재업로드 메모 (admin → agent 변경 사유 텍스트)
+ALTER TABLE schedules ADD COLUMN admin_note TEXT;
+```
+
+### 4/24 추가분
 
 ```sql
 -- Invite flow (온보딩 구조 변경)

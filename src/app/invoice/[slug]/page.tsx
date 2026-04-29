@@ -2,7 +2,7 @@ import QuoteDocument from '@/components/QuoteDocument'
 
 export const dynamic = 'force-dynamic'
 
-export default async function QuotePage({
+export default async function InvoicePage({
   params,
   searchParams,
 }: {
@@ -11,5 +11,5 @@ export default async function QuotePage({
 }) {
   const { slug } = await params
   const { preview } = await searchParams
-  return <QuoteDocument slug={slug} mode="quotation" preview={!!preview} />
+  return <QuoteDocument slug={slug} mode="invoice" preview={!!preview} />
 }

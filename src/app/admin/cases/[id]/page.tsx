@@ -84,8 +84,10 @@ type Schedule = {
   version: number
   file_name: string | null
   revision_note: string | null
+  admin_note: string | null
   confirmed_at: string | null
   created_at: string
+  first_opened_at: string | null
 }
 
 type Agent = { id: string; agent_number: string; name: string }
@@ -103,6 +105,7 @@ type Case = {
   concept: string | null
   outbound_flight: FlightInfo
   inbound_flight: FlightInfo
+  cancellation_reason: string | null
   agents: Agent | Agent[] | null
   case_members: CaseMember[]
   quotes: Quote[]
@@ -153,7 +156,9 @@ export default function AdminCaseDetailPage() {
   const [editingPricing, setEditingPricing] = useState(false)
   const [savingPricing, setSavingPricing] = useState(false)
   const [pricingError, setPricingError] = useState('')
+  const [dueDateEdit, setDueDateEdit] = useState<string>('')
   const [stagedFile, setStagedFile] = useState<File | null>(null)
+  const [stagedNote, setStagedNote] = useState('')
   const [uploadingSchedule, setUploadingSchedule] = useState(false)
   const [deletingScheduleId, setDeletingScheduleId] = useState<string | null>(null)
   const [actionError, setActionError] = useState('')
@@ -172,7 +177,7 @@ export default function AdminCaseDetailPage() {
       .select(`
         id, case_number, status, agent_id, travel_start_date, travel_end_date,
         payment_date, payment_confirmed_at, created_at,
-        concept, outbound_flight, inbound_flight,
+        concept, outbound_flight, inbound_flight, cancellation_reason,
         agents!cases_agent_id_fkey(id, agent_number, name),
         case_members(
           id, is_lead,
@@ -182,7 +187,7 @@ export default function AdminCaseDetailPage() {
           id, quote_number, invoice_number, slug, total_price, payment_due_date, agent_margin_rate, company_margin_rate, finalized_at,
           quote_groups(id, name, order, member_count, quote_items(id, base_price, final_price, products(id, name, description, partner_name)), quote_group_members(id, case_member_id))
         ),
-        schedules(id, slug, pdf_url, status, version, file_name, revision_note, confirmed_at, created_at)
+        schedules(id, slug, pdf_url, status, version, file_name, revision_note, admin_note, confirmed_at, created_at, first_opened_at)
       `)
       .eq('id', id)
       .maybeSingle()
@@ -246,6 +251,7 @@ export default function AdminCaseDetailPage() {
 
   function cancelStaged() {
     setStagedFile(null)
+    setStagedNote('')
     setActionError('')
   }
 
@@ -271,6 +277,7 @@ export default function AdminCaseDetailPage() {
       const slug = existing[0]?.slug ?? crypto.randomUUID()
       const version = existing.reduce((m, s) => Math.max(m, s.version), 0) + 1
 
+      const note = stagedNote.trim() || null
       const { error: insertError } = await supabase.from('schedules').insert({
         case_id: caseData.id,
         quote_id: caseData.quotes?.[0]?.id ?? null,
@@ -279,14 +286,19 @@ export default function AdminCaseDetailPage() {
         status: 'pending',
         version,
         file_name: stagedFile.name,
+        admin_note: note,
       })
       if (insertError) throw insertError
 
       await supabase.from('cases').update({ status: 'reviewing_schedule' }).eq('id', caseData.id)
-      await notifyAgent(caseData.agent_id, `${caseData.case_number} Schedule uploaded (v${version})`, `/agent/cases/${caseData.id}`)
-      await logAsCurrentUser('schedule.uploaded', { type: 'case', id: caseData.id, label: caseData.case_number }, { version, file_name: stagedFile.name })
+      const notifyMsg = note
+        ? `${caseData.case_number} Schedule v${version} uploaded — ${note}`
+        : `${caseData.case_number} Schedule uploaded (v${version})`
+      await notifyAgent(caseData.agent_id, notifyMsg, `/agent/cases/${caseData.id}`)
+      await logAsCurrentUser('schedule.uploaded', { type: 'case', id: caseData.id, label: caseData.case_number }, { version, file_name: stagedFile.name, note })
       await fetchCase()
       setStagedFile(null)
+      setStagedNote('')
     } catch (e: unknown) { setActionError((e as { message?: string })?.message ?? 'Failed.') }
     finally { setUploadingSchedule(false) }
   }
@@ -318,6 +330,11 @@ export default function AdminCaseDetailPage() {
 
       if (caseData) {
         await logAsCurrentUser('schedule.deleted', { type: 'case', id: caseData.id, label: caseData.case_number }, { version, file_name: fileName })
+        await notifyAgent(
+          caseData.agent_id,
+          `${caseData.case_number} Schedule v${version} deleted by admin`,
+          `/agent/cases/${caseData.id}`
+        )
       }
       await fetchCase()
     } catch (e: unknown) { setActionError((e as { message?: string })?.message ?? 'Failed.') }
@@ -387,6 +404,17 @@ export default function AdminCaseDetailPage() {
 
         {/* LEFT — Case Info + Actions */}
         <div className="w-1/2 overflow-y-auto border-r border-gray-100 px-6 py-6 space-y-5">
+
+          {/* Canceled banner */}
+          {caseData.status === 'canceled' && (
+            <div className="border-l-4 border-rose-400 bg-rose-50 rounded-r-xl px-4 py-3 space-y-1">
+              <p className="text-xs font-semibold text-rose-800">This case has been canceled</p>
+              {caseData.cancellation_reason && (
+                <p className="text-xs text-rose-700"><span className="font-medium">Cancellation reason:</span> {caseData.cancellation_reason}</p>
+              )}
+              <p className="text-xs text-rose-700">Most actions are disabled. View-only.</p>
+            </div>
+          )}
 
           {/* Agent */}
           <section className="bg-gray-50 rounded-2xl p-4">
@@ -575,9 +603,9 @@ export default function AdminCaseDetailPage() {
                   </span>
                   {latestQuote.finalized_at ? (
                     <>
-                      <a href={`${baseUrl}/quote/${latestQuote.slug}?preview=1&as=quotation`} target="_blank" rel="noopener noreferrer"
+                      <a href={`${baseUrl}/quote/${latestQuote.slug}?preview=1`} target="_blank" rel="noopener noreferrer"
                         className="text-xs text-gray-400 hover:text-[#0f4c35] transition-colors">Quotation ↗</a>
-                      <a href={`${baseUrl}/quote/${latestQuote.slug}?preview=1&as=invoice`} target="_blank" rel="noopener noreferrer"
+                      <a href={`${baseUrl}/invoice/${latestQuote.slug}?preview=1`} target="_blank" rel="noopener noreferrer"
                         className="text-xs text-gray-400 hover:text-[#0f4c35] transition-colors">Invoice ↗</a>
                     </>
                   ) : (
@@ -679,6 +707,7 @@ export default function AdminCaseDetailPage() {
                     s.status === 'confirmed' ? 'Confirmed' :
                     s.status === 'revision_requested' ? 'Revision Requested' :
                     'Pending Review'
+                  const canDelete = !scheduleLocked && isLatest && s.status === 'pending' && !s.first_opened_at
                   return (
                     <div key={s.id} className={`bg-white rounded-xl border p-3 space-y-1.5 ${isLatest ? 'border-gray-300' : 'border-gray-100'}`}>
                       <div className="flex items-start gap-2 flex-wrap">
@@ -688,24 +717,40 @@ export default function AdminCaseDetailPage() {
                         {s.status === 'revision_requested' && s.revision_note && (
                           <span className="text-xs text-gray-700 border-l-2 border-rose-300 pl-2 flex-1 min-w-0 whitespace-pre-line">{s.revision_note}</span>
                         )}
-                        <span className="text-[10px] text-gray-400 ml-auto">{s.created_at.slice(0, 10)}</span>
+                        <div className="ml-auto flex items-center gap-3">
+                          {s.slug && s.pdf_url && (
+                            <a
+                              href={`${baseUrl}/schedule/${s.slug}?preview=1&v=${s.version}`}
+                              target="_blank" rel="noopener noreferrer"
+                              className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-[#0f4c35] transition-colors">
+                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                              </svg>
+                              Preview
+                            </a>
+                          )}
+                          <span className="text-[10px] text-gray-400">{s.created_at.slice(0, 10)}</span>
+                        </div>
                       </div>
                       {s.file_name && <p className="text-xs text-gray-500 break-all">{s.file_name}</p>}
-                      <div className="flex items-center gap-3 pt-1">
-                        {s.pdf_url && (
-                          <a href={s.pdf_url} target="_blank" rel="noopener noreferrer"
-                            className="text-xs text-[#0f4c35] font-medium hover:underline">View PDF ↗</a>
-                        )}
-                        {!scheduleLocked && isLatest && s.status === 'pending' && (
+                      {s.admin_note && (
+                        <div className="border-l-2 border-blue-300 bg-blue-50 px-2 py-1 rounded-r">
+                          <p className="text-[10px] font-semibold text-blue-700 uppercase tracking-wide mb-0.5">Admin note</p>
+                          <p className="text-xs text-blue-900 whitespace-pre-line">{s.admin_note}</p>
+                        </div>
+                      )}
+                      {canDelete && (
+                        <div className="flex items-center pt-1">
                           <button
                             onClick={() => deleteScheduleVersion(s.id, s.pdf_url, s.version, s.file_name)}
                             disabled={deletingScheduleId === s.id}
                             className="text-xs text-gray-400 hover:text-red-500 transition-colors ml-auto disabled:opacity-40"
-                            title="Undo: only the latest upload can be deleted, before the agent reviews it.">
+                            title="Undo: only the latest upload can be deleted, before the agent reviews it or the client opens it.">
                             {deletingScheduleId === s.id ? 'Deleting...' : 'Delete'}
                           </button>
-                        )}
-                      </div>
+                        </div>
+                      )}
                     </div>
                   )
                 })}
@@ -717,14 +762,21 @@ export default function AdminCaseDetailPage() {
           {actionError && <p className="text-xs text-red-500 px-1">{actionError}</p>}
 
           {/* Finalize Pricing — admin adjusts final prices after agent confirms schedule */}
-          {((caseData.status === 'awaiting_pricing') || (caseData.status === 'awaiting_payment' && editingPricing)) && latestQuote && (
+          {((caseData.status === 'awaiting_pricing') || (caseData.status === 'awaiting_payment' && editingPricing)) && latestQuote && (() => {
+            // Default due date: existing value, else today + 7 days
+            const today = new Date().toISOString().slice(0, 10)
+            const defaultDue = latestQuote.payment_due_date ?? (() => {
+              const d = new Date(); d.setDate(d.getDate() + 7); return d.toISOString().slice(0, 10)
+            })()
+            const dueDateValue = dueDateEdit || defaultDue
+            return (
             <section className="border border-violet-200 bg-violet-50 rounded-2xl p-4 space-y-3">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <p className="text-xs font-semibold text-violet-700 uppercase tracking-wide">
                   {latestQuote.finalized_at ? 'Edit Final Pricing' : 'Finalize Pricing'}
                 </p>
                 {latestQuote.finalized_at && (
-                  <button onClick={() => { setEditingPricing(false); setPricingEdits({}); setPricingError('') }}
+                  <button onClick={() => { setEditingPricing(false); setPricingEdits({}); setDueDateEdit(''); setPricingError('') }}
                     className="text-xs text-gray-500 hover:text-gray-800">Cancel</button>
                 )}
               </div>
@@ -778,6 +830,17 @@ export default function AdminCaseDetailPage() {
                 )
               })()}
 
+              {/* Payment Due Date — defaults to today + 7d, admin can override */}
+              <div className="bg-white rounded-xl border border-violet-100 px-3 py-2 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs text-gray-700 font-medium">Payment Due Date</p>
+                  <p className="text-[10px] text-gray-400">Default is 7 days from today. Adjust if the client needs more or less time.</p>
+                </div>
+                <input type="date" value={dueDateValue} min={today}
+                  onChange={(e) => setDueDateEdit(e.target.value)}
+                  className="border border-gray-200 rounded-lg px-2 py-1 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35] bg-white" />
+              </div>
+
               {(() => {
                 const hasPricingChanges = sortedGroups
                   .flatMap(g => g.quote_items)
@@ -785,8 +848,9 @@ export default function AdminCaseDetailPage() {
                     const v = pricingEdits[item.id]
                     return v !== undefined && Number(v) !== item.final_price
                   })
+                const dueDateChanged = dueDateValue !== latestQuote.payment_due_date
                 const isFirstFinalize = !latestQuote.finalized_at
-                const buttonDisabled = savingPricing || (!isFirstFinalize && !hasPricingChanges)
+                const buttonDisabled = savingPricing || (!isFirstFinalize && !hasPricingChanges && !dueDateChanged)
                 return (
               <button
                 disabled={buttonDisabled}
@@ -796,6 +860,7 @@ export default function AdminCaseDetailPage() {
                   try {
                     const items = sortedGroups.flatMap(g => g.quote_items)
                     const newTotal = items.reduce((s, item) => s + (Number(pricingEdits[item.id] ?? item.final_price) || 0), 0)
+                    const newDueDate = dueDateValue
 
                     // Update each item that changed
                     for (const item of items) {
@@ -818,6 +883,7 @@ export default function AdminCaseDetailPage() {
                       total_price: newTotal,
                       finalized_at: latestQuote.finalized_at ?? new Date().toISOString(),
                       invoice_number: invoiceNumber,
+                      payment_due_date: newDueDate,
                     }
                     // Reprice with real change → re-arm the "invoice opened" notification
                     if (!isFirstFinalize && totalChanged) {
@@ -832,16 +898,32 @@ export default function AdminCaseDetailPage() {
                     }
 
                     const ref = invoiceNumber ?? caseData.case_number
-                    const notifyMessage = isFirstFinalize
-                      ? `${ref} Pricing finalized — invoice ready to send`
-                      : totalChanged
-                        ? `${ref} Invoice pricing updated — please review before resending`
-                        : `${ref} Invoice updated`
+                    let notifyMessage: string
+                    if (isFirstFinalize) {
+                      notifyMessage = `${ref} Pricing finalized — invoice ready to send`
+                    } else {
+                      // Reprice — build diff summary
+                      const changedItems = items.filter(item => {
+                        const newVal = Number(pricingEdits[item.id] ?? item.final_price) || 0
+                        return newVal !== item.final_price
+                      }).length
+                      const dueChanged = newDueDate !== latestQuote.payment_due_date
+                      const fmtKRWshort = (n: number) => `₩${n.toLocaleString('en-US')}`
+                      const parts: string[] = []
+                      if (totalChanged) parts.push(`Total ${fmtKRWshort(latestQuote.total_price)} → ${fmtKRWshort(newTotal)}`)
+                      if (changedItems > 0) parts.push(`${changedItems} item${changedItems > 1 ? 's' : ''} repriced`)
+                      if (dueChanged) parts.push(`Due ${latestQuote.payment_due_date ?? '—'} → ${newDueDate}`)
+                      const header = `${ref} Invoice updated`
+                      notifyMessage = parts.length === 0
+                        ? header
+                        : `${header}\n\n• ${parts.join('\n• ')}${totalChanged ? '\n\nPlease review before resending.' : ''}`
+                    }
                     await notifyAgent(caseData.agent_id, notifyMessage, `/agent/cases/${caseData.id}`)
                     await logAsCurrentUser(isFirstFinalize ? 'quote.finalized' : 'quote.repriced',
                       { type: 'case', id: caseData.id, label: caseData.case_number },
                       { total_krw: newTotal, ...(totalChanged && !isFirstFinalize ? { previous_total_krw: latestQuote.total_price } : {}) })
                     setPricingEdits({})
+                    setDueDateEdit('')
                     setEditingPricing(false)
                     await fetchCase()
                   } catch (e: unknown) {
@@ -854,7 +936,8 @@ export default function AdminCaseDetailPage() {
                 )
               })()}
             </section>
-          )}
+            )
+          })()}
 
           {/* Confirm Payment — only after pricing finalized */}
           {caseData.status === 'awaiting_payment' && !editingPricing && (
@@ -940,6 +1023,23 @@ export default function AdminCaseDetailPage() {
                   </div>
 
                   <p className="text-[11px] text-gray-500">Open the preview to review the PDF, then confirm to publish this version to the agent.</p>
+
+                  {/* Note for agent — required-ish on v2+ (response to revision request), optional on v1 */}
+                  <div>
+                    <label className="block text-[11px] text-gray-500 mb-1">
+                      What changed?
+                      {sortedSchedules.length > 0 && <span className="text-gray-400"> (helps agent see what was updated)</span>}
+                    </label>
+                    <textarea
+                      value={stagedNote}
+                      onChange={(e) => setStagedNote(e.target.value)}
+                      placeholder={sortedSchedules.length > 0
+                        ? 'e.g. Moved hospital appointment to afternoon, swapped day 3 and day 4.'
+                        : 'Optional — note any specifics the agent should know.'}
+                      rows={3}
+                      className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-900 focus:outline-none focus:border-[#0f4c35] resize-none" />
+                  </div>
+
                   <div className="flex items-center gap-2 justify-end">
                     <button onClick={cancelStaged} disabled={uploadingSchedule}
                       className="text-xs font-medium text-gray-500 hover:text-gray-800 px-3 py-1.5 rounded-lg disabled:opacity-40">

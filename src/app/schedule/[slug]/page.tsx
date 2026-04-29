@@ -9,13 +9,15 @@ export default async function SchedulePage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>
-  searchParams: Promise<{ autoprint?: string; preview?: string }>
+  searchParams: Promise<{ autoprint?: string; preview?: string; v?: string }>
 }) {
   const { slug } = await params
-  const { autoprint, preview } = await searchParams
+  const { autoprint, preview, v } = await searchParams
   const supabase = createServerClient()
 
-  const { data: schedules } = await supabase
+  // Default: latest version (client-facing). Admin preview can pin a specific version via ?v=.
+  const versionPin = v ? Number(v) : null
+  let query = supabase
     .from('schedules')
     .select(`
       id, pdf_url, version,
@@ -23,8 +25,12 @@ export default async function SchedulePage({
       cases(id, agent_id)
     `)
     .eq('slug', slug)
-    .order('version', { ascending: false })
-    .limit(1)
+  if (versionPin && Number.isFinite(versionPin)) {
+    query = query.eq('version', versionPin)
+  } else {
+    query = query.order('version', { ascending: false })
+  }
+  const { data: schedules } = await query.limit(1)
 
   const schedule = schedules?.[0] as {
     id: string

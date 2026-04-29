@@ -11,6 +11,11 @@ import {
 } from './clientCompleteness'
 import { notifyAllAdmins } from './notifications'
 
+type QuoteGroupRow = {
+  member_count: number
+  quote_group_members: { id: string }[] | null
+}
+
 type CaseRow = {
   id: string
   case_number: string
@@ -19,6 +24,7 @@ type CaseRow = {
   outbound_flight: FlightInfo
   inbound_flight: FlightInfo
   case_members: { clients: ClientInfo | null }[]
+  quotes: { quote_groups: QuoteGroupRow[] | null }[] | null
 }
 
 function isComplete(c: CaseRow): boolean {
@@ -30,20 +36,32 @@ function isComplete(c: CaseRow): boolean {
   if (caseFieldsMissing.length > 0) return false
   const members = c.case_members ?? []
   if (members.length === 0) return false
-  return members.every(m => hasCompleteClientInfo(m.clients))
+  if (!members.every(m => hasCompleteClientInfo(m.clients))) return false
+
+  // Groups must be fully filled (every quote_group's slots assigned).
+  const quote = (c.quotes ?? [])[0]
+  const groups = quote?.quote_groups ?? []
+  if (groups.length === 0) return false
+  return groups.every(g => (g.quote_group_members?.length ?? 0) === g.member_count)
 }
 
 // Single entry point — call after any agent edit that may affect case readiness.
 // Handles three paths:
 //  - status=awaiting_info, info now complete  → bump to awaiting_schedule + notify "ready for schedule"
 //  - status=awaiting_info, info still incomplete → no notification (admin can't act yet)
-//  - status past awaiting_info (active flow) → notify "client/trip info updated"
+//  - status past awaiting_info (active flow) → notify with change summary if provided
 //  - status terminal (completed/canceled) → no notification
-export async function notifyCaseInfoChanged(caseId: string): Promise<void> {
+//
+// `change` describes what the agent edited:
+//   - header: e.g. "Trip info updated" or `Client info updated: ${name}`
+//   - items:  one per line, rendered as a bullet list under the header
+// When omitted, falls back to a generic message.
+export async function notifyCaseInfoChanged(caseId: string, change?: { header: string; items: string[] }): Promise<void> {
   const { data } = await supabase
     .from('cases')
     .select(`id, case_number, status, concept, outbound_flight, inbound_flight,
-             case_members(clients(${CLIENT_INFO_COLUMNS}))`)
+             case_members(clients(${CLIENT_INFO_COLUMNS})),
+             quotes(quote_groups(member_count, quote_group_members(id)))`)
     .eq('id', caseId)
     .single()
 
@@ -69,8 +87,13 @@ export async function notifyCaseInfoChanged(caseId: string): Promise<void> {
   }
 
   // Active flow past awaiting_info — agent edited info that admin should know about.
-  await notifyAllAdmins(
-    `${c.case_number} client/trip info updated by agent`,
-    `/admin/cases/${caseId}`
-  )
+  let message: string
+  if (change && change.items.length > 0) {
+    message = `${c.case_number} ${change.header}\n\n• ${change.items.join('\n• ')}`
+  } else if (change) {
+    message = `${c.case_number} ${change.header}`
+  } else {
+    message = `${c.case_number} client/trip info updated by agent`
+  }
+  await notifyAllAdmins(message, `/admin/cases/${caseId}`)
 }

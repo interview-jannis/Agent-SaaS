@@ -296,6 +296,45 @@ export default function ClientDetailPage() {
       // For male clients, auto-set pregnancy_status to not_applicable
       const pregnancy = editForm.gender === 'female' ? editForm.pregnancy_status : 'not_applicable' as PregnancyStatus
 
+      // ── Block clearing previously-set required fields ────────────────────────
+      // Once a required field is filled, it can be changed but not erased.
+      // (Toggling needs_muslim_friendly off auto-clears Muslim-only fields — allowed.)
+      const cleared: string[] = []
+      const wasText = (v: string | null | undefined) => typeof v === 'string' && v.trim().length > 0
+      const nowText = (v: string) => v.trim().length > 0
+      const checkText = (label: string, oldV: string | null | undefined, newV: string) => {
+        if (wasText(oldV) && !nowText(newV)) cleared.push(label)
+      }
+      checkText('Passport', client.passport_number, editForm.passport_number)
+      checkText('Emergency Contact Name', client.emergency_contact_name, editForm.emergency_contact_name)
+      checkText('Emergency Contact Relation', client.emergency_contact_relation, editForm.emergency_contact_relation)
+      checkText('Emergency Contact Phone', client.emergency_contact_phone, editForm.emergency_contact_phone)
+      checkText('Blood Type', client.blood_type, editForm.blood_type)
+      checkText('Allergies', client.allergies, editForm.allergies)
+      checkText('Current Medications', client.current_medications, editForm.current_medications)
+      checkText('Health Conditions', client.health_conditions, editForm.health_conditions)
+      checkText('Medical Restrictions', client.medical_restrictions, editForm.medical_restrictions)
+      checkText('Preferred Language', client.preferred_language, editForm.preferred_language)
+      checkText('Mobility', client.mobility_limitations, editForm.mobility_limitations)
+      if (client.height_cm != null && height == null) cleared.push('Height')
+      if (client.weight_kg != null && weight == null) cleared.push('Weight')
+      if (client.smoking_status && !editForm.smoking_status) cleared.push('Smoking Status')
+      if (client.alcohol_status && !editForm.alcohol_status) cleared.push('Alcohol Status')
+      if (editForm.gender === 'female' && client.pregnancy_status && !editForm.pregnancy_status) cleared.push('Pregnancy Status')
+      // Muslim-only — only enforce if the toggle is still ON (turning off intentionally clears)
+      if (isMuslim && client.needs_muslim_friendly) {
+        if (client.prayer_frequency && !editForm.prayer_frequency) cleared.push('Prayer Frequency')
+        if (client.prayer_location && !editForm.prayer_location) cleared.push('Prayer Location')
+        if (client.dietary_restriction && client.dietary_restriction !== 'none' && (!editForm.dietary_restriction || editForm.dietary_restriction === 'none')) cleared.push('Dietary Restriction')
+        if (client.same_gender_doctor && !editForm.same_gender_doctor) cleared.push('Same-gender Doctor')
+        if (client.same_gender_therapist && !editForm.same_gender_therapist) cleared.push('Same-gender Therapist')
+        if (client.mixed_gender_activities && !editForm.mixed_gender_activities) cleared.push('Mixed-gender Activities')
+        checkText('Cultural/Religious Notes', client.cultural_religious_notes, editForm.cultural_religious_notes)
+      }
+      if (cleared.length > 0) {
+        throw new Error(`Cannot clear required fields once set: ${cleared.join(', ')}. Update the value instead.`)
+      }
+
       const { error } = await supabase.from('clients').update({
         nationality: editForm.nationality || null,
         gender: editForm.gender || null,
@@ -331,12 +370,59 @@ export default function ClientDetailPage() {
         recent_health_checkup_notes: editForm.recent_health_checkup_notes || null,
       }).eq('id', id)
       if (error) throw error
+
+      // Build change summary for admin notification — categorized field labels.
+      const norm = (v: string | number | null | undefined) =>
+        v == null ? null : (typeof v === 'string' ? (v.trim() === '' ? null : v.trim()) : v)
+      const diff = (label: string, oldV: unknown, newV: unknown) =>
+        norm(oldV as string | number | null | undefined) !== norm(newV as string | number | null | undefined) ? label : null
+      const changedFields = [
+        diff('Nationality', client.nationality, editForm.nationality),
+        diff('Gender', client.gender, editForm.gender),
+        diff('Date of birth', client.date_of_birth, editForm.date_of_birth),
+        diff('Phone', client.phone, editForm.phone),
+        diff('Email', client.email, editForm.email),
+        diff('Passport', client.passport_number, editForm.passport_number),
+        (client.emergency_contact_name !== (editForm.emergency_contact_name || null)
+          || client.emergency_contact_relation !== (editForm.emergency_contact_relation || null)
+          || client.emergency_contact_phone !== (editForm.emergency_contact_phone || null)) ? 'Emergency contact' : null,
+        diff('Blood type', client.blood_type, editForm.blood_type),
+        diff('Allergies', client.allergies, editForm.allergies),
+        diff('Medications', client.current_medications, editForm.current_medications),
+        diff('Health conditions', client.health_conditions, editForm.health_conditions),
+        diff('Medical restrictions', client.medical_restrictions, editForm.medical_restrictions),
+        diff('Height', client.height_cm, height),
+        diff('Weight', client.weight_kg, weight),
+        diff('Pregnancy status', client.pregnancy_status, pregnancy),
+        diff('Smoking', client.smoking_status, editForm.smoking_status),
+        diff('Alcohol', client.alcohol_status, editForm.alcohol_status),
+        diff('Preferred language', client.preferred_language, editForm.preferred_language),
+        diff('Mobility', client.mobility_limitations, editForm.mobility_limitations),
+        client.needs_muslim_friendly !== editForm.needs_muslim_friendly ? 'Muslim-friendly toggle' : null,
+        (isMuslim && (
+          client.dietary_restriction !== editForm.dietary_restriction
+          || client.prayer_frequency !== editForm.prayer_frequency
+          || client.prayer_location !== editForm.prayer_location
+          || client.same_gender_doctor !== editForm.same_gender_doctor
+          || client.same_gender_therapist !== editForm.same_gender_therapist
+          || client.mixed_gender_activities !== editForm.mixed_gender_activities
+          || (client.cultural_religious_notes ?? null) !== (editForm.cultural_religious_notes || null)
+        )) ? 'Muslim preferences' : null,
+        diff('Special requests', client.special_requests, editForm.special_requests),
+        diff('Prior aesthetic procedures', client.prior_aesthetic_procedures, editForm.prior_aesthetic_procedures),
+        diff('Recent health checkup', client.recent_health_checkup_notes, editForm.recent_health_checkup_notes),
+      ].filter((x): x is string => !!x)
+
       // Re-evaluate every non-terminal case this client belongs to:
       // promotes if awaiting_info+complete, or sends "info updated" if past that point.
+      const clientName = client.name
+      const change = changedFields.length > 0
+        ? { header: `Client info updated: ${clientName}`, items: changedFields }
+        : undefined
       const targetCaseIds = cases
         .filter(c => c.status !== 'completed' && c.status !== 'canceled')
         .map(c => c.id)
-      await Promise.all(targetCaseIds.map(cid => notifyCaseInfoChanged(cid)))
+      await Promise.all(targetCaseIds.map(cid => notifyCaseInfoChanged(cid, change)))
       await fetchData()
       setEditing(false)
     } catch (e: unknown) {

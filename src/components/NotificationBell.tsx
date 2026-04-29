@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useNotifications } from '@/hooks/useNotifications'
 
@@ -15,6 +15,7 @@ function timeAgo(iso: string): string {
 
 export default function NotificationBell() {
   const router = useRouter()
+  const pathname = usePathname()
   const [uid, setUid] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
@@ -50,7 +51,16 @@ export default function NotificationBell() {
 
   function handleClick(n: typeof items[number]) {
     setOpen(false)
-    if (n.link_url) router.push(n.link_url)
+    if (!n.link_url) return
+    // If already on the target page (ignoring query string), force a full reload
+    // — most case/client pages fetch via client-side Supabase, so router.refresh()
+    // alone wouldn't re-run their useEffect-based fetches.
+    const targetPath = n.link_url.split('?')[0]
+    if (targetPath === pathname) {
+      window.location.reload()
+    } else {
+      router.push(n.link_url)
+    }
   }
 
   return (
@@ -77,7 +87,7 @@ export default function NotificationBell() {
               <div className="flex items-start gap-2">
                 {isFresh && <span className="w-1.5 h-1.5 bg-blue-500 rounded-full mt-1.5 shrink-0" />}
                 <div className="flex-1 min-w-0">
-                  <p className={`text-sm leading-snug ${isFresh ? 'text-gray-800' : 'text-gray-500'}`}>{n.message}</p>
+                  <p className={`text-sm leading-snug whitespace-pre-line ${isFresh ? 'text-gray-800' : 'text-gray-500'}`}>{n.message}</p>
                   <p className="text-[10px] text-gray-400 mt-0.5">{timeAgo(n.created_at)}</p>
                 </div>
               </div>
