@@ -1,12 +1,14 @@
 # Project Progress
 
 ## 현재 상태
-- **Phase**: UI/UX 통일 폴리시 + 권한 분리(super admin) + Invoice signer 시스템 완료
-- **마지막 작업**: Cases Hero Action Bar / 톤 일관화(monochrome + 의미 SVG 아이콘) / Settings inline-edit 패턴 / PIC(signer) on invoice / Super admin 시스템 (조회 vs 수정 권한 분리)
-- **마지막 업데이트**: 2026-04-29 (개발 마감 5/8, 시뮬레이션 5/11~15, 런칭 5/18)
+- **Phase**: 모바일 대응 마무리 + 브랜드 로고 통합 + 데이터 가공 (상품 등록 준비)
+- **마지막 작업**: 2026-04-30 이사님 미팅 — 전체 SOP 점검, 파트너 이름 공개 OK 결정 (Selections 모델 폐기), 4가지 계약서/알림 채널/엑셀 일괄 업로드 등 신규 요구
+- **마지막 업데이트**: 2026-04-30 (개발 마감 5/8, 시뮬레이션 5/11~15, 런칭 5/18)
 - **SaaS 브랜드명**: **Tiktak** (UI 전역, 법인명 Interview Co., Ltd)
 
-> 2026-04-29 상세: `notes/26.04.29.md` (최신, 큰 폴리시 라운드)
+> 2026-04-30 미팅: `notes/meetings/26.04.30-meeting.md` (이사님 SOP 점검)
+> 2026-04-30 상세: `notes/26.04.30.md` (모바일 마무리 + 데이터 가공)
+> 2026-04-29 상세: `notes/26.04.29.md` (큰 폴리시 라운드)
 > 2026-04-28 상세: `notes/26.04.28.md`
 > 2026-04-27 상세: `notes/26.04.27.md`
 > 2026-04-24 상세: `notes/26.04.24.md`
@@ -20,6 +22,47 @@
 
 ## 다음 할 일
 
+### 4/30 미팅 — 5/8 마감 전 신규 요구사항 (🔥 시급)
+
+#### 계약서 4종 (홍이사님 검토 예정)
+- [ ] **NDA 계약서** (기존 검토)
+- [ ] **Partnership 계약서** (기존 검토)
+- [ ] **에이전트 ↔ 고객 계약서** 신규
+- [ ] **에이전트 ↔ 고객 ↔ 어드민 3중 계약서** 신규 ⭐ 핵심
+- [ ] **Admin도 계약서 사인 + agent 열람** (현재는 agent만 사인)
+
+#### Agent 등록 정보 확장
+- [ ] 사업자 등록증 업로드 (개인/법인/기타)
+- [ ] SNS 정보 (WhatsApp 등) — 알림 채널 메타 용
+
+#### 알림 채널 확장 (외부 API)
+- [ ] WhatsApp 발송 (agent 대상)
+- [ ] KakaoTalk 발송 (admin 대상)
+
+#### 상품 데이터 (5/6~7 완료 목표)
+- [ ] **파트너 이름 공개 정책 반영** — Selections 모델 폐기, 단일 products 테이블에 partner_name 노출
+- [ ] WHY 컬럼 추가 (왜 이 상품/기관인지 컨텍스트)
+- [ ] 대표 원장 프로파일 컬럼 추가 (영문 오픈 정보)
+- [ ] 안과/치과 데이터 추가 (다음주 도착 예정)
+- [ ] 상품 사진 (파트너 홍보 자료에서)
+
+#### 신규 기능
+- [ ] **엑셀 일괄 업로드** — admin 페이지에서 정해진 포맷 엑셀 → 상품 자동 등록 + 카테고리 자동 분류 + agent 자동 매칭
+- [ ] **스케줄 엑셀 업로드 → 자동 링크** (현재는 PDF 업로드만, invoice 자동 생성 패턴 응용)
+- [ ] **Invoice 도장 이미지 삽입** (잔금 invoice 발행 시 법인 인감)
+- [ ] **설문조사 기능** (여행 후, 10~15문항 + 마지막 주관식)
+- [ ] **Chrome 한국어 로케일 강제 영어** (date input 한글로 떠서 에이전트가 못 읽음)
+
+#### 4가지 Invoice 종류
+디파짓 / 잔금 / 추가 / 커미션 — 케이스별 발생, 자동 발행 흐름 정의 필요.
+
+### 대표님 의사결정 대기 (5/8 admin 링크 공유 후)
+1. **Hotel 마진율** — 20% / 30% / ?
+2. **Subpackage 마진율** (통역/컨시어지/의전/경호) — 50%?
+3. **결제 조건** — 50% 디파짓 + 50% 비행기 타기 전?
+4. **송금 경로** — 에이전트 거치는 vs 어드민 다이렉트?
+5. **계약서 4종 최종**
+
 ### 안정화 (MVP 마감 전)
 - [ ] End-to-end 전체 플로우 테스트 (초대 → 온보딩 → 승인 → Setup → 견적 → 스케줄 → 정산)
 - [ ] 배포 환경 최종 점검 (`SUPABASE_SERVICE_ROLE_KEY`, Resend 키 등)
@@ -28,6 +71,18 @@
 - [ ] 고객용 Schedule 페이지 점검 (Quotation/Invoice는 4/29에 검토 완료)
 - [x] CLAUDE.md 스키마 최신화 (흐름 B 8단계 status, /invoice, partner_payments, cancellation_*, invoice_number, finalized_at 등)
 - [x] schedules.admin_note 마이그레이션
+
+### 마감 직전 (목요일경) 정리
+- [ ] Super admin 1개 (진영) + 일반 admin 1개만 남기고 나머지 admin 삭제
+- [ ] 테스트 agent 계정 정리 (특별한 거 1~2개 남김)
+- [ ] 테스트 client 데이터 1~2개만 남기고 삭제
+
+### 4/30 완료 (모바일 마무리 + 로고 + 데이터 가공)
+- [x] **모바일 대응 마무리 라운드** — Orientation PDF 모바일 분기, 재서명 가드, admin 5페이지 컬럼 정리, ProductForm 스크롤 fix, 알림 벨 모바일 → top bar 이동, iOS Safari 100svh 적용, NotificationBell 채널 충돌 해결
+- [x] **Tiktak 로고 통합** — AI 생성 v2 로고 7곳 적용 (사이드바 펼침/접힘 분기, MobileTopBar, 온보딩, login, admin-invite, QuoteDocument). 기존 placeholder 빌딩 SVG 모두 제거
+- [x] **Print/Save PDF 버튼 제거** (Quote/Invoice 헤더)
+- [x] **데이터 가공 스크립트** (`scripts/build-data-from-master.js`) — Internal 마스터 엑셀에서 73개 product + 45개 selection 자동 추출, 한국어 → 영어 자동 번역 (phrasebook + pattern), USD/KRW 통화 보존, ≥1M VIP 필터, M/F 분리, Hotel min/max 컬럼 보존
+- [⚠️] **Selections + Products 이중 모델** — 오전 작업, 오후 미팅에서 익명화 정책 폐기로 **Selections 모델 자체 불필요**해짐. `selections_generated.xlsx`는 reference로 보존, products로 single-table 갈 예정
 
 ### 4/29 완료 (대형 폴리시 라운드)
 - [x] **Cases Hero Action Bar** — `<CaseHeroAction>` 컴포넌트 (Agent/Admin), status별 next-action CTA + 섹션 스크롤
