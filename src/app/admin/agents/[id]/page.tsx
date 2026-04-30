@@ -341,7 +341,7 @@ export default function AdminAgentDetailPage() {
           {/* Profile */}
           <section className="bg-gray-50 rounded-2xl p-5">
             <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-4">Profile</h3>
-            <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
               <div><p className="text-[10px] text-gray-400 mb-0.5">Email</p><p className="text-gray-800 break-all">{agent.email ?? '—'}</p></div>
               <div><p className="text-[10px] text-gray-400 mb-0.5">Phone</p><p className="text-gray-800">{agent.phone ?? '—'}</p></div>
               <div><p className="text-[10px] text-gray-400 mb-0.5">Country</p><p className="text-gray-800">{agent.country ?? '—'}</p></div>

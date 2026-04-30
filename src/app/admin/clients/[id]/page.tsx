@@ -107,7 +107,7 @@ export default function AdminClientDetailPage() {
           {/* Agent + Cases */}
           <section className="bg-gray-50 rounded-2xl p-5 space-y-3">
             <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Owner & Cases</h3>
-            <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
               <div>
                 <p className="text-[10px] text-gray-400 mb-0.5">Agent</p>
                 {agent ? (
@@ -136,7 +136,7 @@ export default function AdminClientDetailPage() {
           {/* Basic */}
           <section className="bg-gray-50 rounded-2xl p-5">
             <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-4">Basic</h3>
-            <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
               <Row label="Name" value={(client as unknown as { name: string }).name} />
               <Row label="Nationality" value={client.nationality} />
               <Row label="Gender" value={client.gender?.replace(/_/g, ' ')} />
@@ -148,7 +148,7 @@ export default function AdminClientDetailPage() {
           {/* Contact */}
           <section className="bg-gray-50 rounded-2xl p-5">
             <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-4">Contact</h3>
-            <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
               <Row label="Phone" value={client.phone} />
               <Row label="Email" value={client.email} />
               <Row label="Preferred Language" value={(client as unknown as { preferred_language: string | null }).preferred_language} />

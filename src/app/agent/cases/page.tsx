@@ -223,7 +223,7 @@ export default function AgentCasesPage() {
         ) : filtered.length === 0 ? (
           <p className="text-sm text-gray-400 text-center py-24">No matches.</p>
         ) : (
-          <div className="px-12 py-8 space-y-6">
+          <div className="px-4 md:px-12 py-6 md:py-8 space-y-6">
             <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
               <table className="w-full text-sm border-collapse">
                 <thead className="border-b border-gray-100 bg-gray-50/60">

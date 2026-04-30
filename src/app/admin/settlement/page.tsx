@@ -252,7 +252,7 @@ export default function AdminSettlementPage() {
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        <div className="px-12 py-8 space-y-6">
+        <div className="px-4 md:px-12 py-6 md:py-8 space-y-6">
 
           {loading ? (
             <p className="text-sm text-gray-400 text-center py-16">Loading...</p>

@@ -243,24 +243,26 @@ export default function AgentDashboardPage() {
   return (
     <div className="flex flex-col h-full bg-white">
       {/* Header */}
-      <div className="h-14 shrink-0 flex items-center gap-4 px-6 border-b border-gray-100">
-        <h1 className="text-base font-semibold text-gray-900">Dashboard</h1>
-        {agentName && <span className="text-xs text-gray-500">{agentName}</span>}
-        {agentNumber && <span className="text-[10px] font-mono text-gray-400">{agentNumber}</span>}
-        <div className="ml-auto flex items-center gap-2">
+      <div className="shrink-0 border-b border-gray-100 px-4 md:px-6 py-3 md:py-0 md:h-14 flex flex-col md:flex-row md:items-center gap-3 md:gap-4">
+        <div className="flex items-center gap-3 min-w-0">
+          <h1 className="text-base font-semibold text-gray-900 shrink-0">Dashboard</h1>
+          {agentName && <span className="text-xs text-gray-500 truncate">{agentName}</span>}
+          {agentNumber && <span className="text-[10px] font-mono text-gray-400 shrink-0">{agentNumber}</span>}
+        </div>
+        <div className="md:ml-auto flex items-center gap-2">
           <button onClick={() => router.push('/agent/clients')}
-            className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-gray-600 border border-gray-200 rounded-lg hover:border-gray-300 hover:bg-gray-50">
+            className="flex-1 md:flex-none flex items-center justify-center gap-1 px-3 py-1.5 text-xs font-medium text-gray-600 border border-gray-200 rounded-lg hover:border-gray-300 hover:bg-gray-50">
             <span className="text-sm leading-none">+</span> Add Client
           </button>
           <button onClick={() => router.push('/agent/home')}
-            className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium bg-[#0f4c35] text-white rounded-lg hover:bg-[#0a3828]">
+            className="flex-1 md:flex-none flex items-center justify-center gap-1 px-3 py-1.5 text-xs font-medium bg-[#0f4c35] text-white rounded-lg hover:bg-[#0a3828]">
             <span className="text-sm leading-none">+</span> Create Quote
           </button>
         </div>
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        <div className="px-12 py-8 space-y-6">
+        <div className="px-4 md:px-12 py-6 md:py-8 space-y-6">
 
           {loading ? (
             <p className="text-sm text-gray-400 text-center py-16">Loading...</p>
@@ -272,7 +274,7 @@ export default function AgentDashboardPage() {
                   {/* Left: This Month */}
                   <div>
                     <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-2">This Month</p>
-                    <p className="text-5xl font-bold text-gray-900 tracking-tight leading-none">{fmtUSD(thisMonthPaid / exchangeRate)}</p>
+                    <p className="text-3xl md:text-5xl font-bold text-gray-900 tracking-tight leading-none">{fmtUSD(thisMonthPaid / exchangeRate)}</p>
                     <p className="text-sm text-gray-500 mt-3">
                       <span className="font-semibold text-gray-700">{monthlyPatients}</span> client{monthlyPatients !== 1 ? 's' : ''} · margin{' '}
                       <span className="font-semibold text-[#0f4c35]">{marginRate != null ? `${(marginRate * 100).toFixed(0)}%` : '—'}</span>
@@ -282,7 +284,7 @@ export default function AgentDashboardPage() {
                   {/* Right: Expected Pipeline */}
                   <div className="text-right">
                     <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-2">Expected Pipeline</p>
-                    <p className="text-2xl font-bold text-blue-700 tracking-tight leading-none">{fmtUSD(expectedKrw / exchangeRate)}</p>
+                    <p className="text-xl md:text-2xl font-bold text-blue-700 tracking-tight leading-none">{fmtUSD(expectedKrw / exchangeRate)}</p>
                     <p className="text-xs text-gray-500 mt-2">
                       {cases.filter(c => activeSet.has(c.status)).length} in-progress case{cases.filter(c => activeSet.has(c.status)).length !== 1 ? 's' : ''}
                     </p>
@@ -330,7 +332,7 @@ export default function AgentDashboardPage() {
               {/* PIPELINE — Kanban-style mini columns per status */}
               <section className="space-y-3">
                 <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Pipeline</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-2">
+                <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-2">
                   {PIPELINE_ORDER.map(s => {
                     const rawCount = statusCounts.get(s) ?? 0
                     const count = s === 'completed' ? unsettledCompletedCount : rawCount
@@ -340,7 +342,7 @@ export default function AgentDashboardPage() {
                     const extra = Math.max(0, list.length - visible.length)
                     return (
                       <div key={s}
-                        className={`rounded-2xl border border-gray-200 bg-white flex flex-col overflow-hidden min-h-[180px]`}>
+                        className={`rounded-2xl border border-gray-200 bg-white flex flex-col overflow-hidden min-h-[130px] md:min-h-[180px]`}>
                         {/* Header: tinted bar with label + count */}
                         <div className={`px-3 py-2.5 flex items-center justify-between border-b ${active ? STATUS_STYLES[s] : 'bg-gray-50 border-gray-100'}`}>
                           <p className={`text-[10px] font-semibold uppercase tracking-wide truncate ${active ? '' : 'text-gray-400'}`}>{PIPELINE_LABELS[s]}</p>
@@ -364,7 +366,7 @@ export default function AgentDashboardPage() {
                                     <span className="text-[11px] text-gray-800 truncate flex-1">{lead?.clients?.name ?? '—'}</span>
                                   </div>
                                   {info.line && (
-                                    <span className={`text-[10px] ${infoColor} tabular-nums mt-0.5`}>{info.line}</span>
+                                    <span className={`text-[10px] ${infoColor} tabular-nums tracking-tight mt-0.5`}>{info.line}</span>
                                   )}
                                 </button>
                               )

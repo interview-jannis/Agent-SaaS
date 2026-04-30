@@ -254,7 +254,7 @@ export default async function AdminOverviewPage() {
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        <div className="px-12 py-8 space-y-6">
+        <div className="px-4 md:px-12 py-6 md:py-8 space-y-6">
 
         {/* HERO — All-time totals */}
         <section className="bg-gray-50 rounded-2xl p-6">

@@ -325,7 +325,7 @@ export default function AdminProductsPage() {
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        <div className="px-12 py-8 space-y-6">
+        <div className="px-4 md:px-12 py-6 md:py-8 space-y-6">
 
         {/* Filters */}
         <div className="flex items-center gap-3">

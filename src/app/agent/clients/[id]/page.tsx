@@ -515,7 +515,7 @@ export default function ClientDetailPage() {
               {/* Basic */}
               <section className="bg-gray-50 rounded-2xl p-5">
                 <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-4">Basic Information</h3>
-                <div className="grid grid-cols-2 gap-x-8 gap-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3">
                   <ViewField label="Nationality" value={client.nationality} />
                   <ViewField label="Gender" value={client.gender} />
                   <ViewField label="Date of Birth" value={client.date_of_birth} />
@@ -527,7 +527,7 @@ export default function ClientDetailPage() {
               {/* Contact */}
               <section className="bg-gray-50 rounded-2xl p-5">
                 <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-4">Contact</h3>
-                <div className="grid grid-cols-2 gap-x-8 gap-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3">
                   <ViewField label="Phone" value={client.phone} />
                   <ViewField label="Email" value={client.email} />
                   <ViewField label="Preferred Language *" value={client.preferred_language} />
@@ -537,7 +537,7 @@ export default function ClientDetailPage() {
               {/* Emergency Contact */}
               <section className="bg-gray-50 rounded-2xl p-5">
                 <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-4">Emergency Contact *</h3>
-                <div className="grid grid-cols-2 gap-x-8 gap-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3">
                   <ViewField label="Name" value={client.emergency_contact_name} />
                   <ViewField label="Relation" value={client.emergency_contact_relation} />
                   <ViewField label="Phone" value={client.emergency_contact_phone} />
@@ -547,7 +547,7 @@ export default function ClientDetailPage() {
               {/* Medical */}
               <section className="bg-gray-50 rounded-2xl p-5">
                 <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-4">Medical Information</h3>
-                <div className="grid grid-cols-2 gap-x-8 gap-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3">
                   <ViewField label="Blood Type *" value={client.blood_type} />
                   <ViewField label="Height (cm) *" value={client.height_cm} />
                   <ViewField label="Weight (kg) *" value={client.weight_kg} />
@@ -564,7 +564,7 @@ export default function ClientDetailPage() {
               {/* Lifestyle */}
               <section className="bg-gray-50 rounded-2xl p-5">
                 <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-4">Lifestyle</h3>
-                <div className="grid grid-cols-2 gap-x-8 gap-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3">
                   <ViewField label="Smoking *" value={labelFor(SMOKING_OPTIONS, client.smoking_status)} />
                   <ViewField label="Alcohol *" value={labelFor(ALCOHOL_OPTIONS, client.alcohol_status)} />
                   {gender === 'female' && (
@@ -577,7 +577,7 @@ export default function ClientDetailPage() {
               {isMuslim && (
                 <section className="rounded-2xl p-5 border border-[#0f4c35]/15 bg-[#0f4c35]/[0.03]">
                   <h3 className="text-xs font-semibold text-[#0f4c35] uppercase tracking-wide mb-4">Muslim Preferences</h3>
-                  <div className="grid grid-cols-2 gap-x-8 gap-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3">
                     <ViewField label="Dietary Restriction *" value={labelFor(DIETARY_OPTIONS, client.dietary_restriction)} />
                     <ViewField label="Prayer Frequency *" value={labelFor(PRAYER_FREQUENCY_OPTIONS, client.prayer_frequency)} />
                     <ViewField label="Prayer Location *" value={labelFor(PRAYER_LOCATION_OPTIONS, client.prayer_location)} />

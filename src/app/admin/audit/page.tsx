@@ -288,7 +288,7 @@ export default function AdminAuditPage() {
         ) : filtered.length === 0 ? (
           <p className="text-sm text-gray-400 text-center py-16">No events match the filter.</p>
         ) : (
-          <div className="px-12 py-8 space-y-6">
+          <div className="px-4 md:px-12 py-6 md:py-8 space-y-6">
             {groupedByDay.map(group => (
               <div key={group.key}>
                 <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm flex items-center gap-3 py-2 mb-1">

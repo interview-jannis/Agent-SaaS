@@ -471,12 +471,12 @@ export default function AdminCaseDetailPage() {
             {!caseInfoComplete && (
               <p className="text-xs text-amber-800 mb-3">Missing: {missingCaseFields.join(' · ')}</p>
             )}
-            <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
               <div className="col-span-2">
                 <p className="text-[10px] text-gray-400 mb-0.5">Concept *</p>
                 <p className="text-gray-800">{caseData.concept || <span className="text-gray-300">—</span>}</p>
               </div>
-              <div className="col-span-2 grid grid-cols-2 gap-x-6 gap-y-2 pt-2 border-t border-gray-200">
+              <div className="col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 pt-2 border-t border-gray-200">
                 <div>
                   <p className="text-[10px] text-gray-500 font-medium uppercase tracking-wide mb-1">Outbound *</p>
                   <p className="text-xs text-gray-800">{caseData.outbound_flight?.departure_airport ?? '—'} → {caseData.outbound_flight?.arrival_airport ?? '—'}</p>
@@ -500,7 +500,7 @@ export default function AdminCaseDetailPage() {
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Lead Client</p>
                 <span className="text-[10px] text-gray-400 font-mono">{lead.clients?.client_number}</span>
               </div>
-              <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-sm">
                 <div><p className="text-[10px] text-gray-400 mb-0.5">Name</p><p className="text-gray-800 font-medium">{lead.clients.name}</p></div>
                 <div><p className="text-[10px] text-gray-400 mb-0.5">Nationality</p><p className="text-gray-800">{lead.clients.nationality || '—'}</p></div>
                 <div><p className="text-[10px] text-gray-400 mb-0.5">Gender</p><p className="text-gray-800 capitalize">{lead.clients.gender || '—'}</p></div>

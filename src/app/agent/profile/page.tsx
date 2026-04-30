@@ -109,7 +109,7 @@ export default function AgentProfilePage() {
           {/* Basic Info (read-only) */}
           <section className="bg-gray-50 rounded-2xl p-5">
             <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-4">Basic Information</h3>
-            <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
               <div>
                 <p className="text-[10px] text-gray-400 mb-0.5">Email</p>
                 <p className="text-gray-800 break-all">{profile.email ?? '—'}</p>
@@ -140,7 +140,7 @@ export default function AgentProfilePage() {
               )}
             </div>
             {!editContact ? (
-              <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
                 <div>
                   <p className="text-[10px] text-gray-400 mb-0.5">Phone</p>
                   <p className="text-gray-800">{profile.phone ?? <span className="text-gray-300">—</span>}</p>
