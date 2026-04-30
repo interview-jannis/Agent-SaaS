@@ -167,7 +167,7 @@ export default function AdminSidebar() {
       {open && (
         <div onClick={() => setOpen(false)} className="md:hidden fixed inset-0 bg-black/40 z-40" aria-hidden />
       )}
-      <aside className={`fixed md:relative inset-y-0 left-0 z-50 w-64 ${desktopWidth} ${open ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 shrink-0 flex flex-col bg-gray-50 border-r border-gray-100 h-screen transition-transform md:transition-[width] duration-200`}>
+      <aside className={`fixed md:relative inset-y-0 left-0 z-50 w-64 ${desktopWidth} ${open ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 shrink-0 flex flex-col bg-gray-50 border-r border-gray-100 h-[100svh] transition-transform md:transition-[width] duration-200`}>
 
       {/* 로고 + collapse */}
       <div className={`h-14 flex items-center border-b border-gray-100 px-5 justify-between ${collapsed ? 'md:justify-center md:px-2' : ''}`}>

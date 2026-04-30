@@ -8,7 +8,7 @@ import MobileTopBar from '@/components/MobileTopBar'
 export default function AgentLayout({ children }: { children: React.ReactNode }) {
   return (
     <MobileNavProvider>
-      <div className="flex h-screen bg-white overflow-hidden">
+      <div className="flex h-[100svh] bg-white overflow-hidden">
         <SessionGuard />
         <AgentOnboardingGuard />
         <AgentSidebar />
