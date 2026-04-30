@@ -51,7 +51,7 @@
 - [ ] **스케줄 엑셀 업로드 → 자동 링크** (현재는 PDF 업로드만, invoice 자동 생성 패턴 응용)
 - [ ] **Invoice 도장 이미지 삽입** (잔금 invoice 발행 시 법인 인감)
 - [ ] **설문조사 기능** (여행 후, 10~15문항 + 마지막 주관식)
-- [ ] **Chrome 한국어 로케일 강제 영어** (date input 한글로 떠서 에이전트가 못 읽음)
+- ~~Chrome 한국어 로케일 강제 영어~~ — 드롭. Chrome 설정에 따라 자동 변경되는 거라 우리가 건드릴 영역 아님
 
 #### 4가지 Invoice 종류
 디파짓 / 잔금 / 추가 / 커미션 — 케이스별 발생, 자동 발행 흐름 정의 필요.
@@ -82,7 +82,12 @@
 - [x] **Tiktak 로고 통합** — AI 생성 v2 로고 7곳 적용 (사이드바 펼침/접힘 분기, MobileTopBar, 온보딩, login, admin-invite, QuoteDocument). 기존 placeholder 빌딩 SVG 모두 제거
 - [x] **Print/Save PDF 버튼 제거** (Quote/Invoice 헤더)
 - [x] **데이터 가공 스크립트** (`scripts/build-data-from-master.js`) — Internal 마스터 엑셀에서 73개 product + 45개 selection 자동 추출, 한국어 → 영어 자동 번역 (phrasebook + pattern), USD/KRW 통화 보존, ≥1M VIP 필터, M/F 분리, Hotel min/max 컬럼 보존
-- [⚠️] **Selections + Products 이중 모델** — 오전 작업, 오후 미팅에서 익명화 정책 폐기로 **Selections 모델 자체 불필요**해짐. `selections_generated.xlsx`는 reference로 보존, products로 single-table 갈 예정
+- [⚠️] **데이터 가공 1차 추출만 완료** — 73개 product 자동 추출 + 한국어→영어 자동 번역까지. 미완료:
+  - Selections 폐기 후 단일 products 테이블 재정리 (스크립트에서 selections 로직 제거)
+  - WHY / 대표 원장 프로파일 컬럼 추가 (스키마 + 엑셀 포맷)
+  - 안과/치과 데이터 (다음주 도착 예정)
+  - 자동 번역 결과 검수 (phrasebook 기반이라 누락/오역 가능)
+  - 상품 사진 (파트너 홍보 자료에서 수동 추가)
 
 ### 4/29 완료 (대형 폴리시 라운드)
 - [x] **Cases Hero Action Bar** — `<CaseHeroAction>` 컴포넌트 (Agent/Admin), status별 next-action CTA + 섹션 스크롤

@@ -1,21 +1,43 @@
 /* eslint-disable */
-// Build TWO output files from the master Internal_Price sheet:
-//   data/products_generated.xlsx   ← admin-only products (real partner data)
-//   data/selections_generated.xlsx ← customer/agent-facing menu (anonymized)
+// Build products_generated.xlsx from the master Internal_Price sheet.
 //
-// Outputs go to *_generated.xlsx so the user's hand-edited products_master.xlsx is never touched.
-// All Korean text is translated to English (best-effort patterns + manual phrasebook).
+// 4/30 meeting: Selections (anonymization) model dropped — partner names are
+// public. Single products table only. The selection-related parser functions
+// remain in this file as dead code (kept for reference / future ad-hoc use)
+// but main() does not call them.
+//
+// This script is intended as a ONE-SHOT extractor. After the first run we
+// promote products_generated.xlsx → products_master.xlsx and edit by hand
+// (WHY / head doctor profile / verified translations / photos). Do not
+// re-run after manual edits start, or those edits will be lost.
+//
+// Output goes to *_generated.xlsx so the user's hand-edited products_master.xlsx
+// is never touched. All Korean text is translated to English (best-effort
+// patterns + manual phrasebook).
 //
 // Usage:  node scripts/build-data-from-master.js
 
+const fs = require('fs')
 const path = require('path')
 const XLSX = require('xlsx')
 
 const USD_RATE = 1480
 const MIN_KRW = 1_000_000
-const SRC = path.join(__dirname, '..', 'data', 'Internal_Price sheet for Proposal_draft_2_v7_26.02.24.xlsx')
-const OUT_PRODUCTS = path.join(__dirname, '..', 'data', 'products_generated.xlsx')
-const OUT_SELECTIONS = path.join(__dirname, '..', 'data', 'selections_generated.xlsx')
+const DATA_DIR = path.join(__dirname, '..', 'data')
+const SRC = path.join(DATA_DIR, 'Internal_Price sheet for Proposal_draft_2_v7_26.02.24.xlsx')
+
+// Auto-versioned output: products_generated_v1.xlsx, _v2.xlsx, ...
+// Each run produces a new file so prior outputs are never overwritten.
+function nextVersionedPath(prefix) {
+  const re = new RegExp('^' + prefix + '_v(\\d+)\\.xlsx$')
+  let max = 0
+  for (const f of fs.readdirSync(DATA_DIR)) {
+    const m = f.match(re)
+    if (m) max = Math.max(max, Number(m[1]))
+  }
+  return path.join(DATA_DIR, `${prefix}_v${max + 1}.xlsx`)
+}
+const OUT_PRODUCTS = nextVersionedPath('products_generated')
 
 // ────────────────────────────────────────────────────────────────────────────────
 // Translation phrasebook (Korean → English). Patterns first (longer first to avoid
@@ -619,10 +641,8 @@ function pushProduct(p) {
   products.push({
     product_number: '#P-' + String(pNum).padStart(3, '0'),
     category: p.category,
-    selection_number: p._selection_number ?? '',
     partner_name: flat(p.partner_name),
     name: flat(p.name),
-    grade: flat(p.grade),
     gender: p.gender ?? 'Both',
     base_price: p.base_price,
     price_currency: p.price_currency,
@@ -631,6 +651,8 @@ function pushProduct(p) {
     duration_value: p.duration_value ?? '',
     duration_unit: p.duration_unit ?? '',
     description: cleanDescription(description),
+    why_recommendation: '',   // ← fill manually (e.g. "Korea's top university hospital", "best value", "cutting-edge tech")
+    head_doctor_profile: '',  // ← fill manually (head doctor name + credentials, English-only public info)
     location_address: p.location_address ?? '',
     contact_phone: p.contact_phone ?? '',
     contact_email: p.contact_email ?? '',
@@ -951,16 +973,8 @@ function parseVehicleProducts(wb) {
 function main() {
   const wb = XLSX.readFile(SRC)
 
-  // Parse selections first so products can map to them
-  parseMedicalSelections(wb)
-  parseBeautyMedicalSelections(wb)
-  parseWellnessSelections(wb)
-  parseEducationSelections(wb)
-  parseSubpackageSelections(wb)
-  parseStarcationSelections(wb)
-
-  findSelection = buildMatcher()
-
+  // Selections model dropped (4/30 meeting): partner names are public. Single
+  // products table only. _selection_number passed by parsers is ignored.
   parseMedicalProducts(wb)
   parseBeautyProducts(wb)
   parseEducationProducts(wb)
@@ -968,59 +982,44 @@ function main() {
   parseHotelProducts(wb)
   parseVehicleProducts(wb)
 
-  // Strip private fields from selections before writing
-  const selOut = selections.map(s => {
-    const { _matchKey, ...rest } = s
-    return rest
-  })
-
-  // Write selections
-  {
-    const wbo = XLSX.utils.book_new()
-    const ws = XLSX.utils.json_to_sheet(selOut)
-    ws['!cols'] = [
-      { wch: 12 }, { wch: 14 }, { wch: 24 }, { wch: 14 }, { wch: 50 },
-      { wch: 70 }, { wch: 8 }, { wch: 10 }, { wch: 12 }, { wch: 12 },
-      { wch: 8 }, { wch: 40 },
-    ]
-    XLSX.utils.book_append_sheet(wbo, ws, 'Selections')
-    const summary = {}
-    for (const s of selOut) summary[s.category] = (summary[s.category] ?? 0) + 1
-    const sumRows = Object.entries(summary).map(([category, count]) => ({ category, count }))
-    sumRows.push({ category: 'TOTAL', count: selOut.length })
-    XLSX.utils.book_append_sheet(wbo, XLSX.utils.json_to_sheet(sumRows), 'Summary')
-    XLSX.writeFile(wbo, OUT_SELECTIONS)
-    console.log(`Wrote ${OUT_SELECTIONS}`)
-    console.log('  Selections by category:', summary, 'Total:', selOut.length)
-  }
-
   // Write products
-  {
-    const wbo = XLSX.utils.book_new()
-    const ws = XLSX.utils.json_to_sheet(products)
-    ws['!cols'] = [
-      { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 28 }, { wch: 50 },
-      { wch: 18 }, { wch: 8 }, { wch: 14 }, { wch: 8 }, { wch: 14 },
-      { wch: 14 }, { wch: 6 }, { wch: 8 }, { wch: 70 }, { wch: 22 },
-      { wch: 22 }, { wch: 30 }, { wch: 30 }, { wch: 14 }, { wch: 14 },
-      { wch: 12 }, { wch: 8 }, { wch: 50 },
-    ]
-    XLSX.utils.book_append_sheet(wbo, ws, 'Products')
-    const summary = {}
-    let mapped = 0, unmapped = 0
-    for (const p of products) {
-      summary[p.category] = (summary[p.category] ?? 0) + 1
-      if (p.selection_number) mapped++; else unmapped++
-    }
-    const sumRows = Object.entries(summary).map(([category, count]) => ({ category, count }))
-    sumRows.push({ category: 'TOTAL', count: products.length })
-    sumRows.push({ category: 'mapped to selection', count: mapped })
-    sumRows.push({ category: 'unmapped', count: unmapped })
-    XLSX.utils.book_append_sheet(wbo, XLSX.utils.json_to_sheet(sumRows), 'Summary')
-    XLSX.writeFile(wbo, OUT_PRODUCTS)
-    console.log(`Wrote ${OUT_PRODUCTS}`)
-    console.log('  Products by category:', summary, 'Total:', products.length, 'Mapped:', mapped, 'Unmapped:', unmapped)
-  }
+  const wbo = XLSX.utils.book_new()
+  const ws = XLSX.utils.json_to_sheet(products)
+  // Column widths matching pushProduct field order (23 cols)
+  ws['!cols'] = [
+    { wch: 10 }, // product_number
+    { wch: 12 }, // category
+    { wch: 28 }, // partner_name
+    { wch: 50 }, // name
+    { wch: 8 },  // gender
+    { wch: 14 }, // base_price
+    { wch: 8 },  // price_currency
+    { wch: 14 }, // price_min
+    { wch: 14 }, // price_max
+    { wch: 6 },  // duration_value
+    { wch: 8 },  // duration_unit
+    { wch: 70 }, // description
+    { wch: 50 }, // why_recommendation
+    { wch: 50 }, // head_doctor_profile
+    { wch: 22 }, // location_address
+    { wch: 22 }, // contact_phone
+    { wch: 30 }, // contact_email
+    { wch: 30 }, // info_url
+    { wch: 14 }, // has_female_doctor
+    { wch: 14 }, // has_prayer_room
+    { wch: 12 }, // dietary_type
+    { wch: 8 },  // is_active
+    { wch: 50 }, // notes
+  ]
+  XLSX.utils.book_append_sheet(wbo, ws, 'Products')
+  const summary = {}
+  for (const p of products) summary[p.category] = (summary[p.category] ?? 0) + 1
+  const sumRows = Object.entries(summary).map(([category, count]) => ({ category, count }))
+  sumRows.push({ category: 'TOTAL', count: products.length })
+  XLSX.utils.book_append_sheet(wbo, XLSX.utils.json_to_sheet(sumRows), 'Summary')
+  XLSX.writeFile(wbo, OUT_PRODUCTS)
+  console.log(`Wrote ${OUT_PRODUCTS}`)
+  console.log('  Products by category:', summary, 'Total:', products.length)
 }
 
 main()
