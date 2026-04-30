@@ -286,13 +286,13 @@ export default function AdminCasesPage() {
               <table className="w-full text-sm border-collapse whitespace-nowrap tracking-tight">
                 <thead className="border-b border-gray-100 bg-gray-50/60">
                   <tr>
-                    <th className="py-3 px-2 md:px-4 text-xs font-medium text-gray-400 text-left">Case</th>
-                    <th className="py-3 px-2 md:px-4 text-xs font-medium text-gray-400 text-left hidden md:table-cell">Agent</th>
-                    <th className="py-3 px-2 md:px-4 text-xs font-medium text-gray-400 text-left">Lead Client</th>
-                    <th className="py-3 px-2 md:px-4 text-xs font-medium text-gray-400 text-left hidden md:table-cell">Members</th>
-                    <th className="py-3 px-2 md:px-4 text-xs font-medium text-gray-400 text-left">Travel</th>
-                    <th className="py-3 px-2 md:px-4 text-xs font-medium text-gray-400 text-left">Settlement</th>
-                    <th className="py-3 px-2 md:px-4 text-xs font-medium text-gray-400 text-left">Total (USD)</th>
+                    <th className="py-3 px-1.5 md:px-4 text-xs font-medium text-gray-400 text-left">Case</th>
+                    <th className="py-3 px-1.5 md:px-4 text-xs font-medium text-gray-400 text-left hidden md:table-cell">Agent</th>
+                    <th className="py-3 px-1.5 md:px-4 text-xs font-medium text-gray-400 text-left">Lead Client</th>
+                    <th className="py-3 px-1.5 md:px-4 text-xs font-medium text-gray-400 text-left hidden md:table-cell">Members</th>
+                    <th className="py-3 px-1.5 md:px-4 text-xs font-medium text-gray-400 text-left">Travel</th>
+                    <th className="py-3 px-1.5 md:px-4 text-xs font-medium text-gray-400 text-center md:text-left">Settlement</th>
+                    <th className="py-3 px-1.5 md:px-4 text-xs font-medium text-gray-400 text-left">Total (USD)</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -321,28 +321,34 @@ export default function AdminCasesPage() {
                           return (
                             <tr key={c.id} onClick={() => router.push(`/admin/cases/${c.id}`)}
                               className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors">
-                              <td className="py-3 px-2 md:px-4 font-mono text-xs text-gray-400">{c.case_number}</td>
-                              <td className="py-3 px-2 md:px-4 hidden md:table-cell">
+                              <td className="py-3 px-1.5 md:px-4 font-mono text-xs text-gray-400">{c.case_number}</td>
+                              <td className="py-3 px-1.5 md:px-4 hidden md:table-cell">
                                 <p className="text-gray-800 font-medium">{getAgent(c)?.name ?? '—'}</p>
                                 <p className="text-[10px] font-mono text-gray-400">{getAgent(c)?.agent_number}</p>
                               </td>
-                              <td className="py-3 px-2 md:px-4">
+                              <td className="py-3 px-1.5 md:px-4">
                                 <p className="text-gray-900 font-medium">{caseLead?.clients?.name ?? '—'}</p>
                                 {caseLead?.clients?.client_number && (
                                   <p className="text-[10px] font-mono text-gray-400">{caseLead.clients.client_number}</p>
                                 )}
                               </td>
-                              <td className="py-3 px-2 md:px-4 text-gray-500 hidden md:table-cell">{memberCount}</td>
-                              <td className="py-3 px-2 md:px-4 text-gray-500 text-xs text-left align-middle">
+                              <td className="py-3 px-1.5 md:px-4 text-gray-500 hidden md:table-cell">{memberCount}</td>
+                              <td className="py-3 px-1.5 md:px-4 text-gray-500 text-xs text-left align-middle">
                                 {c.travel_start_date || c.travel_end_date ? (
                                   <>
-                                    <span className="block md:inline">{c.travel_start_date ?? '—'}</span>
+                                    <span className="block md:inline">
+                                      <span className="md:hidden">{c.travel_start_date?.slice(2) ?? '—'}</span>
+                                      <span className="hidden md:inline">{c.travel_start_date ?? '—'}</span>
+                                    </span>
                                     <span className="hidden md:inline"> – </span>
-                                    <span className="block md:inline">{c.travel_end_date ?? '—'}</span>
+                                    <span className="block md:inline">
+                                      <span className="md:hidden">{c.travel_end_date?.slice(2) ?? '—'}</span>
+                                      <span className="hidden md:inline">{c.travel_end_date ?? '—'}</span>
+                                    </span>
                                   </>
                                 ) : '—'}
                               </td>
-                              <td className="py-3 px-2 md:px-4">
+                              <td className="py-3 px-1.5 md:px-4 text-center md:text-left">
                                 {(() => {
                                   const ps = partnerStatusFor(c)
                                   const agentDone = settledCaseIds.has(c.id)
@@ -357,14 +363,14 @@ export default function AdminCasesPage() {
                                     )
                                   }
                                   return (
-                                    <div className="flex items-center gap-2 md:gap-3">
+                                    <div className="inline-flex items-center gap-2 md:gap-3">
                                       {part('Partner', ps, ps === 'done' ? 'All partner payouts complete' : ps === 'pending' ? 'Partner payouts pending' : 'No partners on this case')}
                                       {part('Agent', agentDone ? 'done' : 'pending', agentDone ? 'Agent commission paid' : 'Agent commission pending')}
                                     </div>
                                   )
                                 })()}
                               </td>
-                              <td className="py-3 px-2 md:px-4 font-medium text-gray-900">
+                              <td className="py-3 px-1.5 md:px-4 font-medium text-gray-900">
                                 {quote ? fmtUSD(quote.total_price / exchangeRate) : '—'}
                               </td>
                             </tr>

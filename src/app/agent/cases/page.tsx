@@ -237,12 +237,12 @@ export default function AgentCasesPage() {
               <table className="w-full text-sm border-collapse whitespace-nowrap tracking-tight">
                 <thead className="border-b border-gray-100 bg-gray-50/60">
                   <tr>
-                    <th className="py-3 px-2 md:px-4 text-xs font-medium text-gray-400 text-left">Case</th>
-                    <th className="py-3 px-2 md:px-4 text-xs font-medium text-gray-400 text-left">Lead Client</th>
-                    <th className="py-3 px-2 md:px-4 text-xs font-medium text-gray-400 text-left hidden md:table-cell">Members</th>
-                    <th className="py-3 px-2 md:px-4 text-xs font-medium text-gray-400 text-left">Travel</th>
-                    <th className="py-3 px-2 md:px-4 text-xs font-medium text-gray-400 text-left">Settlement</th>
-                    <th className="py-3 px-2 md:px-4 text-xs font-medium text-gray-400 text-left">Amount (USD)</th>
+                    <th className="py-3 px-1.5 md:px-4 text-xs font-medium text-gray-400 text-left">Case</th>
+                    <th className="py-3 px-1.5 md:px-4 text-xs font-medium text-gray-400 text-left">Lead Client</th>
+                    <th className="py-3 px-1.5 md:px-4 text-xs font-medium text-gray-400 text-left hidden md:table-cell">Members</th>
+                    <th className="py-3 px-1.5 md:px-4 text-xs font-medium text-gray-400 text-left">Travel</th>
+                    <th className="py-3 px-1.5 md:px-4 text-xs font-medium text-gray-400 text-center md:text-left">Settlement</th>
+                    <th className="py-3 px-1.5 md:px-4 text-xs font-medium text-gray-400 text-left">Amount (USD)</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -272,20 +272,26 @@ export default function AgentCasesPage() {
                           return (
                             <tr key={c.id} onClick={() => router.push(`/agent/cases/${c.id}`)}
                               className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors">
-                              <td className="py-3 px-2 md:px-4 font-mono text-xs text-gray-400">{c.case_number}</td>
-                              <td className="py-3 px-2 md:px-4">
+                              <td className="py-3 px-1.5 md:px-4 font-mono text-xs text-gray-400">{c.case_number}</td>
+                              <td className="py-3 px-1.5 md:px-4">
                                 <p className="text-gray-900 font-medium">{lead?.clients?.name ?? '—'}</p>
                                 {lead?.clients?.client_number && (
                                   <p className="text-[10px] font-mono text-gray-400">{lead.clients.client_number}</p>
                                 )}
                               </td>
-                              <td className="py-3 px-2 md:px-4 text-gray-500 hidden md:table-cell">{members}</td>
-                              <td className="py-3 px-2 md:px-4 text-xs text-gray-500 text-left align-middle">
-                                <span className="block md:inline">{c.travel_start_date ?? '—'}</span>
+                              <td className="py-3 px-1.5 md:px-4 text-gray-500 hidden md:table-cell">{members}</td>
+                              <td className="py-3 px-1.5 md:px-4 text-xs text-gray-500 text-left align-middle">
+                                <span className="block md:inline">
+                                  <span className="md:hidden">{c.travel_start_date?.slice(2) ?? '—'}</span>
+                                  <span className="hidden md:inline">{c.travel_start_date ?? '—'}</span>
+                                </span>
                                 <span className="hidden md:inline"> – </span>
-                                <span className="block md:inline">{c.travel_end_date ?? '—'}</span>
+                                <span className="block md:inline">
+                                  <span className="md:hidden">{c.travel_end_date?.slice(2) ?? '—'}</span>
+                                  <span className="hidden md:inline">{c.travel_end_date ?? '—'}</span>
+                                </span>
                               </td>
-                              <td className="py-3 px-2 md:px-4">
+                              <td className="py-3 px-1.5 md:px-4 text-center md:text-left">
                                 {c.status === 'completed' ? (
                                   settledCaseIds.has(c.id) ? (
                                     <span className="inline-flex items-center gap-1">
@@ -302,7 +308,7 @@ export default function AgentCasesPage() {
                                   <span className="text-xs text-gray-300">—</span>
                                 )}
                               </td>
-                              <td className="py-3 px-2 md:px-4 text-left font-medium text-gray-900">
+                              <td className="py-3 px-1.5 md:px-4 text-left font-medium text-gray-900">
                                 {amountUsd !== null ? `$${amountUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
                               </td>
                             </tr>
