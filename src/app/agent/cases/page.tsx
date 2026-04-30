@@ -187,7 +187,7 @@ export default function AgentCasesPage() {
           />
         </div>
         {!loading && filtered.length > 0 && (
-          <div className="flex-1 min-w-0 flex items-center gap-1 bg-gray-50 border border-gray-100 rounded-lg px-2 py-1 overflow-x-auto no-scrollbar">
+          <div className="flex-1 min-w-0 flex items-center gap-1 bg-gray-50 border border-gray-100 rounded-lg px-2 py-1 flex-wrap md:flex-nowrap md:overflow-x-auto md:no-scrollbar">
             <span className="shrink-0 text-[10px] font-semibold text-gray-400 uppercase tracking-wider pr-1.5 mr-0.5 border-r border-gray-200">Jump</span>
             {DISPLAY_ORDER.map((g) => {
               const count = groupedByDisplay.get(g)?.length ?? 0
@@ -237,9 +237,12 @@ export default function AgentCasesPage() {
               <table className="w-full text-sm border-collapse whitespace-nowrap tracking-tight">
                 <thead className="border-b border-gray-100 bg-gray-50/60">
                   <tr>
-                    {['Case', 'Lead Client', 'Members', 'Travel', 'Settlement', 'Amount (USD)'].map((h) => (
-                      <th key={h} className="py-3 px-2 md:px-4 text-xs font-medium text-gray-400 text-left">{h}</th>
-                    ))}
+                    <th className="py-3 px-2 md:px-4 text-xs font-medium text-gray-400 text-left">Case</th>
+                    <th className="py-3 px-2 md:px-4 text-xs font-medium text-gray-400 text-left">Lead Client</th>
+                    <th className="py-3 px-2 md:px-4 text-xs font-medium text-gray-400 text-left hidden md:table-cell">Members</th>
+                    <th className="py-3 px-2 md:px-4 text-xs font-medium text-gray-400 text-left">Travel</th>
+                    <th className="py-3 px-2 md:px-4 text-xs font-medium text-gray-400 text-left">Settlement</th>
+                    <th className="py-3 px-2 md:px-4 text-xs font-medium text-gray-400 text-left">Amount (USD)</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -276,7 +279,7 @@ export default function AgentCasesPage() {
                                   <p className="text-[10px] font-mono text-gray-400">{lead.clients.client_number}</p>
                                 )}
                               </td>
-                              <td className="py-3 px-2 md:px-4 text-gray-500">{members}</td>
+                              <td className="py-3 px-2 md:px-4 text-gray-500 hidden md:table-cell">{members}</td>
                               <td className="py-3 px-2 md:px-4 text-xs text-gray-500 text-left align-middle">
                                 <span className="block md:inline">{c.travel_start_date ?? '—'}</span>
                                 <span className="hidden md:inline"> – </span>
@@ -287,12 +290,12 @@ export default function AgentCasesPage() {
                                   settledCaseIds.has(c.id) ? (
                                     <span className="inline-flex items-center gap-1">
                                       <span className="text-xs font-semibold text-emerald-600">✓</span>
-                                      <span className="text-xs text-gray-500">Received</span>
+                                      <span className="hidden md:inline text-xs text-gray-500">Received</span>
                                     </span>
                                   ) : (
                                     <span className="inline-flex items-center gap-1">
                                       <span className="text-xs font-semibold text-amber-500">⋯</span>
-                                      <span className="text-xs text-gray-500">Pending</span>
+                                      <span className="hidden md:inline text-xs text-gray-500">Pending</span>
                                     </span>
                                   )
                                 ) : (

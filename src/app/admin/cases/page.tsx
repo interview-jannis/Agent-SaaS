@@ -241,7 +241,7 @@ export default function AdminCasesPage() {
           />
         </div>
         {!loading && filtered.length > 0 && (
-          <div className="flex-1 min-w-0 flex items-center gap-1 bg-gray-50 border border-gray-100 rounded-lg px-2 py-1 overflow-x-auto no-scrollbar">
+          <div className="flex-1 min-w-0 flex items-center gap-1 bg-gray-50 border border-gray-100 rounded-lg px-2 py-1 flex-wrap md:flex-nowrap md:overflow-x-auto md:no-scrollbar">
             <span className="shrink-0 text-[10px] font-semibold text-gray-400 uppercase tracking-wider pr-1.5 mr-0.5 border-r border-gray-200">Jump</span>
             {DISPLAY_ORDER.map((g) => {
               const count = groupedByDisplay.get(g)?.length ?? 0
@@ -286,9 +286,13 @@ export default function AdminCasesPage() {
               <table className="w-full text-sm border-collapse whitespace-nowrap tracking-tight">
                 <thead className="border-b border-gray-100 bg-gray-50/60">
                   <tr>
-                    {['Case', 'Agent', 'Lead Client', 'Members', 'Travel Period', 'Settlement', 'Total (USD)'].map(h => (
-                      <th key={h} className="py-3 px-2 md:px-4 text-xs font-medium text-gray-400 text-left">{h}</th>
-                    ))}
+                    <th className="py-3 px-2 md:px-4 text-xs font-medium text-gray-400 text-left">Case</th>
+                    <th className="py-3 px-2 md:px-4 text-xs font-medium text-gray-400 text-left hidden md:table-cell">Agent</th>
+                    <th className="py-3 px-2 md:px-4 text-xs font-medium text-gray-400 text-left">Lead Client</th>
+                    <th className="py-3 px-2 md:px-4 text-xs font-medium text-gray-400 text-left hidden md:table-cell">Members</th>
+                    <th className="py-3 px-2 md:px-4 text-xs font-medium text-gray-400 text-left">Travel</th>
+                    <th className="py-3 px-2 md:px-4 text-xs font-medium text-gray-400 text-left">Settlement</th>
+                    <th className="py-3 px-2 md:px-4 text-xs font-medium text-gray-400 text-left">Total (USD)</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -318,7 +322,7 @@ export default function AdminCasesPage() {
                             <tr key={c.id} onClick={() => router.push(`/admin/cases/${c.id}`)}
                               className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors">
                               <td className="py-3 px-2 md:px-4 font-mono text-xs text-gray-400">{c.case_number}</td>
-                              <td className="py-3 px-2 md:px-4">
+                              <td className="py-3 px-2 md:px-4 hidden md:table-cell">
                                 <p className="text-gray-800 font-medium">{getAgent(c)?.name ?? '—'}</p>
                                 <p className="text-[10px] font-mono text-gray-400">{getAgent(c)?.agent_number}</p>
                               </td>
@@ -328,7 +332,7 @@ export default function AdminCasesPage() {
                                   <p className="text-[10px] font-mono text-gray-400">{caseLead.clients.client_number}</p>
                                 )}
                               </td>
-                              <td className="py-3 px-2 md:px-4 text-gray-500">{memberCount}</td>
+                              <td className="py-3 px-2 md:px-4 text-gray-500 hidden md:table-cell">{memberCount}</td>
                               <td className="py-3 px-2 md:px-4 text-gray-500 text-xs text-left align-middle">
                                 {c.travel_start_date || c.travel_end_date ? (
                                   <>
@@ -348,12 +352,12 @@ export default function AdminCasesPage() {
                                     return (
                                       <span title={tip} className="inline-flex items-center gap-1">
                                         <span className={`text-xs font-semibold ${markCls}`}>{mark}</span>
-                                        <span className="text-xs text-gray-500">{label}</span>
+                                        <span className="hidden md:inline text-xs text-gray-500">{label}</span>
                                       </span>
                                     )
                                   }
                                   return (
-                                    <div className="flex items-center gap-3">
+                                    <div className="flex items-center gap-2 md:gap-3">
                                       {part('Partner', ps, ps === 'done' ? 'All partner payouts complete' : ps === 'pending' ? 'Partner payouts pending' : 'No partners on this case')}
                                       {part('Agent', agentDone ? 'done' : 'pending', agentDone ? 'Agent commission paid' : 'Agent commission pending')}
                                     </div>
