@@ -329,10 +329,14 @@ export default function AdminCasesPage() {
                                 )}
                               </td>
                               <td className="py-3 px-2 md:px-4 text-gray-500">{memberCount}</td>
-                              <td className="py-3 px-2 md:px-4 text-gray-500 text-xs">
-                                {c.travel_start_date || c.travel_end_date
-                                  ? `${c.travel_start_date ?? '—'} – ${c.travel_end_date ?? '—'}`
-                                  : '—'}
+                              <td className="py-3 px-2 md:px-4 text-gray-500 text-xs text-left align-middle">
+                                {c.travel_start_date || c.travel_end_date ? (
+                                  <>
+                                    <span className="block md:inline">{c.travel_start_date ?? '—'}</span>
+                                    <span className="hidden md:inline"> – </span>
+                                    <span className="block md:inline">{c.travel_end_date ?? '—'}</span>
+                                  </>
+                                ) : '—'}
                               </td>
                               <td className="py-3 px-2 md:px-4">
                                 {(() => {

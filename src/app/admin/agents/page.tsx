@@ -187,11 +187,11 @@ export default function AdminAgentsPage() {
               {approvedAgents.length === 0 ? (
                 <p className="text-xs text-gray-400 px-6 py-8">No approved agents yet.</p>
               ) : (
-                <table className="w-full text-sm">
+                <table className="w-full text-sm whitespace-nowrap tracking-tight">
                   <thead className="border-y border-gray-100 bg-gray-50/60">
                     <tr>
                       {['Agent #', 'Name', 'Country', 'Cases', 'Margin', 'Unsettled', 'Paid Out', 'Status'].map(h => (
-                        <th key={h} className="py-2.5 px-4 text-xs font-medium text-gray-400 text-left">{h}</th>
+                        <th key={h} className="py-2.5 px-2 md:px-4 text-xs font-medium text-gray-400 text-left">{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -201,17 +201,17 @@ export default function AdminAgentsPage() {
                       return (
                         <tr key={a.id} onClick={() => router.push(`/admin/agents/${a.id}`)}
                           className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors">
-                          <td className="py-3.5 px-4 font-mono text-xs text-gray-400">{a.agent_number ?? '—'}</td>
-                          <td className="py-3.5 px-4">
+                          <td className="py-3 px-2 md:px-4 font-mono text-xs text-gray-400">{a.agent_number ?? '—'}</td>
+                          <td className="py-3 px-2 md:px-4">
                             <p className="font-medium text-gray-900">{a.name}</p>
                             <p className="text-[10px] text-gray-400">{a.email ?? ''}</p>
                           </td>
-                          <td className="py-3.5 px-4 text-gray-500">{a.country ?? '—'}</td>
-                          <td className="py-3.5 px-4 text-gray-500 text-center">{m.cases}</td>
-                          <td className="py-3.5 px-4 text-gray-700">{a.margin_rate != null ? `${(a.margin_rate * 100).toFixed(0)}%` : '—'}</td>
-                          <td className={`py-3.5 px-4 font-medium ${m.unsettledKrw > 0 ? 'text-amber-700' : 'text-gray-400'}`}>{fmtUSD(m.unsettledKrw / exchangeRate)}</td>
-                          <td className="py-3.5 px-4 text-gray-600">{fmtUSD(m.paidKrw / exchangeRate)}</td>
-                          <td className="py-3.5 px-4">
+                          <td className="py-3 px-2 md:px-4 text-gray-500">{a.country ?? '—'}</td>
+                          <td className="py-3 px-2 md:px-4 text-gray-500 text-center">{m.cases}</td>
+                          <td className="py-3 px-2 md:px-4 text-gray-700">{a.margin_rate != null ? `${(a.margin_rate * 100).toFixed(0)}%` : '—'}</td>
+                          <td className={`py-3 px-2 md:px-4 font-medium ${m.unsettledKrw > 0 ? 'text-amber-700' : 'text-gray-400'}`}>{fmtUSD(m.unsettledKrw / exchangeRate)}</td>
+                          <td className="py-3 px-2 md:px-4 text-gray-600">{fmtUSD(m.paidKrw / exchangeRate)}</td>
+                          <td className="py-3 px-2 md:px-4">
                             {a.is_active
                               ? <span className="text-[10px] px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-full border border-emerald-200">Active</span>
                               : <span className="text-[10px] px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full border border-gray-200">Inactive</span>
@@ -235,11 +235,11 @@ export default function AdminAgentsPage() {
               {tempAgents.length === 0 ? (
                 <p className="text-xs text-gray-400 px-6 py-8">No temp agents in onboarding.</p>
               ) : (
-                <table className="w-full text-sm">
+                <table className="w-full text-sm whitespace-nowrap tracking-tight">
                   <thead className="border-y border-gray-100 bg-gray-50">
                     <tr>
                       {['Agent #', 'Login Email', 'Status'].map(h => (
-                        <th key={h} className="py-2.5 px-4 text-xs font-medium text-gray-400 text-left">{h}</th>
+                        <th key={h} className="py-2.5 px-2 md:px-4 text-xs font-medium text-gray-400 text-left">{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -259,9 +259,9 @@ export default function AdminAgentsPage() {
                         <tr key={a.id}
                           onClick={() => router.push(`/admin/agents/${a.id}`)}
                           className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer">
-                          <td className="py-3.5 px-4 font-mono text-xs text-gray-400">{a.agent_number ?? '—'}</td>
-                          <td className="py-3.5 px-4 font-mono text-xs text-gray-700">{a.email ?? '—'}</td>
-                          <td className="py-3.5 px-4">
+                          <td className="py-3 px-2 md:px-4 font-mono text-xs text-gray-400">{a.agent_number ?? '—'}</td>
+                          <td className="py-3 px-2 md:px-4 font-mono text-xs text-gray-700">{a.email ?? '—'}</td>
+                          <td className="py-3 px-2 md:px-4">
                             <span className={`text-[10px] px-2 py-0.5 rounded-full border ${style}`}>{label}</span>
                           </td>
                         </tr>

@@ -127,17 +127,17 @@ export default function AgentClientsPage() {
     <div className="flex flex-col h-full bg-white">
 
       {/* Header */}
-      <div className="h-14 shrink-0 flex items-center gap-4 px-6 border-b border-gray-100">
-        <div className="flex items-center gap-2">
+      <div className="shrink-0 border-b border-gray-100 px-4 md:px-6 py-3 md:py-0 md:h-14 flex flex-col md:flex-row md:items-center gap-3 md:gap-4">
+        <div className="flex items-center gap-2 shrink-0">
           <h1 className="text-base font-semibold text-gray-900">Clients</h1>
           {!loading && <span className="text-xs text-gray-400">{clients.length}</span>}
         </div>
-        <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg w-64">
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg flex-1 md:flex-none md:w-64">
           <svg className="w-3.5 h-3.5 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
           </svg>
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search..."
-            className="flex-1 text-sm bg-transparent focus:outline-none text-gray-700 placeholder-gray-400" />
+            className="flex-1 min-w-0 text-sm bg-transparent focus:outline-none text-gray-700 placeholder-gray-400" />
           {search && (
             <button onClick={() => setSearch('')} className="text-gray-400 hover:text-gray-600">
               <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -148,7 +148,7 @@ export default function AgentClientsPage() {
         </div>
         <button
           onClick={() => { setForm(DEFAULT_FORM); setFormError(''); setShowModal(true) }}
-          className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-[#0f4c35] text-white text-xs font-medium rounded-lg hover:bg-[#0a3828] transition-colors"
+          className="md:ml-auto flex items-center justify-center gap-1.5 px-3 py-1.5 bg-[#0f4c35] text-white text-xs font-medium rounded-lg hover:bg-[#0a3828] transition-colors"
         >
           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
@@ -167,7 +167,7 @@ export default function AgentClientsPage() {
             {!search && <p className="text-xs text-gray-300 mt-1">Click &quot;Add Client&quot; to register a new client.</p>}
           </div>
         ) : (
-          <table className="w-full text-sm">
+          <table className="w-full text-sm whitespace-nowrap tracking-tight">
             <thead className="border-b border-gray-100 bg-gray-50/60 sticky top-0">
               <tr>
                 {['Client #', 'Name', 'Nationality', 'Gender', 'Muslim Friendly', 'Info'].map(h => (
@@ -181,11 +181,11 @@ export default function AgentClientsPage() {
                 return (
                   <tr key={c.id} onClick={() => router.push(`/agent/clients/${c.id}`)}
                     className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors">
-                    <td className="py-3.5 px-4 font-mono text-xs text-gray-400">{c.client_number}</td>
-                    <td className="py-3.5 px-4 font-medium text-gray-900">{c.name}</td>
-                    <td className="py-3.5 px-4 text-gray-500">{c.nationality ?? '—'}</td>
-                    <td className="py-3.5 px-4 text-gray-500 capitalize">{c.gender ?? '—'}</td>
-                    <td className="py-3.5 px-4">
+                    <td className="py-3 px-2 md:px-4 font-mono text-xs text-gray-400">{c.client_number}</td>
+                    <td className="py-3 px-2 md:px-4 font-medium text-gray-900">{c.name}</td>
+                    <td className="py-3 px-2 md:px-4 text-gray-500">{c.nationality ?? '—'}</td>
+                    <td className="py-3 px-2 md:px-4 text-gray-500 capitalize">{c.gender ?? '—'}</td>
+                    <td className="py-3 px-2 md:px-4">
                       {c.needs_muslim_friendly
                         ? <span className="inline-flex items-center gap-1 text-xs text-gray-700">
                             <span className="text-emerald-600 font-semibold">✓</span>
@@ -194,7 +194,7 @@ export default function AgentClientsPage() {
                         : <span className="text-gray-300 text-xs">—</span>
                       }
                     </td>
-                    <td className="py-3.5 px-4">
+                    <td className="py-3 px-2 md:px-4">
                       {missingCount === 0
                         ? <span className="inline-flex items-center gap-1 text-xs">
                             <span className="text-emerald-600 font-semibold">✓</span>

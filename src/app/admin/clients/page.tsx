@@ -92,11 +92,11 @@ export default function AdminClientsPage() {
         ) : filtered.length === 0 ? (
           <p className="text-sm text-gray-400 text-center py-16">No clients match the filter.</p>
         ) : (
-          <table className="w-full text-sm">
+          <table className="w-full text-sm whitespace-nowrap tracking-tight">
             <thead className="border-b border-gray-100 bg-gray-50/60 sticky top-0">
               <tr>
                 {['Client #', 'Name', 'Nationality', 'Gender', 'DOB', 'Agent', 'Cases', 'Info', 'Registered'].map((h, i) => (
-                  <th key={h} className={`py-3 px-4 text-xs font-medium text-gray-400 text-left ${i === 6 ? 'text-center' : ''}`}>{h}</th>
+                  <th key={h} className={`py-3 px-2 md:px-4 text-xs font-medium text-gray-400 text-left ${i === 6 ? 'text-center' : ''}`}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -113,12 +113,12 @@ export default function AdminClientsPage() {
                       router.push(`/admin/clients/${c.id}`)
                     }}
                     className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer">
-                    <td className="py-3.5 px-4 font-mono text-xs text-gray-400">{c.client_number ?? '—'}</td>
-                    <td className="py-3.5 px-4 font-medium text-gray-900">{client.name ?? '—'}</td>
-                    <td className="py-3.5 px-4 text-gray-600">{c.nationality ?? '—'}</td>
-                    <td className="py-3.5 px-4 text-gray-500 capitalize">{c.gender ?? '—'}</td>
-                    <td className="py-3.5 px-4 text-xs text-gray-500">{c.date_of_birth ?? '—'}</td>
-                    <td className="py-3.5 px-4 text-xs">
+                    <td className="py-3 px-2 md:px-4 font-mono text-xs text-gray-400">{c.client_number ?? '—'}</td>
+                    <td className="py-3 px-2 md:px-4 font-medium text-gray-900">{client.name ?? '—'}</td>
+                    <td className="py-3 px-2 md:px-4 text-gray-600">{c.nationality ?? '—'}</td>
+                    <td className="py-3 px-2 md:px-4 text-gray-500 capitalize">{c.gender ?? '—'}</td>
+                    <td className="py-3 px-2 md:px-4 text-xs text-gray-500">{c.date_of_birth ?? '—'}</td>
+                    <td className="py-3 px-2 md:px-4 text-xs">
                       {a ? (
                         <button onClick={() => router.push(`/admin/agents/${a.id}`)}
                           className="text-[#0f4c35] font-medium hover:underline">
@@ -126,8 +126,8 @@ export default function AdminClientsPage() {
                         </button>
                       ) : <span className="text-gray-400">—</span>}
                     </td>
-                    <td className="py-3.5 px-4 text-gray-500 text-center">{c.case_members?.length ?? 0}</td>
-                    <td className="py-3.5 px-4">
+                    <td className="py-3 px-2 md:px-4 text-gray-500 text-center">{c.case_members?.length ?? 0}</td>
+                    <td className="py-3 px-2 md:px-4">
                       {missing.length === 0
                         ? <span className="inline-flex items-center gap-1 text-xs">
                             <span className="text-emerald-600 font-semibold">✓</span>
@@ -138,7 +138,7 @@ export default function AdminClientsPage() {
                             <span className="text-gray-500">{missing.length} missing</span>
                           </span>}
                     </td>
-                    <td className="py-3.5 px-4 text-xs text-gray-500">{c.created_at.slice(0, 10)}</td>
+                    <td className="py-3 px-2 md:px-4 text-xs text-gray-500">{c.created_at.slice(0, 10)}</td>
                   </tr>
                 )
               })}
