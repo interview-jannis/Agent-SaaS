@@ -18,7 +18,9 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
             {children}
           </main>
         </div>
-        <NotificationBell />
+        <div className="hidden md:block">
+          <NotificationBell />
+        </div>
       </div>
     </MobileNavProvider>
   )

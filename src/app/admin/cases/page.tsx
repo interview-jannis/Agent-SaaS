@@ -357,6 +357,8 @@ export default function AdminCasesPage() {
                                     const mark = state === 'done' ? '✓' : state === 'pending' ? '⋯' : '—'
                                     return (
                                       <span title={tip} className="inline-flex items-center gap-1">
+                                        {/* Mobile: show first letter so P✓ / A⋯ stays distinguishable in icon-only view. */}
+                                        <span className="md:hidden text-[10px] text-gray-400 font-medium">{label[0]}</span>
                                         <span className={`text-xs font-semibold ${markCls}`}>{mark}</span>
                                         <span className="hidden md:inline text-xs text-gray-500">{label}</span>
                                       </span>

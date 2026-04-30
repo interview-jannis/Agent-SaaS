@@ -1,12 +1,15 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { NotificationRow } from '@/lib/notifications'
 
 export function useNotifications(authUserId: string | null) {
   const [items, setItems] = useState<NotificationRow[]>([])
   const [loading, setLoading] = useState(true)
+  // Unique per hook instance — multiple bells (mobile top bar + desktop floating) can mount in the
+  // same tree, and Supabase realtime rejects two subscribes on the same channel name.
+  const instanceIdRef = useRef<string>(Math.random().toString(36).slice(2))
 
   const fetchItems = useCallback(async () => {
     if (!authUserId) return
@@ -25,7 +28,7 @@ export function useNotifications(authUserId: string | null) {
     fetchItems()
 
     const channel = supabase
-      .channel(`notifications:${authUserId}`)
+      .channel(`notifications:${authUserId}:${instanceIdRef.current}`)
       .on('postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'notifications', filter: `auth_user_id=eq.${authUserId}` },
         (payload) => {

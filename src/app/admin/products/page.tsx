@@ -117,8 +117,11 @@ export default function AdminProductsPage() {
   }
 
   function scrollToCategory(catId: string) {
-    const el = document.getElementById(`cat-section-${catId}`)
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    // Mobile renders a separate cards section; desktop renders the table section. Pick whichever is visible.
+    const mobileEl = document.getElementById(`cat-section-mobile-${catId}`)
+    const desktopEl = document.getElementById(`cat-section-${catId}`)
+    const target = mobileEl && mobileEl.offsetParent !== null ? mobileEl : desktopEl
+    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
   function extFromUrl(url: string): string {
@@ -328,7 +331,7 @@ export default function AdminProductsPage() {
         <div className="px-4 md:px-12 py-6 md:py-8 space-y-6">
 
         {/* Filters */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 md:gap-3 flex-wrap">
           {/* Search */}
           <div className="relative flex-1 max-w-xs">
             <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -379,8 +382,72 @@ export default function AdminProductsPage() {
           </select>
         </div>
 
-        {/* Table */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto">
+        {/* Mobile card view */}
+        <div className="md:hidden space-y-4">
+          {loading ? (
+            <div className="px-6 py-12 text-center text-sm text-gray-400">Loading...</div>
+          ) : filtered.length === 0 ? (
+            <div className="px-6 py-12 text-center text-sm text-gray-400">No products found</div>
+          ) : (
+            categories.map((cat) => {
+              const items = groupedByCategory.get(cat.id) ?? []
+              if (items.length === 0) return null
+              return (
+                <section key={cat.id} id={`cat-section-mobile-${cat.id}`} className="space-y-2 scroll-mt-20">
+                  <div className="flex items-center gap-2 px-1">
+                    <span className="text-[10px] uppercase tracking-wide text-gray-800 font-semibold">{cat.name}</span>
+                    <span className="text-[10px] tabular-nums text-gray-500">{items.length}</span>
+                  </div>
+                  <div className="space-y-2">
+                    {items.map((p) => {
+                      const imgs = p.product_images ?? []
+                      const sorted = [...imgs].sort((a, b) => (b.is_primary ? 1 : 0) - (a.is_primary ? 1 : 0))
+                      const primary = sorted[0]
+                      return (
+                        <div key={p.id} onClick={() => router.push(`/admin/products/${p.id}`)}
+                          className="bg-white rounded-xl border border-gray-100 shadow-sm p-3 flex gap-3 active:bg-gray-50 cursor-pointer">
+                          <div className="shrink-0">
+                            {primary ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={primary.image_url} alt="" className="w-16 h-16 rounded-lg object-cover" />
+                            ) : (
+                              <div className="w-16 h-16 rounded-lg bg-gray-100 flex items-center justify-center">
+                                <svg className="w-6 h-6 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5z" />
+                                </svg>
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="text-sm font-medium text-gray-900 truncate">{p.name}</p>
+                              <span className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                                p.is_active ? 'bg-green-50 text-[#0f4c35]' : 'bg-gray-100 text-gray-400'
+                              }`}>
+                                {p.is_active ? 'Active' : 'Inactive'}
+                              </span>
+                            </div>
+                            <p className="text-xs text-gray-500 truncate mt-0.5">{p.partner_name ?? '—'}</p>
+                            <p className="text-[10px] font-mono text-gray-400 mt-0.5">{p.product_number}</p>
+                            <div className="mt-1.5 tabular-nums">
+                              <span className="text-sm font-semibold text-gray-900">{fmtPrice(p.base_price, p.price_currency)}</span>
+                              {p.price_currency !== 'USD' && (
+                                <span className="ml-1.5 text-[11px] text-gray-400">≈ {fmtUSD(toUSD(p.base_price, p.price_currency))}</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </section>
+              )
+            })
+          )}
+        </div>
+
+        {/* Desktop table */}
+        <div className="hidden md:block bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto">
           {loading ? (
             <div className="px-6 py-12 text-center text-sm text-gray-400">Loading...</div>
           ) : filtered.length === 0 ? (

@@ -141,7 +141,7 @@ export default function AdminAgentsPage() {
   return (
     <div className="flex flex-col h-full bg-white">
       {/* Header */}
-      <div className="h-14 shrink-0 flex items-center gap-4 px-6 border-b border-gray-100">
+      <div className="shrink-0 border-b border-gray-100 px-4 md:px-6 py-3 md:py-0 md:h-14 flex flex-col md:flex-row md:items-center gap-3 md:gap-4">
         <div className="flex items-center gap-2">
           <h1 className="text-base font-semibold text-gray-900">Agents</h1>
           {!loading && (
@@ -151,9 +151,9 @@ export default function AdminAgentsPage() {
             </span>
           )}
         </div>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="md:ml-auto flex items-center gap-2 flex-wrap">
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search..."
-            className="text-xs border border-gray-200 rounded-lg px-3 py-1.5 w-48 text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
+            className="flex-1 md:flex-none text-xs border border-gray-200 rounded-lg px-3 py-1.5 md:w-48 min-w-0 text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
           <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as typeof statusFilter)}
             className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-[#0f4c35] bg-white text-gray-600">
             <option value="all">All statuses</option>
@@ -180,7 +180,7 @@ export default function AdminAgentsPage() {
           <>
             {/* Approved agents — takes 5/7 of the viewport, scrolls within */}
             <section className="flex-[5] overflow-y-auto min-h-0">
-              <div className="px-6 pt-4 pb-2 flex items-center gap-2">
+              <div className="px-4 md:px-6 pt-4 pb-2 flex items-center gap-2">
                 <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Approved Agents</h2>
                 <span className="text-[10px] text-gray-400">{approvedAgents.length}</span>
               </div>
@@ -190,9 +190,14 @@ export default function AdminAgentsPage() {
                 <table className="w-full text-sm whitespace-nowrap tracking-tight">
                   <thead className="border-y border-gray-100 bg-gray-50/60">
                     <tr>
-                      {['Agent #', 'Name', 'Country', 'Cases', 'Margin', 'Unsettled', 'Paid Out', 'Status'].map(h => (
-                        <th key={h} className="py-2.5 px-2 md:px-4 text-xs font-medium text-gray-400 text-left">{h}</th>
-                      ))}
+                      <th className="py-2.5 px-2 md:px-4 text-xs font-medium text-gray-400 text-left">Agent #</th>
+                      <th className="py-2.5 px-2 md:px-4 text-xs font-medium text-gray-400 text-left">Name</th>
+                      <th className="py-2.5 px-2 md:px-4 text-xs font-medium text-gray-400 text-left hidden md:table-cell">Country</th>
+                      <th className="py-2.5 px-2 md:px-4 text-xs font-medium text-gray-400 text-left hidden md:table-cell">Cases</th>
+                      <th className="py-2.5 px-2 md:px-4 text-xs font-medium text-gray-400 text-left hidden md:table-cell">Margin</th>
+                      <th className="py-2.5 px-2 md:px-4 text-xs font-medium text-gray-400 text-left">Unsettled</th>
+                      <th className="py-2.5 px-2 md:px-4 text-xs font-medium text-gray-400 text-left hidden md:table-cell">Paid Out</th>
+                      <th className="py-2.5 px-2 md:px-4 text-xs font-medium text-gray-400 text-left">Status</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -204,13 +209,13 @@ export default function AdminAgentsPage() {
                           <td className="py-3 px-2 md:px-4 font-mono text-xs text-gray-400">{a.agent_number ?? '—'}</td>
                           <td className="py-3 px-2 md:px-4">
                             <p className="font-medium text-gray-900">{a.name}</p>
-                            <p className="text-[10px] text-gray-400">{a.email ?? ''}</p>
+                            <p className="text-[10px] text-gray-400 truncate max-w-[160px] md:max-w-none">{a.email ?? ''}</p>
                           </td>
-                          <td className="py-3 px-2 md:px-4 text-gray-500">{a.country ?? '—'}</td>
-                          <td className="py-3 px-2 md:px-4 text-gray-500 text-center">{m.cases}</td>
-                          <td className="py-3 px-2 md:px-4 text-gray-700">{a.margin_rate != null ? `${(a.margin_rate * 100).toFixed(0)}%` : '—'}</td>
+                          <td className="py-3 px-2 md:px-4 text-gray-500 hidden md:table-cell">{a.country ?? '—'}</td>
+                          <td className="py-3 px-2 md:px-4 text-gray-500 text-center hidden md:table-cell">{m.cases}</td>
+                          <td className="py-3 px-2 md:px-4 text-gray-700 hidden md:table-cell">{a.margin_rate != null ? `${(a.margin_rate * 100).toFixed(0)}%` : '—'}</td>
                           <td className={`py-3 px-2 md:px-4 font-medium ${m.unsettledKrw > 0 ? 'text-amber-700' : 'text-gray-400'}`}>{fmtUSD(m.unsettledKrw / exchangeRate)}</td>
-                          <td className="py-3 px-2 md:px-4 text-gray-600">{fmtUSD(m.paidKrw / exchangeRate)}</td>
+                          <td className="py-3 px-2 md:px-4 text-gray-600 hidden md:table-cell">{fmtUSD(m.paidKrw / exchangeRate)}</td>
                           <td className="py-3 px-2 md:px-4">
                             {a.is_active
                               ? <span className="text-[10px] px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-full border border-emerald-200">Active</span>
@@ -227,10 +232,10 @@ export default function AdminAgentsPage() {
 
             {/* Temp agents (onboarding in progress) — takes 2/5 of the viewport, scrolls within */}
             <section className="flex-[2] min-h-0 overflow-y-auto bg-gray-50/30 border-t-2 border-gray-200">
-              <div className="px-6 pt-2 pb-2 flex items-center gap-2 bg-gray-50/30 sticky top-0">
+              <div className="px-4 md:px-6 pt-2 pb-2 flex items-center gap-2 flex-wrap bg-gray-50/30 sticky top-0">
                 <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Onboarding</h2>
                 <span className="text-[10px] text-gray-400">{tempAgents.length}</span>
-                <p className="text-[11px] text-gray-400 ml-3">Pending signature, awaiting approval, or rejected.</p>
+                <p className="hidden md:block text-[11px] text-gray-400 ml-3">Pending signature, awaiting approval, or rejected.</p>
               </div>
               {tempAgents.length === 0 ? (
                 <p className="text-xs text-gray-400 px-6 py-8">No temp agents in onboarding.</p>
@@ -260,7 +265,7 @@ export default function AdminAgentsPage() {
                           onClick={() => router.push(`/admin/agents/${a.id}`)}
                           className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer">
                           <td className="py-3 px-2 md:px-4 font-mono text-xs text-gray-400">{a.agent_number ?? '—'}</td>
-                          <td className="py-3 px-2 md:px-4 font-mono text-xs text-gray-700">{a.email ?? '—'}</td>
+                          <td className="py-3 px-2 md:px-4 font-mono text-xs text-gray-700 truncate max-w-[160px] md:max-w-none">{a.email ?? '—'}</td>
                           <td className="py-3 px-2 md:px-4">
                             <span className={`text-[10px] px-2 py-0.5 rounded-full border ${style}`}>{label}</span>
                           </td>

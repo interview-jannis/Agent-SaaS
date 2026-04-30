@@ -170,9 +170,12 @@ export default function AgentClientsPage() {
           <table className="w-full text-sm whitespace-nowrap tracking-tight">
             <thead className="border-b border-gray-100 bg-gray-50/60 sticky top-0">
               <tr>
-                {['Client #', 'Name', 'Nationality', 'Gender', 'Muslim Friendly', 'Info'].map(h => (
-                  <th key={h} className="py-3 px-4 text-xs font-medium text-gray-400 text-left">{h}</th>
-                ))}
+                <th className="py-3 px-2 md:px-4 text-xs font-medium text-gray-400 text-left">Client #</th>
+                <th className="py-3 px-2 md:px-4 text-xs font-medium text-gray-400 text-left">Name</th>
+                <th className="py-3 px-2 md:px-4 text-xs font-medium text-gray-400 text-left hidden md:table-cell">Nationality</th>
+                <th className="py-3 px-2 md:px-4 text-xs font-medium text-gray-400 text-left hidden md:table-cell">Gender</th>
+                <th className="py-3 px-2 md:px-4 text-xs font-medium text-gray-400 text-left hidden md:table-cell">Muslim Friendly</th>
+                <th className="py-3 px-2 md:px-4 text-xs font-medium text-gray-400 text-left">Info</th>
               </tr>
             </thead>
             <tbody>
@@ -183,9 +186,9 @@ export default function AgentClientsPage() {
                     className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors">
                     <td className="py-3 px-2 md:px-4 font-mono text-xs text-gray-400">{c.client_number}</td>
                     <td className="py-3 px-2 md:px-4 font-medium text-gray-900">{c.name}</td>
-                    <td className="py-3 px-2 md:px-4 text-gray-500">{c.nationality ?? '—'}</td>
-                    <td className="py-3 px-2 md:px-4 text-gray-500 capitalize">{c.gender ?? '—'}</td>
-                    <td className="py-3 px-2 md:px-4">
+                    <td className="py-3 px-2 md:px-4 text-gray-500 hidden md:table-cell">{c.nationality ?? '—'}</td>
+                    <td className="py-3 px-2 md:px-4 text-gray-500 capitalize hidden md:table-cell">{c.gender ?? '—'}</td>
+                    <td className="py-3 px-2 md:px-4 hidden md:table-cell">
                       {c.needs_muslim_friendly
                         ? <span className="inline-flex items-center gap-1 text-xs text-gray-700">
                             <span className="text-emerald-600 font-semibold">✓</span>
@@ -198,11 +201,11 @@ export default function AgentClientsPage() {
                       {missingCount === 0
                         ? <span className="inline-flex items-center gap-1 text-xs">
                             <span className="text-emerald-600 font-semibold">✓</span>
-                            <span className="text-gray-500">Complete</span>
+                            <span className="hidden md:inline text-gray-500">Complete</span>
                           </span>
                         : <span className="inline-flex items-center gap-1 text-xs">
                             <span className="text-amber-500 font-semibold">⋯</span>
-                            <span className="text-gray-500">{missingCount} missing</span>
+                            <span className="text-gray-500"><span className="md:hidden">{missingCount}</span><span className="hidden md:inline">{missingCount} missing</span></span>
                           </span>
                       }
                     </td>

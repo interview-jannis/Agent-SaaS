@@ -13,7 +13,9 @@ function timeAgo(iso: string): string {
   return `${Math.floor(diff / 86400)}d ago`
 }
 
-export default function NotificationBell() {
+type Variant = 'floating' | 'inline'
+
+export default function NotificationBell({ variant = 'floating' }: { variant?: Variant } = {}) {
   const router = useRouter()
   const pathname = usePathname()
   const [uid, setUid] = useState<string | null>(null)
@@ -63,16 +65,26 @@ export default function NotificationBell() {
     }
   }
 
+  const isInline = variant === 'inline'
+  const wrapperCls = isInline ? 'relative' : 'fixed bottom-6 right-6 z-50'
+  const buttonCls = isInline
+    ? 'relative flex items-center justify-center w-9 h-9 rounded-lg text-gray-700 hover:bg-gray-100'
+    : 'relative flex items-center justify-center w-12 h-12 rounded-full bg-white border border-gray-200 shadow-lg hover:shadow-xl hover:border-gray-300 transition-all'
+  const iconCls = isInline ? 'w-5 h-5 text-gray-700' : 'w-5 h-5 text-gray-700'
+  const dotCls = isInline
+    ? 'absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full ring-2 ring-white'
+    : 'absolute top-2 right-2 w-2.5 h-2.5 bg-red-500 rounded-full ring-2 ring-white'
+
   return (
-    <div ref={ref} className="fixed bottom-6 right-6 z-50">
+    <div ref={ref} className={wrapperCls}>
       <button onClick={toggle}
-        className="relative flex items-center justify-center w-12 h-12 rounded-full bg-white border border-gray-200 shadow-lg hover:shadow-xl hover:border-gray-300 transition-all"
+        className={buttonCls}
         aria-label="Notifications">
-        <svg className="w-5 h-5 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+        <svg className={iconCls} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
         </svg>
         {unreadCount > 0 && (
-          <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-red-500 rounded-full ring-2 ring-white" />
+          <span className={dotCls} />
         )}
       </button>
 
@@ -94,8 +106,11 @@ export default function NotificationBell() {
             </button>
           )
         }
+        const panelPositionCls = isInline
+          ? 'absolute top-full mt-2 right-0 w-[min(20rem,calc(100vw-1rem))]'
+          : 'absolute bottom-full mb-2 right-0 w-80'
         return (
-          <div className="absolute bottom-full mb-2 right-0 w-80 bg-white border border-gray-200 rounded-2xl shadow-xl overflow-hidden">
+          <div className={`${panelPositionCls} bg-white border border-gray-200 rounded-2xl shadow-xl overflow-hidden z-50`}>
             <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
               <span className="text-sm font-semibold text-gray-900">Notifications</span>
               {activeItems.length > 0 && <span className="text-[10px] text-gray-400">{activeItems.length}</span>}

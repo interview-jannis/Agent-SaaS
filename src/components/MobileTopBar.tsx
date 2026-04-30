@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useMobileNav } from './MobileNavContext'
+import NotificationBell from './NotificationBell'
 
 export default function MobileTopBar({ homeHref }: { homeHref: string }) {
   const { setOpen } = useMobileNav()
@@ -24,6 +25,9 @@ export default function MobileTopBar({ homeHref }: { homeHref: string }) {
         </div>
         <span className="text-sm font-semibold text-gray-900">Tiktak</span>
       </Link>
+      <div className="ml-auto">
+        <NotificationBell variant="inline" />
+      </div>
     </header>
   )
 }

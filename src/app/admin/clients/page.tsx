@@ -70,14 +70,16 @@ export default function AdminClientsPage() {
 
   return (
     <div className="flex flex-col h-full bg-white">
-      <div className="h-14 shrink-0 flex items-center gap-4 px-6 border-b border-gray-100">
-        <h1 className="text-base font-semibold text-gray-900">Clients</h1>
-        {!loading && <span className="text-xs text-gray-400">{filtered.length}{filtered.length !== clients.length ? ` of ${clients.length}` : ''}</span>}
+      <div className="shrink-0 border-b border-gray-100 px-4 md:px-6 py-3 md:py-0 md:h-14 flex flex-col md:flex-row md:items-center gap-3 md:gap-4">
+        <div className="flex items-center gap-2">
+          <h1 className="text-base font-semibold text-gray-900">Clients</h1>
+          {!loading && <span className="text-xs text-gray-400">{filtered.length}{filtered.length !== clients.length ? ` of ${clients.length}` : ''}</span>}
+        </div>
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="md:ml-auto flex items-center gap-2 flex-wrap">
           <input type="text" value={query} onChange={e => setQuery(e.target.value)}
             placeholder="Search name / #"
-            className="text-xs border border-gray-200 rounded-lg px-3 py-1.5 w-48 text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
+            className="flex-1 md:flex-none text-xs border border-gray-200 rounded-lg px-3 py-1.5 md:w-48 min-w-0 text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
           <select value={agentFilter} onChange={e => setAgentFilter(e.target.value)}
             className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-700 focus:outline-none focus:border-[#0f4c35]">
             <option value="">All agents</option>
@@ -95,9 +97,15 @@ export default function AdminClientsPage() {
           <table className="w-full text-sm whitespace-nowrap tracking-tight">
             <thead className="border-b border-gray-100 bg-gray-50/60 sticky top-0">
               <tr>
-                {['Client #', 'Name', 'Nationality', 'Gender', 'DOB', 'Agent', 'Cases', 'Info', 'Registered'].map((h, i) => (
-                  <th key={h} className={`py-3 px-2 md:px-4 text-xs font-medium text-gray-400 text-left ${i === 6 ? 'text-center' : ''}`}>{h}</th>
-                ))}
+                <th className="py-3 px-2 md:px-4 text-xs font-medium text-gray-400 text-left">Client #</th>
+                <th className="py-3 px-2 md:px-4 text-xs font-medium text-gray-400 text-left">Name</th>
+                <th className="py-3 px-2 md:px-4 text-xs font-medium text-gray-400 text-left hidden md:table-cell">Nationality</th>
+                <th className="py-3 px-2 md:px-4 text-xs font-medium text-gray-400 text-left hidden md:table-cell">Gender</th>
+                <th className="py-3 px-2 md:px-4 text-xs font-medium text-gray-400 text-left hidden md:table-cell">DOB</th>
+                <th className="py-3 px-2 md:px-4 text-xs font-medium text-gray-400 text-left">Agent</th>
+                <th className="py-3 px-2 md:px-4 text-xs font-medium text-gray-400 text-center hidden md:table-cell">Cases</th>
+                <th className="py-3 px-2 md:px-4 text-xs font-medium text-gray-400 text-left">Info</th>
+                <th className="py-3 px-2 md:px-4 text-xs font-medium text-gray-400 text-left hidden md:table-cell">Registered</th>
               </tr>
             </thead>
             <tbody>
@@ -115,9 +123,9 @@ export default function AdminClientsPage() {
                     className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer">
                     <td className="py-3 px-2 md:px-4 font-mono text-xs text-gray-400">{c.client_number ?? '—'}</td>
                     <td className="py-3 px-2 md:px-4 font-medium text-gray-900">{client.name ?? '—'}</td>
-                    <td className="py-3 px-2 md:px-4 text-gray-600">{c.nationality ?? '—'}</td>
-                    <td className="py-3 px-2 md:px-4 text-gray-500 capitalize">{c.gender ?? '—'}</td>
-                    <td className="py-3 px-2 md:px-4 text-xs text-gray-500">{c.date_of_birth ?? '—'}</td>
+                    <td className="py-3 px-2 md:px-4 text-gray-600 hidden md:table-cell">{c.nationality ?? '—'}</td>
+                    <td className="py-3 px-2 md:px-4 text-gray-500 capitalize hidden md:table-cell">{c.gender ?? '—'}</td>
+                    <td className="py-3 px-2 md:px-4 text-xs text-gray-500 hidden md:table-cell">{c.date_of_birth ?? '—'}</td>
                     <td className="py-3 px-2 md:px-4 text-xs">
                       {a ? (
                         <button onClick={() => router.push(`/admin/agents/${a.id}`)}
@@ -126,19 +134,19 @@ export default function AdminClientsPage() {
                         </button>
                       ) : <span className="text-gray-400">—</span>}
                     </td>
-                    <td className="py-3 px-2 md:px-4 text-gray-500 text-center">{c.case_members?.length ?? 0}</td>
+                    <td className="py-3 px-2 md:px-4 text-gray-500 text-center hidden md:table-cell">{c.case_members?.length ?? 0}</td>
                     <td className="py-3 px-2 md:px-4">
                       {missing.length === 0
                         ? <span className="inline-flex items-center gap-1 text-xs">
                             <span className="text-emerald-600 font-semibold">✓</span>
-                            <span className="text-gray-500">Complete</span>
+                            <span className="hidden md:inline text-gray-500">Complete</span>
                           </span>
                         : <span className="inline-flex items-center gap-1 text-xs">
                             <span className="text-amber-500 font-semibold">⋯</span>
-                            <span className="text-gray-500">{missing.length} missing</span>
+                            <span className="text-gray-500"><span className="md:hidden">{missing.length}</span><span className="hidden md:inline">{missing.length} missing</span></span>
                           </span>}
                     </td>
-                    <td className="py-3 px-2 md:px-4 text-xs text-gray-500">{c.created_at.slice(0, 10)}</td>
+                    <td className="py-3 px-2 md:px-4 text-xs text-gray-500 hidden md:table-cell">{c.created_at.slice(0, 10)}</td>
                   </tr>
                 )
               })}

@@ -299,9 +299,12 @@ export default function AdminSettlementPage() {
                       <table className="w-full text-sm whitespace-nowrap tracking-tight">
                         <thead className="bg-gray-50 border-b border-gray-100">
                           <tr>
-                            {['Case', 'Lead', 'Travel End', 'Partners', 'Pending', ''].map(h => (
-                              <th key={h} className="py-2.5 px-2 md:px-4 text-xs font-medium text-gray-500 text-left">{h}</th>
-                            ))}
+                            <th className="py-2.5 px-2 md:px-4 text-xs font-medium text-gray-500 text-left">Case</th>
+                            <th className="py-2.5 px-2 md:px-4 text-xs font-medium text-gray-500 text-left">Lead</th>
+                            <th className="py-2.5 px-2 md:px-4 text-xs font-medium text-gray-500 text-left hidden md:table-cell">Travel End</th>
+                            <th className="py-2.5 px-2 md:px-4 text-xs font-medium text-gray-500 text-left hidden md:table-cell">Partners</th>
+                            <th className="py-2.5 px-2 md:px-4 text-xs font-medium text-gray-500 text-left">Pending</th>
+                            <th className="py-2.5 px-2 md:px-4 text-xs font-medium text-gray-500 text-left hidden md:table-cell"></th>
                           </tr>
                         </thead>
                         <tbody>
@@ -310,11 +313,12 @@ export default function AdminSettlementPage() {
                             const lead = c.case_members?.find(m => m.is_lead)
                             const unpaid = info.partners.filter(p => !info.paid.has(p))
                             return (
-                              <tr key={c.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50">
+                              <tr key={c.id} onClick={() => { if (typeof window !== 'undefined') window.location.href = `/admin/cases/${c.id}` }}
+                                className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50 cursor-pointer">
                                 <td className="py-3 px-2 md:px-4 font-mono text-xs text-gray-500">{c.case_number}</td>
                                 <td className="py-3 px-2 md:px-4 text-gray-800">{lead?.clients?.name ?? '—'}</td>
-                                <td className="py-3 px-2 md:px-4 text-xs text-gray-500">{c.travel_end_date ?? '—'}</td>
-                                <td className="py-3 px-2 md:px-4 text-xs text-gray-600">
+                                <td className="py-3 px-2 md:px-4 text-xs text-gray-500 hidden md:table-cell">{c.travel_end_date ?? '—'}</td>
+                                <td className="py-3 px-2 md:px-4 text-xs text-gray-600 hidden md:table-cell">
                                   <span className="text-amber-700 font-medium">{unpaid.length}</span>
                                   <span className="text-gray-400"> / {info.partners.length}</span>
                                   {unpaid.length > 0 && (
@@ -324,7 +328,7 @@ export default function AdminSettlementPage() {
                                 <td className="py-3 px-2 md:px-4 tabular-nums">
                                   <span className="text-sm font-semibold text-gray-900">{fmtUSD(toUsd(info.pendingKrw))}</span>
                                 </td>
-                                <td className="py-3 px-2 md:px-4 text-right">
+                                <td className="py-3 px-2 md:px-4 text-right hidden md:table-cell">
                                   <a href={`/admin/cases/${c.id}`} className="text-xs text-[#0f4c35] hover:underline">Open →</a>
                                 </td>
                               </tr>
@@ -351,9 +355,11 @@ export default function AdminSettlementPage() {
                       <table className="w-full text-sm whitespace-nowrap tracking-tight">
                         <thead className="bg-gray-50 border-b border-gray-100">
                           <tr>
-                            {['Paid On', 'Partner', 'Case', 'Note', 'Amount'].map(h => (
-                              <th key={h} className="py-2.5 px-2 md:px-4 text-xs font-medium text-gray-500 text-left">{h}</th>
-                            ))}
+                            <th className="py-2.5 px-2 md:px-4 text-xs font-medium text-gray-500 text-left">Paid On</th>
+                            <th className="py-2.5 px-2 md:px-4 text-xs font-medium text-gray-500 text-left">Partner</th>
+                            <th className="py-2.5 px-2 md:px-4 text-xs font-medium text-gray-500 text-left hidden md:table-cell">Case</th>
+                            <th className="py-2.5 px-2 md:px-4 text-xs font-medium text-gray-500 text-left hidden md:table-cell">Note</th>
+                            <th className="py-2.5 px-2 md:px-4 text-xs font-medium text-gray-500 text-left">Amount</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -362,9 +368,9 @@ export default function AdminSettlementPage() {
                             const lead = linkedCase?.case_members?.find(m => m.is_lead)
                             return (
                               <tr key={p.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50">
-                                <td className="py-3 px-2 md:px-4 text-gray-800">{p.paid_at?.slice(0, 10) ?? '—'}</td>
+                                <td className="py-3 px-2 md:px-4 text-gray-800 text-xs md:text-sm">{p.paid_at?.slice(0, 10) ?? '—'}</td>
                                 <td className="py-3 px-2 md:px-4 text-gray-800">{p.partner_name}</td>
-                                <td className="py-3 px-2 md:px-4 text-xs text-left align-middle">
+                                <td className="py-3 px-2 md:px-4 text-xs text-left align-middle hidden md:table-cell">
                                   {linkedCase ? (
                                     <a href={`/admin/cases/${linkedCase.id}`} className="block md:inline text-[#0f4c35] hover:underline">
                                       <span className="block md:inline font-mono">{linkedCase.case_number}</span>
@@ -373,7 +379,7 @@ export default function AdminSettlementPage() {
                                     </a>
                                   ) : <span className="text-gray-400">—</span>}
                                 </td>
-                                <td className="py-3 px-2 md:px-4 text-xs text-gray-500 truncate max-w-[200px]">{p.note ?? '—'}</td>
+                                <td className="py-3 px-2 md:px-4 text-xs text-gray-500 truncate max-w-[200px] hidden md:table-cell">{p.note ?? '—'}</td>
                                 <td className="py-3 px-2 md:px-4 text-left">
                                   <p className="text-sm font-semibold text-gray-900">{fmtUSD(toUsd(p.amount))}</p>
                                 </td>
@@ -455,14 +461,14 @@ export default function AdminSettlementPage() {
                                 const days = daysWaiting(c.travel_end_date)
                                 const margin = c.quotes?.[0]?.agent_margin_rate ?? 0
                                 return (
-                                  <div key={c.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50/50">
+                                  <div key={c.id} className="flex items-center gap-2 md:gap-3 px-3 md:px-4 py-2.5 hover:bg-gray-50/50 flex-wrap">
                                     <span className="text-xs font-mono text-gray-400 shrink-0">{c.case_number}</span>
-                                    <span className="text-sm text-gray-800 truncate flex-1">{lead?.clients?.name ?? '—'}</span>
-                                    <span className="text-xs text-gray-500 shrink-0">
+                                    <span className="text-sm text-gray-800 truncate flex-1 min-w-0">{lead?.clients?.name ?? '—'}</span>
+                                    <span className="text-xs text-gray-500 shrink-0 hidden md:inline">
                                       {c.travel_end_date ?? '—'}
                                       {days !== null && days > 0 && <span className="ml-1 text-gray-400">({days}d ago)</span>}
                                     </span>
-                                    <span className="text-xs text-gray-500 shrink-0">{(margin * 100).toFixed(0)}%</span>
+                                    <span className="text-xs text-gray-500 shrink-0 hidden md:inline">{(margin * 100).toFixed(0)}%</span>
                                     <span className="text-sm font-semibold text-gray-900 shrink-0 tabular-nums min-w-[90px] text-right">{fmtUSD(toUsd(commKrw))}</span>
                                     <button onClick={() => openSettleModal(c)}
                                       className="px-3 py-1 text-xs font-medium bg-[#0f4c35] text-white rounded-lg hover:bg-[#0a3828] shrink-0">
@@ -494,9 +500,12 @@ export default function AdminSettlementPage() {
                       <table className="w-full text-sm whitespace-nowrap tracking-tight">
                         <thead className="bg-gray-50 border-b border-gray-100">
                           <tr>
-                            {['Paid On', '#', 'Agent', 'Case', 'Margin', 'Amount'].map(h => (
-                              <th key={h} className="py-2.5 px-2 md:px-4 text-xs font-medium text-gray-500 text-left">{h}</th>
-                            ))}
+                            <th className="py-2.5 px-2 md:px-4 text-xs font-medium text-gray-500 text-left">Paid On</th>
+                            <th className="py-2.5 px-2 md:px-4 text-xs font-medium text-gray-500 text-left hidden md:table-cell">#</th>
+                            <th className="py-2.5 px-2 md:px-4 text-xs font-medium text-gray-500 text-left">Agent</th>
+                            <th className="py-2.5 px-2 md:px-4 text-xs font-medium text-gray-500 text-left hidden md:table-cell">Case</th>
+                            <th className="py-2.5 px-2 md:px-4 text-xs font-medium text-gray-500 text-left hidden md:table-cell">Margin</th>
+                            <th className="py-2.5 px-2 md:px-4 text-xs font-medium text-gray-500 text-left">Amount</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -507,10 +516,10 @@ export default function AdminSettlementPage() {
                             const margin = linkedCase?.quotes?.[0]?.agent_margin_rate
                             return (
                               <tr key={s.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50">
-                                <td className="py-3 px-2 md:px-4 text-gray-800">{s.paid_at?.slice(0, 10) ?? '—'}</td>
-                                <td className="py-3 px-2 md:px-4 font-mono text-xs text-gray-500">{s.settlement_number ?? '—'}</td>
+                                <td className="py-3 px-2 md:px-4 text-gray-800 text-xs md:text-sm">{s.paid_at?.slice(0, 10) ?? '—'}</td>
+                                <td className="py-3 px-2 md:px-4 font-mono text-xs text-gray-500 hidden md:table-cell">{s.settlement_number ?? '—'}</td>
                                 <td className="py-3 px-2 md:px-4 text-gray-800">{agent?.name ?? '—'}</td>
-                                <td className="py-3 px-2 md:px-4 text-xs text-left align-middle">
+                                <td className="py-3 px-2 md:px-4 text-xs text-left align-middle hidden md:table-cell">
                                   {linkedCase ? (
                                     <span className="block md:inline text-gray-500">
                                       <span className="block md:inline font-mono">{linkedCase.case_number}</span>
@@ -519,7 +528,7 @@ export default function AdminSettlementPage() {
                                     </span>
                                   ) : <span className="text-gray-400">—</span>}
                                 </td>
-                                <td className="py-3 px-2 md:px-4 text-gray-600 text-xs">{margin != null ? `${(margin * 100).toFixed(0)}%` : '—'}</td>
+                                <td className="py-3 px-2 md:px-4 text-gray-600 text-xs hidden md:table-cell">{margin != null ? `${(margin * 100).toFixed(0)}%` : '—'}</td>
                                 <td className="py-3 px-2 md:px-4 text-left">
                                   <p className="text-sm font-semibold text-gray-900">{fmtUSD(toUsd(s.amount))}</p>
                                 </td>
