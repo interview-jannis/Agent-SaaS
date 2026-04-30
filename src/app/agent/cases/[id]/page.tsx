@@ -834,19 +834,21 @@ export default function CaseDetailPage() {
     <div className="flex flex-col h-full">
 
       {/* Top bar */}
-      <div className="h-14 shrink-0 flex items-center gap-3 px-6 border-b border-gray-100 bg-white">
-        <button onClick={() => router.push('/agent/cases')} className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-700 transition-colors">
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
-          </svg>
-          Cases
-        </button>
-        <span className="text-gray-200">/</span>
-        <span className="text-sm font-medium text-gray-900">{caseData.case_number}</span>
-        <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${STATUS_STYLES[caseData.status]}`}>
-          {STATUS_LABELS[caseData.status]}
-        </span>
-        <span className="text-xs text-gray-500 ml-auto">
+      <div className="shrink-0 border-b border-gray-100 bg-white px-4 md:px-6 py-3 md:py-0 md:h-14 flex flex-col md:flex-row md:items-center gap-2 md:gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
+          <button onClick={() => router.push('/agent/cases')} className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-700 transition-colors">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+            </svg>
+            Cases
+          </button>
+          <span className="text-gray-200">/</span>
+          <span className="text-sm font-medium text-gray-900">{caseData.case_number}</span>
+          <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${STATUS_STYLES[caseData.status]}`}>
+            {STATUS_LABELS[caseData.status]}
+          </span>
+        </div>
+        <span className="text-xs text-gray-500 md:ml-auto">
           <span className="text-[10px] uppercase tracking-wide text-gray-400 mr-1.5">Created</span>
           <span className="font-medium text-gray-700">{caseData.created_at.slice(0, 10)}</span>
         </span>

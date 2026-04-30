@@ -194,7 +194,7 @@ export default async function QuoteDocument({
           <PrintButton />
         </div>
 
-        <div className="px-12 pb-12 pt-4 print:px-10 print:pt-6">
+        <div className="px-4 md:px-12 pb-8 md:pb-12 pt-4 print:px-10 print:pt-6">
 
           {/* ── Header row: Logo | Title ── */}
           <div className="flex items-center justify-between mb-8">
@@ -226,9 +226,9 @@ export default async function QuoteDocument({
           )}
 
           {/* ── To / Ref block ── */}
-          <div className="grid grid-cols-2 gap-0 mb-7 border border-gray-300">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-0 mb-7 border border-gray-300">
             {/* Left column */}
-            <div className="p-5 border-r border-gray-300 space-y-1.5 text-sm">
+            <div className="p-4 md:p-5 border-b md:border-b-0 md:border-r border-gray-300 space-y-1.5 text-sm">
               <div className="flex gap-3">
                 <span className="w-20 shrink-0 font-semibold text-gray-700">To</span>
                 <span className="text-gray-900">: {leadClient?.name ?? '—'}</span>
@@ -258,7 +258,7 @@ export default async function QuoteDocument({
               </div>
             </div>
             {/* Right column */}
-            <div className="p-5 space-y-1.5 text-sm">
+            <div className="p-4 md:p-5 space-y-1.5 text-sm">
               <div className="flex gap-3">
                 <span className="w-24 shrink-0 font-semibold text-gray-700">Ref. No.</span>
                 <span className="text-gray-900 font-mono text-xs">: {refNo}</span>
@@ -295,38 +295,40 @@ export default async function QuoteDocument({
             <div className="flex justify-end mb-1">
               <span className="text-xs text-gray-500 italic">Currency: United States Dollars</span>
             </div>
-            <table className="w-full text-sm border-collapse border border-gray-300">
+            <div className="overflow-x-auto print:overflow-visible -mx-4 md:mx-0 px-4 md:px-0">
+            <table className="w-full text-sm border-collapse border border-gray-300 whitespace-nowrap tracking-tight">
               <thead>
                 <tr style={{ backgroundColor: '#1a3a6b' }} className="text-white">
-                  <th className="py-2.5 px-3 text-center font-semibold w-8 border border-[#1a3a6b]">No</th>
-                  <th className="py-2.5 px-3 text-left font-semibold border border-[#1a3a6b]">Descriptions</th>
-                  <th className="py-2.5 px-3 text-center font-semibold w-12 border border-[#1a3a6b]">Q&apos;ty</th>
-                  <th className="py-2.5 px-3 text-right font-semibold w-32 border border-[#1a3a6b]">Unit Price</th>
-                  <th className="py-2.5 px-3 text-right font-semibold w-32 border border-[#1a3a6b]">Amount</th>
-                  <th className="py-2.5 px-3 text-center font-semibold w-20 border border-[#1a3a6b]">Remarks</th>
+                  <th className="py-2.5 px-2 md:px-3 text-center font-semibold w-8 border border-[#1a3a6b]">No</th>
+                  <th className="py-2.5 px-2 md:px-3 text-left font-semibold border border-[#1a3a6b]">Descriptions</th>
+                  <th className="py-2.5 px-2 md:px-3 text-center font-semibold w-10 md:w-12 border border-[#1a3a6b] hidden md:table-cell">Q&apos;ty</th>
+                  <th className="py-2.5 px-2 md:px-3 text-right font-semibold md:w-32 border border-[#1a3a6b] hidden md:table-cell">Unit Price</th>
+                  <th className="py-2.5 px-2 md:px-3 text-right font-semibold md:w-32 border border-[#1a3a6b]">Amount</th>
+                  <th className="py-2.5 px-2 md:px-3 text-center font-semibold md:w-20 border border-[#1a3a6b] hidden md:table-cell">Remarks</th>
                 </tr>
               </thead>
               <tbody>
                 {lineItems.map((row, idx) => (
                   <tr key={row.no} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                    <td className="py-3 px-3 text-center text-gray-600 border border-gray-300">{row.no}</td>
-                    <td className="py-3 px-3 border border-gray-300">
+                    <td className="py-3 px-2 md:px-3 text-center text-gray-600 border border-gray-300">{row.no}</td>
+                    <td className="py-3 px-2 md:px-3 border border-gray-300">
                       <p className="font-medium text-gray-800">{row.description}</p>
                       <p className="text-xs text-gray-400 mt-0.5">{row.group}</p>
                     </td>
-                    <td className="py-3 px-3 text-center text-gray-700 border border-gray-300">{row.qty}</td>
-                    <td className="py-3 px-3 text-right text-gray-800 font-mono border border-gray-300">
+                    <td className="py-3 px-2 md:px-3 text-center text-gray-700 border border-gray-300 hidden md:table-cell">{row.qty}</td>
+                    <td className="py-3 px-2 md:px-3 text-right text-gray-800 font-mono border border-gray-300 hidden md:table-cell">
                       $ {fmtUSD(row.unitUSD)}
                     </td>
-                    <td className="py-3 px-3 text-right font-semibold text-gray-900 font-mono border border-gray-300">
-                      $ {fmtUSD(row.amtUSD)}
+                    <td className="py-3 px-2 md:px-3 text-right border border-gray-300">
+                      <p className="font-semibold text-gray-900 font-mono">$ {fmtUSD(row.amtUSD)}</p>
+                      <p className="md:hidden text-[10px] text-gray-400 font-mono mt-0.5">{row.qty} × $ {fmtUSD(row.unitUSD)}</p>
                     </td>
-                    <td className="py-3 px-3 border border-gray-300" />
+                    <td className="py-3 px-2 md:px-3 border border-gray-300 hidden md:table-cell" />
                   </tr>
                 ))}
                 {lineItems.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="py-8 text-center text-sm text-gray-400 border border-gray-300">
+                    <td colSpan={5} className="py-8 text-center text-sm text-gray-400 border border-gray-300">
                       No items in this quote.
                     </td>
                   </tr>
@@ -334,17 +336,22 @@ export default async function QuoteDocument({
               </tbody>
               <tfoot>
                 <tr className="bg-gray-100">
-                  <td colSpan={3} className="py-3 px-3 border border-gray-300" />
-                  <td className="py-3 px-3 text-right font-bold text-gray-900 border border-gray-300">
+                  <td className="py-3 px-2 md:px-3 border border-gray-300" />
+                  <td className="py-3 px-2 md:px-3 text-right md:text-left font-bold text-gray-900 border border-gray-300">
+                    <span className="md:hidden">{isInvoice ? 'Total Amount (USD)' : 'Estimated Total (USD)'}</span>
+                  </td>
+                  <td className="py-3 px-2 md:px-3 border border-gray-300 hidden md:table-cell" />
+                  <td className="py-3 px-2 md:px-3 text-right font-bold text-gray-900 border border-gray-300 hidden md:table-cell">
                     {isInvoice ? 'Total Amount (USD)' : 'Estimated Total (USD)'}
                   </td>
-                  <td className="py-3 px-3 text-right font-bold text-gray-900 font-mono border border-gray-300 text-base whitespace-nowrap tracking-tight">
+                  <td className="py-3 px-2 md:px-3 text-right font-bold text-gray-900 font-mono border border-gray-300 text-base whitespace-nowrap tracking-tight">
                     $ {fmtUSD(totalUSD)}
                   </td>
-                  <td className="py-3 px-3 border border-gray-300" />
+                  <td className="py-3 px-2 md:px-3 border border-gray-300 hidden md:table-cell" />
                 </tr>
               </tfoot>
             </table>
+            </div>
           </div>
 
           {/* ── Body text ── */}
@@ -361,7 +368,7 @@ export default async function QuoteDocument({
           <div className="mb-10">
             <h3 className="text-sm font-bold text-gray-900 mb-3">Bank Account Details</h3>
             {(bank.bank_name || bank.account_number) ? (
-              <div className="grid grid-cols-[9rem_auto_1fr] gap-x-2 gap-y-1 text-sm">
+              <div className="grid grid-cols-[7rem_auto_1fr] md:grid-cols-[9rem_auto_1fr] gap-x-2 gap-y-1 text-sm">
                 {bank.bank_name && (
                   <>
                     <span className="text-gray-500">1. Name of Bank</span>
@@ -432,7 +439,7 @@ export default async function QuoteDocument({
 
           {/* ── Footer ── */}
           <div className="border-t-4 pt-4" style={{ borderColor: '#0f4c35' }}>
-            <div className="grid grid-cols-3 gap-4 text-xs text-gray-500">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs text-gray-500">
               <div>
                 <p>805ho, 8F, 229 Seokjeong-ro, Michuhol-gu,</p>
                 <p>Incheon, Republic of Korea</p>
@@ -442,7 +449,7 @@ export default async function QuoteDocument({
                 <p>Fax: +82-32-715-7946</p>
                 <p>Email: info@interviewcorp.co.kr</p>
               </div>
-              <div className="text-right">
+              <div className="md:text-right">
                 <p className="font-semibold text-[#0f4c35]">www.interviewcorp.co.kr</p>
               </div>
             </div>

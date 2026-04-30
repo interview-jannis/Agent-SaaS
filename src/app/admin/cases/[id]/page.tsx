@@ -385,7 +385,7 @@ export default function AdminCaseDetailPage() {
     <div className="flex flex-col h-full overflow-hidden">
 
       {/* Header bar */}
-      <div className="h-14 shrink-0 flex items-center gap-3 px-6 border-b border-gray-100 bg-white">
+      <div className="shrink-0 border-b border-gray-100 bg-white px-4 md:px-6 py-3 md:py-0 md:h-14 flex items-center gap-3 flex-wrap">
         <button onClick={() => router.push('/admin/cases')}
           className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-700 transition-colors">
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -400,11 +400,11 @@ export default function AdminCaseDetailPage() {
         </span>
       </div>
 
-      {/* 50/50 split */}
-      <div className="flex-1 overflow-hidden flex">
+      {/* 50/50 on desktop, stacked on mobile */}
+      <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
 
         {/* LEFT — Case Info + Actions */}
-        <div className="w-1/2 overflow-y-auto border-r border-gray-100 px-6 py-6 space-y-5">
+        <div className="w-full md:w-1/2 overflow-y-auto border-b md:border-b-0 md:border-r border-gray-100 px-4 md:px-6 py-4 md:py-6 space-y-5">
 
           {/* Canceled banner */}
           {caseData.status === 'canceled' && (
@@ -1409,7 +1409,7 @@ export default function AdminCaseDetailPage() {
         </div>
 
         {/* RIGHT — Selected Products */}
-        <div className="w-1/2 overflow-y-auto px-6 py-6">
+        <div className="w-full md:w-1/2 overflow-y-auto px-4 md:px-6 py-4 md:py-6">
           <p className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-4">Selected Products</p>
 
           {sortedGroups.length === 0 ? (
