@@ -114,11 +114,8 @@ export default function AdminInviteSetupPage() {
     <div className="min-h-screen bg-gray-50 flex items-start justify-center py-12 px-4">
       <div className="w-full max-w-lg">
         <div className="text-center mb-6">
-          <div className="w-12 h-12 rounded-xl bg-[#0f4c35] flex items-center justify-center mx-auto mb-3">
-            <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21" />
-            </svg>
-          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/tiktak-logo-short.png" alt="Tiktak" className="h-24 w-auto mx-auto mb-3" />
           <h1 className="text-xl font-semibold text-gray-900">Welcome to Tiktak</h1>
           <p className="text-sm text-gray-500 mt-1">Set up your admin account.</p>
         </div>

@@ -171,14 +171,12 @@ export default function AdminSidebar() {
 
       {/* 로고 + collapse */}
       <div className={`h-14 flex items-center border-b border-gray-100 px-5 justify-between ${collapsed ? 'md:justify-center md:px-2' : ''}`}>
-        <div className="flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded-lg bg-[#0f4c35] flex items-center justify-center shrink-0">
-            <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21" />
-            </svg>
-          </div>
-          <span className={`text-sm font-semibold text-gray-900 ${collapsed ? 'md:hidden' : ''}`}>Tiktak</span>
-        </div>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={collapsed ? '/tiktak-logo-short.png' : '/tiktak-logo-long.png'}
+          alt="Tiktak"
+          className={collapsed ? 'h-10 w-auto -mt-1' : 'h-11 w-auto -mt-1'}
+        />
         <button onClick={() => setOpen(false)} aria-label="Close menu" className="md:hidden text-gray-400 hover:text-gray-700 p-1 rounded-lg hover:bg-gray-100">
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />

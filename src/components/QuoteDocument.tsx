@@ -1,6 +1,5 @@
 import { notFound } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase-server'
-import PrintButton from '@/components/PrintButton'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -189,25 +188,14 @@ export default async function QuoteDocument({
     <div className="min-h-screen bg-gray-100 py-8 px-4 print:bg-white print:py-0">
       <div className="max-w-4xl mx-auto bg-white shadow-lg print:shadow-none">
 
-        {/* Print button */}
-        <div className="flex justify-end px-8 pt-6 print:hidden">
-          <PrintButton />
-        </div>
-
-        <div className="px-4 md:px-12 pb-8 md:pb-12 pt-4 print:px-10 print:pt-6">
+        <div className="px-4 md:px-12 py-8 md:py-12 print:px-10 print:py-6">
 
           {/* ── Header row: Logo | Title ── */}
           <div className="flex items-center justify-between mb-8">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-[#0f4c35] flex items-center justify-center">
-                <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21" />
-                </svg>
-              </div>
-              <div>
-                <p className="text-lg font-bold text-[#0f4c35]">Tiktak</p>
-                <p className="text-xs text-gray-400">by Interview Co., Ltd</p>
-              </div>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/tiktak-logo-long.png" alt="Tiktak" className="h-10 w-auto" />
+              <p className="text-xs text-gray-400">by Interview Co., Ltd</p>
             </div>
             <div className="text-right">
               <h1 className={`text-2xl font-bold underline underline-offset-4 ${isInvoice ? 'text-gray-900' : 'text-[#0f4c35]'}`}>{docTitle}</h1>

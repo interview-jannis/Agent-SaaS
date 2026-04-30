@@ -77,12 +77,9 @@ function LoginForm() {
       <div className="w-full max-w-sm">
 
         {/* Logo */}
-        <div className="mb-10">
-          <div className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-[#0f4c35] mb-6">
-            <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21" />
-            </svg>
-          </div>
+        <div className="mb-10 text-center">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/tiktak-logo-short.png" alt="Tiktak" className="h-32 w-auto mx-auto mb-6" />
           <h1 className="text-2xl font-semibold text-gray-900">Welcome back</h1>
           <p className="text-sm text-gray-400 mt-1">Sign in to your Tiktak account</p>
         </div>
