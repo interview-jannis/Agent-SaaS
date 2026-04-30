@@ -3,12 +3,13 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { nextOnboardingPath } from '@/lib/onboardingFlow'
 
 type Status = 'pending_onboarding' | 'awaiting_approval' | 'approved'
 
 export default function OnboardingEntryPage() {
   const router = useRouter()
-  const [status, setStatus] = useState<Status | null>(null)
+  const [ready, setReady] = useState(false)
 
   useEffect(() => {
     async function load() {
@@ -23,16 +24,18 @@ export default function OnboardingEntryPage() {
         router.replace('/onboarding/waiting')
         return
       }
-      setStatus(row?.onboarding_status ?? 'pending_onboarding')
+      // Skip steps the agent has already completed (prevents duplicate signatures on refresh).
+      const skipTo = await nextOnboardingPath('entry')
+      if (skipTo) {
+        router.replace(skipTo)
+        return
+      }
+      setReady(true)
     }
     load()
   }, [router])
 
-  if (status === 'awaiting_approval') {
-    // Already signed everything — send to waiting screen
-    router.replace('/onboarding/waiting')
-    return null
-  }
+  if (!ready) return null
 
   return (
     <div className="space-y-6 max-w-2xl mx-auto">

@@ -7,6 +7,7 @@ import SignaturePad from './SignaturePad'
 import { notifyAllAdmins } from '@/lib/notifications'
 import { logAsCurrentUser } from '@/lib/audit'
 import { COUNTRIES, COUNTRY_DATALIST_ID } from '@/lib/countries'
+import { nextOnboardingPath } from '@/lib/onboardingFlow'
 
 type ContractType = 'nda' | 'partnership'
 
@@ -101,6 +102,12 @@ export default function ContractStep({ type, step, nextHref, nextLabel, isFinal 
 
   useEffect(() => {
     async function load() {
+      // Skip if this contract is already signed (prevents duplicate rows when agent refreshes mid-flow).
+      const skipTo = await nextOnboardingPath(type)
+      if (skipTo) {
+        router.replace(skipTo)
+        return
+      }
       const [tplRes, sessRes] = await Promise.all([
         supabase.from('contract_templates').select('contract_type, title, body').eq('contract_type', type).maybeSingle(),
         supabase.auth.getSession(),
@@ -116,7 +123,7 @@ export default function ContractStep({ type, step, nextHref, nextLabel, isFinal 
       setLoading(false)
     }
     load()
-  }, [type])
+  }, [type, router])
 
   async function submit() {
     if (!template) return

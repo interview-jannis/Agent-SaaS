@@ -135,6 +135,7 @@ export default function AgentHomePage() {
   const [savingClient, setSavingClient] = useState(false)
   const [clientError, setClientError] = useState('')
   const [renamingGroupId, setRenamingGroupId] = useState<string | null>(null)
+  const [filterOpen, setFilterOpen] = useState(false)
   const [renameValue, setRenameValue] = useState('')
   const [imageIndexes, setImageIndexes] = useState<Record<string, number>>({})
   const [detailProduct, setDetailProduct] = useState<Product | null>(null)
@@ -544,14 +545,14 @@ export default function AgentHomePage() {
     <div className="flex flex-col h-full">
 
       {/* ── Top Bar ── */}
-      <div className="h-14 shrink-0 bg-white border-b border-gray-100 flex items-center gap-4 px-6">
+      <div className="shrink-0 bg-white border-b border-gray-100 flex flex-col md:flex-row md:items-center md:h-14 gap-2 md:gap-4 px-4 md:px-6 py-3 md:py-0">
         {/* Client */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 min-w-0">
           <span className="text-xs text-gray-400 whitespace-nowrap">Client</span>
           <select
             value={selectedClientId}
             onChange={(e) => setSelectedClientId(e.target.value)}
-            className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:border-[#0f4c35] bg-white text-gray-700 max-w-[180px]"
+            className="flex-1 md:flex-none text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:border-[#0f4c35] bg-white text-gray-700 md:max-w-[180px]"
           >
             <option value="">Select client</option>
             {clients.map((c) => (
@@ -560,13 +561,13 @@ export default function AgentHomePage() {
           </select>
         </div>
 
-        <div className="h-4 w-px bg-gray-200" />
+        <div className="hidden md:block h-4 w-px bg-gray-200" />
 
         {/* Date range */}
         {(() => {
           const today = new Date().toISOString().slice(0, 10)
           return (
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 min-w-0">
           <span className="text-xs text-gray-400 whitespace-nowrap">Date *</span>
           <input
             type="date"
@@ -576,7 +577,7 @@ export default function AgentHomePage() {
               setDateStart(e.target.value)
               if (dateEnd && e.target.value > dateEnd) setDateEnd(e.target.value)
             }}
-            className="text-sm border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-[#0f4c35] text-gray-700"
+            className="flex-1 md:flex-none min-w-0 text-sm border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-[#0f4c35] text-gray-700"
           />
           <span className="text-xs text-gray-300">~</span>
           <input
@@ -584,7 +585,7 @@ export default function AgentHomePage() {
             value={dateEnd}
             min={dateStart || today}
             onChange={(e) => setDateEnd(e.target.value)}
-            className="text-sm border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-[#0f4c35] text-gray-700"
+            className="flex-1 md:flex-none min-w-0 text-sm border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-[#0f4c35] text-gray-700"
           />
         </div>
           )
@@ -592,10 +593,25 @@ export default function AgentHomePage() {
       </div>
 
       {/* ── Main ── */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
 
         {/* ── Left Filter Panel ── */}
-        <div className="w-52 shrink-0 bg-white border-r border-gray-100 overflow-y-auto px-4 py-4 space-y-5">
+        <div className="md:w-52 md:shrink-0 bg-white border-b md:border-b-0 md:border-r border-gray-100 md:overflow-y-auto md:px-4 md:py-4 md:space-y-5">
+          <button
+            onClick={() => setFilterOpen(v => !v)}
+            className="md:hidden w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-gray-700"
+          >
+            <span className="flex items-center gap-2">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 4.5h18M6 12h12M10 19.5h4" />
+              </svg>
+              Filters
+            </span>
+            <svg className={`w-4 h-4 transition-transform ${filterOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+            </svg>
+          </button>
+          <div className={`${filterOpen ? 'block px-4 pb-4 space-y-5' : 'hidden'} md:block md:p-0 md:space-y-5`}>
 
           {/* Search */}
           <div className="relative">
@@ -685,17 +701,18 @@ export default function AgentHomePage() {
               <span className="text-xs text-gray-600">Female medical staff</span>
             </label>
           </div>
+          </div>
         </div>
 
         {/* ── Product Area: sections (no category filter) OR flat grid (category selected) ── */}
-        <div className={`flex-1 bg-gray-50 p-6 ${selectedCategoryId === '' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
+        <div className={`flex-1 bg-gray-50 p-4 md:p-6 ${selectedCategoryId === '' ? 'overflow-y-auto md:overflow-hidden' : 'overflow-y-auto'}`}>
           {selectedCategoryId === '' ? (
             Array.from(productsByCategory.values()).every((arr) => arr.length === 0) ? (
               <div className="flex items-center justify-center h-48">
                 <p className="text-sm text-gray-400">No products found</p>
               </div>
             ) : (
-              <div className="grid grid-cols-2 grid-rows-2 gap-4 h-full">
+              <div className="grid grid-cols-1 md:grid-cols-2 md:grid-rows-2 gap-4 md:h-full">
                 {categories.map((cat) => {
                   const items = productsByCategory.get(cat.id) ?? []
                   if (items.length === 0) return null
@@ -713,7 +730,7 @@ export default function AgentHomePage() {
                           {hasMore ? `See all (${items.length}) →` : 'See all →'}
                         </button>
                       </div>
-                      <div className="grid grid-cols-3 gap-3 flex-1 min-h-0">
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 flex-1 min-h-0">
                         {preview.map((product) => renderProductCard(product, true))}
                       </div>
                     </section>
@@ -726,7 +743,7 @@ export default function AgentHomePage() {
               <p className="text-sm text-gray-400">No products found</p>
             </div>
           ) : (
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
               {filteredProducts.map((product) => renderProductCard(product))}
             </div>
           )}
@@ -734,7 +751,7 @@ export default function AgentHomePage() {
       </div>
 
       {/* ── Bottom Bar ── */}
-      <div className="h-14 shrink-0 bg-white border-t border-gray-100 flex items-center gap-3 px-6">
+      <div className="shrink-0 bg-white border-t border-gray-100 flex flex-col md:flex-row md:items-center md:h-14 gap-2 md:gap-3 px-4 md:px-6 py-3 md:py-0">
         {/* Groups */}
         <div className="flex items-center gap-2 flex-1 overflow-x-auto">
           {groups.map((group, idx) => {
@@ -830,13 +847,13 @@ export default function AgentHomePage() {
             : missingDates ? 'Select travel dates to continue'
             : ''
           return (
-        <div className="flex items-center gap-4 shrink-0">
+        <div className="flex items-center gap-3 md:gap-4 shrink-0">
           {hint && (
-            <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1">
+            <p className="hidden md:block text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1">
               {hint}
             </p>
           )}
-          <div className="text-right">
+          <div className="text-left md:text-right flex-1 md:flex-none">
             <p className="text-[10px] text-gray-400">Total</p>
             <p className="text-sm font-bold text-gray-900">${totalUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
           </div>
@@ -980,7 +997,7 @@ export default function AgentHomePage() {
                   className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">Nationality *</label>
                   <input value={clientForm.nationality} onChange={(e) => setField('nationality', e.target.value)}
@@ -1008,7 +1025,7 @@ export default function AgentHomePage() {
                   <input value={clientForm.phone} onChange={(e) => setField('phone', e.target.value)}
                     className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
                 </div>
-                <div className="col-span-2">
+                <div className="sm:col-span-2">
                   <label className="block text-xs text-gray-500 mb-1">Email *</label>
                   <input type="email" value={clientForm.email} onChange={(e) => setField('email', e.target.value)}
                     className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
