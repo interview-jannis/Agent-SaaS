@@ -226,10 +226,19 @@ export default function AdminCasesPage() {
     <div className="flex flex-col h-full bg-white">
 
       {/* Header */}
-      <div className="h-14 shrink-0 flex items-center gap-4 px-6 border-b border-gray-100">
-        <div className="flex items-center gap-2 shrink-0">
-          <h1 className="text-base font-semibold text-gray-900">Cases</h1>
-          {!loading && <span className="text-xs text-gray-400">{filtered.length}</span>}
+      <div className="shrink-0 border-b border-gray-100 px-4 md:px-6 py-3 md:py-0 md:h-14 flex flex-col md:flex-row md:items-center gap-3 md:gap-4">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 shrink-0">
+            <h1 className="text-base font-semibold text-gray-900">Cases</h1>
+            {!loading && <span className="text-xs text-gray-400">{filtered.length}</span>}
+          </div>
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search..."
+            className="md:hidden flex-1 text-xs border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:border-[#0f4c35] bg-white text-gray-900 placeholder-gray-400"
+          />
         </div>
         {!loading && filtered.length > 0 && (
           <div className="flex-1 min-w-0 flex items-center gap-1 bg-gray-50 border border-gray-100 rounded-lg px-2 py-1 overflow-x-auto no-scrollbar">
@@ -261,7 +270,7 @@ export default function AdminCasesPage() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search by case #, agent, or client name"
-          className="shrink-0 text-xs border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:border-[#0f4c35] bg-white text-gray-900 placeholder-gray-400 ml-auto w-72"
+          className="hidden md:block shrink-0 text-xs border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:border-[#0f4c35] bg-white text-gray-900 placeholder-gray-400 ml-auto w-72"
         />
       </div>
 
@@ -273,12 +282,12 @@ export default function AdminCasesPage() {
           <p className="text-sm text-gray-400 text-center py-24">No cases found.</p>
         ) : (
           <div className="px-4 md:px-12 py-6 md:py-8 space-y-6">
-            <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-              <table className="w-full text-sm border-collapse">
+            <div className="bg-white rounded-2xl border border-gray-100 overflow-x-auto">
+              <table className="w-full text-sm border-collapse whitespace-nowrap tracking-tight">
                 <thead className="border-b border-gray-100 bg-gray-50/60">
                   <tr>
                     {['Case', 'Agent', 'Lead Client', 'Members', 'Travel Period', 'Settlement', 'Total (USD)'].map(h => (
-                      <th key={h} className="py-3 px-4 text-xs font-medium text-gray-400 text-left">{h}</th>
+                      <th key={h} className="py-3 px-2 md:px-4 text-xs font-medium text-gray-400 text-left">{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -308,24 +317,24 @@ export default function AdminCasesPage() {
                           return (
                             <tr key={c.id} onClick={() => router.push(`/admin/cases/${c.id}`)}
                               className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors">
-                              <td className="py-3.5 px-4 font-mono text-xs text-gray-400">{c.case_number}</td>
-                              <td className="py-3.5 px-4">
+                              <td className="py-3 px-2 md:px-4 font-mono text-xs text-gray-400">{c.case_number}</td>
+                              <td className="py-3 px-2 md:px-4">
                                 <p className="text-gray-800 font-medium">{getAgent(c)?.name ?? '—'}</p>
                                 <p className="text-[10px] font-mono text-gray-400">{getAgent(c)?.agent_number}</p>
                               </td>
-                              <td className="py-3.5 px-4">
+                              <td className="py-3 px-2 md:px-4">
                                 <p className="text-gray-900 font-medium">{caseLead?.clients?.name ?? '—'}</p>
                                 {caseLead?.clients?.client_number && (
                                   <p className="text-[10px] font-mono text-gray-400">{caseLead.clients.client_number}</p>
                                 )}
                               </td>
-                              <td className="py-3.5 px-4 text-gray-500">{memberCount}</td>
-                              <td className="py-3.5 px-4 text-gray-500 text-xs">
+                              <td className="py-3 px-2 md:px-4 text-gray-500">{memberCount}</td>
+                              <td className="py-3 px-2 md:px-4 text-gray-500 text-xs">
                                 {c.travel_start_date || c.travel_end_date
                                   ? `${c.travel_start_date ?? '—'} – ${c.travel_end_date ?? '—'}`
                                   : '—'}
                               </td>
-                              <td className="py-3.5 px-4">
+                              <td className="py-3 px-2 md:px-4">
                                 {(() => {
                                   const ps = partnerStatusFor(c)
                                   const agentDone = settledCaseIds.has(c.id)
@@ -347,7 +356,7 @@ export default function AdminCasesPage() {
                                   )
                                 })()}
                               </td>
-                              <td className="py-3.5 px-4 font-medium text-gray-900">
+                              <td className="py-3 px-2 md:px-4 font-medium text-gray-900">
                                 {quote ? fmtUSD(quote.total_price / exchangeRate) : '—'}
                               </td>
                             </tr>

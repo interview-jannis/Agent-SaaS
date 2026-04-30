@@ -33,3 +33,9 @@ input[type="month"] {
 .no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
 .no-scrollbar::-webkit-scrollbar { display: none; }
 
+/* Mobile: shrink base font-size so all rem-based Tailwind text-* scales down proportionally.
+   Desktop default is 16px; mobile uses 14px (87.5%). text-[Npx] is unaffected. */
+@media (max-width: 767px) {
+  html { font-size: 14px; }
+}
+

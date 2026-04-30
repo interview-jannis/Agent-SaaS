@@ -243,11 +243,13 @@ export default function AdminAuditPage() {
 
   return (
     <div className="flex flex-col h-full bg-white">
-      <div className="h-14 shrink-0 flex items-center gap-4 px-6 border-b border-gray-100">
-        <h1 className="text-base font-semibold text-gray-900">Audit Log</h1>
-        {!loading && <span className="text-xs text-gray-400">{filtered.length}{filtered.length !== logs.length ? ` of ${logs.length}` : ''}</span>}
+      <div className="shrink-0 border-b border-gray-100 px-4 md:px-6 py-3 md:py-0 md:h-14 flex flex-col md:flex-row md:items-center gap-3 md:gap-4">
+        <div className="flex items-center gap-3">
+          <h1 className="text-base font-semibold text-gray-900">Audit Log</h1>
+          {!loading && <span className="text-xs text-gray-400">{filtered.length}{filtered.length !== logs.length ? ` of ${logs.length}` : ''}</span>}
+        </div>
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="md:ml-auto flex items-center gap-2 flex-wrap">
           <select value={dateFilter} onChange={e => setDateFilter(e.target.value as DateFilter)}
             className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-700 focus:outline-none focus:border-[#0f4c35]">
             {(Object.entries(DATE_FILTER_LABELS) as [DateFilter, string][]).map(([k, label]) => (

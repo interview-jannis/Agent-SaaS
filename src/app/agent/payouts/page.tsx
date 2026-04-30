@@ -184,9 +184,9 @@ export default function AgentPayoutsPage() {
           ) : (
             <>
               {/* HERO — received */}
-              <section className="bg-gray-50 rounded-2xl p-6">
+              <section className="bg-gray-50 rounded-2xl p-5 md:p-6">
                 <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-2">Total Received</p>
-                <p className="text-5xl font-bold text-gray-900 tracking-tight leading-none">{fmtUSD(toUsd(totalReceivedKrw))}</p>
+                <p className="text-3xl md:text-5xl font-bold text-gray-900 tracking-tight leading-none">{fmtUSD(toUsd(totalReceivedKrw))}</p>
                 <div className="mt-4 flex items-baseline gap-6 flex-wrap">
                   <p className="text-sm text-gray-500">
                     across <span className="font-semibold text-gray-700">{paidSettlements.length}</span> payout{paidSettlements.length !== 1 ? 's' : ''}
@@ -209,12 +209,12 @@ export default function AgentPayoutsPage() {
                     <p className="text-sm text-gray-400">No settlements yet. Payouts will appear here once processed.</p>
                   </div>
                 ) : (
-                  <div className="border border-gray-100 rounded-2xl overflow-hidden">
-                    <table className="w-full text-sm">
+                  <div className="border border-gray-100 rounded-2xl overflow-x-auto">
+                    <table className="w-full text-sm whitespace-nowrap tracking-tight">
                       <thead className="bg-gray-50 border-b border-gray-100">
                         <tr>
                           {['Paid On', 'Settlement #', 'Case', 'Amount'].map(h => (
-                            <th key={h} className="py-3 px-4 text-xs font-medium text-gray-500 text-left">{h}</th>
+                            <th key={h} className="py-3 px-2 md:px-4 text-xs font-medium text-gray-500 text-left">{h}</th>
                           ))}
                         </tr>
                       </thead>
@@ -224,16 +224,18 @@ export default function AgentPayoutsPage() {
                           const lead = linkedCase?.case_members?.find(m => m.is_lead)
                           return (
                             <tr key={s.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50">
-                              <td className="py-3 px-4 text-gray-800 text-sm">{s.paid_at?.slice(0, 10) ?? '—'}</td>
-                              <td className="py-3 px-4 font-mono text-xs text-gray-500">{s.settlement_number ?? '—'}</td>
-                              <td className="py-3 px-4">
+                              <td className="py-3 px-2 md:px-4 text-gray-800 text-sm">{s.paid_at?.slice(0, 10) ?? '—'}</td>
+                              <td className="py-3 px-2 md:px-4 font-mono text-xs text-gray-500">{s.settlement_number ?? '—'}</td>
+                              <td className="py-3 px-2 md:px-4 text-left align-middle">
                                 {linkedCase ? (
-                                  <Link href={`/agent/cases/${linkedCase.id}`} className="text-sm text-[#0f4c35] hover:underline">
-                                    {linkedCase.case_number} · {lead?.clients?.name ?? '—'}
+                                  <Link href={`/agent/cases/${linkedCase.id}`} className="block md:inline text-sm text-[#0f4c35] hover:underline">
+                                    <span className="block md:inline font-mono text-xs md:text-sm">{linkedCase.case_number}</span>
+                                    <span className="hidden md:inline"> · </span>
+                                    <span className="block md:inline">{lead?.clients?.name ?? '—'}</span>
                                   </Link>
                                 ) : <span className="text-sm text-gray-400">—</span>}
                               </td>
-                              <td className="py-3 px-4 text-right">
+                              <td className="py-3 px-2 md:px-4 text-left">
                                 <span className="text-base font-semibold text-gray-900">{fmtUSD(toUsd(s.amount))}</span>
                               </td>
                             </tr>
@@ -260,12 +262,12 @@ export default function AgentPayoutsPage() {
                     <p className="text-sm text-gray-400">All completed cases have been paid out.</p>
                   </div>
                 ) : (
-                  <div className="border border-gray-100 rounded-2xl overflow-hidden">
-                    <table className="w-full text-sm">
+                  <div className="border border-gray-100 rounded-2xl overflow-x-auto">
+                    <table className="w-full text-sm whitespace-nowrap tracking-tight">
                       <thead className="bg-gray-50 border-b border-gray-100">
                         <tr>
                           {['Case', 'Lead Client', 'Travel', 'Commission'].map(h => (
-                            <th key={h} className="py-2.5 px-4 text-xs font-medium text-gray-500 text-left">{h}</th>
+                            <th key={h} className="py-2.5 px-2 md:px-4 text-xs font-medium text-gray-500 text-left">{h}</th>
                           ))}
                         </tr>
                       </thead>
@@ -275,16 +277,20 @@ export default function AgentPayoutsPage() {
                           const comm = caseCommissionKrw(c)
                           return (
                             <tr key={c.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50">
-                              <td className="py-3 px-4">
+                              <td className="py-3 px-2 md:px-4">
                                 <Link href={`/agent/cases/${c.id}`} className="font-mono text-xs text-[#0f4c35] hover:underline">{c.case_number}</Link>
                               </td>
-                              <td className="py-3 px-4 text-gray-800">{lead?.clients?.name ?? '—'}</td>
-                              <td className="py-3 px-4 text-gray-500 text-xs">
-                                {c.travel_start_date || c.travel_end_date
-                                  ? `${c.travel_start_date ?? '—'} – ${c.travel_end_date ?? '—'}`
-                                  : '—'}
+                              <td className="py-3 px-2 md:px-4 text-gray-800">{lead?.clients?.name ?? '—'}</td>
+                              <td className="py-3 px-2 md:px-4 text-gray-500 text-xs">
+                                {c.travel_start_date || c.travel_end_date ? (
+                                  <>
+                                    <span className="block md:inline">{c.travel_start_date ?? '—'}</span>
+                                    <span className="hidden md:inline"> – </span>
+                                    <span className="block md:inline">{c.travel_end_date ?? '—'}</span>
+                                  </>
+                                ) : '—'}
                               </td>
-                              <td className="py-3 px-4 text-right font-semibold text-gray-900">{fmtUSD(toUsd(comm))}</td>
+                              <td className="py-3 px-2 md:px-4 text-left font-semibold text-gray-900">{fmtUSD(toUsd(comm))}</td>
                             </tr>
                           )
                         })}

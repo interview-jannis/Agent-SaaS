@@ -273,7 +273,7 @@ export default function AdminProductsPage() {
 
   return (
     <div className="flex flex-col h-full bg-white">
-      <div className="h-14 shrink-0 flex items-center gap-4 px-6 border-b border-gray-100">
+      <div className="shrink-0 border-b border-gray-100 px-4 md:px-6 py-3 md:py-0 md:h-14 flex flex-col md:flex-row md:items-center gap-3 md:gap-4">
         <h1 className="text-base font-semibold text-gray-900 shrink-0">Products</h1>
         {!loading && filtered.length > 0 && (
           <div className="flex-1 min-w-0 flex items-center gap-1 bg-gray-50 border border-gray-100 rounded-lg px-2 py-1 overflow-x-auto no-scrollbar">
@@ -295,7 +295,7 @@ export default function AdminProductsPage() {
             })}
           </div>
         )}
-        <div className="flex items-center gap-2 shrink-0 ml-auto">
+        <div className="flex items-center gap-2 flex-wrap md:shrink-0 md:ml-auto">
           <button
             onClick={handleExportBackup}
             disabled={loading || exporting || filtered.length === 0}
@@ -380,7 +380,7 @@ export default function AdminProductsPage() {
         </div>
 
         {/* Table */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto">
           {loading ? (
             <div className="px-6 py-12 text-center text-sm text-gray-400">Loading...</div>
           ) : filtered.length === 0 ? (

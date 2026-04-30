@@ -296,11 +296,11 @@ export default function AdminSettlementPage() {
                     </div>
                   ) : (
                     <div className="border border-gray-100 rounded-xl overflow-x-auto">
-                      <table className="w-full text-sm">
+                      <table className="w-full text-sm whitespace-nowrap tracking-tight">
                         <thead className="bg-gray-50 border-b border-gray-100">
                           <tr>
                             {['Case', 'Lead', 'Travel End', 'Partners', 'Pending', ''].map(h => (
-                              <th key={h} className="py-2.5 px-4 text-xs font-medium text-gray-500 text-left">{h}</th>
+                              <th key={h} className="py-2.5 px-2 md:px-4 text-xs font-medium text-gray-500 text-left">{h}</th>
                             ))}
                           </tr>
                         </thead>
@@ -311,20 +311,20 @@ export default function AdminSettlementPage() {
                             const unpaid = info.partners.filter(p => !info.paid.has(p))
                             return (
                               <tr key={c.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50">
-                                <td className="py-3 px-4 font-mono text-xs text-gray-500">{c.case_number}</td>
-                                <td className="py-3 px-4 text-gray-800">{lead?.clients?.name ?? '—'}</td>
-                                <td className="py-3 px-4 text-xs text-gray-500">{c.travel_end_date ?? '—'}</td>
-                                <td className="py-3 px-4 text-xs text-gray-600">
+                                <td className="py-3 px-2 md:px-4 font-mono text-xs text-gray-500">{c.case_number}</td>
+                                <td className="py-3 px-2 md:px-4 text-gray-800">{lead?.clients?.name ?? '—'}</td>
+                                <td className="py-3 px-2 md:px-4 text-xs text-gray-500">{c.travel_end_date ?? '—'}</td>
+                                <td className="py-3 px-2 md:px-4 text-xs text-gray-600">
                                   <span className="text-amber-700 font-medium">{unpaid.length}</span>
                                   <span className="text-gray-400"> / {info.partners.length}</span>
                                   {unpaid.length > 0 && (
                                     <span className="ml-2 text-gray-500 truncate">{unpaid.slice(0, 2).join(', ')}{unpaid.length > 2 ? `, +${unpaid.length - 2}` : ''}</span>
                                   )}
                                 </td>
-                                <td className="py-3 px-4 tabular-nums">
+                                <td className="py-3 px-2 md:px-4 tabular-nums">
                                   <span className="text-sm font-semibold text-gray-900">{fmtUSD(toUsd(info.pendingKrw))}</span>
                                 </td>
-                                <td className="py-3 px-4 text-right">
+                                <td className="py-3 px-2 md:px-4 text-right">
                                   <a href={`/admin/cases/${c.id}`} className="text-xs text-[#0f4c35] hover:underline">Open →</a>
                                 </td>
                               </tr>
@@ -348,11 +348,11 @@ export default function AdminSettlementPage() {
                     </div>
                   ) : (
                     <div className="border border-gray-100 rounded-xl overflow-x-auto">
-                      <table className="w-full text-sm">
+                      <table className="w-full text-sm whitespace-nowrap tracking-tight">
                         <thead className="bg-gray-50 border-b border-gray-100">
                           <tr>
                             {['Paid On', 'Partner', 'Case', 'Note', 'Amount'].map(h => (
-                              <th key={h} className="py-2.5 px-4 text-xs font-medium text-gray-500 text-left">{h}</th>
+                              <th key={h} className="py-2.5 px-2 md:px-4 text-xs font-medium text-gray-500 text-left">{h}</th>
                             ))}
                           </tr>
                         </thead>
@@ -362,15 +362,19 @@ export default function AdminSettlementPage() {
                             const lead = linkedCase?.case_members?.find(m => m.is_lead)
                             return (
                               <tr key={p.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50">
-                                <td className="py-3 px-4 text-gray-800">{p.paid_at?.slice(0, 10) ?? '—'}</td>
-                                <td className="py-3 px-4 text-gray-800">{p.partner_name}</td>
-                                <td className="py-3 px-4 text-xs">
-                                  {linkedCase
-                                    ? <a href={`/admin/cases/${linkedCase.id}`} className="text-[#0f4c35] hover:underline">{linkedCase.case_number} · {lead?.clients?.name ?? '—'}</a>
-                                    : <span className="text-gray-400">—</span>}
+                                <td className="py-3 px-2 md:px-4 text-gray-800">{p.paid_at?.slice(0, 10) ?? '—'}</td>
+                                <td className="py-3 px-2 md:px-4 text-gray-800">{p.partner_name}</td>
+                                <td className="py-3 px-2 md:px-4 text-xs text-left align-middle">
+                                  {linkedCase ? (
+                                    <a href={`/admin/cases/${linkedCase.id}`} className="block md:inline text-[#0f4c35] hover:underline">
+                                      <span className="block md:inline font-mono">{linkedCase.case_number}</span>
+                                      <span className="hidden md:inline"> · </span>
+                                      <span className="block md:inline">{lead?.clients?.name ?? '—'}</span>
+                                    </a>
+                                  ) : <span className="text-gray-400">—</span>}
                                 </td>
-                                <td className="py-3 px-4 text-xs text-gray-500 truncate max-w-[200px]">{p.note ?? '—'}</td>
-                                <td className="py-3 px-4 text-right">
+                                <td className="py-3 px-2 md:px-4 text-xs text-gray-500 truncate max-w-[200px]">{p.note ?? '—'}</td>
+                                <td className="py-3 px-2 md:px-4 text-left">
                                   <p className="text-sm font-semibold text-gray-900">{fmtUSD(toUsd(p.amount))}</p>
                                 </td>
                               </tr>
@@ -487,11 +491,11 @@ export default function AdminSettlementPage() {
                     </div>
                   ) : (
                     <div className="border border-gray-100 rounded-xl overflow-x-auto">
-                      <table className="w-full text-sm">
+                      <table className="w-full text-sm whitespace-nowrap tracking-tight">
                         <thead className="bg-gray-50 border-b border-gray-100">
                           <tr>
                             {['Paid On', '#', 'Agent', 'Case', 'Margin', 'Amount'].map(h => (
-                              <th key={h} className="py-2.5 px-4 text-xs font-medium text-gray-500 text-left">{h}</th>
+                              <th key={h} className="py-2.5 px-2 md:px-4 text-xs font-medium text-gray-500 text-left">{h}</th>
                             ))}
                           </tr>
                         </thead>
@@ -503,16 +507,20 @@ export default function AdminSettlementPage() {
                             const margin = linkedCase?.quotes?.[0]?.agent_margin_rate
                             return (
                               <tr key={s.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50">
-                                <td className="py-3 px-4 text-gray-800">{s.paid_at?.slice(0, 10) ?? '—'}</td>
-                                <td className="py-3 px-4 font-mono text-xs text-gray-500">{s.settlement_number ?? '—'}</td>
-                                <td className="py-3 px-4 text-gray-800">{agent?.name ?? '—'}</td>
-                                <td className="py-3 px-4 text-xs">
-                                  {linkedCase
-                                    ? <span className="text-gray-500">{linkedCase.case_number} · {lead?.clients?.name ?? '—'}</span>
-                                    : <span className="text-gray-400">—</span>}
+                                <td className="py-3 px-2 md:px-4 text-gray-800">{s.paid_at?.slice(0, 10) ?? '—'}</td>
+                                <td className="py-3 px-2 md:px-4 font-mono text-xs text-gray-500">{s.settlement_number ?? '—'}</td>
+                                <td className="py-3 px-2 md:px-4 text-gray-800">{agent?.name ?? '—'}</td>
+                                <td className="py-3 px-2 md:px-4 text-xs text-left align-middle">
+                                  {linkedCase ? (
+                                    <span className="block md:inline text-gray-500">
+                                      <span className="block md:inline font-mono">{linkedCase.case_number}</span>
+                                      <span className="hidden md:inline"> · </span>
+                                      <span className="block md:inline">{lead?.clients?.name ?? '—'}</span>
+                                    </span>
+                                  ) : <span className="text-gray-400">—</span>}
                                 </td>
-                                <td className="py-3 px-4 text-gray-600 text-xs">{margin != null ? `${(margin * 100).toFixed(0)}%` : '—'}</td>
-                                <td className="py-3 px-4 text-right">
+                                <td className="py-3 px-2 md:px-4 text-gray-600 text-xs">{margin != null ? `${(margin * 100).toFixed(0)}%` : '—'}</td>
+                                <td className="py-3 px-2 md:px-4 text-left">
                                   <p className="text-sm font-semibold text-gray-900">{fmtUSD(toUsd(s.amount))}</p>
                                 </td>
                               </tr>
