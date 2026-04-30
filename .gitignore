@@ -40,8 +40,5 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# test fixtures
-schedule_v*.pdf
-
-# local business reference data (product photos, source materials)
-/data
+# Excel lock files (open-in-Excel temp files)
+~$*
