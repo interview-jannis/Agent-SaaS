@@ -15,6 +15,8 @@ import {
   CANCELLABLE_STATUSES,
 } from '@/lib/caseStatus'
 import { notifyCaseInfoChanged } from '@/lib/caseTransitions'
+import CaseDocumentsSection from '@/components/CaseDocumentsSection'
+import type { DocumentRow } from '@/lib/documents'
 import { AgentCaseHero } from '@/components/CaseHeroAction'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -82,6 +84,7 @@ type CaseDetail = {
   id: string
   case_number: string
   status: CaseStatus
+  agent_id: string | null
   travel_start_date: string | null
   travel_end_date: string | null
   travel_completed_at: string | null
@@ -199,7 +202,7 @@ export default function CaseDetailPage() {
     const { data } = await supabase
       .from('cases')
       .select(`
-        id, case_number, status, travel_start_date, travel_end_date, travel_completed_at, created_at,
+        id, case_number, status, agent_id, travel_start_date, travel_end_date, travel_completed_at, created_at,
         concept, outbound_flight, inbound_flight, cancellation_reason,
         case_members(
           id, is_lead,
@@ -1755,6 +1758,21 @@ export default function CaseDetailPage() {
             </section>
             )
           })()}
+
+          {/* Invoices (deposit / additional / commission) — read-only for agent */}
+          {quote && (
+            <CaseDocumentsSection
+              caseId={caseData.id}
+              caseNumber={caseData.case_number}
+              agentId={caseData.agent_id ?? ''}
+              quotation={quote as unknown as DocumentRow}
+              finalInvoice={(caseData.documents?.find(d => d.type === 'final_invoice') ?? null) as unknown as DocumentRow | null}
+              documents={(caseData.documents ?? []) as unknown as DocumentRow[]}
+              exchangeRate={exchangeRate}
+              readOnly
+              onChanged={async () => { await fetchCase() }}
+            />
+          )}
 
           {/* Cancel Case — agent self-service, only before payment */}
           {CANCELLABLE_STATUSES.includes(caseData.status) && (

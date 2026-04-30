@@ -19,7 +19,9 @@ type Product = {
   price_currency: 'KRW' | 'USD' | null
   is_active: boolean
   category_id: string
+  subcategory_id: string | null
   product_categories: { name: string } | null
+  product_subcategories: { name: string } | null
   product_images: { image_url: string; is_primary: boolean }[]
 }
 
@@ -47,7 +49,7 @@ export default function AdminProductsPage() {
         supabase.from('product_categories').select('id, name').order('sort_order').order('name'),
         supabase
           .from('products')
-          .select('id, product_number, name, description, partner_name, base_price, price_currency, is_active, category_id, product_categories(name), product_images(image_url, is_primary)')
+          .select('id, product_number, name, description, partner_name, base_price, price_currency, is_active, category_id, subcategory_id, product_categories(name), product_subcategories(name), product_images(image_url, is_primary)')
           .order('product_number', { ascending: false }),
         supabase.from('system_settings').select('value').eq('key', 'company_margin_rate').single(),
         supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single(),
@@ -558,7 +560,10 @@ export default function AdminProductsPage() {
                       <p className="whitespace-pre-line">{p.description ?? '—'}</p>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-500 whitespace-nowrap">
-                      {p.product_categories?.name ?? '—'}
+                      <p>{p.product_categories?.name ?? '—'}</p>
+                      {p.product_subcategories?.name && (
+                        <p className="text-[10px] text-gray-400 mt-0.5">{p.product_subcategories.name}</p>
+                      )}
                     </td>
                     <td className="px-6 py-4 tabular-nums whitespace-nowrap">
                       <div className="flex items-center">

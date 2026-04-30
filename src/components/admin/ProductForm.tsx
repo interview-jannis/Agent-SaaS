@@ -20,6 +20,7 @@ export type ImageItem = {
 export type FormState = {
   name: string
   category_id: string
+  subcategory_id: string
   description: string
   base_price: string        // stored in KRW
   price_currency: 'KRW' | 'USD'
@@ -67,6 +68,7 @@ const DURATION_UNITS = [
 const DEFAULT_FORM: FormState = {
   name: '',
   category_id: '',
+  subcategory_id: '',
   description: '',
   base_price: '',
   price_currency: 'KRW',
@@ -94,6 +96,9 @@ export default function ProductForm({ productId, productNumber, categories, init
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState('')
 
+  // Sub-categories — loaded once, filtered by selected category
+  const [subcategories, setSubcategories] = useState<{ id: string; category_id: string; name: string }[]>([])
+
   // Exchange rate (KRW per 1 USD)
   const [exchangeRate, setExchangeRate] = useState(1350)
   const [companyMargin, setCompanyMargin] = useState(0.5)
@@ -102,13 +107,17 @@ export default function ProductForm({ productId, productNumber, categories, init
     Promise.all([
       supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single(),
       supabase.from('system_settings').select('value').eq('key', 'company_margin_rate').single(),
-    ]).then(([rateRes, cmRes]) => {
+      supabase.from('product_subcategories').select('id, category_id, name').order('sort_order'),
+    ]).then(([rateRes, cmRes, subRes]) => {
       const rate = (rateRes.data?.value as { usd_krw?: number } | null)?.usd_krw
       if (rate) setExchangeRate(rate)
       const cm = (cmRes.data?.value as { rate?: number } | null)?.rate
       if (typeof cm === 'number') setCompanyMargin(cm)
+      setSubcategories((subRes.data as { id: string; category_id: string; name: string }[] | null) ?? [])
     })
   }, [])
+
+  const filteredSubs = subcategories.filter(s => s.category_id === form.category_id)
 
   // ── Field helper ─────────────────────────────────────────────
 
@@ -212,6 +221,7 @@ export default function ProductForm({ productId, productNumber, categories, init
       const payload = {
         name: form.name.trim(),
         category_id: form.category_id,
+        subcategory_id: form.subcategory_id || null,
         description: form.description.trim(),
         base_price: Number(form.base_price),
         price_currency: form.price_currency,
@@ -342,20 +352,38 @@ export default function ProductForm({ productId, productNumber, categories, init
             />
           </div>
 
-          <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1.5">
-              Category <span className="text-red-400">*</span>
-            </label>
-            <select
-              value={form.category_id}
-              onChange={(e) => set('category_id', e.target.value)}
-              className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-[#0f4c35] bg-white text-gray-700"
-            >
-              <option value="">Select category</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1.5">
+                Category <span className="text-red-400">*</span>
+              </label>
+              <select
+                value={form.category_id}
+                onChange={(e) => { set('category_id', e.target.value); set('subcategory_id', '') }}
+                className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-[#0f4c35] bg-white text-gray-700"
+              >
+                <option value="">Select category</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1.5">
+                Sub-category
+              </label>
+              <select
+                value={form.subcategory_id}
+                onChange={(e) => set('subcategory_id', e.target.value)}
+                disabled={!form.category_id || filteredSubs.length === 0}
+                className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-[#0f4c35] bg-white text-gray-700 disabled:bg-gray-50 disabled:text-gray-400"
+              >
+                <option value="">— None —</option>
+                {filteredSubs.map((s) => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
           <div>

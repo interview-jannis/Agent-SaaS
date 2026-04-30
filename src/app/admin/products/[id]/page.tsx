@@ -19,6 +19,7 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
   const initialForm: FormState = {
     name: product.name,
     category_id: product.category_id ?? '',
+    subcategory_id: product.subcategory_id ?? '',
     description: product.description ?? '',
     base_price: String(product.base_price),
     price_currency: (product.price_currency as FormState['price_currency']) ?? 'KRW',

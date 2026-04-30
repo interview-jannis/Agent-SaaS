@@ -489,6 +489,107 @@ export async function syncFinalInvoiceFromQuotation(caseId: string): Promise<voi
   }
 }
 
+// Issue a deposit invoice — creates a deposit_invoice document with a single
+// synthetic line item representing the deposit amount (typically a % of the
+// quotation total). Defaults to 50% per 4/30 SOP guidance.
+export async function issueDepositInvoice(
+  caseId: string,
+  opts: { percent?: number; amountKrw?: number; dueDate?: string | null; signerSnapshot?: SignerSnapshot | null; notes?: string | null } = {},
+): Promise<DocumentRow> {
+  const quotation = await getCaseQuotation(caseId)
+  const percent = opts.percent ?? 50
+  const total = opts.amountKrw ?? Math.round((quotation?.total_price ?? 0) * (percent / 100))
+
+  const doc = await createDocument({
+    caseId,
+    type: 'deposit_invoice',
+    totalPrice: total,
+    companyMarginRate: quotation?.company_margin_rate ?? null,
+    agentMarginRate: quotation?.agent_margin_rate ?? null,
+    paymentDueDate: opts.dueDate ?? null,
+    notes: opts.notes ?? null,
+  })
+
+  if (opts.signerSnapshot) {
+    await supabase.from('documents').update({ signer_snapshot: opts.signerSnapshot }).eq('id', doc.id)
+  }
+
+  await addDocumentItem({
+    documentId: doc.id,
+    productNameSnapshot: opts.amountKrw ? 'Deposit' : `Deposit (${percent}% of total)`,
+    basePrice: total,
+    finalPrice: total,
+  })
+
+  return doc
+}
+
+// Issue an empty additional invoice — admin will add items inline afterwards.
+export async function issueAdditionalInvoice(
+  caseId: string,
+  opts: { dueDate?: string | null; signerSnapshot?: SignerSnapshot | null; notes?: string | null } = {},
+): Promise<DocumentRow> {
+  const quotation = await getCaseQuotation(caseId)
+  const doc = await createDocument({
+    caseId,
+    type: 'additional_invoice',
+    totalPrice: 0,
+    companyMarginRate: quotation?.company_margin_rate ?? null,
+    agentMarginRate: quotation?.agent_margin_rate ?? null,
+    paymentDueDate: opts.dueDate ?? null,
+    notes: opts.notes ?? null,
+  })
+  if (opts.signerSnapshot) {
+    await supabase.from('documents').update({ signer_snapshot: opts.signerSnapshot }).eq('id', doc.id)
+  }
+  return doc
+}
+
+// Issue a commission invoice — agent → admin direction. Single synthetic item
+// for the agent's commission amount (calculated from agent_margin_rate).
+export async function issueCommissionInvoice(
+  caseId: string,
+  opts: { amountKrw?: number; dueDate?: string | null; signerSnapshot?: SignerSnapshot | null; notes?: string | null } = {},
+): Promise<DocumentRow> {
+  const quotation = await getCaseQuotation(caseId)
+  const total = opts.amountKrw ?? (() => {
+    const tp = quotation?.total_price ?? 0
+    const am = quotation?.agent_margin_rate ?? 0
+    if (!am || am <= 0) return 0
+    return Math.round(tp * am / (1 + am))   // commission portion of gross
+  })()
+
+  const doc = await createDocument({
+    caseId,
+    type: 'commission_invoice',
+    totalPrice: total,
+    companyMarginRate: quotation?.company_margin_rate ?? null,
+    agentMarginRate: quotation?.agent_margin_rate ?? null,
+    paymentDueDate: opts.dueDate ?? null,
+    notes: opts.notes ?? null,
+  })
+  if (opts.signerSnapshot) {
+    await supabase.from('documents').update({ signer_snapshot: opts.signerSnapshot }).eq('id', doc.id)
+  }
+  await addDocumentItem({
+    documentId: doc.id,
+    productNameSnapshot: 'Agent Commission',
+    basePrice: total,
+    finalPrice: total,
+  })
+
+  return doc
+}
+
+// Recalculate document.total_price from current document_items sum (final_price).
+// Use after add/remove/update of items to keep header total in sync.
+export async function recalcDocumentTotal(documentId: string): Promise<number> {
+  const items = await getDocumentItems(documentId)
+  const total = items.reduce((s, it) => s + (it.final_price || 0), 0)
+  await supabase.from('documents').update({ total_price: total }).eq('id', documentId)
+  return total
+}
+
 export async function issueInvoice(input: IssueInvoiceInput): Promise<DocumentRow> {
   const copyItems = input.copyItemsFromQuotation ?? true
 

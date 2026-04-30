@@ -7,6 +7,8 @@ import { notifyAgent } from '@/lib/notifications'
 import { logAsCurrentUser } from '@/lib/audit'
 import { type CaseStatus, STATUS_LABELS, STATUS_STYLES } from '@/lib/caseStatus'
 import { AdminCaseHero } from '@/components/CaseHeroAction'
+import CaseDocumentsSection from '@/components/CaseDocumentsSection'
+import type { DocumentRow } from '@/lib/documents'
 
 import type { ClientInfo, FlightInfo } from '@/lib/clientCompleteness'
 import { getMissingClientFields, getMissingCaseFields, CLIENT_INFO_COLUMNS } from '@/lib/clientCompleteness'
@@ -237,12 +239,18 @@ export default function AdminCaseDetailPage() {
     if (!caseData) return
     setConfirmingPayment(true); setActionError('')
     try {
+      const paidIso = paymentDate ? new Date(paymentDate).toISOString() : new Date().toISOString()
       const { error } = await supabase.from('cases').update({
         status: 'awaiting_travel',
         payment_date: paymentDate || null,
         payment_confirmed_at: new Date().toISOString(),
       }).eq('id', caseData.id)
       if (error) throw error
+      // Also mark the case's final_invoice as paid (data consistency — single source of truth migration)
+      const finalInvDoc = caseData.documents?.find(d => d.type === 'final_invoice')
+      if (finalInvDoc) {
+        await supabase.from('documents').update({ payment_received_at: paidIso }).eq('id', finalInvDoc.id)
+      }
       await notifyAgent(caseData.agent_id, `${caseData.case_number} Payment confirmed`, `/agent/cases/${caseData.id}`)
       await logAsCurrentUser('case.payment_confirmed', { type: 'case', id: caseData.id, label: caseData.case_number },
         paymentDate ? { paid_on: paymentDate } : undefined)
@@ -703,6 +711,20 @@ export default function AdminCaseDetailPage() {
                 </div>
               )}
             </section>
+          )}
+
+          {/* Invoices (deposit / additional / commission) */}
+          {latestQuote && (
+            <CaseDocumentsSection
+              caseId={caseData.id}
+              caseNumber={caseData.case_number}
+              agentId={caseData.agent_id}
+              quotation={latestQuote as unknown as DocumentRow}
+              finalInvoice={(finalInvoice ?? null) as unknown as DocumentRow | null}
+              documents={(caseData.documents ?? []) as unknown as DocumentRow[]}
+              exchangeRate={exchangeRate}
+              onChanged={fetchCase}
+            />
           )}
 
 
