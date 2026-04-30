@@ -17,8 +17,7 @@ type CaseRow = {
   travel_completed_at: string | null
   payment_date: string | null
   created_at: string
-  case_members: { is_lead: boolean; clients: { name: string } | null }[]
-  quotes: { total_price: number; agent_margin_rate: number; payment_due_date: string | null; finalized_at: string | null }[]
+  case_members: { is_lead: boolean; clients: { name: string } | null }[]documents: { type: string; total_price: number; agent_margin_rate: number; payment_due_date: string | null; finalized_at: string | null }[]
   schedules: { id: string; status: string; version: number; created_at: string }[]
 }
 
@@ -90,7 +89,7 @@ export default function AgentDashboardPage() {
 
       const [casesRes, settlementsRes, rateRes] = await Promise.all([
         supabase.from('cases')
-          .select('id, case_number, status, travel_start_date, travel_end_date, travel_completed_at, payment_date, created_at, case_members(is_lead, clients(name)), quotes(total_price, agent_margin_rate, payment_due_date, finalized_at), schedules(id, status, version, created_at)')
+          .select('id, case_number, status, travel_start_date, travel_end_date, travel_completed_at, payment_date, created_at, case_members(is_lead, clients(name)), documents(type, total_price, agent_margin_rate, payment_due_date, finalized_at), schedules(id, status, version, created_at)')
           .eq('agent_id', ag.id)
           .order('created_at', { ascending: false }),
         supabase.from('settlements').select('id, amount, paid_at, case_id').eq('agent_id', ag.id),
@@ -134,7 +133,7 @@ export default function AgentDashboardPage() {
     const monthCases = cases.filter(c => c.payment_date?.startsWith(key))
     let commission = 0, patients = 0
     for (const c of monthCases) {
-      const q = c.quotes?.[0]
+      const q = c.documents?.find(d => d.type === "quotation")
       if (!q) continue
       commission += commissionKrw(q.total_price ?? 0, q.agent_margin_rate ?? 0)
       patients += c.case_members?.length ?? 0
@@ -152,7 +151,7 @@ export default function AgentDashboardPage() {
   const expectedKrw = cases
     .filter(c => activeSet.has(c.status))
     .reduce((sum, c) => {
-      const q = c.quotes?.[0]
+      const q = c.documents?.find(d => d.type === "quotation")
       return sum + (q ? commissionKrw(q.total_price, q.agent_margin_rate) : 0)
     }, 0)
 
@@ -177,7 +176,7 @@ export default function AgentDashboardPage() {
 
   type CaseInfo = { line: string; urgency: 'normal' | 'warn' | 'alert' }
   function caseInfoFor(c: CaseRow): CaseInfo {
-    const q = c.quotes?.[0]
+    const q = c.documents?.find(d => d.type === "quotation")
     const totalUsd = q ? q.total_price / exchangeRate : null
     const commUsd = q ? commissionKrw(q.total_price, q.agent_margin_rate) / exchangeRate : null
 

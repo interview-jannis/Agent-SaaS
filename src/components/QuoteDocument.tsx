@@ -15,7 +15,7 @@ type QuoteGroup = {
   name: string
   order: number
   member_count: number
-  quote_items: QuoteItem[]
+  document_items: QuoteItem[]
 }
 
 type BankDetails = {
@@ -61,19 +61,19 @@ export default async function QuoteDocument({
   const supabase = createServerClient()
 
   const { data: quote } = await supabase
-    .from('quotes')
+    .from('documents')
     .select(`
-      id, quote_number, invoice_number, total_price, payment_due_date,
+      id, type, document_number, total_price, payment_due_date,
       company_margin_rate, agent_margin_rate, finalized_at, signer_snapshot,
-      first_opened_at, invoice_first_opened_at, open_count,
+      first_opened_at, open_count, case_id,
       cases(
         id, agent_id, status, created_at,
         agents!cases_agent_id_fkey(name, email, phone),
         case_members(is_lead, clients(name, nationality, needs_muslim_friendly))
       ),
-      quote_groups(
+      document_groups(
         id, name, order, member_count,
-        quote_items(id, base_price, final_price, products(name, description))
+        document_items(id, base_price, final_price, products(name, description))
       )
     `)
     .eq('slug', slug)
@@ -81,30 +81,33 @@ export default async function QuoteDocument({
 
   if (!quote) notFound()
 
+  // For invoice mode, also fetch the quotation document_number for cross-reference display
+  let quotationRef: string | null = null
+  if (isInvoice) {
+    const { data: qdata } = await supabase
+      .from('documents')
+      .select('document_number')
+      .eq('case_id', (quote as { case_id: string }).case_id)
+      .eq('type', 'quotation')
+      .maybeSingle()
+    quotationRef = (qdata as { document_number?: string } | null)?.document_number ?? null
+  }
+
   // Record open + notify agent (skip in preview mode).
-  // Tracking is mode-aware: invoice route only fires the invoice-open notification.
   if (!preview) {
     const caseRef = quote.cases as unknown as { id: string; agent_id: string | null } | null
-    const q = quote as unknown as { first_opened_at: string | null; invoice_first_opened_at: string | null; finalized_at: string | null; open_count: number | null }
+    const q = quote as unknown as { first_opened_at: string | null; open_count: number | null; document_number: string }
     const updates: Record<string, unknown> = { open_count: (q.open_count ?? 0) + 1 }
     let notifyMessage: string | null = null
 
-    const invoiceNo = (quote as { invoice_number?: string | null }).invoice_number
-
-    if (isInvoice) {
-      if (!q.invoice_first_opened_at) {
-        updates.invoice_first_opened_at = new Date().toISOString()
-        if (!q.first_opened_at) updates.first_opened_at = updates.invoice_first_opened_at
-        notifyMessage = `${invoiceNo ?? quote.quote_number} Invoice opened by client`
-      }
-    } else {
-      if (!q.first_opened_at) {
-        updates.first_opened_at = new Date().toISOString()
-        notifyMessage = `${quote.quote_number} Quotation opened by client`
-      }
+    if (!q.first_opened_at) {
+      updates.first_opened_at = new Date().toISOString()
+      notifyMessage = isInvoice
+        ? `${q.document_number} Invoice opened by client`
+        : `${q.document_number} Quotation opened by client`
     }
 
-    await supabase.from('quotes').update(updates).eq('id', quote.id)
+    await supabase.from('documents').update(updates).eq('id', quote.id)
 
     if (notifyMessage && caseRef?.agent_id) {
       const { data: agent } = await supabase
@@ -146,7 +149,7 @@ export default async function QuoteDocument({
   const agentName = caseData?.agents?.name ?? '—'
   const leadClient = caseData?.case_members?.find((m) => m.is_lead)?.clients ?? null
 
-  const groups = ((quote.quote_groups as unknown as QuoteGroup[]) ?? [])
+  const groups = ((quote.document_groups as unknown as QuoteGroup[]) ?? [])
     .sort((a, b) => a.order - b.order)
 
   // Build line items
@@ -156,7 +159,7 @@ export default async function QuoteDocument({
   groups.forEach((group, gi) => {
     const memberCount = Math.max(group.member_count ?? 1, 1)
     const groupLabel = `Group ${gi + 1}: ${group.name} · ${memberCount} pax`
-    for (const item of group.quote_items) {
+    for (const item of group.document_items) {
       const amtUSD = item.final_price / exchangeRate
       const unitUSD = amtUSD / memberCount
       lineItems.push({
@@ -172,12 +175,14 @@ export default async function QuoteDocument({
 
   const totalUSD = lineItems.reduce((s, r) => s + r.amtUSD, 0)
 
-  // Dates: use case's created_at as issue date (quotes table has no created_at column).
-  // Due date comes from quote.payment_due_date which is pre-computed as issue + 7 days.
+  // Dates: use case's created_at as issue date.
+  // Due date comes from document.payment_due_date which is pre-computed as issue + 7 days.
   const issuedAt = caseData?.created_at ?? new Date().toISOString()
 
-  const invoiceNumber = (quote as { invoice_number?: string | null }).invoice_number ?? null
-  const refNo = isInvoice ? (invoiceNumber ?? quote.quote_number) : quote.quote_number
+  // Each document carries its own number. For invoice mode the cross-ref to
+  // the parent quotation's number is fetched separately (quotationRef above).
+  const docNo = (quote as { document_number: string }).document_number
+  const refNo = docNo
 
   const issueDate = fmtDate(issuedAt)
   const dueDate = quote.payment_due_date ? fmtDate(quote.payment_due_date) : addDays(issuedAt, 7)
@@ -251,10 +256,10 @@ export default async function QuoteDocument({
                 <span className="w-24 shrink-0 font-semibold text-gray-700">Ref. No.</span>
                 <span className="text-gray-900 font-mono text-xs">: {refNo}</span>
               </div>
-              {isInvoice && invoiceNumber && (
+              {isInvoice && quotationRef && (
                 <div className="flex gap-3">
                   <span className="w-24 shrink-0 font-semibold text-gray-700">Quote Ref</span>
-                  <span className="text-gray-500 font-mono text-xs">: {quote.quote_number}</span>
+                  <span className="text-gray-500 font-mono text-xs">: {quotationRef}</span>
                 </div>
               )}
               <div className="flex gap-3">

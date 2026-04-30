@@ -46,20 +46,21 @@ type QuoteGroup = {
   name: string
   order: number
   member_count: number
-  quote_items: QuoteItem[]
-  quote_group_members: { id: string; case_member_id: string }[]
+  document_items: QuoteItem[]
+  document_group_members: { id: string; case_member_id: string }[]
 }
 
 type Quote = {
   id: string
-  quote_number: string
+  type: 'quotation' | 'deposit_invoice' | 'final_invoice' | 'additional_invoice' | 'commission_invoice'
+  document_number: string
   slug: string | null
   total_price: number
   payment_due_date: string | null
   agent_margin_rate: number
   company_margin_rate: number
   finalized_at: string | null
-  quote_groups: QuoteGroup[]
+  document_groups: QuoteGroup[]
 }
 
 type ScheduleStatus = 'pending' | 'confirmed' | 'revision_requested'
@@ -90,7 +91,7 @@ type CaseDetail = {
   inbound_flight: FlightInfo
   cancellation_reason: string | null
   case_members: CaseMember[]
-  quotes: Quote[]
+  documents: Quote[]
   schedules: Schedule[]
 }
 
@@ -204,12 +205,12 @@ export default function CaseDetailPage() {
           id, is_lead,
           clients(client_number, nationality, ${CLIENT_INFO_COLUMNS})
         ),
-        quotes(
-          id, quote_number, slug, total_price, payment_due_date, agent_margin_rate, company_margin_rate, finalized_at,
-          quote_groups(
+        documents(
+          id, type, document_number, slug, total_price, payment_due_date, agent_margin_rate, company_margin_rate, finalized_at,
+          document_groups(
             id, name, order, member_count,
-            quote_items(id, final_price, products(id, name, base_price, price_currency, duration_value, duration_unit)),
-            quote_group_members(id, case_member_id)
+            document_items(id, final_price, products(id, name, base_price, price_currency, duration_value, duration_unit)),
+            document_group_members(id, case_member_id)
           )
         ),
         schedules(id, slug, pdf_url, status, version, created_at, file_name, revision_note, admin_note, confirmed_at)
@@ -309,11 +310,20 @@ export default function CaseDetailPage() {
   }
 
   // Send Invoice — route picks Quotation vs Invoice based on finalize state.
+  // Pre-finalize: quotation slug. Post-finalize: final_invoice's own slug
+  // (different doc, different slug — invoice_first_opened_at tracked per-doc).
   function sendInvoice() {
     if (!quote?.slug) return
     const baseUrl = typeof window !== 'undefined' ? window.location.origin : ''
-    const path = quote.finalized_at ? 'invoice' : 'quote'
-    navigator.clipboard.writeText(`${baseUrl}/${path}/${quote.slug}`).then(() => {
+    let url: string
+    if (quote.finalized_at) {
+      const finalInvoice = caseData?.documents?.find(d => d.type === 'final_invoice')
+      if (!finalInvoice?.slug) return
+      url = `${baseUrl}/invoice/${finalInvoice.slug}`
+    } else {
+      url = `${baseUrl}/quote/${quote.slug}`
+    }
+    navigator.clipboard.writeText(url).then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     })
@@ -473,9 +483,9 @@ export default function CaseDetailPage() {
 
   // Build initial pendingMembers snapshot from server data
   const buildPendingFromServer = useCallback((cd: CaseDetail): PendingMember[] => {
-    const quote = cd.quotes[0]
+    const quote = cd.documents?.find(d => d.type === "quotation")
     const gmMap = new Map<string, string>()
-    quote?.quote_groups.forEach(g => g.quote_group_members?.forEach(gm => gmMap.set(gm.case_member_id, g.id)))
+    quote?.document_groups.forEach(g => g.document_group_members?.forEach(gm => gmMap.set(gm.case_member_id, g.id)))
     return cd.case_members.map(m => ({
       id: m.id,
       isNew: false,
@@ -510,7 +520,7 @@ export default function CaseDetailPage() {
 
   const groupNamesDirty = (() => {
     if (!caseData) return false
-    const groups = caseData.quotes[0]?.quote_groups ?? []
+    const groups = caseData.documents?.find(d => d.type === "quotation")?.document_groups ?? []
     return groups.some(g => (pendingGroupNames[g.id] ?? g.name) !== g.name)
   })()
 
@@ -521,7 +531,7 @@ export default function CaseDetailPage() {
     if (dirty) return // preserve staged edits across refetches
     setPendingMembers(buildPendingFromServer(caseData))
     const initial: Record<string, string> = {}
-    for (const g of caseData.quotes[0]?.quote_groups ?? []) initial[g.id] = g.name
+    for (const g of caseData.documents?.find(d => d.type === "quotation")?.document_groups ?? []) initial[g.id] = g.name
     setPendingGroupNames(initial)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [caseData])
@@ -577,7 +587,7 @@ export default function CaseDetailPage() {
 
     // Once status > awaiting_info, every group slot was filled — block saves that leave gaps.
     if (caseData.status !== 'awaiting_info') {
-      const groups = caseData.quotes[0]?.quote_groups ?? []
+      const groups = caseData.documents?.find(d => d.type === "quotation")?.document_groups ?? []
       const shortfalls: string[] = []
       groups.forEach((g, gi) => {
         const assigned = activeMembers.filter(p => p.groupId === g.id).length
@@ -594,8 +604,8 @@ export default function CaseDetailPage() {
     setSavingMembers(true); setMembersError('')
     try {
       const server = buildPendingFromServer(caseData)
-      const quote = caseData.quotes[0]
-      const quoteGroupIds = quote?.quote_groups.map(g => g.id) ?? []
+      const quote = caseData.documents?.find(d => d.type === "quotation")
+      const quoteGroupIds = quote?.document_groups.map(g => g.id) ?? []
 
       // 1) Delete removed existing members (cascade will clean group_members)
       const toDelete = pendingMembers.filter(p => !p.isNew && p.isRemoved).map(p => p.id)
@@ -649,28 +659,28 @@ export default function CaseDetailPage() {
         if (priorGroup !== p.groupId || p.isNew) {
           // Remove any existing assignment for this member
           if (quoteGroupIds.length > 0) {
-            await supabase.from('quote_group_members').delete().eq('case_member_id', realId).in('quote_group_id', quoteGroupIds)
+            await supabase.from('document_group_members').delete().eq('case_member_id', realId).in('document_group_id', quoteGroupIds)
           }
           if (p.groupId) {
-            const { error } = await supabase.from('quote_group_members').insert({ quote_group_id: p.groupId, case_member_id: realId })
+            const { error } = await supabase.from('document_group_members').insert({ document_group_id: p.groupId, case_member_id: realId })
             if (error) throw error
           }
         }
       }
 
       // 5) Save group name changes
-      const serverGroups = caseData.quotes[0]?.quote_groups ?? []
+      const serverGroups = caseData.documents?.find(d => d.type === "quotation")?.document_groups ?? []
       for (const g of serverGroups) {
         const newName = (pendingGroupNames[g.id] ?? g.name).trim()
         if (newName && newName !== g.name) {
-          const { error } = await supabase.from('quote_groups').update({ name: newName }).eq('id', g.id)
+          const { error } = await supabase.from('document_groups').update({ name: newName }).eq('id', g.id)
           if (error) throw error
         }
       }
 
       // Build summary for admin: added/removed names, lead change, group reassignments, group rename
       const groupNameById = new Map<string, string>()
-      ;(caseData.quotes[0]?.quote_groups ?? []).forEach(g => {
+      ;(caseData.documents?.find(d => d.type === "quotation")?.document_groups ?? []).forEach(g => {
         const newName = (pendingGroupNames[g.id] ?? g.name).trim() || g.name
         groupNameById.set(g.id, newName)
       })
@@ -691,14 +701,14 @@ export default function CaseDetailPage() {
         if ((prior.groupId ?? null) !== (p.groupId ?? null)) {
           // Resolve old group name from server snapshot's group ids
           const oldName = prior.groupId
-            ? (caseData.quotes[0]?.quote_groups ?? []).find(g => g.id === prior.groupId)?.name ?? '—'
+            ? (caseData.documents?.find(d => d.type === "quotation")?.document_groups ?? []).find(g => g.id === prior.groupId)?.name ?? '—'
             : 'Unassigned'
           groupMoves.push(`${p.clientName}: ${oldName} → ${groupLabel(p.groupId)}`)
         }
       }
       // Group renames — show old → new per group
       const renames: string[] = []
-      for (const g of caseData.quotes[0]?.quote_groups ?? []) {
+      for (const g of caseData.documents?.find(d => d.type === "quotation")?.document_groups ?? []) {
         const newName = (pendingGroupNames[g.id] ?? g.name).trim()
         if (newName && newName !== g.name) renames.push(`Group renamed: "${g.name}" → "${newName}"`)
       }
@@ -717,7 +727,7 @@ export default function CaseDetailPage() {
       if (fresh) {
         setPendingMembers(buildPendingFromServer(fresh))
         const initial: Record<string, string> = {}
-        for (const g of fresh.quotes[0]?.quote_groups ?? []) initial[g.id] = g.name
+        for (const g of fresh.documents?.find(d => d.type === "quotation")?.document_groups ?? []) initial[g.id] = g.name
         setPendingGroupNames(initial)
       }
       setEditMembers(false)
@@ -738,7 +748,7 @@ export default function CaseDetailPage() {
     if (!caseData) return
     setPendingMembers(buildPendingFromServer(caseData))
     const initial: Record<string, string> = {}
-    for (const g of caseData.quotes[0]?.quote_groups ?? []) initial[g.id] = g.name
+    for (const g of caseData.documents?.find(d => d.type === "quotation")?.document_groups ?? []) initial[g.id] = g.name
     setPendingGroupNames(initial)
     setMembersError('')
     setShowNewClient(false)
@@ -797,28 +807,28 @@ export default function CaseDetailPage() {
   const tripMembersLocked = isCanceled || ['awaiting_pricing', 'awaiting_payment', 'awaiting_travel', 'completed'].includes(caseData.status)
   const lead = caseData.case_members.find(m => m.is_lead)
   const companions = caseData.case_members.filter(m => !m.is_lead)
-  const quote = caseData.quotes[0] ?? null
+  const quote = caseData.documents?.find(d => d.type === "quotation") ?? null
   const schedule = caseData.schedules && caseData.schedules.length > 0
     ? [...caseData.schedules].sort((a, b) => b.version - a.version)[0]
     : null
 
-  const expectedMemberCount = quote?.quote_groups?.reduce((s, g) => s + (g.member_count ?? 0), 0) ?? 0
+  const expectedMemberCount = quote?.document_groups?.reduce((s, g) => s + (g.member_count ?? 0), 0) ?? 0
   const clientsMissingInfo = caseData.case_members
     .map(m => ({ member: m, missing: getMissingClientFields(m.clients) }))
     .filter(x => x.missing.length > 0)
   // Info-only completeness (member count shortfall is a group assignment concern, not an info concern)
   const allClientsComplete = caseData.case_members.length > 0 && clientsMissingInfo.length === 0
-  const groupsComplete = !quote || quote.quote_groups.every(g => (g.quote_group_members?.length ?? 0) === g.member_count)
+  const groupsComplete = !quote || quote.document_groups.every(g => (g.document_group_members?.length ?? 0) === g.member_count)
   const missingCaseFields = getMissingCaseFields(caseData)
   const caseInfoComplete = missingCaseFields.length === 0
   const scheduleReady = allClientsComplete && groupsComplete && caseInfoComplete
 
   // case_member_id → quote_group_id map
   const memberGroupMap = new Map<string, string>()
-  quote?.quote_groups?.forEach(g => {
-    g.quote_group_members?.forEach(gm => { memberGroupMap.set(gm.case_member_id, g.id) })
+  quote?.document_groups?.forEach(g => {
+    g.document_group_members?.forEach(gm => { memberGroupMap.set(gm.case_member_id, g.id) })
   })
-  const sortedGroups = quote?.quote_groups ? [...quote.quote_groups].sort((a, b) => a.order - b.order) : []
+  const sortedGroups = quote?.document_groups ? [...quote.document_groups].sort((a, b) => a.order - b.order) : []
 
   const totalKrw = quote?.total_price ?? 0
   const agentMarginRate = quote?.agent_margin_rate ?? 0
@@ -1083,7 +1093,7 @@ export default function CaseDetailPage() {
           {/* Members & Groups — includes member-related readiness */}
           {(() => {
             const memberShortfall = expectedMemberCount > 0 && caseData.case_members.length < expectedMemberCount
-            const groupGaps = quote?.quote_groups?.filter(g => (g.quote_group_members?.length ?? 0) !== g.member_count) ?? []
+            const groupGaps = quote?.document_groups?.filter(g => (g.document_group_members?.length ?? 0) !== g.member_count) ?? []
             const memberIssueCount = (memberShortfall ? 1 : 0) + groupGaps.length + clientsMissingInfo.length
             const memberReady = memberIssueCount === 0 && caseData.case_members.length > 0
             return (
@@ -1377,7 +1387,7 @@ export default function CaseDetailPage() {
                     <li>· Members: {caseData.case_members.length} of {expectedMemberCount} registered</li>
                   )}
                   {groupGaps.map(g => (
-                    <li key={g.id}>· {g.name}: {g.quote_group_members?.length ?? 0} / {g.member_count} assigned</li>
+                    <li key={g.id}>· {g.name}: {g.document_group_members?.length ?? 0} / {g.member_count} assigned</li>
                   ))}
                   {clientsMissingInfo.map(({ member, missing }) => {
                     const c = member.clients
@@ -1397,11 +1407,11 @@ export default function CaseDetailPage() {
           })()}
 
           {/* Selected Products — group subtotals always visible, details collapsible */}
-          {quote && quote.quote_groups.length > 0 && (
+          {quote && quote.document_groups.length > 0 && (
             <section className="space-y-3">
               <div className="flex items-center gap-2">
                 <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Selected Products</h3>
-                <span className="ml-auto text-[10px] font-mono text-gray-400">{quote.quote_number}</span>
+                <span className="ml-auto text-[10px] font-mono text-gray-400">{quote.document_number}</span>
                 <button onClick={() => setProductsOpen(v => !v)}
                   className="flex items-center gap-1 text-[10px] font-medium text-gray-500 hover:text-[#0f4c35]">
                   <span>{productsOpen ? 'Hide details' : 'Show details'}</span>
@@ -1410,7 +1420,7 @@ export default function CaseDetailPage() {
                   </svg>
                 </button>
               </div>
-              {[...quote.quote_groups].sort((a, b) => a.order - b.order).map(group => {
+              {[...quote.document_groups].sort((a, b) => a.order - b.order).map(group => {
                 const qty = Math.max(group.member_count ?? 1, 1)
                 const marginMult = (1 + (quote.company_margin_rate ?? 0)) * (1 + (quote.agent_margin_rate ?? 0))
                 const unitUsdFor = (item: QuoteItem) => {
@@ -1419,7 +1429,7 @@ export default function CaseDetailPage() {
                     : item.products.base_price / exchangeRate
                   return baseUSD * marginMult
                 }
-                const groupTotalUsd = group.quote_items.reduce(
+                const groupTotalUsd = group.document_items.reduce(
                   (sum, item) => sum + unitUsdFor(item) * qty,
                   0
                 )
@@ -1431,7 +1441,7 @@ export default function CaseDetailPage() {
                         <span className="text-[10px] text-gray-400 bg-white border border-gray-100 rounded-full px-2 py-0.5">
                           {qty} member{qty > 1 ? 's' : ''}
                         </span>
-                        <span className="text-[10px] text-gray-400">· {group.quote_items.length} item{group.quote_items.length > 1 ? 's' : ''}</span>
+                        <span className="text-[10px] text-gray-400">· {group.document_items.length} item{group.document_items.length > 1 ? 's' : ''}</span>
                       </div>
                       <span className="text-sm font-bold text-gray-900">${groupTotalUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                     </div>
@@ -1444,7 +1454,7 @@ export default function CaseDetailPage() {
                           <span>Qty</span>
                           <span className="text-right">Total</span>
                         </div>
-                        {group.quote_items.map(item => {
+                        {group.document_items.map(item => {
                           const unitUsd = unitUsdFor(item)
                           const totalUsd = unitUsd * qty
                           return (
@@ -1475,10 +1485,19 @@ export default function CaseDetailPage() {
             </section>
           )}
 
-          {/* Schedule */}
-          <section id="schedule" className="scroll-mt-20 bg-gray-50 rounded-2xl p-5">
+          {/* Schedule — tone matches Hero when this section is the action target */}
+          {(() => {
+            const isActionTarget = caseData.status === 'reviewing_schedule'
+            const sectionClass = isActionTarget
+              ? 'scroll-mt-20 bg-violet-50 border border-violet-200 rounded-2xl p-5'
+              : 'scroll-mt-20 bg-gray-50 rounded-2xl p-5'
+            const labelClass = isActionTarget
+              ? 'text-xs font-semibold text-violet-700 uppercase tracking-wide'
+              : 'text-xs font-semibold text-gray-400 uppercase tracking-wide'
+            return (
+          <section id="schedule" className={sectionClass}>
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Schedule</h3>
+              <h3 className={labelClass}>Schedule</h3>
               {schedule?.slug && schedule.pdf_url && (
                 <div className="flex items-center gap-2">
                   {/* Preview — open schedule page in new tab */}
@@ -1546,12 +1565,25 @@ export default function CaseDetailPage() {
                   </div>
                 )}
 
-                {schedule.admin_note && schedule.status !== 'revision_requested' && (
-                  <div className="border border-blue-200 bg-blue-50 rounded-xl p-3">
-                    <p className="text-[10px] font-semibold text-blue-700 uppercase tracking-wide mb-1">Admin Note</p>
-                    <p className="text-xs text-blue-900 whitespace-pre-line">{schedule.admin_note}</p>
-                  </div>
-                )}
+                {schedule.admin_note && schedule.status !== 'revision_requested' && (() => {
+                  // Pending review: blue (agent should read). Confirmed: muted gray (historical).
+                  const isPending = schedule.status === 'pending'
+                  const noteClass = isPending
+                    ? 'border border-blue-200 bg-blue-50 rounded-xl p-3'
+                    : 'border border-gray-200 bg-white rounded-xl p-3'
+                  const labelClass = isPending
+                    ? 'text-[10px] font-semibold text-blue-700 uppercase tracking-wide mb-1'
+                    : 'text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-1'
+                  const textClass = isPending
+                    ? 'text-xs text-blue-900 whitespace-pre-line'
+                    : 'text-xs text-gray-700 whitespace-pre-line'
+                  return (
+                    <div className={noteClass}>
+                      <p className={labelClass}>Admin Note</p>
+                      <p className={textClass}>{schedule.admin_note}</p>
+                    </div>
+                  )
+                })()}
 
                 {schedule.status === 'confirmed' && schedule.confirmed_at && (
                   <p className="text-xs text-emerald-600">Confirmed on {schedule.confirmed_at.slice(0, 10)}</p>
@@ -1587,6 +1619,8 @@ export default function CaseDetailPage() {
               </div>
             )}
           </section>
+            )
+          })()}
 
           {/* Revision note modal */}
           {showRevisionModal && (
@@ -1619,16 +1653,28 @@ export default function CaseDetailPage() {
             </div>
           )}
 
-          {/* Financials */}
-          {quote && (
-            <section id="financials" className="scroll-mt-20 bg-gray-50 rounded-2xl p-5 space-y-4">
+          {/* Financials — tone matches Hero when this is the action target */}
+          {quote && (() => {
+            const isActionTarget = caseData.status === 'awaiting_payment'
+            const sectionClass = isActionTarget
+              ? 'scroll-mt-20 bg-cyan-50 border border-cyan-200 rounded-2xl p-5 space-y-4'
+              : 'scroll-mt-20 bg-gray-50 rounded-2xl p-5 space-y-4'
+            const labelClass = isActionTarget
+              ? 'text-xs font-semibold text-cyan-700 uppercase tracking-wide'
+              : 'text-xs font-semibold text-gray-400 uppercase tracking-wide'
+            return (
+            <section id="financials" className={sectionClass}>
               <div className="flex items-center justify-between">
-                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Financials</h3>
-                {quote.slug && (
+                <h3 className={labelClass}>Financials</h3>
+                {quote.slug && (() => {
+                  const finalInvoice = caseData?.documents?.find(d => d.type === 'final_invoice')
+                  const previewSlug = quote.finalized_at && finalInvoice?.slug ? finalInvoice.slug : quote.slug
+                  const previewPath = quote.finalized_at ? 'invoice' : 'quote'
+                  return (
                   <div className="flex items-center gap-2">
                     {/* Preview — open invoice in new tab */}
                     <a
-                      href={`${typeof window !== 'undefined' ? window.location.origin : ''}/${quote.finalized_at ? 'invoice' : 'quote'}/${quote.slug}?preview=1`}
+                      href={`${typeof window !== 'undefined' ? window.location.origin : ''}/${previewPath}/${previewSlug}?preview=1`}
                       target="_blank" rel="noopener noreferrer"
                       className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-[#0f4c35] transition-colors px-2 py-1.5 rounded-lg hover:bg-gray-100">
                       <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -1665,7 +1711,8 @@ export default function CaseDetailPage() {
                       )
                     })()}
                   </div>
-                )}
+                  )
+                })()}
               </div>
 
               {/* Awaiting final invoice — schedule is confirmed, admin is finalizing pricing */}
@@ -1706,7 +1753,8 @@ export default function CaseDetailPage() {
                 </div>
               )}
             </section>
-          )}
+            )
+          })()}
 
           {/* Cancel Case — agent self-service, only before payment */}
           {CANCELLABLE_STATUSES.includes(caseData.status) && (

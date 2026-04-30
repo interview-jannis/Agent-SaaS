@@ -13,7 +13,7 @@ import { notifyAllAdmins } from './notifications'
 
 type QuoteGroupRow = {
   member_count: number
-  quote_group_members: { id: string }[] | null
+  document_group_members: { id: string }[] | null
 }
 
 type CaseRow = {
@@ -24,7 +24,7 @@ type CaseRow = {
   outbound_flight: FlightInfo
   inbound_flight: FlightInfo
   case_members: { clients: ClientInfo | null }[]
-  quotes: { quote_groups: QuoteGroupRow[] | null }[] | null
+  documents: { type: string; document_groups: QuoteGroupRow[] | null }[] | null
 }
 
 function isComplete(c: CaseRow): boolean {
@@ -38,11 +38,11 @@ function isComplete(c: CaseRow): boolean {
   if (members.length === 0) return false
   if (!members.every(m => hasCompleteClientInfo(m.clients))) return false
 
-  // Groups must be fully filled (every quote_group's slots assigned).
-  const quote = (c.quotes ?? [])[0]
-  const groups = quote?.quote_groups ?? []
+  // Groups must be fully filled (every quotation group's slots assigned).
+  const quotation = (c.documents ?? []).find(d => d.type === 'quotation')
+  const groups = quotation?.document_groups ?? []
   if (groups.length === 0) return false
-  return groups.every(g => (g.quote_group_members?.length ?? 0) === g.member_count)
+  return groups.every(g => (g.document_group_members?.length ?? 0) === g.member_count)
 }
 
 // Single entry point — call after any agent edit that may affect case readiness.
@@ -61,7 +61,7 @@ export async function notifyCaseInfoChanged(caseId: string, change?: { header: s
     .from('cases')
     .select(`id, case_number, status, concept, outbound_flight, inbound_flight,
              case_members(clients(${CLIENT_INFO_COLUMNS})),
-             quotes(quote_groups(member_count, quote_group_members(id)))`)
+             documents(type, document_groups(member_count, document_group_members(id)))`)
     .eq('id', caseId)
     .single()
 

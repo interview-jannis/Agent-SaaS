@@ -11,8 +11,7 @@ type CaseRow = {
   status: string
   travel_start_date: string | null
   travel_end_date: string | null
-  case_members: { is_lead: boolean; clients: { name: string } | null }[]
-  quotes: { total_price: number; agent_margin_rate: number }[]
+  case_members: { is_lead: boolean; clients: { name: string } | null }[]documents: { type: string; total_price: number; agent_margin_rate: number }[]
 }
 
 type Settlement = {
@@ -82,7 +81,7 @@ export default function AgentPayoutsPage() {
 
     const [casesRes, settlementsRes] = await Promise.all([
       supabase.from('cases')
-        .select('id, case_number, status, travel_start_date, travel_end_date, case_members(is_lead, clients(name)), quotes(total_price, agent_margin_rate)')
+        .select('id, case_number, status, travel_start_date, travel_end_date, case_members(is_lead, clients(name)), documents(type, total_price, agent_margin_rate)')
         .eq('agent_id', ag.id)
         .order('created_at', { ascending: false }),
       supabase.from('settlements')
@@ -126,7 +125,7 @@ export default function AgentPayoutsPage() {
 
   const settledCaseIds = new Set(settlements.filter(s => s.case_id).map(s => s.case_id!))
   const caseCommissionKrw = (c: CaseRow) => {
-    const q = c.quotes?.[0]
+    const q = c.documents?.find(d => d.type === "quotation")
     return q ? commissionKrw(q.total_price, q.agent_margin_rate) : 0
   }
 

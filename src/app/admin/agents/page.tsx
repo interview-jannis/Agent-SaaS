@@ -21,8 +21,7 @@ type Agent = {
 type CaseRow = {
   id: string
   agent_id: string
-  status: string
-  quotes: { total_price: number; agent_margin_rate: number }[]
+  status: stringdocuments: { type: string; total_price: number; agent_margin_rate: number }[]
 }
 
 type ClientRow = { id: string; agent_id: string }
@@ -58,7 +57,7 @@ export default function AdminAgentsPage() {
       supabase.from('agents')
         .select('id, agent_number, name, email, country, margin_rate, is_active, onboarding_status, rejection_reason')
         .order('name'),
-      supabase.from('cases').select('id, agent_id, status, quotes(total_price, agent_margin_rate)'),
+      supabase.from('cases').select('id, agent_id, status, documents(type, total_price, agent_margin_rate)'),
       supabase.from('clients').select('id, agent_id'),
       supabase.from('settlements').select('id, agent_id, case_id, amount'),
       supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single(),
@@ -117,7 +116,7 @@ export default function AdminAgentsPage() {
   for (const c of cases) {
     if (c.status !== 'completed') continue
     if (settledCaseIds.has(c.id)) continue
-    const q = c.quotes?.[0]
+    const q = c.documents?.find(d => d.type === "quotation")
     if (!q) continue
     const m = agentMetrics.get(c.agent_id)
     if (m) m.unsettledKrw += commissionKrw(q.total_price, q.agent_margin_rate)

@@ -21,14 +21,12 @@ type ActionCase = {
   travel_start_date: string | null
   travel_end_date: string | null
   created_at: string
-  case_members: CaseMember[]
-  quotes: { total_price: number; payment_due_date: string | null }[]
+  case_members: CaseMember[]documents: { type: string; total_price: number; payment_due_date: string | null }[]
 }
 
 type AgentCaseRow = {
   agent_id: string | null
-  agents: { agent_number: string; name: string } | null
-  quotes: { total_price: number }[]
+  agents: { agent_number: string; name: string } | nulldocuments: { type: string; total_price: number }[]
 }
 
 type PendingAgent = {
@@ -71,7 +69,7 @@ export default async function AdminOverviewPage() {
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
   const todayISO = now.toISOString().slice(0, 10)
 
-  const CASE_WITH_ALL = 'id, case_number, status, travel_start_date, travel_end_date, created_at, case_members(is_lead, clients(name)), quotes(total_price, payment_due_date)'
+  const CASE_WITH_ALL = 'id, case_number, status, travel_start_date, travel_end_date, created_at, case_members(is_lead, clients(name)), documents(type, total_price, payment_due_date)'
 
   const monthStartDate = monthStart.slice(0, 10)
   const sixMonthsAgoDate = new Date(now.getFullYear(), now.getMonth() - 5, 1).toISOString().slice(0, 10)
@@ -107,13 +105,13 @@ export default async function AdminOverviewPage() {
       .not('status', 'in', '(completed,canceled)'),
     // All paid cases ever — drives Hero (all-time totals) + 6mo sparkline trends
     supabase.from('cases')
-      .select('id, payment_date, agent_id, case_members(id), quotes(total_price, company_margin_rate, agent_margin_rate)')
+      .select('id, payment_date, agent_id, case_members(id), documents(type, total_price, company_margin_rate, agent_margin_rate)')
       .not('payment_date', 'is', null),
     // All clients (used for total count + new clients per month for sparkline)
     supabase.from('clients').select('id, created_at'),
     // Active agents total count
     supabase.from('agents').select('id', { count: 'exact', head: true }).eq('is_active', true).eq('onboarding_status', 'approved'),
-    supabase.from('cases').select('agent_id, agents!cases_agent_id_fkey(agent_number, name), quotes(total_price)').eq('status', 'completed').gte('created_at', monthStart),
+    supabase.from('cases').select('agent_id, agents!cases_agent_id_fkey(agent_number, name), documents(type, total_price)').eq('status', 'completed').gte('created_at', monthStart),
     // Pending agent approvals
     supabase.from('agents').select('id, agent_number, name, onboarding_status').eq('onboarding_status', 'awaiting_approval'),
     supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single(),
@@ -130,13 +128,12 @@ export default async function AdminOverviewPage() {
     id: string
     payment_date: string | null
     agent_id: string | null
-    case_members: { id: string }[]
-    quotes: { total_price: number; company_margin_rate: number | null; agent_margin_rate: number | null }[]
+    case_members: { id: string }[]documents: { type: string; total_price: number; company_margin_rate: number | null; agent_margin_rate: number | null }[]
   }
   const paidCasesAll = (allPaidCases as unknown as PaidCase[]) ?? []
 
   function decompose(c: PaidCase) {
-    const q = c.quotes?.[0]
+    const q = c.documents?.find(d => d.type === "quotation")
     if (!q) return { total: 0, base: 0, earn: 0, ag: 0 }
     const total = q.total_price ?? 0
     const co = q.company_margin_rate ?? 0
@@ -215,7 +212,7 @@ export default async function AdminOverviewPage() {
     if (!row.agent_id || !row.agents) continue
     const prev = agentMap.get(row.agent_id) ?? { ...row.agents, count: 0, revenue: 0 }
     prev.count += 1
-    prev.revenue += (row.quotes ?? []).reduce((s, q) => s + (q.total_price ?? 0), 0)
+    prev.revenue += (row.documents ?? []).filter((d: { type: string }) => d.type === 'quotation').reduce((s: number, q: { total_price: number | null }) => s + (q.total_price ?? 0), 0)
     agentMap.set(row.agent_id, prev)
   }
   const topAgents = [...agentMap.values()].sort((a, b) => b.revenue - a.revenue).slice(0, 3)
@@ -230,7 +227,7 @@ export default async function AdminOverviewPage() {
 
   // Overdue payments — awaiting_payment with payment_due_date past
   const overduePayments = ((paymentPending as unknown as ActionCase[]) ?? [])
-    .map(c => ({ ...c, due: c.quotes?.[0]?.payment_due_date ?? null }))
+    .map(c => ({ ...c, due: c.documents?.find(d => d.type === "quotation")?.payment_due_date ?? null }))
     .filter(c => c.due && c.due < todayISO)
 
   // Settlement to process — completed cases whose agent settlement isn't paid yet

@@ -91,10 +91,11 @@ type CaseMember = {
 
 type Quote = {
   id: string
+  type: string
   total_price: number
-  quote_groups: {
+  document_groups: {
     member_count: number
-    quote_items: { products: { partner_name: string | null } | null }[]
+    document_items: { products: { partner_name: string | null } | null }[]
   }[]
 }
 
@@ -109,7 +110,7 @@ type Case = {
   created_at: string
   agents: Agent | Agent[] | null
   case_members: CaseMember[]
-  quotes: Quote[]
+  documents: Quote[]
 }
 
 function getAgent(c: { agents: Agent | Agent[] | null } | null | undefined): Agent | null {
@@ -148,7 +149,7 @@ export default function AdminCasesPage() {
           id, case_number, status, travel_start_date, travel_end_date, created_at,
           agents!cases_agent_id_fkey(id, agent_number, name),
           case_members(id, is_lead, clients(id, client_number, name)),
-          quotes(id, total_price, quote_groups(member_count, quote_items(products(partner_name))))
+          documents(id, type, total_price, document_groups(member_count, document_items(products(partner_name))))
         `).order('created_at', { ascending: false }),
         supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single(),
         supabase.from('partner_payments').select('case_id, partner_name'),
@@ -174,8 +175,9 @@ export default function AdminCasesPage() {
 
   function partnerStatusFor(c: Case): 'done' | 'pending' | 'na' {
     const partners = new Set<string>()
-    for (const g of c.quotes?.[0]?.quote_groups ?? []) {
-      for (const item of g.quote_items ?? []) {
+    const quotation = c.documents?.find(d => d.type === 'quotation')
+    for (const g of quotation?.document_groups ?? []) {
+      for (const item of g.document_items ?? []) {
         const name = item.products?.partner_name?.trim()
         if (name) partners.add(name)
       }
@@ -316,8 +318,8 @@ export default function AdminCasesPage() {
                         </tr>
                         {items.map((c) => {
                           const caseLead = c.case_members?.find((m) => m.is_lead)
-                          const quote = c.quotes?.[0]
-                          const memberCount = quote?.quote_groups?.reduce((s, g) => s + (g.member_count ?? 0), 0) ?? 0
+                          const quote = c.documents?.find(d => d.type === 'quotation')
+                          const memberCount = quote?.document_groups?.reduce((s, g) => s + (g.member_count ?? 0), 0) ?? 0
                           return (
                             <tr key={c.id} onClick={() => router.push(`/admin/cases/${c.id}`)}
                               className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors">

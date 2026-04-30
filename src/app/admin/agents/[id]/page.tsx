@@ -44,8 +44,7 @@ type CaseRow = {
   travel_end_date: string | null
   travel_completed_at: string | null
   payment_date: string | null
-  created_at: string
-  quotes: { total_price: number; company_margin_rate: number | null; agent_margin_rate: number }[]
+  created_at: stringdocuments: { type: string; total_price: number; company_margin_rate: number | null; agent_margin_rate: number }[]
   case_members: { is_lead: boolean; clients: { name: string } | null }[]
 }
 
@@ -83,7 +82,7 @@ export default function AdminAgentDetailPage() {
         .select('id, agent_number, name, email, phone, country, margin_rate, is_active, bank_info, onboarding_status, rejection_reason, rejected_at, invite_token, invite_expires_at')
         .eq('id', id).single(),
       supabase.from('cases')
-        .select('id, case_number, status, travel_start_date, travel_end_date, travel_completed_at, payment_date, created_at, quotes(total_price, company_margin_rate, agent_margin_rate), case_members(is_lead, clients(name))')
+        .select('id, case_number, status, travel_start_date, travel_end_date, travel_completed_at, payment_date, created_at, documents(type, total_price, company_margin_rate, agent_margin_rate), case_members(is_lead, clients(name))')
         .eq('agent_id', id)
         .order('created_at', { ascending: false }),
       supabase.from('settlements')
@@ -217,7 +216,7 @@ export default function AdminAgentDetailPage() {
   const completedCases = cases.filter(c => c.status === 'completed')
   const unsettledKrw = completedCases
     .filter(c => !settledCaseIds.has(c.id))
-    .reduce((sum, c) => sum + commissionKrw(c.quotes?.[0]?.total_price ?? 0, c.quotes?.[0]?.agent_margin_rate ?? 0), 0)
+    .reduce((sum, c) => sum + commissionKrw(c.documents?.find(d => d.type === "quotation")?.total_price ?? 0, c.documents?.find(d => d.type === "quotation")?.agent_margin_rate ?? 0), 0)
 
   // Tier basis: patients on cases marked completed this month
   const nowForMonth = new Date()
@@ -235,7 +234,7 @@ export default function AdminAgentDetailPage() {
     const monthCases = cases.filter(c => c.payment_date?.startsWith(key))
     let revenue = 0, commission = 0, patients = 0
     for (const c of monthCases) {
-      const q = c.quotes?.[0]
+      const q = c.documents?.find(d => d.type === "quotation")
       if (!q) continue
       const total = q.total_price ?? 0
       const ag = q.agent_margin_rate ?? 0
@@ -589,7 +588,7 @@ export default function AdminAgentDetailPage() {
                   <tbody>
                     {cases.map(c => {
                       const lead = c.case_members?.find(m => m.is_lead)
-                      const q = c.quotes?.[0]
+                      const q = c.documents?.find(d => d.type === "quotation")
                       return (
                         <tr key={c.id} onClick={() => router.push(`/admin/cases/${c.id}`)}
                           className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50 cursor-pointer">

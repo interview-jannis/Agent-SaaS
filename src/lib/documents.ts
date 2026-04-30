@@ -424,6 +424,71 @@ export type IssueInvoiceInput = {
   signerSnapshot?: SignerSnapshot | null
 }
 
+// Get the (single) final_invoice document for a case, if any.
+export async function getCaseFinalInvoice(caseId: string): Promise<DocumentRow | null> {
+  const { data } = await supabase
+    .from('documents')
+    .select('*')
+    .eq('case_id', caseId)
+    .eq('type', 'final_invoice')
+    .maybeSingle()
+  return data as DocumentRow | null
+}
+
+// Sync the final_invoice document's items + groups + members from the current
+// quotation. Used after admin re-prices the quotation post-finalize (Phase 2a:
+// invoice always mirrors quotation; Phase 2c will add divergent editing).
+//
+// Drops existing final_invoice items/groups/group_members and recopies from
+// quotation in one pass. Preserves the final_invoice document row itself
+// (document_number, slug, finalized_at, signer_snapshot stay frozen).
+export async function syncFinalInvoiceFromQuotation(caseId: string): Promise<void> {
+  const quotation = await getCaseQuotation(caseId)
+  if (!quotation) return
+  const finalInvoice = await getCaseFinalInvoice(caseId)
+  if (!finalInvoice) return
+
+  // Refresh document-level pricing fields from quotation
+  await supabase.from('documents').update({
+    total_price: quotation.total_price,
+    payment_due_date: quotation.payment_due_date,
+  }).eq('id', finalInvoice.id)
+
+  // Drop existing items + groups + group_members in dependency order
+  // (CASCADE on document_id handles items/groups when groups are deleted, but
+  // we delete items first to be explicit and avoid orphan group_members.)
+  await supabase.from('document_items').delete().eq('document_id', finalInvoice.id)
+  await supabase.from('document_groups').delete().eq('document_id', finalInvoice.id)
+  // group_members are CASCADE-deleted with their parent group above
+
+  // Recopy from quotation
+  const srcGroups = await getDocumentGroups(quotation.id)
+  const groupIdMap = new Map<string, string>()
+  for (const g of srcGroups) {
+    const newGroup = await addDocumentGroup(finalInvoice.id, g.name, g.order, g.member_count)
+    groupIdMap.set(g.id, newGroup.id)
+  }
+  const srcItems = await getDocumentItems(quotation.id)
+  for (const it of srcItems) {
+    await addDocumentItem({
+      documentId: finalInvoice.id,
+      groupId: it.document_group_id ? groupIdMap.get(it.document_group_id) ?? null : null,
+      productId: it.product_id,
+      productNameSnapshot: it.product_name_snapshot,
+      productPartnerSnapshot: it.product_partner_snapshot,
+      basePrice: it.base_price,
+      finalPrice: it.final_price,
+      quantity: it.quantity,
+      sortOrder: it.sort_order,
+    })
+  }
+  const srcGroupMembers = await getDocumentGroupMembers(quotation.id)
+  for (const gm of srcGroupMembers) {
+    const newGroupId = groupIdMap.get(gm.document_group_id)
+    if (newGroupId) await addDocumentGroupMember(newGroupId, gm.case_member_id)
+  }
+}
+
 export async function issueInvoice(input: IssueInvoiceInput): Promise<DocumentRow> {
   const copyItems = input.copyItemsFromQuotation ?? true
 

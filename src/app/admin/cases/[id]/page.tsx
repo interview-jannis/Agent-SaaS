@@ -10,6 +10,14 @@ import { AdminCaseHero } from '@/components/CaseHeroAction'
 
 import type { ClientInfo, FlightInfo } from '@/lib/clientCompleteness'
 import { getMissingClientFields, getMissingCaseFields, CLIENT_INFO_COLUMNS } from '@/lib/clientCompleteness'
+import {
+  finalizeDocument,
+  repriceDocument,
+  updateDocumentItemPrice,
+  issueInvoice,
+  syncFinalInvoiceFromQuotation,
+  getCaseFinalInvoice,
+} from '@/lib/documents'
 
 type MemberClient = ClientInfo & {
   client_number: string
@@ -58,21 +66,21 @@ type QuoteGroup = {
   name: string
   order: number
   member_count: number
-  quote_items: QuoteItem[]
-  quote_group_members: { id: string; case_member_id: string }[]
+  document_items: QuoteItem[]
+  document_group_members: { id: string; case_member_id: string }[]
 }
 
 type Quote = {
   id: string
-  quote_number: string
-  invoice_number: string | null
+  type: 'quotation' | 'deposit_invoice' | 'final_invoice' | 'additional_invoice' | 'commission_invoice'
+  document_number: string
   slug: string
   total_price: number
   payment_due_date: string | null
   agent_margin_rate: number
   company_margin_rate: number
   finalized_at: string | null
-  quote_groups: QuoteGroup[]
+  document_groups: QuoteGroup[]
 }
 
 type ScheduleStatus = 'pending' | 'confirmed' | 'revision_requested'
@@ -109,7 +117,7 @@ type Case = {
   cancellation_reason: string | null
   agents: Agent | Agent[] | null
   case_members: CaseMember[]
-  quotes: Quote[]
+  documents: Quote[]
   schedules: Schedule[]
 }
 
@@ -184,9 +192,9 @@ export default function AdminCaseDetailPage() {
           id, is_lead,
           clients(client_number, nationality, date_of_birth, phone, email, special_requests, ${CLIENT_INFO_COLUMNS})
         ),
-        quotes(
-          id, quote_number, invoice_number, slug, total_price, payment_due_date, agent_margin_rate, company_margin_rate, finalized_at,
-          quote_groups(id, name, order, member_count, quote_items(id, base_price, final_price, products(id, name, description, partner_name)), quote_group_members(id, case_member_id))
+        documents(
+          id, type, document_number, slug, total_price, payment_due_date, agent_margin_rate, company_margin_rate, finalized_at,
+          document_groups(id, name, order, member_count, document_items(id, base_price, final_price, products(id, name, description, partner_name)), document_group_members(id, case_member_id))
         ),
         schedules(id, slug, pdf_url, status, version, file_name, revision_note, admin_note, confirmed_at, created_at, first_opened_at)
       `)
@@ -281,7 +289,7 @@ export default function AdminCaseDetailPage() {
       const note = stagedNote.trim() || null
       const { error: insertError } = await supabase.from('schedules').insert({
         case_id: caseData.id,
-        quote_id: caseData.quotes?.[0]?.id ?? null,
+        quote_id: caseData.documents?.find(d => d.type === "quotation")?.id ?? null,
         slug,
         pdf_url: pdfUrl,
         status: 'pending',
@@ -354,16 +362,19 @@ export default function AdminCaseDetailPage() {
 
   const lead = caseData.case_members?.find((m) => m.is_lead)
   const companions = caseData.case_members?.filter((m) => !m.is_lead) ?? []
-  const latestQuote = caseData.quotes?.[0] ?? null
+  // Derive quotation + final_invoice from the unified documents array.
+  // `latestQuote` retained as the in-page name for the quotation document.
+  const latestQuote = caseData.documents?.find(d => d.type === 'quotation') ?? null
+  const finalInvoice = caseData.documents?.find(d => d.type === 'final_invoice') ?? null
   const sortedSchedules = caseData.schedules ? [...caseData.schedules].sort((a, b) => b.version - a.version) : []
   const latestSchedule = sortedSchedules[0] ?? null
-  const expectedMemberCount = latestQuote?.quote_groups?.reduce((s, g) => s + (g.member_count ?? 0), 0) ?? 0
+  const expectedMemberCount = latestQuote?.document_groups?.reduce((s, g) => s + (g.member_count ?? 0), 0) ?? 0
   const clientsMissingInfo = caseData.case_members
     .map(m => ({ member: m, missing: getMissingClientFields(m.clients) }))
     .filter(x => x.missing.length > 0)
   // Info-only completeness (member count shortfall handled by group assignment section)
   const allClientsComplete = caseData.case_members.length > 0 && clientsMissingInfo.length === 0
-  const groupsComplete = !latestQuote || latestQuote.quote_groups.every(g => (g.quote_group_members?.length ?? 0) === g.member_count)
+  const groupsComplete = !latestQuote || latestQuote.document_groups.every(g => (g.document_group_members?.length ?? 0) === g.member_count)
   const missingCaseFields = getMissingCaseFields(caseData)
   const caseInfoComplete = missingCaseFields.length === 0
   const scheduleReady = allClientsComplete && groupsComplete && caseInfoComplete
@@ -378,7 +389,7 @@ export default function AdminCaseDetailPage() {
     && (caseData.status === 'awaiting_schedule' || caseData.status === 'reviewing_schedule')
     && (latestSchedule === null || latestSchedule.status === 'revision_requested')
     && scheduleReady
-  const sortedGroups = latestQuote?.quote_groups ? [...latestQuote.quote_groups].sort((a, b) => a.order - b.order) : []
+  const sortedGroups = latestQuote?.document_groups ? [...latestQuote.document_groups].sort((a, b) => a.order - b.order) : []
   const baseUrl = typeof window !== 'undefined' ? window.location.origin : ''
 
   return (
@@ -524,7 +535,7 @@ export default function AdminCaseDetailPage() {
           {/* Members + Readiness (merged) */}
           {(() => {
             const memberShortfall = expectedMemberCount > 0 && caseData.case_members.length < expectedMemberCount
-            const groupGaps = latestQuote?.quote_groups?.filter(g => (g.quote_group_members?.length ?? 0) !== g.member_count) ?? []
+            const groupGaps = latestQuote?.document_groups?.filter(g => (g.document_group_members?.length ?? 0) !== g.member_count) ?? []
             const issueCount = (memberShortfall ? 1 : 0) + groupGaps.length + clientsMissingInfo.length
             const ready = issueCount === 0 && caseData.case_members.length > 0
             return (
@@ -540,7 +551,7 @@ export default function AdminCaseDetailPage() {
 
                 {caseData.case_members.length > 0 && (() => {
                   const memberGroupMap = new Map<string, string>()
-                  sortedGroups.forEach(g => g.quote_group_members?.forEach(gm => memberGroupMap.set(gm.case_member_id, g.id)))
+                  sortedGroups.forEach(g => g.document_group_members?.forEach(gm => memberGroupMap.set(gm.case_member_id, g.id)))
                   const grouped = sortedGroups.map(g => ({
                     group: g,
                     members: caseData.case_members
@@ -589,7 +600,7 @@ export default function AdminCaseDetailPage() {
                         <li>· Members: {caseData.case_members.length} of {expectedMemberCount} registered</li>
                       )}
                       {groupGaps.map(g => (
-                        <li key={g.id}>· {g.name}: {g.quote_group_members?.length ?? 0} / {g.member_count} assigned</li>
+                        <li key={g.id}>· {g.name}: {g.document_group_members?.length ?? 0} / {g.member_count} assigned</li>
                       ))}
                       {clientsMissingInfo.map(({ member, missing }) => {
                         const c = member.clients
@@ -615,16 +626,18 @@ export default function AdminCaseDetailPage() {
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Financials</p>
                 <div className="flex items-center gap-3">
                   <span className="text-[10px] font-mono text-gray-400">
-                    {latestQuote.quote_number}
-                    {latestQuote.invoice_number && <span className="ml-1.5 text-gray-300">·</span>}
-                    {latestQuote.invoice_number && <span className="ml-1.5 text-[#0f4c35]">{latestQuote.invoice_number}</span>}
+                    {latestQuote.document_number}
+                    {finalInvoice?.document_number && <span className="ml-1.5 text-gray-300">·</span>}
+                    {finalInvoice?.document_number && <span className="ml-1.5 text-[#0f4c35]">{finalInvoice.document_number}</span>}
                   </span>
                   {latestQuote.finalized_at ? (
                     <>
                       <a href={`${baseUrl}/quote/${latestQuote.slug}?preview=1`} target="_blank" rel="noopener noreferrer"
                         className="text-xs text-gray-400 hover:text-[#0f4c35] transition-colors">Quotation ↗</a>
-                      <a href={`${baseUrl}/invoice/${latestQuote.slug}?preview=1`} target="_blank" rel="noopener noreferrer"
-                        className="text-xs text-gray-400 hover:text-[#0f4c35] transition-colors">Invoice ↗</a>
+                      {finalInvoice && (
+                        <a href={`${baseUrl}/invoice/${finalInvoice.slug}?preview=1`} target="_blank" rel="noopener noreferrer"
+                          className="text-xs text-gray-400 hover:text-[#0f4c35] transition-colors">Invoice ↗</a>
+                      )}
                     </>
                   ) : (
                     <a href={`${baseUrl}/quote/${latestQuote.slug}?preview=1`} target="_blank" rel="noopener noreferrer"
@@ -752,12 +765,25 @@ export default function AdminCaseDetailPage() {
                         </div>
                       </div>
                       {s.file_name && <p className="text-xs text-gray-500 break-all">{s.file_name}</p>}
-                      {s.admin_note && (
-                        <div className="border-l-2 border-blue-300 bg-blue-50 px-2 py-1 rounded-r">
-                          <p className="text-[10px] font-semibold text-blue-700 uppercase tracking-wide mb-0.5">Admin note</p>
-                          <p className="text-xs text-blue-900 whitespace-pre-line">{s.admin_note}</p>
-                        </div>
-                      )}
+                      {s.admin_note && (() => {
+                        // Pending: blue (still actionable). Confirmed/older: muted gray (historical).
+                        const isPending = s.status === 'pending'
+                        const wrapClass = isPending
+                          ? 'border-l-2 border-blue-300 bg-blue-50 px-2 py-1 rounded-r'
+                          : 'border-l-2 border-gray-300 bg-gray-100 px-2 py-1 rounded-r'
+                        const labelClass = isPending
+                          ? 'text-[10px] font-semibold text-blue-700 uppercase tracking-wide mb-0.5'
+                          : 'text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5'
+                        const textClass = isPending
+                          ? 'text-xs text-blue-900 whitespace-pre-line'
+                          : 'text-xs text-gray-700 whitespace-pre-line'
+                        return (
+                          <div className={wrapClass}>
+                            <p className={labelClass}>Admin note</p>
+                            <p className={textClass}>{s.admin_note}</p>
+                          </div>
+                        )
+                      })()}
                       {canDelete && (
                         <div className="flex items-center pt-1">
                           <button
@@ -803,8 +829,10 @@ export default function AdminCaseDetailPage() {
               {pricingError && <p className="text-xs text-red-500">{pricingError}</p>}
 
               <div className="bg-white rounded-xl border border-violet-100 divide-y divide-gray-100">
-                {sortedGroups.flatMap(g => g.quote_items.map(item => {
-                  const currentVal = pricingEdits[item.id] ?? String(item.final_price)
+                {sortedGroups.flatMap(g => g.document_items.map(item => {
+                  // pricingEdits stores raw digit string; display with thousands separators.
+                  const rawVal = pricingEdits[item.id] ?? String(item.final_price)
+                  const displayVal = rawVal === '' ? '' : Number(rawVal).toLocaleString('en-US')
                   return (
                     <div key={item.id} className="flex items-center gap-3 px-3 py-2">
                       <div className="flex-1 min-w-0">
@@ -815,7 +843,7 @@ export default function AdminCaseDetailPage() {
                       <input
                         type="text"
                         inputMode="numeric"
-                        value={currentVal}
+                        value={displayVal}
                         onChange={(e) => {
                           const cleaned = e.target.value.replace(/[^0-9]/g, '')
                           setPricingEdits(p => ({ ...p, [item.id]: cleaned }))
@@ -829,7 +857,7 @@ export default function AdminCaseDetailPage() {
 
               {(() => {
                 const newTotal = sortedGroups
-                  .flatMap(g => g.quote_items)
+                  .flatMap(g => g.document_items)
                   .reduce((s, item) => s + (Number(pricingEdits[item.id] ?? item.final_price) || 0), 0)
                 const diff = newTotal - latestQuote.total_price
                 return (
@@ -861,7 +889,7 @@ export default function AdminCaseDetailPage() {
 
               {(() => {
                 const hasPricingChanges = sortedGroups
-                  .flatMap(g => g.quote_items)
+                  .flatMap(g => g.document_items)
                   .some(item => {
                     const v = pricingEdits[item.id]
                     return v !== undefined && Number(v) !== item.final_price
@@ -876,35 +904,23 @@ export default function AdminCaseDetailPage() {
                   if (!latestQuote) return
                   setSavingPricing(true); setPricingError('')
                   try {
-                    const items = sortedGroups.flatMap(g => g.quote_items)
+                    const items = sortedGroups.flatMap(g => g.document_items)
                     const newTotal = items.reduce((s, item) => s + (Number(pricingEdits[item.id] ?? item.final_price) || 0), 0)
                     const newDueDate = dueDateValue
 
-                    // Update each item that changed
+                    // Update each quotation item whose final_price changed
                     for (const item of items) {
                       const newVal = Number(pricingEdits[item.id] ?? item.final_price) || 0
                       if (newVal !== item.final_price) {
-                        const { error } = await supabase.from('quote_items').update({ final_price: newVal }).eq('id', item.id)
-                        if (error) throw error
+                        await updateDocumentItemPrice(item.id, newVal)
                       }
                     }
-                    // Generate invoice_number on first finalize (preserve on edit)
+
                     const isFirstFinalize = !latestQuote.finalized_at
-                    let invoiceNumber = latestQuote.invoice_number
-                    if (!invoiceNumber) {
-                      const { count } = await supabase.from('quotes').select('*', { count: 'exact', head: true }).not('invoice_number', 'is', null)
-                      const next = (count ?? 0) + 1
-                      invoiceNumber = `#INV-${String(next).padStart(3, '0')}`
-                    }
                     const totalChanged = newTotal !== latestQuote.total_price
-                    const updates: Record<string, unknown> = {
-                      total_price: newTotal,
-                      finalized_at: latestQuote.finalized_at ?? new Date().toISOString(),
-                      invoice_number: invoiceNumber,
-                      payment_due_date: newDueDate,
-                    }
-                    // Snapshot signer (current admin) on every save — reflects who last issued/touched
-                    // this invoice. Used as the "From" name + signature on the invoice.
+
+                    // Capture current admin as signer snapshot
+                    let signerSnapshot: { name: string | null; title: string | null } | null = null
                     {
                       const { data: { session } } = await supabase.auth.getSession()
                       const uid = session?.user?.id
@@ -912,19 +928,54 @@ export default function AdminCaseDetailPage() {
                         const { data: adminRow } = await supabase.from('admins')
                           .select('name, title').eq('auth_user_id', uid).maybeSingle()
                         if (adminRow) {
-                          updates.signer_snapshot = {
+                          signerSnapshot = {
                             name: (adminRow as { name: string | null }).name ?? null,
                             title: (adminRow as { title: string | null }).title ?? null,
                           }
                         }
                       }
                     }
-                    // Reprice with real change → re-arm the "invoice opened" notification
-                    if (!isFirstFinalize && totalChanged) {
-                      updates.invoice_first_opened_at = null
+
+                    // Update quotation: lock pricing, record signer
+                    if (isFirstFinalize) {
+                      await finalizeDocument({
+                        documentId: latestQuote.id,
+                        totalPrice: newTotal,
+                        paymentDueDate: newDueDate,
+                        signerSnapshot,
+                      })
+                    } else {
+                      await repriceDocument(latestQuote.id, newTotal, newDueDate)
+                      if (signerSnapshot) {
+                        await supabase.from('documents')
+                          .update({ signer_snapshot: signerSnapshot })
+                          .eq('id', latestQuote.id)
+                      }
                     }
-                    const { error: qe } = await supabase.from('quotes').update(updates).eq('id', latestQuote.id)
-                    if (qe) throw qe
+
+                    // First finalize: issue final_invoice mirroring quotation.
+                    // Subsequent: sync existing final_invoice from quotation.
+                    let invoiceNumber: string
+                    if (isFirstFinalize) {
+                      const inv = await issueInvoice({
+                        caseId: caseData.id,
+                        type: 'final_invoice',
+                        copyItemsFromQuotation: true,
+                        paymentDueDate: newDueDate,
+                        signerSnapshot,
+                      })
+                      invoiceNumber = inv.document_number
+                    } else {
+                      await syncFinalInvoiceFromQuotation(caseData.id)
+                      const inv = await getCaseFinalInvoice(caseData.id)
+                      invoiceNumber = inv?.document_number ?? caseData.case_number
+                      // Reprice with real change → re-arm "invoice opened" notification
+                      if (totalChanged && inv) {
+                        await supabase.from('documents')
+                          .update({ first_opened_at: null, signer_snapshot: signerSnapshot ?? inv.signer_snapshot })
+                          .eq('id', inv.id)
+                      }
+                    }
 
                     // First finalize → bump case to awaiting_payment so confirm-payment block opens.
                     if (isFirstFinalize) {
@@ -1058,21 +1109,20 @@ export default function AdminCaseDetailPage() {
 
                   <p className="text-[11px] text-gray-500">Open the preview to review the PDF, then confirm to publish this version to the agent.</p>
 
-                  {/* Note for agent — required-ish on v2+ (response to revision request), optional on v1 */}
-                  <div>
-                    <label className="block text-[11px] text-gray-500 mb-1">
-                      What changed?
-                      {sortedSchedules.length > 0 && <span className="text-gray-400"> (helps agent see what was updated)</span>}
-                    </label>
-                    <textarea
-                      value={stagedNote}
-                      onChange={(e) => setStagedNote(e.target.value)}
-                      placeholder={sortedSchedules.length > 0
-                        ? 'e.g. Moved hospital appointment to afternoon, swapped day 3 and day 4.'
-                        : 'Optional — note any specifics the agent should know.'}
-                      rows={3}
-                      className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-900 focus:outline-none focus:border-[#0f4c35] resize-none" />
-                  </div>
+                  {/* Note for agent — only shown on revisions (v2+) since v1 has no prior version to diff against */}
+                  {sortedSchedules.length > 0 && (
+                    <div>
+                      <label className="block text-[11px] text-gray-500 mb-1">
+                        What changed? <span className="text-gray-400">(helps agent see what was updated)</span>
+                      </label>
+                      <textarea
+                        value={stagedNote}
+                        onChange={(e) => setStagedNote(e.target.value)}
+                        placeholder="e.g. Moved hospital appointment to afternoon, swapped day 3 and day 4."
+                        rows={3}
+                        className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-900 focus:outline-none focus:border-[#0f4c35] resize-none" />
+                    </div>
+                  )}
 
                   <div className="flex items-center gap-2 justify-end">
                     <button onClick={cancelStaged} disabled={uploadingSchedule}
@@ -1099,8 +1149,8 @@ export default function AdminCaseDetailPage() {
             type PartnerItem = { name: string; price: number; group: string; qty: number }
             type PartnerGroup = { name: string; suggested: number; items: PartnerItem[] }
             const groups = new Map<string, PartnerGroup>()
-            for (const g of latestQuote.quote_groups ?? []) {
-              for (const item of g.quote_items ?? []) {
+            for (const g of latestQuote.document_groups ?? []) {
+              for (const item of g.document_items ?? []) {
                 const pname = item.products?.partner_name?.trim()
                 if (!pname) continue
                 const prev = groups.get(pname) ?? { name: pname, suggested: 0, items: [] }
@@ -1418,18 +1468,18 @@ export default function AdminCaseDetailPage() {
             <div className="space-y-4">
               {sortedGroups.map((group) => {
                 const memberCount = Math.max(group.member_count ?? 1, 1)
-                const groupTotal = group.quote_items.reduce((s, item) => s + item.final_price, 0)
+                const groupTotal = group.document_items.reduce((s, item) => s + item.final_price, 0)
                 return (
                   <div key={group.id} className="bg-gray-50 rounded-2xl overflow-hidden">
                     {/* Group header */}
                     <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
                       <span className="text-sm font-semibold text-gray-800">{group.name}</span>
-                      <span className="text-[11px] text-gray-500">{memberCount} pax · {group.quote_items.length} item{group.quote_items.length !== 1 ? 's' : ''}</span>
+                      <span className="text-[11px] text-gray-500">{memberCount} pax · {group.document_items.length} item{group.document_items.length !== 1 ? 's' : ''}</span>
                     </div>
 
                     {/* Item rows */}
                     <div className="divide-y divide-gray-200">
-                      {group.quote_items.map((item) => {
+                      {group.document_items.map((item) => {
                         const amtKRW = item.final_price
                         const amtUSD = amtKRW / exchangeRate
                         return (

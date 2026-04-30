@@ -95,8 +95,7 @@ type ClientCase = {
   status: CaseStatus
   travel_start_date: string | null
   travel_end_date: string | null
-  is_lead: boolean
-  quotes: { total_price: number }[]
+  is_lead: booleandocuments: { type: string; total_price: number }[]
 }
 
 // ── Option constants ──────────────────────────────────────────────────────────
@@ -264,7 +263,7 @@ export default function ClientDetailPage() {
         .select(`${CLIENT_INFO_COLUMNS}, client_number, nationality, date_of_birth, phone, email, special_requests, created_at, prior_aesthetic_procedures, recent_health_checkup_notes`)
         .eq('id', id).single(),
       supabase.from('case_members')
-        .select('is_lead, cases(id, case_number, status, travel_start_date, travel_end_date, quotes(total_price))')
+        .select('is_lead, cases(id, case_number, status, travel_start_date, travel_end_date, documents(type, total_price))')
         .eq('client_id', id),
     ])
     setClient(cl as unknown as Client)
@@ -737,7 +736,7 @@ export default function ClientDetailPage() {
             ) : (
               <div className="space-y-2">
                 {cases.map(c => {
-                  const quote = c.quotes?.[0]
+                  const quote = c.documents?.find(d => d.type === "quotation")
                   const amountUsd = quote ? quote.total_price / exchangeRate : null
                   return (
                     <button key={c.id} onClick={() => router.push(`/agent/cases/${c.id}`)}

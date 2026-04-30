@@ -29,10 +29,11 @@ type CompletedCase = {
   agent_id: string
   agents: Agent | Agent[] | null
   case_members: { is_lead: boolean; clients: { name: string } | null }[]
-  quotes: {
+  documents: {
+    type: string
     total_price: number
     agent_margin_rate: number
-    quote_groups: { quote_items: QuoteItem[] }[]
+    document_groups: { document_items: QuoteItem[] }[]
   }[]
 }
 
@@ -92,7 +93,7 @@ export default function AdminSettlementPage() {
   const fetchData = useCallback(async () => {
     const [casesRes, settlementsRes, rateRes, partnerRes] = await Promise.all([
       supabase.from('cases')
-        .select('id, case_number, travel_start_date, travel_end_date, travel_completed_at, agent_id, agents!cases_agent_id_fkey(id, agent_number, name, email, bank_info), case_members(is_lead, clients(name)), quotes(total_price, agent_margin_rate, quote_groups(quote_items(base_price, products(partner_name))))')
+        .select('id, case_number, travel_start_date, travel_end_date, travel_completed_at, agent_id, agents!cases_agent_id_fkey(id, agent_number, name, email, bank_info), case_members(is_lead, clients(name)), documents(type, total_price, agent_margin_rate, document_groups(document_items(base_price, products(partner_name))))')
         .eq('status', 'completed')
         .order('travel_end_date', { ascending: false }),
       supabase.from('settlements')
@@ -123,7 +124,7 @@ export default function AdminSettlementPage() {
   const unsettled = cases.filter(c => !settledCaseIds.has(c.id))
 
   const caseCommissionKrw = (c: CompletedCase) => {
-    const q = c.quotes?.[0]
+    const q = c.documents?.find(d => d.type === "quotation")
     return q ? commissionKrw(q.total_price, q.agent_margin_rate) : 0
   }
 
@@ -152,8 +153,8 @@ export default function AdminSettlementPage() {
   for (const c of cases) {
     const partners = new Set<string>()
     let suggested = 0
-    for (const g of c.quotes?.[0]?.quote_groups ?? []) {
-      for (const item of g.quote_items ?? []) {
+    for (const g of c.documents?.find(d => d.type === "quotation")?.document_groups ?? []) {
+      for (const item of g.document_items ?? []) {
         const name = item.products?.partner_name?.trim()
         if (!name) continue
         partners.add(name)
@@ -459,7 +460,7 @@ export default function AdminSettlementPage() {
                                 const lead = c.case_members?.find(m => m.is_lead)
                                 const commKrw = caseCommissionKrw(c)
                                 const days = daysWaiting(c.travel_end_date)
-                                const margin = c.quotes?.[0]?.agent_margin_rate ?? 0
+                                const margin = c.documents?.find(d => d.type === "quotation")?.agent_margin_rate ?? 0
                                 return (
                                   <div key={c.id} className="flex items-center gap-2 md:gap-3 px-3 md:px-4 py-2.5 hover:bg-gray-50/50 flex-wrap">
                                     <span className="text-xs font-mono text-gray-400 shrink-0">{c.case_number}</span>
@@ -513,7 +514,7 @@ export default function AdminSettlementPage() {
                             const agent = pickAgent(s.agents)
                             const linkedCase = cases.find(c => c.id === s.case_id)
                             const lead = linkedCase?.case_members?.find(m => m.is_lead)
-                            const margin = linkedCase?.quotes?.[0]?.agent_margin_rate
+                            const margin = linkedCase?.documents?.find(d => d.type === 'quotation')?.agent_margin_rate
                             return (
                               <tr key={s.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50">
                                 <td className="py-3 px-2 md:px-4 text-gray-800 text-xs md:text-sm">{s.paid_at?.slice(0, 10) ?? '—'}</td>

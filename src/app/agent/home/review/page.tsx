@@ -6,6 +6,12 @@ import { supabase } from '@/lib/supabase'
 import { notifyAllAdmins } from '@/lib/notifications'
 import { logAsCurrentUser } from '@/lib/audit'
 import { notifyCaseInfoChanged } from '@/lib/caseTransitions'
+import {
+  createDocument,
+  addDocumentGroup,
+  addDocumentItem,
+  addDocumentGroupMember,
+} from '@/lib/documents'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -312,53 +318,46 @@ export default function QuoteReviewPage() {
           return p ? gs + Math.round(toKRW(p) * g.memberCount * (1 + companyMargin) * (1 + agentMargin)) : gs
         }, 0), 0)
 
-      const { count: quoteCount } = await supabase.from('quotes').select('*', { count: 'exact', head: true })
-      const slug = Math.random().toString(36).slice(2, 10) + Date.now().toString(36)
       const paymentDue = new Date(); paymentDue.setDate(paymentDue.getDate() + 7)
 
-      const { data: quoteData, error: quoteErr } = await supabase
-        .from('quotes')
-        .insert({
-          quote_number: `#Q-${String((quoteCount ?? 0) + 1).padStart(3, '0')}`,
-          case_id: caseData.id, slug,
-          company_margin_rate: companyMargin, agent_margin_rate: agentMargin,
-          total_price: totalKRW,
-          payment_due_date: paymentDue.toISOString().split('T')[0],
-        })
-        .select('id').single()
-      if (quoteErr) throw quoteErr
+      // Create the quotation document (replaces legacy quotes table)
+      const quotation = await createDocument({
+        caseId: caseData.id,
+        type: 'quotation',
+        totalPrice: totalKRW,
+        companyMarginRate: companyMargin,
+        agentMarginRate: agentMargin,
+        paymentDueDate: paymentDue.toISOString().split('T')[0],
+      })
 
-      // Create quote groups, items, and group members
+      // Create document groups, items, and group members
       for (let i = 0; i < cart.groups.length; i++) {
         const group = cart.groups[i]
         if (group.productIds.length === 0) continue
 
-        const { data: qgData } = await supabase
-          .from('quote_groups')
-          .insert({ quote_id: quoteData.id, name: group.name, order: i, member_count: group.memberCount })
-          .select('id').single()
-        if (!qgData) continue
+        const dg = await addDocumentGroup(quotation.id, group.name, i, group.memberCount)
 
-        // Quote items
+        // Items
         for (const pid of group.productIds) {
           const p = products.find((x) => x.id === pid)
           if (!p) continue
           const baseKRW = toKRW(p) * group.memberCount
-          await supabase.from('quote_items').insert({
-            quote_id: quoteData.id, quote_group_id: qgData.id, product_id: pid,
-            base_price: baseKRW,
-            final_price: Math.round(baseKRW * (1 + companyMargin) * (1 + agentMargin)),
+          await addDocumentItem({
+            documentId: quotation.id,
+            groupId: dg.id,
+            productId: pid,
+            productNameSnapshot: p.name,
+            basePrice: baseKRW,
+            finalPrice: Math.round(baseKRW * (1 + companyMargin) * (1 + agentMargin)),
           })
         }
 
-        // Quote group members
+        // Group members
         const assignedClientIds = groupAssignments[group.id] ?? []
         for (const clientId of assignedClientIds) {
           const caseMemberId = memberIdMap[clientId]
           if (caseMemberId) {
-            await supabase.from('quote_group_members').insert({
-              quote_group_id: qgData.id, case_member_id: caseMemberId,
-            })
+            await addDocumentGroupMember(dg.id, caseMemberId)
           }
         }
       }
