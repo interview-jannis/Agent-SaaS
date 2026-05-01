@@ -176,22 +176,33 @@ export default function CaseDocumentsSection({
         issued = await issueCommissionInvoice(caseId, { dueDate: issueDueDate })
       }
 
-      // Notify the counterparty.
+      // Notify the counterparty (NOT the issuer themselves).
       if (issued) {
         const label = INTENT_LABEL[intent]
         const recipient: 'client' | 'agent' | 'admin' = issued.to_party
-        if (recipient === 'agent' && agentId) {
-          await notifyAgent(agentId, `${caseNumber} ${label} issued (${issued.document_number}) — please review`, `/agent/cases/${caseId}`)
-        } else if (recipient === 'admin') {
-          // Agent issued commission to admin — broadcast to admins
-          await supabase.from('notifications').insert({
-            target_type: 'admin', target_id: null, message: `${caseNumber} ${label} issued by agent (${issued.document_number})`,
+        const broadcastAdmins = async (msg: string) =>
+          supabase.from('notifications').insert({
+            target_type: 'admin', target_id: null, message: msg,
             link_url: `/admin/cases/${caseId}`, is_read: false,
           })
-        } else if (recipient === 'client' && agentId) {
-          // Admin or agent issued to client — agent is the contact, notify them
-          const verb = actor === 'agent' ? 'created' : 'issued'
-          await notifyAgent(agentId, `${caseNumber} ${label} ${verb} (${issued.document_number}) — please send to client`, `/agent/cases/${caseId}`)
+
+        if (recipient === 'admin') {
+          // Agent issued commission → notify admins
+          await broadcastAdmins(`${caseNumber} ${label} issued by agent (${issued.document_number})`)
+        } else if (recipient === 'agent' && agentId) {
+          // Admin issued deposit settlement → notify agent
+          await notifyAgent(agentId, `${caseNumber} ${label} issued (${issued.document_number}) — please review`, `/agent/cases/${caseId}`)
+        } else if (recipient === 'client') {
+          // Client doesn't have notifications. Notify the OTHER party so they
+          // know the document was issued and the money flow is in motion.
+          if (actor === 'admin' && agentId) {
+            // Admin issued additional → notify agent (they coordinate with client)
+            await notifyAgent(agentId, `${caseNumber} ${label} issued (${issued.document_number}) — please send to client`, `/agent/cases/${caseId}`)
+          } else if (actor === 'agent') {
+            // Agent issued deposit (to client, after 3-way contract signed) →
+            // notify admins so they know money flow has started
+            await broadcastAdmins(`${caseNumber} ${label} issued by agent (${issued.document_number}) — client should pay agent`)
+          }
         }
       }
 
@@ -302,16 +313,16 @@ export default function CaseDocumentsSection({
             </button>
           )}
           {actor === 'admin' && !has.depositToAgent && (
-            <button onClick={() => setIssuing('deposit_settlement')} disabled={!canIssue}
+            <button onClick={() => setIssuing('deposit_settlement')} disabled={!canIssue || !has.depositToClient}
               className="text-xs font-medium px-2.5 py-1.5 rounded-lg bg-cyan-700 text-white hover:bg-cyan-800 disabled:opacity-40"
-              title="Admin → Agent (record deposit forward owed)">
+              title={has.depositToClient ? 'Admin → Agent (record deposit forward owed)' : 'Available after agent issues the client-facing deposit invoice'}>
               + Deposit Settlement
             </button>
           )}
           {actor === 'admin' && (
-            <button onClick={() => setIssuing('additional')} disabled={!canIssue}
+            <button onClick={() => setIssuing('additional')} disabled={!canIssue || !finalInvoice}
               className="text-xs font-medium px-2.5 py-1.5 rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-40"
-              title="Admin → Client (mid-trip add-ons)">
+              title={finalInvoice ? 'Admin → Client (mid-trip add-ons)' : 'Available after Balance Invoice is issued (Finalize Pricing)'}>
               + Additional
             </button>
           )}
@@ -455,12 +466,23 @@ export default function CaseDocumentsSection({
         const label = doc.type === 'deposit_invoice' && doc.to_party === 'agent'
           ? 'Deposit Settlement'
           : DOCUMENT_LABELS[doc.type]
+        const partyLabel = (p: 'client' | 'agent' | 'admin') =>
+          p === 'client' ? 'Client' : p === 'agent' ? 'Agent' : 'Admin'
+        // Settlement (admin → agent) gets a darker shade so it visually separates
+        // from the agent-issued client-facing deposit on the same case.
+        const isSettlement = doc.type === 'deposit_invoice' && doc.to_party === 'agent'
+        const cardTone = isSettlement
+          ? 'border-cyan-300 bg-cyan-100/60'
+          : TYPE_TONE[doc.type]
         return (
-          <div key={doc.id} className={`rounded-xl border ${TYPE_TONE[doc.type]} p-3 space-y-2`}>
+          <div key={doc.id} className={`rounded-xl border ${cardTone} p-3 space-y-2`}>
             <div className="flex items-center justify-between flex-wrap gap-2">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className={`text-[10px] font-semibold uppercase tracking-wide ${TYPE_LABEL_TONE[doc.type]}`}>
                   {label}
+                </span>
+                <span className="text-[10px] text-gray-400 font-medium">
+                  {partyLabel(doc.from_party)} → {partyLabel(doc.to_party)}
                 </span>
                 <span className="text-[10px] font-mono text-gray-500">{doc.document_number}</span>
                 {paid ? (

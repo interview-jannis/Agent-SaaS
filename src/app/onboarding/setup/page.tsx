@@ -11,7 +11,8 @@ export default function SetupWizardPage() {
   const [name, setName] = useState('')
   const [country, setCountry] = useState('')
   const [form, setForm] = useState({ email: '', password: '', confirmPassword: '', phone: '' })
-  const [bank, setBank] = useState({ bank_name: '', account_number: '', account_holder: '', swift_code: '', bank_address: '' })
+  // Schema aligned with admin system_settings.bank_details (2026-05-01)
+  const [bank, setBank] = useState({ bank_name: '', account_number: '', beneficiary: '', swift_code: '', address: '', beneficiary_number: '' })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -41,7 +42,7 @@ export default function SetupWizardPage() {
     if (!form.email.includes('@') || form.email.endsWith('@tiktak.temp')) { setError('Enter a valid personal email (not the temp address).'); return }
     if (form.password.length < 8) { setError('Password must be at least 8 characters.'); return }
     if (form.password !== form.confirmPassword) { setError('Passwords do not match.'); return }
-    if (!bank.bank_name.trim() || !bank.account_number.trim() || !bank.account_holder.trim() || !bank.swift_code.trim()) {
+    if (!bank.bank_name.trim() || !bank.account_number.trim() || !bank.beneficiary.trim() || !bank.swift_code.trim()) {
       setError('Bank Name, Account Number, Beneficiary, and Swift Code are required so we can pay your commissions.'); return
     }
     setSaving(true); setError('')
@@ -149,8 +150,8 @@ export default function SetupWizardPage() {
               className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1.5">Beneficiary (Account Holder) *</label>
-            <input type="text" value={bank.account_holder} onChange={e => setBank(p => ({ ...p, account_holder: e.target.value }))}
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">Beneficiary *</label>
+            <input type="text" value={bank.beneficiary} onChange={e => setBank(p => ({ ...p, beneficiary: e.target.value }))}
               placeholder="Full name as registered at the bank"
               className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
           </div>
@@ -161,11 +162,19 @@ export default function SetupWizardPage() {
               className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-mono text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
           </div>
         </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1.5">Bank Address</label>
-          <input type="text" value={bank.bank_address} onChange={e => setBank(p => ({ ...p, bank_address: e.target.value }))}
-            placeholder="Optional"
-            className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">Beneficiary Number</label>
+            <input type="text" value={bank.beneficiary_number} onChange={e => setBank(p => ({ ...p, beneficiary_number: e.target.value }))}
+              placeholder="Phone or ID (optional)"
+              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">Bank Address</label>
+            <input type="text" value={bank.address} onChange={e => setBank(p => ({ ...p, address: e.target.value }))}
+              placeholder="Optional"
+              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
+          </div>
         </div>
       </section>
 

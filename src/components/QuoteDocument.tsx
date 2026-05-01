@@ -161,6 +161,16 @@ export default async function QuoteDocument({
   const groups = ((quote.document_groups as unknown as QuoteGroup[]) ?? [])
     .sort((a, b) => a.order - b.order)
 
+  // Also fetch any items NOT attached to a group (used for deposit / commission /
+  // additional invoices that don't model family groupings).
+  const { data: flatItemsData } = await supabase
+    .from('document_items')
+    .select('id, base_price, final_price, product_name_snapshot, document_group_id, products(name, description)')
+    .eq('document_id', (quote as { id: string }).id)
+    .is('document_group_id', null)
+    .order('sort_order')
+  const flatItems = (flatItemsData as unknown as { id: string; base_price: number; final_price: number; product_name_snapshot: string | null; products: { name: string; description: string | null } | null }[] | null) ?? []
+
   // Build line items
   type LineItem = { no: number; group: string; description: string; qty: number; unitUSD: number; amtUSD: number }
   const lineItems: LineItem[] = []
@@ -181,6 +191,18 @@ export default async function QuoteDocument({
       })
     }
   })
+  // Append ungrouped items (deposit/commission/additional invoices)
+  for (const item of flatItems) {
+    const amtUSD = item.final_price / exchangeRate
+    lineItems.push({
+      no: no++,
+      group: '',
+      description: item.product_name_snapshot ?? item.products?.name ?? 'Item',
+      qty: 1,
+      unitUSD: amtUSD,
+      amtUSD,
+    })
+  }
 
   const totalUSD = lineItems.reduce((s, r) => s + r.amtUSD, 0)
 

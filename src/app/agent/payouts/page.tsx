@@ -23,20 +23,25 @@ type Settlement = {
   created_at: string
 }
 
+// Aligned with admin's system_settings.bank_details schema so the same
+// QuoteDocument BankDetails block renders for both admin- and agent-issued
+// invoices. (See sql/2026-05-01_align_agent_bank_info.sql for the rename.)
 type BankInfo = {
   bank_name?: string
   account_number?: string
-  account_holder?: string
+  address?: string
   swift_code?: string
-  bank_address?: string
+  beneficiary?: string
+  beneficiary_number?: string
 }
 
 const BANK_FIELDS: Array<[keyof BankInfo, string, string]> = [
   ['bank_name', 'Bank Name', 'e.g. Emirates NBD'],
   ['account_number', 'Account Number', ''],
-  ['account_holder', 'Account Holder', 'Full name as on account'],
   ['swift_code', 'SWIFT Code', 'e.g. EBILAEAD'],
-  ['bank_address', 'Bank Address', 'Branch or bank address'],
+  ['beneficiary', 'Beneficiary', 'Full name on account'],
+  ['beneficiary_number', 'Beneficiary Number', 'Phone or ID (optional)'],
+  ['address', 'Bank Address', 'Branch or bank address'],
 ]
 
 const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
