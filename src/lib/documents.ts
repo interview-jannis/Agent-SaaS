@@ -32,7 +32,7 @@ export const DOCUMENT_TYPES: DocumentType[] = [
 export const DOCUMENT_LABELS: Record<DocumentType, string> = {
   quotation: 'Quotation',
   deposit_invoice: 'Deposit Invoice',
-  final_invoice: 'Final Invoice',
+  final_invoice: 'Balance Invoice',         // 잔금 — remaining balance after deposit
   additional_invoice: 'Additional Invoice',
   commission_invoice: 'Commission Invoice',
 }
@@ -53,12 +53,20 @@ export function customerRouteFor(type: DocumentType): 'quote' | 'invoice' {
 
 export type SignerSnapshot = { name: string | null; title: string | null }
 
+// Issuer / recipient. Required for correct customer-facing rendering (which
+// bank info, which signer block) and for deciding which actor can issue or
+// mark-paid a document.
+export type FromParty = 'admin' | 'agent'
+export type ToParty = 'client' | 'agent' | 'admin'
+
 export type DocumentRow = {
   id: string
   case_id: string
   type: DocumentType
   document_number: string
   slug: string
+  from_party: FromParty
+  to_party: ToParty
   total_price: number | null
   company_margin_rate: number | null
   agent_margin_rate: number | null
@@ -203,6 +211,8 @@ export async function getDocumentGroupMembers(documentId: string): Promise<Docum
 export type CreateDocumentInput = {
   caseId: string
   type: DocumentType
+  fromParty: FromParty
+  toParty: ToParty
   totalPrice?: number | null
   companyMarginRate?: number | null
   agentMarginRate?: number | null
@@ -222,6 +232,8 @@ export async function createDocument(input: CreateDocumentInput): Promise<Docume
       type: input.type,
       document_number,
       slug,
+      from_party: input.fromParty,
+      to_party: input.toParty,
       total_price: input.totalPrice ?? null,
       company_margin_rate: input.companyMarginRate ?? null,
       agent_margin_rate: input.agentMarginRate ?? null,
@@ -489,11 +501,11 @@ export async function syncFinalInvoiceFromQuotation(caseId: string): Promise<voi
   }
 }
 
-// Issue a deposit invoice — creates a deposit_invoice document with a single
-// synthetic line item representing the deposit amount (typically a % of the
-// quotation total). Defaults to 50% per 4/30 SOP guidance.
-export async function issueDepositInvoice(
+// Internal helper: build a single-line deposit-flavored document.
+async function _issueDepositLike(
   caseId: string,
+  fromParty: FromParty,
+  toParty: ToParty,
   opts: { percent?: number; amountKrw?: number; dueDate?: string | null; signerSnapshot?: SignerSnapshot | null; notes?: string | null } = {},
 ): Promise<DocumentRow> {
   const quotation = await getCaseQuotation(caseId)
@@ -503,6 +515,8 @@ export async function issueDepositInvoice(
   const doc = await createDocument({
     caseId,
     type: 'deposit_invoice',
+    fromParty,
+    toParty,
     totalPrice: total,
     companyMarginRate: quotation?.company_margin_rate ?? null,
     agentMarginRate: quotation?.agent_margin_rate ?? null,
@@ -524,16 +538,56 @@ export async function issueDepositInvoice(
   return doc
 }
 
-// Issue an empty additional invoice — admin will add items inline afterwards.
+// Deposit invoice — Agent → Client. Issued by agent after 3-way contract is
+// signed. Client pays agent's bank account (agent then forwards to admin and
+// receives the settlement invoice below).
+export async function issueDepositInvoice(
+  caseId: string,
+  opts: { percent?: number; amountKrw?: number; dueDate?: string | null; signerSnapshot?: SignerSnapshot | null; notes?: string | null } = {},
+): Promise<DocumentRow> {
+  return _issueDepositLike(caseId, 'agent', 'client', opts)
+}
+
+// Deposit Settlement — Admin → Agent. Records that the agent owes the deposit
+// forward to admin. Same amount as the client-facing deposit invoice.
+export async function issueDepositSettlement(
+  caseId: string,
+  opts: { percent?: number; amountKrw?: number; dueDate?: string | null; signerSnapshot?: SignerSnapshot | null; notes?: string | null } = {},
+): Promise<DocumentRow> {
+  return _issueDepositLike(caseId, 'admin', 'agent', opts)
+}
+
+// Item draft for issuing an additional invoice. productId is optional —
+// admin can also enter custom items (no FK to products).
+export type AdditionalItemDraft = {
+  productId?: string | null
+  productNameSnapshot: string
+  productPartnerSnapshot?: string | null
+  basePrice: number
+  finalPrice: number
+}
+
+// Issue an additional invoice — Admin → Client. Issued mid-trip when the
+// itinerary diverges and client owes more.
 export async function issueAdditionalInvoice(
   caseId: string,
-  opts: { dueDate?: string | null; signerSnapshot?: SignerSnapshot | null; notes?: string | null } = {},
+  opts: {
+    items?: AdditionalItemDraft[]
+    dueDate?: string | null
+    signerSnapshot?: SignerSnapshot | null
+    notes?: string | null
+  } = {},
 ): Promise<DocumentRow> {
   const quotation = await getCaseQuotation(caseId)
+  const items = opts.items ?? []
+  const initialTotal = items.reduce((s, it) => s + (it.finalPrice || 0), 0)
+
   const doc = await createDocument({
     caseId,
     type: 'additional_invoice',
-    totalPrice: 0,
+    fromParty: 'admin',
+    toParty: 'client',
+    totalPrice: initialTotal,
     companyMarginRate: quotation?.company_margin_rate ?? null,
     agentMarginRate: quotation?.agent_margin_rate ?? null,
     paymentDueDate: opts.dueDate ?? null,
@@ -542,11 +596,24 @@ export async function issueAdditionalInvoice(
   if (opts.signerSnapshot) {
     await supabase.from('documents').update({ signer_snapshot: opts.signerSnapshot }).eq('id', doc.id)
   }
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i]
+    await addDocumentItem({
+      documentId: doc.id,
+      productId: it.productId ?? null,
+      productNameSnapshot: it.productNameSnapshot,
+      productPartnerSnapshot: it.productPartnerSnapshot ?? null,
+      basePrice: it.basePrice,
+      finalPrice: it.finalPrice,
+      sortOrder: i,
+    })
+  }
   return doc
 }
 
-// Issue a commission invoice — agent → admin direction. Single synthetic item
-// for the agent's commission amount (calculated from agent_margin_rate).
+// Commission invoice — Agent → Admin. Issued by agent after travel is
+// completed; admin pays agent the commission amount derived from the
+// quotation's agent_margin_rate.
 export async function issueCommissionInvoice(
   caseId: string,
   opts: { amountKrw?: number; dueDate?: string | null; signerSnapshot?: SignerSnapshot | null; notes?: string | null } = {},
@@ -562,6 +629,8 @@ export async function issueCommissionInvoice(
   const doc = await createDocument({
     caseId,
     type: 'commission_invoice',
+    fromParty: 'agent',
+    toParty: 'admin',
     totalPrice: total,
     companyMarginRate: quotation?.company_margin_rate ?? null,
     agentMarginRate: quotation?.agent_margin_rate ?? null,
@@ -590,15 +659,29 @@ export async function recalcDocumentTotal(documentId: string): Promise<number> {
   return total
 }
 
+// Default party direction by type (per 4/30 SOP).
+function defaultDirection(type: DocumentType): { fromParty: FromParty; toParty: ToParty } {
+  switch (type) {
+    case 'quotation':           return { fromParty: 'admin', toParty: 'client' }
+    case 'deposit_invoice':     return { fromParty: 'agent', toParty: 'client' }   // agent collects from client
+    case 'final_invoice':       return { fromParty: 'admin', toParty: 'client' }
+    case 'additional_invoice':  return { fromParty: 'admin', toParty: 'client' }
+    case 'commission_invoice':  return { fromParty: 'agent', toParty: 'admin' }
+  }
+}
+
 export async function issueInvoice(input: IssueInvoiceInput): Promise<DocumentRow> {
   const copyItems = input.copyItemsFromQuotation ?? true
 
   // Fetch source quotation for margin/total carryover
   const quotation = await getCaseQuotation(input.caseId)
 
+  const direction = defaultDirection(input.type)
   const newDoc = await createDocument({
     caseId: input.caseId,
     type: input.type,
+    fromParty: direction.fromParty,
+    toParty: direction.toParty,
     totalPrice: quotation?.total_price ?? null,
     companyMarginRate: quotation?.company_margin_rate ?? null,
     agentMarginRate: quotation?.agent_margin_rate ?? null,

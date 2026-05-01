@@ -324,6 +324,8 @@ export default function QuoteReviewPage() {
       const quotation = await createDocument({
         caseId: caseData.id,
         type: 'quotation',
+        fromParty: 'admin',
+        toParty: 'client',
         totalPrice: totalKRW,
         companyMarginRate: companyMargin,
         agentMarginRate: agentMargin,

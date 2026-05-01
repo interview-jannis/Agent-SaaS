@@ -65,10 +65,11 @@ export default async function QuoteDocument({
     .select(`
       id, type, document_number, total_price, payment_due_date,
       company_margin_rate, agent_margin_rate, finalized_at, signer_snapshot,
+      from_party, to_party,
       first_opened_at, open_count, case_id,
       cases(
         id, agent_id, status, created_at,
-        agents!cases_agent_id_fkey(name, email, phone),
+        agents!cases_agent_id_fkey(name, email, phone, bank_info),
         case_members(is_lead, clients(name, nationality, needs_muslim_friendly))
       ),
       document_groups(
@@ -135,14 +136,22 @@ export default async function QuoteDocument({
   ])
 
   const exchangeRate = (rateRes.data?.value as { usd_krw?: number } | null)?.usd_krw ?? 1350
-  const bank = (bankRes.data?.value as BankDetails | null) ?? {}
+  const adminBank = (bankRes.data?.value as BankDetails | null) ?? {}
 
   const caseData = quote.cases as unknown as {
     status: string | null
     created_at: string | null
-    agents: { name: string } | null
+    agents: { name: string; email: string | null; phone: string | null; bank_info: BankDetails | null } | null
     case_members: { is_lead: boolean; clients: { name: string; nationality: string | null; needs_muslim_friendly: boolean | null } | null }[]
   } | null
+
+  // Issuer-aware rendering: agent-issued documents show agent's bank + name as
+  // signer; admin-issued use system settings + signer_snapshot.
+  const fromParty = (quote as { from_party?: 'admin' | 'agent' | null }).from_party ?? 'admin'
+  const isAgentIssued = fromParty === 'agent'
+  const bank: BankDetails = isAgentIssued
+    ? (caseData?.agents?.bank_info ?? {})
+    : adminBank
 
   const docTitle = isInvoice ? 'Commercial Invoice' : 'Quotation'
 
@@ -219,21 +228,41 @@ export default async function QuoteDocument({
           )}
 
           {/* ── To / Ref block ── */}
+          {(() => {
+            const toParty = (quote as { to_party?: 'client' | 'agent' | 'admin' | null }).to_party ?? 'client'
+            const toLabel = toParty === 'client'
+              ? (leadClient?.name ?? '—')
+              : toParty === 'agent'
+                ? agentName
+                : 'Interview Co., Ltd'
+            const ccLabel = toParty === 'client' ? agentName : null
+            return (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-0 mb-7 border border-gray-300">
             {/* Left column */}
             <div className="p-4 md:p-5 border-b md:border-b-0 md:border-r border-gray-300 space-y-1.5 text-sm">
               <div className="flex gap-3">
                 <span className="w-20 shrink-0 font-semibold text-gray-700">To</span>
-                <span className="text-gray-900">: {leadClient?.name ?? '—'}</span>
+                <span className="text-gray-900">: {toLabel}</span>
               </div>
-              <div className="flex gap-3">
-                <span className="w-20 shrink-0 font-semibold text-gray-700">C.C</span>
-                <span className="text-gray-900">: {agentName}</span>
-              </div>
+              {ccLabel && (
+                <div className="flex gap-3">
+                  <span className="w-20 shrink-0 font-semibold text-gray-700">C.C</span>
+                  <span className="text-gray-900">: {ccLabel}</span>
+                </div>
+              )}
               <div className="flex gap-3">
                 <span className="w-20 shrink-0 font-semibold text-gray-700">From</span>
                 <span className="text-[#0f4c35] font-semibold">
                   {(() => {
+                    if (isAgentIssued) {
+                      // Agent-issued (Deposit/Commission): show agent name as the issuer.
+                      return (
+                        <>
+                          : {agentName}
+                          <span className="block ml-3 font-normal text-gray-600 text-xs mt-0.5">Independent Agent</span>
+                        </>
+                      )
+                    }
                     const signer = isInvoice
                       ? (quote as { signer_snapshot?: { name?: string | null; title?: string | null } | null }).signer_snapshot ?? null
                       : null
@@ -274,6 +303,8 @@ export default async function QuoteDocument({
               )}
             </div>
           </div>
+            )
+          })()}
 
           {/* ── Subject ── */}
           <div className="mb-5">

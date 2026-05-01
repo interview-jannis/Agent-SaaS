@@ -1759,17 +1759,18 @@ export default function CaseDetailPage() {
             )
           })()}
 
-          {/* Invoices (deposit / additional / commission) — read-only for agent */}
+          {/* Invoices — agent issues deposit (to client) + commission (to admin) */}
           {quote && (
             <CaseDocumentsSection
               caseId={caseData.id}
               caseNumber={caseData.case_number}
               agentId={caseData.agent_id ?? ''}
+              actor="agent"
+              travelCompletedAt={caseData.travel_completed_at}
               quotation={quote as unknown as DocumentRow}
               finalInvoice={(caseData.documents?.find(d => d.type === 'final_invoice') ?? null) as unknown as DocumentRow | null}
               documents={(caseData.documents ?? []) as unknown as DocumentRow[]}
               exchangeRate={exchangeRate}
-              readOnly
               onChanged={async () => { await fetchCase() }}
             />
           )}

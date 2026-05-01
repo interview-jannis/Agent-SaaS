@@ -719,6 +719,7 @@ export default function AdminCaseDetailPage() {
               caseId={caseData.id}
               caseNumber={caseData.case_number}
               agentId={caseData.agent_id}
+              actor="admin"
               quotation={latestQuote as unknown as DocumentRow}
               finalInvoice={(finalInvoice ?? null) as unknown as DocumentRow | null}
               documents={(caseData.documents ?? []) as unknown as DocumentRow[]}

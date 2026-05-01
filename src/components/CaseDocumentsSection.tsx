@@ -7,9 +7,11 @@ import {
   type DocumentRow,
   type DocumentItemRow,
   type DocumentType,
+  type AdditionalItemDraft,
   DOCUMENT_LABELS,
   customerRouteFor,
   issueDepositInvoice,
+  issueDepositSettlement,
   issueAdditionalInvoice,
   issueCommissionInvoice,
   addDocumentItem,
@@ -18,17 +20,40 @@ import {
   markPaymentReceived,
 } from '@/lib/documents'
 
+// Issue intents — labels exposed in the UI map 1:1 to invoice flows in 4/30 SOP.
+type IssueIntent =
+  | 'deposit_to_client'        // agent → client
+  | 'deposit_settlement'       // admin → agent
+  | 'additional'               // admin → client
+  | 'commission'               // agent → admin
+
+const INTENT_LABEL: Record<IssueIntent, string> = {
+  deposit_to_client: 'Deposit Invoice (to Client)',
+  deposit_settlement: 'Deposit Settlement (to Agent)',
+  additional: 'Additional Invoice (to Client)',
+  commission: 'Commission Invoice (to Admin)',
+}
+
 type Product = { id: string; name: string; partner_name: string | null; base_price: number; price_currency: string }
 
 type Props = {
   caseId: string
   caseNumber: string
   agentId: string
+  /**
+   * Who is viewing the section — controls which Issue / Mark Paid buttons
+   * appear. Per 4/30 SOP:
+   *   admin: Deposit Settlement (admin → agent), Additional (admin → client)
+   *   agent: Deposit (agent → client), Commission (agent → admin)
+   * Mark Paid is shown to the from_party (issuer = receiver of the money).
+   */
+  actor: 'admin' | 'agent'
+  /** travel_completed_at — gates Commission issuance on agent side */
+  travelCompletedAt?: string | null
   quotation: DocumentRow | null
   finalInvoice: DocumentRow | null
   documents: DocumentRow[]                    // all docs for this case
   exchangeRate: number
-  readOnly?: boolean                          // agent view: read + Send link only
   onChanged: () => Promise<void> | void       // parent re-fetches
 }
 
@@ -64,7 +89,7 @@ async function captureSigner(): Promise<{ name: string | null; title: string | n
 }
 
 export default function CaseDocumentsSection({
-  caseId, caseNumber, agentId, quotation, finalInvoice, documents, exchangeRate, readOnly = false, onChanged,
+  caseId, caseNumber, agentId, actor, travelCompletedAt, quotation, finalInvoice, documents, exchangeRate, onChanged,
 }: Props) {
   const [products, setProducts] = useState<Product[]>([])
   const [items, setItems] = useState<Record<string, DocumentItemRow[]>>({})
@@ -72,12 +97,19 @@ export default function CaseDocumentsSection({
   const [error, setError] = useState('')
   const [copiedId, setCopiedId] = useState<string | null>(null)
 
-  // Issue modal state
-  const [issuing, setIssuing] = useState<DocumentType | null>(null)
+  // Issue modal state — null when closed, otherwise the intent
+  const [issuing, setIssuing] = useState<IssueIntent | null>(null)
   const [depositPercent, setDepositPercent] = useState('50')
   const [issueDueDate, setIssueDueDate] = useState(() => {
     const d = new Date(); d.setDate(d.getDate() + 7); return d.toISOString().slice(0, 10)
   })
+  // Additional-invoice item drafts (for the Issue modal — admin builds the
+  // line items here before clicking Issue, instead of issuing empty + adding
+  // items inline afterward)
+  const [draftItems, setDraftItems] = useState<AdditionalItemDraft[]>([])
+  const [draftProductId, setDraftProductId] = useState('')
+  const [draftPriceRaw, setDraftPriceRaw] = useState('')
+  const [draftNameOverride, setDraftNameOverride] = useState('')
 
   // Item editing per-doc
   const [addingItemTo, setAddingItemTo] = useState<string | null>(null)
@@ -113,39 +145,82 @@ export default function CaseDocumentsSection({
     loadItems()
   }, [documents])
 
-  // Existing-doc detection (only one of each type allowed except additional)
+  // Existing-doc detection — direction-aware
   const has = {
-    deposit: documents.some(d => d.type === 'deposit_invoice'),
-    final: !!finalInvoice,
+    depositToClient: documents.some(d => d.type === 'deposit_invoice' && d.to_party === 'client'),
+    depositToAgent: documents.some(d => d.type === 'deposit_invoice' && d.to_party === 'agent'),
     commission: documents.some(d => d.type === 'commission_invoice'),
   }
 
-  async function doIssue(type: Exclude<DocumentType, 'quotation'>) {
-    setBusy(type); setError('')
+  async function doIssue(intent: IssueIntent) {
+    setBusy(intent); setError('')
     try {
       const signer = await captureSigner()
       let issued: DocumentRow | null = null
-      if (type === 'deposit_invoice') {
+
+      if (intent === 'deposit_to_client') {
         const pct = Math.max(1, Math.min(100, Number(depositPercent) || 50))
-        issued = await issueDepositInvoice(caseId, { percent: pct, dueDate: issueDueDate, signerSnapshot: signer })
-      } else if (type === 'additional_invoice') {
-        issued = await issueAdditionalInvoice(caseId, { dueDate: issueDueDate, signerSnapshot: signer })
-      } else if (type === 'commission_invoice') {
-        issued = await issueCommissionInvoice(caseId, { dueDate: issueDueDate, signerSnapshot: signer })
+        // Agent → Client: signer not captured from current admin (caller is agent)
+        issued = await issueDepositInvoice(caseId, { percent: pct, dueDate: issueDueDate })
+      } else if (intent === 'deposit_settlement') {
+        const pct = Math.max(1, Math.min(100, Number(depositPercent) || 50))
+        issued = await issueDepositSettlement(caseId, { percent: pct, dueDate: issueDueDate, signerSnapshot: signer })
+      } else if (intent === 'additional') {
+        issued = await issueAdditionalInvoice(caseId, {
+          items: draftItems,
+          dueDate: issueDueDate,
+          signerSnapshot: signer,
+        })
+      } else if (intent === 'commission') {
+        // Agent → Admin: agent doesn't have a signer snapshot model; leave null
+        issued = await issueCommissionInvoice(caseId, { dueDate: issueDueDate })
       }
-      // Notify the agent so they can review / send to client
-      if (issued && agentId) {
-        const label = DOCUMENT_LABELS[type]
-        const message = type === 'additional_invoice'
-          ? `${caseNumber} ${label} created (${issued.document_number}) — admin is editing items`
-          : `${caseNumber} ${label} issued (${issued.document_number}) — please review and send to client`
-        await notifyAgent(agentId, message, `/agent/cases/${caseId}`)
+
+      // Notify the counterparty.
+      if (issued) {
+        const label = INTENT_LABEL[intent]
+        const recipient: 'client' | 'agent' | 'admin' = issued.to_party
+        if (recipient === 'agent' && agentId) {
+          await notifyAgent(agentId, `${caseNumber} ${label} issued (${issued.document_number}) — please review`, `/agent/cases/${caseId}`)
+        } else if (recipient === 'admin') {
+          // Agent issued commission to admin — broadcast to admins
+          await supabase.from('notifications').insert({
+            target_type: 'admin', target_id: null, message: `${caseNumber} ${label} issued by agent (${issued.document_number})`,
+            link_url: `/admin/cases/${caseId}`, is_read: false,
+          })
+        } else if (recipient === 'client' && agentId) {
+          // Admin or agent issued to client — agent is the contact, notify them
+          const verb = actor === 'agent' ? 'created' : 'issued'
+          await notifyAgent(agentId, `${caseNumber} ${label} ${verb} (${issued.document_number}) — please send to client`, `/agent/cases/${caseId}`)
+        }
       }
+
       setIssuing(null)
+      setDraftItems([]); setDraftProductId(''); setDraftPriceRaw(''); setDraftNameOverride('')
       await onChanged()
     } catch (e: unknown) {
       setError((e as { message?: string })?.message ?? 'Failed to issue document.')
     } finally { setBusy(null) }
+  }
+
+  function addDraftItem() {
+    const price = Number(draftPriceRaw.replace(/[^0-9]/g, '')) || 0
+    if (price <= 0) { setError('Enter a non-zero price.'); return }
+    const product = products.find(p => p.id === draftProductId)
+    const name = draftNameOverride.trim() || product?.name || 'Custom item'
+    setDraftItems(prev => [...prev, {
+      productId: product?.id ?? null,
+      productNameSnapshot: name,
+      productPartnerSnapshot: product?.partner_name ?? null,
+      basePrice: price,
+      finalPrice: price,
+    }])
+    setDraftProductId(''); setDraftPriceRaw(''); setDraftNameOverride('')
+    setError('')
+  }
+
+  function removeDraftItem(idx: number) {
+    setDraftItems(prev => prev.filter((_, i) => i !== idx))
   }
 
   async function doRemoveItem(itemId: string, docId: string) {
@@ -218,28 +293,38 @@ export default function CaseDocumentsSection({
     <section className="bg-gray-50 rounded-2xl p-4 space-y-3">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Invoices</p>
-        {!readOnly && (
-          <div className="flex items-center gap-2 flex-wrap">
-            {!has.deposit && (
-              <button onClick={() => setIssuing('deposit_invoice')} disabled={!canIssue}
-                className="text-xs font-medium px-2.5 py-1.5 rounded-lg bg-cyan-600 text-white hover:bg-cyan-700 disabled:opacity-40">
-                + Deposit
-              </button>
-            )}
-            <button onClick={() => setIssuing('additional_invoice')} disabled={!canIssue}
-              className="text-xs font-medium px-2.5 py-1.5 rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-40">
+        <div className="flex items-center gap-2 flex-wrap">
+          {actor === 'agent' && !has.depositToClient && (
+            <button onClick={() => setIssuing('deposit_to_client')} disabled={!canIssue}
+              className="text-xs font-medium px-2.5 py-1.5 rounded-lg bg-cyan-600 text-white hover:bg-cyan-700 disabled:opacity-40"
+              title="Agent → Client (collect deposit from client)">
+              + Deposit
+            </button>
+          )}
+          {actor === 'admin' && !has.depositToAgent && (
+            <button onClick={() => setIssuing('deposit_settlement')} disabled={!canIssue}
+              className="text-xs font-medium px-2.5 py-1.5 rounded-lg bg-cyan-700 text-white hover:bg-cyan-800 disabled:opacity-40"
+              title="Admin → Agent (record deposit forward owed)">
+              + Deposit Settlement
+            </button>
+          )}
+          {actor === 'admin' && (
+            <button onClick={() => setIssuing('additional')} disabled={!canIssue}
+              className="text-xs font-medium px-2.5 py-1.5 rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-40"
+              title="Admin → Client (mid-trip add-ons)">
               + Additional
             </button>
-            {!has.commission && (
-              <button onClick={() => setIssuing('commission_invoice')} disabled={!canIssue}
-                className="text-xs font-medium px-2.5 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-40">
-                + Commission
-              </button>
-            )}
-          </div>
-        )}
+          )}
+          {actor === 'agent' && !has.commission && (
+            <button onClick={() => setIssuing('commission')} disabled={!canIssue || !travelCompletedAt}
+              className="text-xs font-medium px-2.5 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-40"
+              title={travelCompletedAt ? 'Agent → Admin (claim margin)' : 'Available after travel is marked complete'}>
+              + Commission
+            </button>
+          )}
+        </div>
       </div>
-      {!canIssue && !readOnly && (
+      {!canIssue && (
         <p className="text-[11px] text-gray-500">Issue Quotation first via Home flow.</p>
       )}
       {error && <p className="text-xs text-red-500">{error}</p>}
@@ -249,9 +334,9 @@ export default function CaseDocumentsSection({
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => !busy && setIssuing(null)}>
           <div className="bg-white rounded-2xl max-w-md w-full p-5 space-y-4" onClick={e => e.stopPropagation()}>
             <h3 className="text-sm font-semibold text-gray-900">
-              Issue {DOCUMENT_LABELS[issuing]}
+              Issue {INTENT_LABEL[issuing]}
             </h3>
-            {issuing === 'deposit_invoice' && (
+            {(issuing === 'deposit_to_client' || issuing === 'deposit_settlement') && (
               <div>
                 <label className="block text-[11px] text-gray-500 mb-1">Deposit percent (%)</label>
                 <input type="text" inputMode="numeric" value={depositPercent}
@@ -262,7 +347,7 @@ export default function CaseDocumentsSection({
                 </p>
               </div>
             )}
-            {issuing === 'commission_invoice' && quotation && (
+            {issuing === 'commission' && quotation && (
               <p className="text-xs text-gray-600">
                 Auto-calculated from agent margin rate. Estimated:{' '}
                 <span className="font-semibold text-gray-900">
@@ -275,8 +360,67 @@ export default function CaseDocumentsSection({
                 </span>
               </p>
             )}
-            {issuing === 'additional_invoice' && (
-              <p className="text-xs text-gray-600">Issued empty — add items after creation.</p>
+            {issuing === 'additional' && (
+              <div className="space-y-2">
+                <p className="text-xs text-gray-600">Add items to include on this invoice. You can also edit them later.</p>
+
+                {/* Draft items list */}
+                {draftItems.length > 0 && (
+                  <div className="bg-gray-50 rounded-lg border border-gray-100 divide-y divide-gray-100">
+                    {draftItems.map((it, idx) => (
+                      <div key={idx} className="flex items-center gap-2 px-2.5 py-1.5">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs text-gray-800 truncate">{it.productNameSnapshot}</p>
+                          {it.productPartnerSnapshot && (
+                            <p className="text-[10px] text-gray-400 truncate">{it.productPartnerSnapshot}</p>
+                          )}
+                        </div>
+                        <span className="text-xs text-gray-700 tabular-nums shrink-0">{fmtKRW(it.finalPrice)}</span>
+                        <button onClick={() => removeDraftItem(idx)} className="text-gray-300 hover:text-red-500 transition-colors" title="Remove">
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                    ))}
+                    <div className="flex items-center justify-between px-2.5 py-1.5 bg-white">
+                      <span className="text-[11px] text-gray-500">Total</span>
+                      <span className="text-xs font-semibold text-gray-900 tabular-nums">
+                        {fmtKRW(draftItems.reduce((s, it) => s + it.finalPrice, 0))}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Add item form */}
+                <div className="bg-gray-50 rounded-lg border border-gray-100 p-2 space-y-1.5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                    <select value={draftProductId} onChange={e => setDraftProductId(e.target.value)}
+                      className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-900 focus:outline-none focus:border-[#0f4c35] bg-white">
+                      <option value="">— Custom (enter name) —</option>
+                      {products.map(p => (
+                        <option key={p.id} value={p.id}>
+                          {p.partner_name ? `${p.partner_name} · ` : ''}{p.name}
+                        </option>
+                      ))}
+                    </select>
+                    <input type="text" placeholder={draftProductId ? '(uses product name)' : 'Custom item name'}
+                      value={draftNameOverride} onChange={e => setDraftNameOverride(e.target.value)}
+                      className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-900 focus:outline-none focus:border-[#0f4c35] bg-white" />
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <input type="text" inputMode="numeric" placeholder="Price (KRW)"
+                      value={draftPriceRaw === '' ? '' : Number(draftPriceRaw).toLocaleString('en-US')}
+                      onChange={e => setDraftPriceRaw(e.target.value.replace(/[^0-9]/g, ''))}
+                      onKeyDown={e => e.key === 'Enter' && addDraftItem()}
+                      className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-900 focus:outline-none focus:border-[#0f4c35] tabular-nums text-right bg-white" />
+                    <button onClick={addDraftItem} disabled={!draftPriceRaw}
+                      className="text-[11px] font-medium bg-[#0f4c35] text-white hover:bg-[#0a3828] rounded-lg px-3 py-1.5 disabled:opacity-40">
+                      + Add
+                    </button>
+                  </div>
+                </div>
+              </div>
             )}
             <div>
               <label className="block text-[11px] text-gray-500 mb-1">Payment due date</label>
@@ -286,7 +430,7 @@ export default function CaseDocumentsSection({
             <div className="flex items-center justify-end gap-2">
               <button onClick={() => setIssuing(null)} disabled={!!busy}
                 className="text-xs font-medium text-gray-500 hover:text-gray-800 px-3 py-1.5 rounded-lg disabled:opacity-40">Cancel</button>
-              <button onClick={() => issuing !== 'quotation' && doIssue(issuing)} disabled={!!busy}
+              <button onClick={() => doIssue(issuing)} disabled={!!busy}
                 className="text-xs font-medium bg-[#0f4c35] text-white hover:bg-[#0a3828] px-3 py-1.5 rounded-lg disabled:opacity-40">
                 {busy ? 'Issuing…' : 'Issue'}
               </button>
@@ -303,12 +447,20 @@ export default function CaseDocumentsSection({
         const paid = !!doc.payment_received_at
         const overdue = !paid && doc.payment_due_date && new Date(doc.payment_due_date) < new Date()
         const baseUrl = typeof window !== 'undefined' ? window.location.origin : ''
+        // The actor can edit / mark paid only on documents they themselves issue
+        // (issuer == receiver of the money, so they confirm payment).
+        const canEdit = actor === doc.from_party
+        // Direction-specific label, since both deposit_invoice and final_invoice
+        // can be admin → client; commission/deposit_invoice differ by from_party.
+        const label = doc.type === 'deposit_invoice' && doc.to_party === 'agent'
+          ? 'Deposit Settlement'
+          : DOCUMENT_LABELS[doc.type]
         return (
           <div key={doc.id} className={`rounded-xl border ${TYPE_TONE[doc.type]} p-3 space-y-2`}>
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div className="flex items-center gap-2">
                 <span className={`text-[10px] font-semibold uppercase tracking-wide ${TYPE_LABEL_TONE[doc.type]}`}>
-                  {DOCUMENT_LABELS[doc.type]}
+                  {label}
                 </span>
                 <span className="text-[10px] font-mono text-gray-500">{doc.document_number}</span>
                 {paid ? (
@@ -336,7 +488,7 @@ export default function CaseDocumentsSection({
                     {it.product_partner_snapshot && <p className="text-[10px] text-gray-400 truncate">{it.product_partner_snapshot}</p>}
                   </div>
                   <span className="text-xs text-gray-700 tabular-nums shrink-0">{fmtKRW(it.final_price)}</span>
-                  {!paid && !readOnly && (
+                  {!paid && canEdit && (
                     <button onClick={() => doRemoveItem(it.id, doc.id)} disabled={busy === it.id}
                       className="text-gray-300 hover:text-red-500 transition-colors disabled:opacity-40" title="Remove item">
                       <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -349,7 +501,7 @@ export default function CaseDocumentsSection({
             </div>
 
             {/* Add item inline form */}
-            {!paid && !readOnly && (
+            {!paid && canEdit && (
               addingItemTo === doc.id ? (
                 <div className="bg-white rounded-lg border border-gray-200 p-2.5 space-y-2">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
@@ -398,7 +550,7 @@ export default function CaseDocumentsSection({
                   {copiedId === doc.id ? 'Copied!' : 'Copy link'}
                 </button>
               </div>
-              {!paid && !readOnly && (
+              {!paid && canEdit && (
                 paidAtEditingId === doc.id ? (
                   <div className="flex items-center gap-1.5">
                     <input type="date" value={paidAtValue} onChange={e => setPaidAtValue(e.target.value)}
