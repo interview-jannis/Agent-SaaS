@@ -195,7 +195,7 @@ export default function AdminCaseDetailPage() {
           clients(client_number, nationality, date_of_birth, phone, email, special_requests, ${CLIENT_INFO_COLUMNS})
         ),
         documents(
-          id, type, document_number, slug, total_price, payment_due_date, agent_margin_rate, company_margin_rate, finalized_at,
+          id, type, document_number, slug, total_price, payment_due_date, payment_received_at, agent_margin_rate, company_margin_rate, finalized_at, from_party, to_party, created_at,
           document_groups(id, name, order, member_count, document_items(id, base_price, final_price, products(id, name, description, partner_name)), document_group_members(id, case_member_id))
         ),
         schedules(id, slug, pdf_url, status, version, file_name, revision_note, admin_note, confirmed_at, created_at, first_opened_at)

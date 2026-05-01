@@ -209,7 +209,7 @@ export default function CaseDetailPage() {
           clients(client_number, nationality, ${CLIENT_INFO_COLUMNS})
         ),
         documents(
-          id, type, document_number, slug, total_price, payment_due_date, agent_margin_rate, company_margin_rate, finalized_at,
+          id, type, document_number, slug, total_price, payment_due_date, payment_received_at, agent_margin_rate, company_margin_rate, finalized_at, from_party, to_party, created_at,
           document_groups(
             id, name, order, member_count,
             document_items(id, final_price, products(id, name, base_price, price_currency, duration_value, duration_unit)),
