@@ -1,11 +1,12 @@
 # Project Progress
 
 ## 현재 상태
-- **Phase**: 모바일 대응 마무리 + 브랜드 로고 통합 + 데이터 가공 (상품 등록 준비)
-- **마지막 작업**: 2026-04-30 이사님 미팅 — 전체 SOP 점검, 파트너 이름 공개 OK 결정 (Selections 모델 폐기), 4가지 계약서/알림 채널/엑셀 일괄 업로드 등 신규 요구
-- **마지막 업데이트**: 2026-04-30 (개발 마감 5/8, 시뮬레이션 5/11~15, 런칭 5/18)
+- **Phase**: Documents 모델 풀 구현 (Phase 1~2c 완료) + 데이터 가공 v11
+- **마지막 작업**: 2026-05-01 — 데이터 v6→v11, Documents 모델 마이그레이션, 5개 invoice 흐름 + from/to_party, Issue UI, Agent/Admin 발행 분리, Bank info 통일, E2E 버그 fix
+- **마지막 업데이트**: 2026-05-01 (개발 마감 5/8, 시뮬레이션 5/11~15, 런칭 5/18)
 - **SaaS 브랜드명**: **Tiktak** (UI 전역, 법인명 Interview Co., Ltd)
 
+> 2026-05-01 상세: `notes/26.05.01.md` (데이터 v11 + Documents 풀 구현 + E2E)
 > 2026-04-30 미팅: `notes/meetings/26.04.30-meeting.md` (이사님 SOP 점검)
 > 2026-04-30 상세: `notes/26.04.30.md` (모바일 마무리 + 데이터 가공)
 > 2026-04-29 상세: `notes/26.04.29.md` (큰 폴리시 라운드)
@@ -22,13 +23,21 @@
 
 ## 다음 할 일
 
-### 4/30 미팅 — 5/8 마감 전 신규 요구사항 (🔥 시급)
+### 5/8 마감 전 (🔥 시급)
+
+#### Documents Phase 2d (남은 polish)
+- [ ] **Status state machine 부분결제 처리** — deposit / additional / commission이 case status 어떻게 영향 줄지 정책 확정 + 코드 (현재는 final_invoice 결제만 awaiting_payment → awaiting_travel 트리거)
+- [ ] **Phase 2c 정리** — quotes/quote_groups/quote_items/quote_group_members 테이블 DROP (모든 코드가 documents 사용 확인 후)
+- [ ] **Agent Home 페이지 sub-category 필터/그룹핑** — 카테고리 13개 sub로 늘어났으니 별도 트랙
+
+#### Wellness 마진 정책
+- [ ] **Wellness 상품 (스파, 헤나 제외) 마진 X, 원가 그대로** — 4/30 미팅 결정 사항. 견적 계산 시 Wellness 카테고리는 회사/에이전트 마진 0 적용. 스파 + 헤나는 패키지 뻥튀기 가능 (예외)
 
 #### 계약서 4종 (홍이사님 검토 예정)
 - [ ] **NDA 계약서** (기존 검토)
 - [ ] **Partnership 계약서** (기존 검토)
 - [ ] **에이전트 ↔ 고객 계약서** 신규
-- [ ] **에이전트 ↔ 고객 ↔ 어드민 3중 계약서** 신규 ⭐ 핵심
+- [ ] **에이전트 ↔ 고객 ↔ 어드민 3중 계약서** 신규 ⭐ 핵심 — deposit invoice 발행 트리거
 - [ ] **Admin도 계약서 사인 + agent 열람** (현재는 agent만 사인)
 
 #### Agent 등록 정보 확장
@@ -40,11 +49,12 @@
 - [ ] KakaoTalk 발송 (admin 대상)
 
 #### 상품 데이터 (5/6~7 완료 목표)
-- [ ] **파트너 이름 공개 정책 반영** — Selections 모델 폐기, 단일 products 테이블에 partner_name 노출
-- [ ] WHY 컬럼 추가 (왜 이 상품/기관인지 컨텍스트)
-- [ ] 대표 원장 프로파일 컬럼 추가 (영문 오픈 정보)
+- [ ] WHY 컬럼 채우기 — v11에 빈 컬럼 추가됨, 125개 row 비즈니스 카피 작성 (사용자 본인)
+- [ ] 대표 원장 프로파일 컬럼 채우기 — v11에 빈 컬럼 추가됨, 영문 오픈 정보 검색 (사용자 본인)
+- [ ] has_female_doctor / has_prayer_room 채우기 — Muslim VIP 핵심 필드 (125 row 다 비어있음)
 - [ ] 안과/치과 데이터 추가 (다음주 도착 예정)
 - [ ] 상품 사진 (파트너 홍보 자료에서)
+- [ ] P-029, 030, 032, 033 (Nest Clinic 4개) name 시술명 채우기
 
 #### 신규 기능
 - [ ] **엑셀 일괄 업로드** — admin 페이지에서 정해진 포맷 엑셀 → 상품 자동 등록 + 카테고리 자동 분류 + agent 자동 매칭
@@ -53,8 +63,12 @@
 - [ ] **설문조사 기능** (여행 후, 10~15문항 + 마지막 주관식)
 - ~~Chrome 한국어 로케일 강제 영어~~ — 드롭. Chrome 설정에 따라 자동 변경되는 거라 우리가 건드릴 영역 아님
 
-#### 4가지 Invoice 종류
-디파짓 / 잔금 / 추가 / 커미션 — 케이스별 발생, 자동 발행 흐름 정의 필요.
+#### 4가지 Invoice 종류 (5/1 풀 구현)
+- [x] **Documents 모델** (`documents/document_groups/document_items/document_group_members`)
+- [x] **5개 돈 흐름 매핑** (from_party/to_party): Agent→Client, Admin→Agent settlement, Admin→Client (Balance + Additional), Agent→Admin commission
+- [x] **CaseDocumentsSection 컴포넌트** — admin/agent actor별 발행 버튼, item add/remove, Mark Paid
+- [x] **QuoteDocument from_party 분기** — bank info / signer 양쪽 형식 통일
+- [ ] **Status 부분결제 정책** — 위 별도 항목으로
 
 ### 대표님 의사결정 대기 (5/8 admin 링크 공유 후)
 1. **Hotel 마진율** — 20% / 30% / ?
@@ -76,6 +90,18 @@
 - [ ] Super admin 1개 (진영) + 일반 admin 1개만 남기고 나머지 admin 삭제
 - [ ] 테스트 agent 계정 정리 (특별한 거 1~2개 남김)
 - [ ] 테스트 client 데이터 1~2개만 남기고 삭제
+
+### 5/1 완료 (Documents 모델 풀 구현 + 데이터 v11 + E2E 버그 fix)
+- [x] **데이터 가공 v6 → v11** — 7개 누락 시트 추가 (73→125 rows), 한국어 정보 손실 22 row 수동 EN 번역 (Tour itinerary stop 다 살림), CRLF/NBSP 정규화, subcategory/partner_short backfill 100%, sub-category management 페이지 (admin/categories expandable per-category)
+- [x] **Documents 모델 Phase 1** — 신규 4테이블 (documents/document_groups/document_items/document_group_members), quotes → documents 마이그레이션 SQL (UUID 보존), schedules.quote_id FK DROP
+- [x] **Documents 모델 Phase 2a** — `src/lib/documents.ts` core lib + 13개 파일 quotes 사용처 리팩터 (read/write/finalize 전부 documents 경유)
+- [x] **Documents 모델 Phase 2b** — Issue UI (`CaseDocumentsSection`), per-document 인라인 item 편집기 (add/remove/Mark Paid), Confirm Payment → final_invoice.payment_received_at sync
+- [x] **Documents 모델 Phase 2c (방향성)** — 5개 돈 흐름 매핑 (`from_party`/`to_party` 추가), Agent UI에 Deposit + Commission 발행 버튼, Admin UI에 Deposit Settlement (직접 client deposit X), QuoteDocument bank/signer from_party 분기, agent bank_info JSONB schema 통일 (admin과 동일 6필드: bank_address→address, account_holder→beneficiary, +beneficiary_number)
+- [x] **Sub-category 모델** — `product_subcategories` 테이블, ProductForm dropdown (parent 카테고리 따라 필터), Admin Products 리스트에 sub-category 표시, Admin/Categories expandable
+- [x] **Issue 버튼 게이팅** — Deposit Settlement은 agent의 deposit 발행 후만 활성, Additional은 Balance(=final) 후만 활성
+- [x] **알림 방향 정정** — 발행자 자기 자신에 알림 X, 항상 counterparty/admin에 broadcast
+- [x] **UX 폴리시** — Schedule + Financials 섹션 톤이 Hero 매칭 (status 따라), Admin Note 톤 confirmed 시 muted, Pricing 입력 천단위 콤마, Schedule 첫 업로드 "What changed?" 숨김
+- [x] **E2E 버그 fix** — "Admin → Admin" 표시 (fetch 쿼리에 from/to_party 누락), Total $0 / "No items" (group 없는 item 누락), Send Invoice URL agent의 quotation slug 사용 → final_invoice slug로 분기
 
 ### 4/30 완료 (모바일 마무리 + 로고 + 데이터 가공)
 - [x] **모바일 대응 마무리 라운드** — Orientation PDF 모바일 분기, 재서명 가드, admin 5페이지 컬럼 정리, ProductForm 스크롤 fix, 알림 벨 모바일 → top bar 이동, iOS Safari 100svh 적용, NotificationBell 채널 충돌 해결
