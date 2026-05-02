@@ -17,6 +17,8 @@ import {
   finalizeDocument,
   repriceDocument,
   updateDocumentItemPrice,
+  addDocumentItem,
+  removeDocumentItem,
   issueInvoice,
   syncFinalInvoiceFromQuotation,
   getCaseFinalInvoice,
@@ -172,6 +174,15 @@ export default function AdminCaseDetailPage() {
   const [savingPricing, setSavingPricing] = useState(false)
   const [pricingError, setPricingError] = useState('')
   const [dueDateEdit, setDueDateEdit] = useState<string>('')
+
+  // Pre-finalize add/remove staging
+  const [removedItemIds, setRemovedItemIds] = useState<Set<string>>(new Set())
+  type NewPricingItem = { tempId: string; groupId: string; productId: string; productName: string; partnerName: string | null; basePrice: number; finalPrice: string }
+  const [newItems, setNewItems] = useState<NewPricingItem[]>([])
+  const [products, setProducts] = useState<Array<{ id: string; name: string; partner_name: string | null; base_price: number }>>([])
+  const [pickerGroupId, setPickerGroupId] = useState<string>('')
+  const [pickerQuery, setPickerQuery] = useState<string>('')
+  const [pickerOpen, setPickerOpen] = useState<boolean>(false)
   const [stagedFile, setStagedFile] = useState<File | null>(null)
   const [stagedNote, setStagedNote] = useState('')
   const [uploadingSchedule, setUploadingSchedule] = useState(false)
@@ -250,6 +261,21 @@ export default function AdminCaseDetailPage() {
     }
     init()
   }, [fetchCase])
+
+  // Load active products once for the pre-finalize "Add line item" picker.
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      const { data, error } = await supabase.from('products')
+        .select('id, name, partner_name, base_price, is_active')
+        .order('name', { ascending: true })
+      if (error) { console.error('[case] products fetch error:', error); return }
+      if (cancelled) return
+      const rows = (data ?? []) as Array<{ id: string; name: string; partner_name: string | null; base_price: number; is_active: boolean | null }>
+      setProducts(rows.filter(r => r.is_active !== false).map(({ id, name, partner_name, base_price }) => ({ id, name, partner_name, base_price })))
+    })()
+    return () => { cancelled = true }
+  }, [])
 
   // First time data resolves and Trip Setup is fully ready, default to collapsed.
   // Placed BEFORE early returns so the hook count is stable across renders.
@@ -921,23 +947,28 @@ export default function AdminCaseDetailPage() {
                   {latestQuote.finalized_at ? 'Edit Final Pricing' : 'Finalize Pricing'}
                 </p>
                 {latestQuote.finalized_at && (
-                  <button onClick={() => { setEditingPricing(false); setPricingEdits({}); setDueDateEdit(''); setPricingError('') }}
+                  <button onClick={() => { setEditingPricing(false); setPricingEdits({}); setDueDateEdit(''); setPricingError(''); setRemovedItemIds(new Set()); setNewItems([]) }}
                     className="text-xs text-gray-500 hover:text-gray-800">Cancel</button>
                 )}
               </div>
-              <p className="text-[11px] text-gray-600">Adjust each line item to reflect the actual final price before issuing the invoice.</p>
+              <p className="text-[11px] text-gray-600">
+                {latestQuote.finalized_at
+                  ? 'Adjust line item prices. To add or remove items after finalize, issue an Additional Invoice.'
+                  : 'Adjust prices, or add/remove line items before issuing the invoice.'}
+              </p>
 
               {pricingError && <p className="text-xs text-red-500">{pricingError}</p>}
 
               <div className="bg-white rounded-xl border border-violet-100 divide-y divide-gray-100">
                 {sortedGroups.flatMap(g => g.document_items.map(item => {
+                  const isRemoved = removedItemIds.has(item.id)
                   // pricingEdits stores raw digit string; display with thousands separators.
                   const rawVal = pricingEdits[item.id] ?? String(item.final_price)
                   const displayVal = rawVal === '' ? '' : Number(rawVal).toLocaleString('en-US')
                   return (
-                    <div key={item.id} className="flex items-center gap-3 px-3 py-2">
+                    <div key={item.id} className={`flex items-center gap-3 px-3 py-2 ${isRemoved ? 'opacity-40' : ''}`}>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm text-gray-900 truncate">{item.products?.name ?? 'Item'}</p>
+                        <p className={`text-sm text-gray-900 truncate ${isRemoved ? 'line-through' : ''}`}>{item.products?.name ?? 'Item'}</p>
                         <p className="text-[10px] text-gray-400">{g.name}</p>
                       </div>
                       <span className="text-[10px] text-gray-400 tabular-nums shrink-0">orig {fmtKRW(item.final_price)}</span>
@@ -945,21 +976,144 @@ export default function AdminCaseDetailPage() {
                         type="text"
                         inputMode="numeric"
                         value={displayVal}
+                        disabled={isRemoved}
                         onChange={(e) => {
                           const cleaned = e.target.value.replace(/[^0-9]/g, '')
                           setPricingEdits(p => ({ ...p, [item.id]: cleaned }))
                         }}
-                        className="w-32 border border-gray-200 rounded-lg px-2 py-1 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35] tabular-nums text-right" />
+                        className="w-32 border border-gray-200 rounded-lg px-2 py-1 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35] tabular-nums text-right disabled:bg-gray-50" />
                       <span className="text-[10px] text-gray-400 shrink-0 w-3">₩</span>
+                      {!latestQuote.finalized_at && (
+                        isRemoved ? (
+                          <button type="button"
+                            onClick={() => setRemovedItemIds(s => { const n = new Set(s); n.delete(item.id); return n })}
+                            className="text-[10px] text-violet-700 hover:underline shrink-0">Undo</button>
+                        ) : (
+                          <button type="button" aria-label="Remove item"
+                            onClick={() => setRemovedItemIds(s => new Set(s).add(item.id))}
+                            className="text-gray-300 hover:text-red-500 shrink-0 w-4 h-4 flex items-center justify-center text-sm leading-none">×</button>
+                        )
+                      )}
                     </div>
                   )
                 }))}
+                {newItems.map((n) => {
+                  const displayVal = n.finalPrice === '' ? '' : Number(n.finalPrice).toLocaleString('en-US')
+                  const groupName = sortedGroups.find(g => g.id === n.groupId)?.name ?? ''
+                  return (
+                    <div key={n.tempId} className="flex items-center gap-3 px-3 py-2 bg-violet-50/50">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-gray-900 truncate">{n.productName}</p>
+                        <p className="text-[10px] text-violet-700">New · {groupName}</p>
+                      </div>
+                      <span className="text-[10px] text-gray-400 tabular-nums shrink-0">base {fmtKRW(n.basePrice)}</span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={displayVal}
+                        onChange={(e) => {
+                          const cleaned = e.target.value.replace(/[^0-9]/g, '')
+                          setNewItems(arr => arr.map(x => x.tempId === n.tempId ? { ...x, finalPrice: cleaned } : x))
+                        }}
+                        className="w-32 border border-gray-200 rounded-lg px-2 py-1 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35] tabular-nums text-right" />
+                      <span className="text-[10px] text-gray-400 shrink-0 w-3">₩</span>
+                      <button type="button" aria-label="Remove new item"
+                        onClick={() => setNewItems(arr => arr.filter(x => x.tempId !== n.tempId))}
+                        className="text-gray-300 hover:text-red-500 shrink-0 w-4 h-4 flex items-center justify-center text-sm leading-none">×</button>
+                    </div>
+                  )
+                })}
               </div>
 
+              {/* Add line item — pre-finalize only. Searchable combobox to scale with product count. */}
+              {!latestQuote.finalized_at && sortedGroups.length > 0 && (() => {
+                const q = pickerQuery.trim().toLowerCase()
+                const targetGroupId = pickerGroupId || sortedGroups[0].id
+                // Already in the target group: existing items (not removed) + staged new items.
+                const targetGroup = sortedGroups.find(g => g.id === targetGroupId)
+                const existingProductIds = new Set<string>()
+                targetGroup?.document_items.forEach(it => {
+                  if (!removedItemIds.has(it.id) && it.products?.id) existingProductIds.add(it.products.id)
+                })
+                newItems.forEach(n => { if (n.groupId === targetGroupId) existingProductIds.add(n.productId) })
+                const available = products.filter(p => !existingProductIds.has(p.id))
+                const matches = q === ''
+                  ? available.slice(0, 20)
+                  : available.filter(p =>
+                      p.name.toLowerCase().includes(q) || (p.partner_name?.toLowerCase().includes(q) ?? false)
+                    ).slice(0, 20)
+                const addProduct = (productId: string) => {
+                  const product = products.find(p => p.id === productId)
+                  if (!product) return
+                  const groupId = pickerGroupId || sortedGroups[0].id
+                  setNewItems(arr => [...arr, {
+                    tempId: `new-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                    groupId,
+                    productId: product.id,
+                    productName: product.name,
+                    partnerName: product.partner_name,
+                    basePrice: product.base_price,
+                    finalPrice: String(product.base_price),
+                  }])
+                  setPickerQuery('')
+                  setPickerOpen(false)
+                }
+                return (
+                  <div className="bg-white rounded-xl border border-violet-100 px-3 py-2 flex items-center gap-2 relative">
+                    <span className="text-[10px] text-gray-500 shrink-0">Add to</span>
+                    {sortedGroups.length > 1 && (
+                      <select
+                        value={pickerGroupId || sortedGroups[0].id}
+                        onChange={(e) => setPickerGroupId(e.target.value)}
+                        className="border border-gray-200 rounded-lg px-2 py-1 text-xs text-gray-900 focus:outline-none focus:border-[#0f4c35] bg-white">
+                        {sortedGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                      </select>
+                    )}
+                    <div className="flex-1 min-w-0 relative">
+                      <input
+                        type="text"
+                        value={pickerQuery}
+                        placeholder={products.length === 0 ? 'No products available' : 'Search products by name or partner…'}
+                        disabled={products.length === 0}
+                        onFocus={() => setPickerOpen(true)}
+                        onBlur={() => setTimeout(() => setPickerOpen(false), 150)}
+                        onChange={(e) => { setPickerQuery(e.target.value); setPickerOpen(true) }}
+                        className="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs text-gray-900 focus:outline-none focus:border-[#0f4c35] bg-white disabled:bg-gray-50" />
+                      {pickerOpen && matches.length > 0 && (
+                        <div className="absolute left-0 right-0 top-full mt-1 z-10 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto divide-y divide-gray-100">
+                          {matches.map(p => (
+                            <button
+                              key={p.id}
+                              type="button"
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={() => addProduct(p.id)}
+                              className="w-full text-left px-3 py-1.5 hover:bg-violet-50 text-xs">
+                              <div className="text-gray-900 truncate">{p.name}</div>
+                              <div className="text-[10px] text-gray-400 flex justify-between gap-2">
+                                <span className="truncate">{p.partner_name ?? '—'}</span>
+                                <span className="tabular-nums shrink-0">{fmtKRW(p.base_price)}</span>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {pickerOpen && q !== '' && matches.length === 0 && (
+                        <div className="absolute left-0 right-0 top-full mt-1 z-10 bg-white border border-gray-200 rounded-lg shadow-lg px-3 py-2 text-xs text-gray-400">
+                          No products match &ldquo;{pickerQuery}&rdquo;
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })()}
+
               {(() => {
-                const newTotal = sortedGroups
+                const liveSum = sortedGroups
                   .flatMap(g => g.document_items)
+                  .filter(item => !removedItemIds.has(item.id))
                   .reduce((s, item) => s + (Number(pricingEdits[item.id] ?? item.final_price) || 0), 0)
+                const newSum = newItems.reduce((s, n) => s + (Number(n.finalPrice) || 0), 0)
+                const newTotal = liveSum + newSum
                 const diff = newTotal - latestQuote.total_price
                 return (
                   <div className="flex items-baseline justify-between bg-white rounded-xl border border-violet-100 px-3 py-2">
@@ -995,9 +1149,10 @@ export default function AdminCaseDetailPage() {
                     const v = pricingEdits[item.id]
                     return v !== undefined && Number(v) !== item.final_price
                   })
+                const hasStructuralChanges = removedItemIds.size > 0 || newItems.length > 0
                 const dueDateChanged = dueDateValue !== latestQuote.payment_due_date
                 const isFirstFinalize = !latestQuote.finalized_at
-                const buttonDisabled = savingPricing || (!isFirstFinalize && !hasPricingChanges && !dueDateChanged)
+                const buttonDisabled = savingPricing || (!isFirstFinalize && !hasPricingChanges && !hasStructuralChanges && !dueDateChanged)
                 return (
               <button
                 disabled={buttonDisabled}
@@ -1006,11 +1161,32 @@ export default function AdminCaseDetailPage() {
                   setSavingPricing(true); setPricingError('')
                   try {
                     const items = sortedGroups.flatMap(g => g.document_items)
-                    const newTotal = items.reduce((s, item) => s + (Number(pricingEdits[item.id] ?? item.final_price) || 0), 0)
+                    const liveItems = items.filter(item => !removedItemIds.has(item.id))
+                    const liveSum = liveItems.reduce((s, item) => s + (Number(pricingEdits[item.id] ?? item.final_price) || 0), 0)
+                    const newSum = newItems.reduce((s, n) => s + (Number(n.finalPrice) || 0), 0)
+                    const newTotal = liveSum + newSum
                     const newDueDate = dueDateValue
 
-                    // Update each quotation item whose final_price changed
-                    for (const item of items) {
+                    // Delete items marked for removal (pre-finalize only — gated in UI)
+                    for (const itemId of removedItemIds) {
+                      await removeDocumentItem(itemId)
+                    }
+
+                    // Insert staged new items
+                    for (const n of newItems) {
+                      await addDocumentItem({
+                        documentId: latestQuote.id,
+                        groupId: n.groupId,
+                        productId: n.productId,
+                        productNameSnapshot: n.productName,
+                        productPartnerSnapshot: n.partnerName,
+                        basePrice: n.basePrice,
+                        finalPrice: Number(n.finalPrice) || 0,
+                      })
+                    }
+
+                    // Update each quotation item whose final_price changed (skip removed)
+                    for (const item of liveItems) {
                       const newVal = Number(pricingEdits[item.id] ?? item.final_price) || 0
                       if (newVal !== item.final_price) {
                         await updateDocumentItemPrice(item.id, newVal)
@@ -1107,9 +1283,16 @@ export default function AdminCaseDetailPage() {
                     await notifyAgent(caseData.agent_id, notifyMessage, `/agent/cases/${caseData.id}`)
                     await logAsCurrentUser(isFirstFinalize ? 'quote.finalized' : 'quote.repriced',
                       { type: 'case', id: caseData.id, label: caseData.case_number },
-                      { total_krw: newTotal, ...(totalChanged && !isFirstFinalize ? { previous_total_krw: latestQuote.total_price } : {}) })
+                      {
+                        total_krw: newTotal,
+                        ...(totalChanged && !isFirstFinalize ? { previous_total_krw: latestQuote.total_price } : {}),
+                        ...(removedItemIds.size > 0 ? { items_removed: removedItemIds.size } : {}),
+                        ...(newItems.length > 0 ? { items_added: newItems.length } : {}),
+                      })
                     setPricingEdits({})
                     setDueDateEdit('')
+                    setRemovedItemIds(new Set())
+                    setNewItems([])
                     setEditingPricing(false)
                     await fetchCase()
                   } catch (e: unknown) {
