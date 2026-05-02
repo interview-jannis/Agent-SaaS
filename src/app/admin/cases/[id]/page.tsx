@@ -8,6 +8,7 @@ import { logAsCurrentUser } from '@/lib/audit'
 import { type CaseStatus, STATUS_LABELS, STATUS_STYLES } from '@/lib/caseStatus'
 import { AdminCaseHero } from '@/components/CaseHeroAction'
 import CaseDocumentsSection from '@/components/CaseDocumentsSection'
+import AdminCaseContractSection from '@/components/AdminCaseContractSection'
 import type { DocumentRow } from '@/lib/documents'
 
 import type { ClientInfo, FlightInfo } from '@/lib/clientCompleteness'
@@ -79,6 +80,9 @@ type Quote = {
   slug: string
   total_price: number
   payment_due_date: string | null
+  payment_received_at: string | null
+  from_party: 'admin' | 'agent'
+  to_party: 'client' | 'agent' | 'admin'
   agent_margin_rate: number
   company_margin_rate: number
   finalized_at: string | null
@@ -218,6 +222,16 @@ export default function AdminCaseDetailPage() {
     ])
     setPartnerPayments((pp as PartnerPayment[]) ?? [])
     setAgentSettlement((ss as AgentSettlement | null) ?? null)
+
+    // Self-heal: opportunistically advance status if both deposit legs are
+    // paid / info is complete. Cheap no-op when already advanced or not eligible.
+    const fresh = data as unknown as Case | null
+    if (fresh && (fresh.status === 'awaiting_info' || fresh.status === 'awaiting_deposit')) {
+      try {
+        const { notifyCaseInfoChanged } = await import('@/lib/caseTransitions')
+        await notifyCaseInfoChanged(fresh.id)
+      } catch { /* noop */ }
+    }
   }, [id])
 
   useEffect(() => {
@@ -391,6 +405,7 @@ export default function AdminCaseDetailPage() {
     caseData.status === 'awaiting_pricing'
     || caseData.status === 'awaiting_payment'
     || caseData.status === 'awaiting_travel'
+    || caseData.status === 'awaiting_review'
     || caseData.status === 'completed'
     || caseData.status === 'canceled'
   const canUploadSchedule = !scheduleLocked
@@ -447,6 +462,8 @@ export default function AdminCaseDetailPage() {
             scheduleReady={scheduleReady}
             hasInvoice={!!latestQuote?.finalized_at}
             paymentDueDate={latestQuote?.payment_due_date ?? null}
+            depositPaid={(caseData.documents ?? []).some(d => d.type === 'deposit_invoice' && d.from_party === 'agent' && d.to_party === 'client' && !!d.payment_received_at)}
+            depositSettlementPaid={(caseData.documents ?? []).some(d => d.type === 'deposit_invoice' && d.from_party === 'admin' && d.to_party === 'agent' && !!d.payment_received_at)}
             travelStartDate={caseData.travel_start_date}
             onScrollToScheduleUpload={() => document.getElementById('schedule-upload')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
             onScrollToPricing={() => document.getElementById('pricing')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
@@ -461,6 +478,16 @@ export default function AdminCaseDetailPage() {
               <span className="text-sm font-medium text-gray-900">{getAgent(caseData)?.name ?? '—'}</span>
             </div>
           </section>
+
+          {/* 3-Party Contract */}
+          {caseData.status !== 'canceled' && caseData.status !== 'awaiting_info' && (
+            <AdminCaseContractSection
+              caseId={caseData.id}
+              caseNumber={caseData.case_number}
+              caseStatus={caseData.status}
+              onChanged={async () => { await fetchCase() }}
+            />
+          )}
 
           {/* Travel Period */}
           <section className="bg-gray-50 rounded-2xl p-4">
@@ -720,6 +747,7 @@ export default function AdminCaseDetailPage() {
               caseNumber={caseData.case_number}
               agentId={caseData.agent_id}
               actor="admin"
+              caseStatus={caseData.status}
               quotation={latestQuote as unknown as DocumentRow}
               finalInvoice={(finalInvoice ?? null) as unknown as DocumentRow | null}
               documents={(caseData.documents ?? []) as unknown as DocumentRow[]}
@@ -743,7 +771,7 @@ export default function AdminCaseDetailPage() {
                     <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
                   </svg>
                   <p className="text-xs text-emerald-800">
-                    {caseData.status === 'completed'
+                    {(caseData.status === 'completed' || caseData.status === 'awaiting_review')
                       ? 'Travel complete — schedule is locked.'
                       : 'Agent has confirmed the schedule — no further edits allowed.'}
                   </p>
@@ -1194,7 +1222,9 @@ export default function AdminCaseDetailPage() {
             const totalSuggested = partnerList.reduce((s, g) => s + g.suggested, 0)
             const allPaid = partnerList.every(g => partnerPayments.some(p => p.partner_name === g.name))
             // Partners can only be paid out after we've received client payment
-            const paymentReceived = caseData.status === 'awaiting_travel' || caseData.status === 'completed'
+            const paymentReceived = caseData.status === 'awaiting_travel'
+              || caseData.status === 'awaiting_review'
+              || caseData.status === 'completed'
 
             return (
               <section className="bg-gray-50 rounded-2xl p-4 space-y-3">
@@ -1377,7 +1407,8 @@ export default function AdminCaseDetailPage() {
             const total = latestQuote.total_price ?? 0
             const ag = latestQuote.agent_margin_rate ?? 0
             const commissionAmount = ag > 0 ? Math.round(total * ag / (1 + ag)) : 0
-            const isCompleted = caseData.status === 'completed'
+            // Settlement queue eligible once travel is done — review pending OR completed.
+            const isCompleted = caseData.status === 'completed' || caseData.status === 'awaiting_review'
             const paid = !!agentSettlement?.paid_at
 
             const agent = getAgent(caseData)

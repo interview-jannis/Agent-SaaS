@@ -111,14 +111,14 @@ export default function AgentDashboardPage() {
 
   // Completed pipeline cell shows unsettled only — settled ones belong to "Settlement Paid"
   const settledCaseIds = new Set(settlements.filter(s => s.case_id).map(s => s.case_id!))
-  const unsettledCompletedCount = cases.filter(c => c.status === 'completed' && !settledCaseIds.has(c.id)).length
+  const unsettledCompletedCount = cases.filter(c => (c.status === 'completed' || c.status === 'awaiting_review') && !settledCaseIds.has(c.id)).length
 
   const now = new Date()
   const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
 
   // Patients from cases marked complete this month (tier is patients/month, not cases).
   const monthlyPatients = cases
-    .filter(c => c.status === 'completed' && c.travel_completed_at?.startsWith(monthKey))
+    .filter(c => (c.status === 'completed' || c.status === 'awaiting_review') && c.travel_completed_at?.startsWith(monthKey))
     .reduce((sum, c) => sum + (c.case_members?.length ?? 0), 0)
 
   const thisMonthPaid = settlements
@@ -159,7 +159,7 @@ export default function AgentDashboardPage() {
   const casesByStatus = new Map<CaseStatus, CaseRow[]>()
   for (const s of PIPELINE_ORDER) casesByStatus.set(s, [])
   for (const c of cases) {
-    if (c.status === 'completed' && settledCaseIds.has(c.id)) continue
+    if ((c.status === 'completed' || c.status === 'awaiting_review') && settledCaseIds.has(c.id)) continue
     if (c.status === 'canceled') continue
     casesByStatus.get(c.status)?.push(c)
   }
@@ -184,6 +184,14 @@ export default function AgentDashboardPage() {
       case 'awaiting_info': {
         // Agent must finish client/trip info before admin can upload schedule
         return { line: 'Fill client + trip info', urgency: 'warn' }
+      }
+      case 'awaiting_contract': {
+        // 3-party contract pending
+        return { line: 'Send contract for signing', urgency: 'warn' }
+      }
+      case 'awaiting_deposit': {
+        // Deposit + info collection in parallel
+        return { line: 'Collect deposit + client info', urgency: 'warn' }
       }
       case 'awaiting_schedule': {
         // Info complete, admin building schedule
@@ -222,6 +230,10 @@ export default function AgentDashboardPage() {
           // trip ended = needs mark complete (alert)
           urgency: ended ? 'alert' : soon ? 'warn' : 'normal',
         }
+      }
+      case 'awaiting_review': {
+        // Travel done, agent needs to submit client review/survey
+        return { line: 'Submit client review', urgency: 'warn' }
       }
       case 'completed': {
         const end = c.travel_end_date

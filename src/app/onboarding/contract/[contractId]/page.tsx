@@ -12,6 +12,10 @@ type Contract = {
   body_snapshot: string
   signature_data_url: string | null
   signed_at: string
+  admin_signature_data_url: string | null
+  admin_signed_at: string | null
+  admin_signer_name: string | null
+  admin_signer_title: string | null
 }
 
 type Agent = {
@@ -138,14 +142,32 @@ export default function AgentContractViewerPage() {
           })}
         </div>
 
-        {contract.signature_data_url && (
-          <div className="mt-10 pt-4 border-t border-gray-300">
-            <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-3">Your Signature</p>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={contract.signature_data_url} alt="Signature"
-              className="max-h-28 border border-gray-200 rounded bg-white" />
+        <div className="mt-10 pt-4 border-t border-gray-300 grid grid-cols-1 md:grid-cols-2 gap-6">
+          {contract.signature_data_url && (
+            <div>
+              <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-3">Your Signature</p>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={contract.signature_data_url} alt="Your signature"
+                className="max-h-28 border border-gray-200 rounded bg-white" />
+            </div>
+          )}
+          <div>
+            <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-3">Interview Co., Ltd. Counter-signature</p>
+            {contract.admin_signature_data_url ? (
+              <>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={contract.admin_signature_data_url} alt="Interview Co. signature"
+                  className="max-h-28 border border-gray-200 rounded bg-white" />
+                <p className="text-[11px] text-gray-600 mt-2">
+                  {contract.admin_signer_name ?? '—'}{contract.admin_signer_title ? ` (${contract.admin_signer_title})` : ''}
+                  {contract.admin_signed_at && ` · ${new Date(contract.admin_signed_at).toLocaleDateString('en-US', { dateStyle: 'long' })}`}
+                </p>
+              </>
+            ) : (
+              <p className="text-xs text-gray-400 italic">Awaiting counter-signature.</p>
+            )}
           </div>
-        )}
+        </div>
       </div>
     </div>
   )

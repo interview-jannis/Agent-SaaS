@@ -22,7 +22,7 @@ export default function AdminSettingsPage() {
   const [loading, setLoading] = useState(true)
 
   // Inline edit state — only one section editable at a time
-  type EditTarget = 'profile' | 'rate' | 'margin' | 'bank' | null
+  type EditTarget = 'profile' | 'rate' | 'margin' | 'bank' | 'deposit' | 'stamp' | null
   const [editing, setEditing] = useState<EditTarget>(null)
 
   // My Display Info (per-admin, used as signer on invoices I finalize)
@@ -57,14 +57,30 @@ export default function AdminSettingsPage() {
   const [bankSaved, setBankSaved] = useState(false)
   const [bankError, setBankError] = useState('')
 
+  // Deposit %
+  const [depositPct, setDepositPct] = useState('')
+  const [depositPctOriginal, setDepositPctOriginal] = useState('')
+  const [savingDeposit, setSavingDeposit] = useState(false)
+  const [depositSaved, setDepositSaved] = useState(false)
+  const [depositError, setDepositError] = useState('')
+
+  // Company stamp
+  const [stampUrl, setStampUrl] = useState<string | null>(null)
+  const [stampUrlOriginal, setStampUrlOriginal] = useState<string | null>(null)
+  const [uploadingStamp, setUploadingStamp] = useState(false)
+  const [stampSaved, setStampSaved] = useState(false)
+  const [stampError, setStampError] = useState('')
+
   useEffect(() => {
     async function load() {
       const { data: { session } } = await supabase.auth.getSession()
       const uid = session?.user?.id ?? null
-      const [rateRes, marginRes, bankRes, adminRes] = await Promise.all([
+      const [rateRes, marginRes, bankRes, depositRes, stampRes, adminRes] = await Promise.all([
         supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single(),
         supabase.from('system_settings').select('value').eq('key', 'company_margin_rate').single(),
         supabase.from('system_settings').select('value').eq('key', 'bank_details').single(),
+        supabase.from('system_settings').select('value').eq('key', 'deposit_percentage').maybeSingle(),
+        supabase.from('system_settings').select('value').eq('key', 'company_stamp').maybeSingle(),
         uid ? supabase.from('admins').select('id, name, title, is_super_admin').eq('auth_user_id', uid).maybeSingle() : Promise.resolve({ data: null }),
       ])
 
@@ -92,6 +108,15 @@ export default function AdminSettingsPage() {
         const merged = { ...DEFAULT_BANK, ...b }
         setBank(merged); setBankOriginal(merged)
       }
+
+      const d = (depositRes.data?.value as { percentage?: number } | null)?.percentage
+      if (d !== undefined) {
+        const pct = String(d)
+        setDepositPct(pct); setDepositPctOriginal(pct)
+      }
+
+      const s = (stampRes.data?.value as { url?: string | null } | null)?.url ?? null
+      setStampUrl(s); setStampUrlOriginal(s)
 
       setLoading(false)
     }
@@ -155,6 +180,62 @@ export default function AdminSettingsPage() {
     setSavingBank(false)
   }
 
+  async function saveDeposit() {
+    const pct = Number(depositPct)
+    if (isNaN(pct) || pct < 0 || pct > 100) {
+      setDepositError('Please enter a value between 0 and 100.')
+      return
+    }
+    setSavingDeposit(true); setDepositError(''); setDepositSaved(false)
+    const { error } = await supabase
+      .from('system_settings')
+      .upsert({ key: 'deposit_percentage', value: { percentage: pct } }, { onConflict: 'key' })
+    if (error) { setDepositError(error.message) }
+    else {
+      setDepositPctOriginal(depositPct)
+      setEditing(null)
+      setDepositSaved(true); setTimeout(() => setDepositSaved(false), 3000)
+    }
+    setSavingDeposit(false)
+  }
+
+  async function uploadStamp(file: File) {
+    setUploadingStamp(true); setStampError(''); setStampSaved(false)
+    try {
+      const ext = file.name.split('.').pop()?.toLowerCase() ?? 'png'
+      const path = `company/stamp-${Date.now()}.${ext}`
+      const { error: upErr } = await supabase.storage.from('stamps').upload(path, file, { cacheControl: '3600', upsert: true })
+      if (upErr) throw upErr
+      const { data: pub } = supabase.storage.from('stamps').getPublicUrl(path)
+      const url = pub.publicUrl
+      const { error: dbErr } = await supabase
+        .from('system_settings')
+        .upsert({ key: 'company_stamp', value: { url } }, { onConflict: 'key' })
+      if (dbErr) throw dbErr
+      setStampUrl(url); setStampUrlOriginal(url)
+      setEditing(null)
+      setStampSaved(true); setTimeout(() => setStampSaved(false), 3000)
+    } catch (e: unknown) {
+      setStampError((e as { message?: string })?.message ?? 'Failed to upload stamp.')
+    } finally {
+      setUploadingStamp(false)
+    }
+  }
+
+  async function clearStamp() {
+    if (!window.confirm('Remove company stamp from invoices?')) return
+    setUploadingStamp(true); setStampError('')
+    const { error } = await supabase
+      .from('system_settings')
+      .upsert({ key: 'company_stamp', value: { url: null } }, { onConflict: 'key' })
+    if (error) { setStampError(error.message) }
+    else {
+      setStampUrl(null); setStampUrlOriginal(null)
+      setStampSaved(true); setTimeout(() => setStampSaved(false), 3000)
+    }
+    setUploadingStamp(false)
+  }
+
   async function saveProfile() {
     if (!adminId) { setProfileError('Admin record not found.'); return }
     if (!profileName.trim()) { setProfileError('Name is required.'); return }
@@ -175,7 +256,7 @@ export default function AdminSettingsPage() {
   }
 
   function startEdit(target: Exclude<EditTarget, null>) {
-    setRateError(''); setMarginError(''); setBankError(''); setProfileError('')
+    setRateError(''); setMarginError(''); setBankError(''); setProfileError(''); setDepositError(''); setStampError('')
     setEditing(target)
   }
   function cancelEdit() {
@@ -184,7 +265,8 @@ export default function AdminSettingsPage() {
     setBank(bankOriginal)
     setProfileName(profileNameOriginal)
     setProfileTitle(profileTitleOriginal)
-    setRateError(''); setMarginError(''); setBankError(''); setProfileError('')
+    setDepositPct(depositPctOriginal)
+    setRateError(''); setMarginError(''); setBankError(''); setProfileError(''); setDepositError(''); setStampError('')
     setEditing(null)
   }
 
@@ -422,6 +504,99 @@ export default function AdminSettingsPage() {
                   </button>
                   <button onClick={cancelEdit} disabled={savingBank}
                     className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-800 disabled:opacity-40">Cancel</button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Deposit % row */}
+          <div className="px-6 py-5">
+            {editing !== 'deposit' ? (
+              <div className="flex items-start gap-4">
+                <div className="flex-1 min-w-0">
+                  <h2 className="text-sm font-semibold text-gray-900">Deposit Percentage</h2>
+                  <p className="text-xs text-gray-500 mt-0.5">Default deposit % used when agent issues a deposit invoice. Editable per-case.</p>
+                  <p className="text-sm text-gray-800 mt-2 tabular-nums">
+                    {depositPctOriginal ? `${depositPctOriginal}%` : <span className="text-gray-400">Not set</span>}
+                  </p>
+                  {depositSaved && <p className="text-xs text-[#0f4c35] mt-1">Saved.</p>}
+                </div>
+                {isSuperAdmin && (
+                  <button onClick={() => startEdit('deposit')}
+                    className="shrink-0 text-xs font-medium text-[#0f4c35] hover:underline">Edit</button>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div>
+                  <h2 className="text-sm font-semibold text-gray-900">Deposit Percentage</h2>
+                  <p className="text-xs text-gray-500 mt-0.5">Default deposit % used when agent issues a deposit invoice.</p>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1.5">Deposit (%)</label>
+                  <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden focus-within:border-[#0f4c35] transition-all w-32">
+                    <input autoFocus type="number" value={depositPct} onChange={(e) => setDepositPct(e.target.value)}
+                      placeholder="50" min={0} max={100}
+                      className="flex-1 w-full px-3 py-2 text-sm text-gray-900 focus:outline-none bg-white" />
+                    <span className="px-3 py-2 text-sm text-gray-600 bg-gray-50 border-l border-gray-200">%</span>
+                  </div>
+                </div>
+                {depositError && <p className="text-xs text-red-500">{depositError}</p>}
+                <div className="flex items-center gap-2">
+                  <button onClick={saveDeposit} disabled={savingDeposit}
+                    className="px-4 py-1.5 text-xs font-medium bg-[#0f4c35] text-white rounded-lg hover:bg-[#0a3828] disabled:opacity-40 transition-colors">
+                    {savingDeposit ? 'Saving...' : 'Save'}
+                  </button>
+                  <button onClick={cancelEdit} disabled={savingDeposit}
+                    className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-800 disabled:opacity-40">Cancel</button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Company Stamp row */}
+          <div className="px-6 py-5">
+            {editing !== 'stamp' ? (
+              <div className="flex items-start gap-4">
+                <div className="flex-1 min-w-0">
+                  <h2 className="text-sm font-semibold text-gray-900">Company Stamp</h2>
+                  <p className="text-xs text-gray-500 mt-0.5">Imprinted on all company-issued invoices (Balance, Additional, Deposit Settlement).</p>
+                  <div className="mt-2">
+                    {stampUrlOriginal ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={stampUrlOriginal} alt="Company stamp" className="h-20 w-auto object-contain" />
+                    ) : (
+                      <p className="text-sm text-gray-400">Not uploaded</p>
+                    )}
+                  </div>
+                  {stampSaved && <p className="text-xs text-[#0f4c35] mt-1">Saved.</p>}
+                </div>
+                {isSuperAdmin && (
+                  <button onClick={() => startEdit('stamp')}
+                    className="shrink-0 text-xs font-medium text-[#0f4c35] hover:underline">Edit</button>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div>
+                  <h2 className="text-sm font-semibold text-gray-900">Company Stamp</h2>
+                  <p className="text-xs text-gray-500 mt-0.5">PNG with transparent background recommended (200×200px+).</p>
+                </div>
+                {stampUrl && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={stampUrl} alt="Company stamp" className="h-24 w-auto object-contain border border-gray-200 rounded-lg p-2 bg-white" />
+                )}
+                <input type="file" accept="image/png,image/jpeg" disabled={uploadingStamp}
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadStamp(f) }}
+                  className="block text-xs text-gray-700 file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-[#0f4c35] file:text-white file:text-xs file:font-medium file:cursor-pointer hover:file:bg-[#0a3828]" />
+                {stampError && <p className="text-xs text-red-500">{stampError}</p>}
+                <div className="flex items-center gap-2">
+                  {stampUrl && (
+                    <button onClick={clearStamp} disabled={uploadingStamp}
+                      className="px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 rounded-lg disabled:opacity-40">Remove</button>
+                  )}
+                  <button onClick={cancelEdit} disabled={uploadingStamp}
+                    className="ml-auto px-3 py-1.5 text-xs text-gray-500 hover:text-gray-800 disabled:opacity-40">Done</button>
                 </div>
               </div>
             )}

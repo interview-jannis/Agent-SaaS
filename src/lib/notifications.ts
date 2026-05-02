@@ -70,8 +70,24 @@ export async function notifyAllAdmins(message: string, link_url?: string | null)
   if (error) console.error('[notification] admin broadcast failed', error)
 }
 
-// Notify a single agent by agent_id → resolve their auth_user_id
+// Notify a single agent by agent_id. Server-first to dodge cross-user INSERT
+// edge cases (admin/client → agent row); falls back to direct client insert
+// if the API isn't reachable.
 export async function notifyAgent(agent_id: string, message: string, link_url?: string | null) {
+  if (typeof window !== 'undefined') {
+    try {
+      const res = await fetch('/api/notifications/notify-agent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agent_id, message, link_url: link_url ?? null }),
+      })
+      if (res.ok) return
+      console.warn('[notification] notify-agent server non-OK, falling back to client', await res.text().catch(() => ''))
+    } catch (e) {
+      console.warn('[notification] notify-agent server threw, falling back to client', e)
+    }
+  }
+
   const { data: agent } = await supabase.from('agents').select('auth_user_id').eq('id', agent_id).single()
   if (!agent?.auth_user_id) return
   await createNotification({

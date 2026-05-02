@@ -14,6 +14,7 @@ type AgentProfile = {
   country: string | null
   margin_rate: number | null
   is_active: boolean
+  stamp_url: string | null
 }
 
 export default function AgentProfilePage() {
@@ -27,6 +28,10 @@ export default function AgentProfilePage() {
   const [country, setCountry] = useState('')
   const [savingContact, setSavingContact] = useState(false)
 
+  // Stamp upload
+  const [uploadingStamp, setUploadingStamp] = useState(false)
+  const [stampError, setStampError] = useState('')
+
   const [error, setError] = useState('')
 
   async function fetchProfile() {
@@ -34,7 +39,7 @@ export default function AgentProfilePage() {
     const uid = session?.user?.id
     if (!uid) return
     const { data } = await supabase.from('agents')
-      .select('id, agent_number, name, email, phone, country, margin_rate, is_active')
+      .select('id, agent_number, name, email, phone, country, margin_rate, is_active, stamp_url')
       .eq('auth_user_id', uid).single()
     if (!data) return
     const ag = data as AgentProfile
@@ -46,7 +51,7 @@ export default function AgentProfilePage() {
     const { data: caseRows } = await supabase.from('cases')
       .select('travel_completed_at, case_members(id)')
       .eq('agent_id', ag.id)
-      .eq('status', 'completed')
+      .in('status', ['awaiting_review', 'completed'])
     const rows = (caseRows as { travel_completed_at: string | null; case_members: { id: string }[] }[] | null) ?? []
     const patients = rows
       .filter(r => r.travel_completed_at?.startsWith(monthKey))
@@ -58,6 +63,35 @@ export default function AgentProfilePage() {
     async function init() { await fetchProfile(); setLoading(false) }
     init()
   }, [])
+
+  async function uploadStamp(file: File) {
+    if (!profile) return
+    setUploadingStamp(true); setStampError('')
+    try {
+      const ext = file.name.split('.').pop()?.toLowerCase() ?? 'png'
+      const path = `agents/${profile.id}/stamp-${Date.now()}.${ext}`
+      const { error: upErr } = await supabase.storage.from('stamps').upload(path, file, { cacheControl: '3600', upsert: true })
+      if (upErr) throw upErr
+      const { data: pub } = supabase.storage.from('stamps').getPublicUrl(path)
+      const { error: dbErr } = await supabase.from('agents').update({ stamp_url: pub.publicUrl }).eq('id', profile.id)
+      if (dbErr) throw dbErr
+      await fetchProfile()
+    } catch (e: unknown) {
+      setStampError((e as { message?: string })?.message ?? 'Failed to upload stamp.')
+    } finally {
+      setUploadingStamp(false)
+    }
+  }
+
+  async function clearStamp() {
+    if (!profile) return
+    if (!window.confirm('Remove your stamp from invoices?')) return
+    setUploadingStamp(true); setStampError('')
+    const { error } = await supabase.from('agents').update({ stamp_url: null }).eq('id', profile.id)
+    if (error) setStampError(error.message)
+    else await fetchProfile()
+    setUploadingStamp(false)
+  }
 
   async function saveContact() {
     if (!profile) return
@@ -167,6 +201,33 @@ export default function AgentProfilePage() {
                 </div>
               </div>
             )}
+          </section>
+
+          {/* Stamp / Seal */}
+          <section className="bg-gray-50 rounded-2xl p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Stamp / Seal</h3>
+              {profile.stamp_url && (
+                <button onClick={clearStamp} disabled={uploadingStamp}
+                  className="text-xs text-red-500 hover:text-red-700 disabled:opacity-40">Remove</button>
+              )}
+            </div>
+            <p className="text-xs text-gray-500 mb-3">Imprinted on Deposit and Commission invoices you issue. PNG with transparent background recommended.</p>
+            <div className="flex items-center gap-4">
+              {profile.stamp_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={profile.stamp_url} alt="Your stamp" className="h-24 w-auto object-contain border border-gray-200 rounded-lg p-2 bg-white" />
+              ) : (
+                <div className="h-24 w-24 border border-dashed border-gray-300 rounded-lg flex items-center justify-center text-xs text-gray-400">No stamp</div>
+              )}
+              <div className="flex-1">
+                <input type="file" accept="image/png,image/jpeg" disabled={uploadingStamp}
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadStamp(f); e.target.value = '' }}
+                  className="block text-xs text-gray-700 file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-[#0f4c35] file:text-white file:text-xs file:font-medium file:cursor-pointer hover:file:bg-[#0a3828]" />
+                {uploadingStamp && <p className="text-xs text-gray-500 mt-1">Uploading...</p>}
+                {stampError && <p className="text-xs text-red-500 mt-1">{stampError}</p>}
+              </div>
+            </div>
           </section>
 
           <ChangePasswordCard />

@@ -69,7 +69,7 @@ export default async function QuoteDocument({
       first_opened_at, open_count, case_id,
       cases(
         id, agent_id, status, created_at,
-        agents!cases_agent_id_fkey(name, email, phone, bank_info),
+        agents!cases_agent_id_fkey(name, email, phone, bank_info, stamp_url),
         case_members(is_lead, clients(name, nationality, needs_muslim_friendly))
       ),
       document_groups(
@@ -130,18 +130,20 @@ export default async function QuoteDocument({
     }
   }
 
-  const [rateRes, bankRes] = await Promise.all([
+  const [rateRes, bankRes, stampRes] = await Promise.all([
     supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single(),
     supabase.from('system_settings').select('value').eq('key', 'bank_details').single(),
+    supabase.from('system_settings').select('value').eq('key', 'company_stamp').maybeSingle(),
   ])
 
   const exchangeRate = (rateRes.data?.value as { usd_krw?: number } | null)?.usd_krw ?? 1350
   const adminBank = (bankRes.data?.value as BankDetails | null) ?? {}
+  const companyStampUrl = (stampRes.data?.value as { url?: string | null } | null)?.url ?? null
 
   const caseData = quote.cases as unknown as {
     status: string | null
     created_at: string | null
-    agents: { name: string; email: string | null; phone: string | null; bank_info: BankDetails | null } | null
+    agents: { name: string; email: string | null; phone: string | null; bank_info: BankDetails | null; stamp_url: string | null } | null
     case_members: { is_lead: boolean; clients: { name: string; nationality: string | null; needs_muslim_friendly: boolean | null } | null }[]
   } | null
 
@@ -152,6 +154,9 @@ export default async function QuoteDocument({
   const bank: BankDetails = isAgentIssued
     ? (caseData?.agents?.bank_info ?? {})
     : adminBank
+  const stampUrl: string | null = isAgentIssued
+    ? (caseData?.agents?.stamp_url ?? null)
+    : companyStampUrl
 
   const docTitle = isInvoice ? 'Commercial Invoice' : 'Quotation'
 
@@ -469,16 +474,32 @@ export default async function QuoteDocument({
             const signer = isInvoice
               ? (quote as { signer_snapshot?: { name?: string | null; title?: string | null } | null }).signer_snapshot ?? null
               : null
+            const issuerName = isAgentIssued ? agentName : 'Interview Co.,Ltd.'
             return (
-              <div className="mb-12">
+              <div className="mb-12 relative">
                 <p className="text-sm text-gray-600 italic mb-5">Yours Faithfully,</p>
-                {signer?.name && (
+                {isAgentIssued ? (
                   <>
-                    <p className="text-base font-semibold text-gray-900">{signer.name}</p>
-                    {signer.title && <p className="text-sm text-gray-600 mb-1">{signer.title}</p>}
+                    <p className="text-base font-semibold text-gray-900">{agentName}</p>
+                    <p className="text-sm text-gray-600 mb-1">Independent Agent</p>
+                  </>
+                ) : (
+                  <>
+                    {signer?.name && (
+                      <>
+                        <p className="text-base font-semibold text-gray-900">{signer.name}</p>
+                        {signer.title && <p className="text-sm text-gray-600 mb-1">{signer.title}</p>}
+                      </>
+                    )}
+                    <p className="text-base font-bold text-gray-900">Interview Co.,Ltd.</p>
                   </>
                 )}
-                <p className="text-base font-bold text-gray-900">Interview Co.,Ltd.</p>
+                {stampUrl && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={stampUrl} alt={`${issuerName} stamp`}
+                    className="absolute right-0 -top-4 h-24 w-auto object-contain opacity-90 print:opacity-100"
+                    style={{ mixBlendMode: 'multiply' }} />
+                )}
               </div>
             )
           })()}

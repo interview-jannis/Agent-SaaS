@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import SignaturePad from '@/components/SignaturePad'
+import { logAsCurrentUser } from '@/lib/audit'
 
 type Contract = {
   id: string
@@ -15,6 +17,12 @@ type Contract = {
   ip_address: string | null
   user_agent: string | null
   approved_at: string | null
+  // Admin countersignature (added 2026-05-02)
+  admin_signature_data_url: string | null
+  admin_signed_at: string | null
+  admin_signer_id: string | null
+  admin_signer_name: string | null
+  admin_signer_title: string | null
 }
 
 type Agent = {
@@ -30,7 +38,6 @@ type Block =
   | { kind: 'ul'; items: string[] }
 
 function renderInline(text: string): React.ReactNode[] {
-  // Normalize any accidental over-starred runs (e.g. ****name****) down to **name**
   text = text.replace(/\*{3,}/g, '**')
   const parts: React.ReactNode[] = []
   const regex = /\*\*(.+?)\*\*/g
@@ -80,18 +87,57 @@ export default function ContractViewerPage() {
   const [agent, setAgent] = useState<Agent | null>(null)
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    async function load() {
-      const [cRes, aRes] = await Promise.all([
-        supabase.from('agent_contracts').select('*').eq('id', contractId).maybeSingle(),
-        supabase.from('agents').select('agent_number, name, email, country').eq('id', id).maybeSingle(),
-      ])
-      setContract((cRes.data as Contract) ?? null)
-      setAgent((aRes.data as Agent) ?? null)
-      setLoading(false)
+  // Admin sign state
+  const [signing, setSigning] = useState(false)
+  const [adminSig, setAdminSig] = useState<string | null>(null)
+  const [savingSig, setSavingSig] = useState(false)
+  const [sigError, setSigError] = useState('')
+  const [adminProfile, setAdminProfile] = useState<{ id: string; name: string; title: string | null } | null>(null)
+
+  async function load() {
+    const [cRes, aRes, sessRes] = await Promise.all([
+      supabase.from('agent_contracts').select('*').eq('id', contractId).maybeSingle(),
+      supabase.from('agents').select('agent_number, name, email, country').eq('id', id).maybeSingle(),
+      supabase.auth.getSession(),
+    ])
+    setContract((cRes.data as Contract) ?? null)
+    setAgent((aRes.data as Agent) ?? null)
+
+    const uid = sessRes.data.session?.user?.id
+    if (uid) {
+      const { data: ad } = await supabase.from('admins').select('id, name, title').eq('auth_user_id', uid).maybeSingle()
+      if (ad) setAdminProfile(ad as { id: string; name: string; title: string | null })
     }
-    load()
-  }, [id, contractId])
+    setLoading(false)
+  }
+
+  useEffect(() => { load() }, [id, contractId])
+
+  async function submitSignature() {
+    if (!contract || !adminProfile || !adminSig) {
+      setSigError('Please sign above.'); return
+    }
+    setSavingSig(true); setSigError('')
+    try {
+      const { error } = await supabase.from('agent_contracts').update({
+        admin_signature_data_url: adminSig,
+        admin_signed_at: new Date().toISOString(),
+        admin_signer_id: adminProfile.id,
+        admin_signer_name: adminProfile.name,
+        admin_signer_title: adminProfile.title,
+      }).eq('id', contract.id)
+      if (error) throw error
+      await logAsCurrentUser('agent_contract.countersigned', {
+        type: 'agent', id: contract.agent_id, label: agent?.name ?? '',
+      }, { contract_type: contract.contract_type })
+      setSigning(false); setAdminSig(null)
+      await load()
+    } catch (e: unknown) {
+      setSigError((e as { message?: string })?.message ?? 'Failed to save signature.')
+    } finally {
+      setSavingSig(false)
+    }
+  }
 
   if (loading) return <div className="flex-1 flex items-center justify-center"><p className="text-sm text-gray-400">Loading...</p></div>
   if (!contract || !agent) return <div className="flex-1 flex items-center justify-center"><p className="text-sm text-gray-400">Contract not found.</p></div>
@@ -157,25 +203,62 @@ export default function ContractViewerPage() {
             })}
           </div>
 
-          {/* Signature block */}
-          <div className="mt-12 pt-6 border-t border-gray-300">
-            <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-3">Agent Signature</p>
-            {contract.signature_data_url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={contract.signature_data_url} alt="Agent signature"
-                className="max-h-32 border border-gray-200 rounded bg-white" />
-            ) : (
-              <p className="text-xs text-gray-400 italic">No signature captured.</p>
-            )}
-            <div className="mt-3 grid grid-cols-2 gap-4 text-[11px] text-gray-600">
-              <div>
-                <p className="font-semibold text-gray-500">Name</p>
-                <p>{agent.name}</p>
+          {/* Signature block — Agent + Admin */}
+          <div className="mt-12 pt-6 border-t border-gray-300 grid grid-cols-1 md:grid-cols-2 gap-8">
+            {/* Agent signature */}
+            <div>
+              <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-3">Agent Signature</p>
+              {contract.signature_data_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={contract.signature_data_url} alt="Agent signature"
+                  className="max-h-32 border border-gray-200 rounded bg-white" />
+              ) : (
+                <p className="text-xs text-gray-400 italic">No signature captured.</p>
+              )}
+              <div className="mt-3 text-[11px] text-gray-600 space-y-0.5">
+                <p><span className="font-semibold text-gray-500">Name:</span> {agent.name}</p>
+                <p><span className="font-semibold text-gray-500">Date:</span> {new Date(contract.signed_at).toLocaleDateString('en-US', { dateStyle: 'long' })}</p>
               </div>
-              <div>
-                <p className="font-semibold text-gray-500">Date</p>
-                <p>{new Date(contract.signed_at).toLocaleDateString('en-US', { dateStyle: 'long' })}</p>
-              </div>
+            </div>
+
+            {/* Admin countersignature */}
+            <div>
+              <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-3">Admin Counter-signature (Interview Co., Ltd.)</p>
+              {contract.admin_signature_data_url ? (
+                <>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={contract.admin_signature_data_url} alt="Admin signature"
+                    className="max-h-32 border border-gray-200 rounded bg-white" />
+                  <div className="mt-3 text-[11px] text-gray-600 space-y-0.5">
+                    <p><span className="font-semibold text-gray-500">Name:</span> {contract.admin_signer_name ?? '—'}{contract.admin_signer_title ? ` (${contract.admin_signer_title})` : ''}</p>
+                    <p><span className="font-semibold text-gray-500">Date:</span> {contract.admin_signed_at ? new Date(contract.admin_signed_at).toLocaleDateString('en-US', { dateStyle: 'long' }) : '—'}</p>
+                  </div>
+                </>
+              ) : signing ? (
+                <div className="space-y-2 print:hidden">
+                  <SignaturePad onChange={setAdminSig} />
+                  {sigError && <p className="text-xs text-red-500">{sigError}</p>}
+                  <div className="flex gap-2">
+                    <button onClick={submitSignature} disabled={savingSig || !adminSig}
+                      className="px-3 py-1.5 text-xs font-medium bg-[#0f4c35] text-white rounded-lg hover:bg-[#0a3828] disabled:opacity-40">
+                      {savingSig ? 'Saving...' : 'Save Signature'}
+                    </button>
+                    <button onClick={() => { setSigning(false); setAdminSig(null); setSigError('') }}
+                      disabled={savingSig}
+                      className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-800 disabled:opacity-40">Cancel</button>
+                  </div>
+                </div>
+              ) : (
+                <div className="print:hidden">
+                  <p className="text-xs text-gray-400 italic mb-2">Awaiting admin counter-signature.</p>
+                  {adminProfile && (
+                    <button onClick={() => setSigning(true)}
+                      className="px-3 py-1.5 text-xs font-medium border border-[#0f4c35] text-[#0f4c35] rounded-lg hover:bg-[#0f4c35]/5">
+                      Sign as {adminProfile.name}{adminProfile.title ? ` (${adminProfile.title})` : ''}
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 

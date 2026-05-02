@@ -201,7 +201,7 @@ export default function AdminCasesPage() {
 
   // Map a case to its display group (splits 'completed' by settlement state)
   function getDisplayGroup(c: Case): DisplayGroup {
-    if (c.status === 'completed') {
+    if (c.status === 'completed' || c.status === 'awaiting_review') {
       const partnerOk = partnerStatusFor(c) !== 'pending'
       const agentOk = settledCaseIds.has(c.id)
       return partnerOk && agentOk ? 'completed_settled' : 'completed_pending'

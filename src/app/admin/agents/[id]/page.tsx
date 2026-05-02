@@ -213,7 +213,7 @@ export default function AdminAgentDetailPage() {
 
   // Metrics
   const settledCaseIds = new Set(settlements.filter(s => s.case_id).map(s => s.case_id!))
-  const completedCases = cases.filter(c => c.status === 'completed')
+  const completedCases = cases.filter(c => c.status === 'completed' || c.status === 'awaiting_review')
   const unsettledKrw = completedCases
     .filter(c => !settledCaseIds.has(c.id))
     .reduce((sum, c) => sum + commissionKrw(c.documents?.find(d => d.type === "quotation")?.total_price ?? 0, c.documents?.find(d => d.type === "quotation")?.agent_margin_rate ?? 0), 0)
@@ -222,7 +222,7 @@ export default function AdminAgentDetailPage() {
   const nowForMonth = new Date()
   const monthKey = `${nowForMonth.getFullYear()}-${String(nowForMonth.getMonth() + 1).padStart(2, '0')}`
   const monthlyPatients = cases
-    .filter(c => c.status === 'completed' && c.travel_completed_at?.startsWith(monthKey))
+    .filter(c => (c.status === 'completed' || c.status === 'awaiting_review') && c.travel_completed_at?.startsWith(monthKey))
     .reduce((sum, c) => sum + (c.case_members?.length ?? 0), 0)
 
   // 6-month performance — for sparklines

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { notifyAgent } from '@/lib/notifications'
+import { notifyAgent, notifyAllAdmins } from '@/lib/notifications'
 import {
   type DocumentRow,
   type DocumentItemRow,
@@ -48,6 +48,8 @@ type Props = {
    * Mark Paid is shown to the from_party (issuer = receiver of the money).
    */
   actor: 'admin' | 'agent'
+  /** Case status — gates issuing/marking actions during pre-contract phase */
+  caseStatus?: string
   /** travel_completed_at — gates Commission issuance on agent side */
   travelCompletedAt?: string | null
   quotation: DocumentRow | null
@@ -89,7 +91,7 @@ async function captureSigner(): Promise<{ name: string | null; title: string | n
 }
 
 export default function CaseDocumentsSection({
-  caseId, caseNumber, agentId, actor, travelCompletedAt, quotation, finalInvoice, documents, exchangeRate, onChanged,
+  caseId, caseNumber, agentId, actor, caseStatus, travelCompletedAt, quotation, finalInvoice, documents, exchangeRate, onChanged,
 }: Props) {
   const [products, setProducts] = useState<Product[]>([])
   const [items, setItems] = useState<Record<string, DocumentItemRow[]>>({})
@@ -100,6 +102,7 @@ export default function CaseDocumentsSection({
   // Issue modal state — null when closed, otherwise the intent
   const [issuing, setIssuing] = useState<IssueIntent | null>(null)
   const [depositPercent, setDepositPercent] = useState('50')
+  const [depositPercentDefault, setDepositPercentDefault] = useState('50')
   const [issueDueDate, setIssueDueDate] = useState(() => {
     const d = new Date(); d.setDate(d.getDate() + 7); return d.toISOString().slice(0, 10)
   })
@@ -126,6 +129,18 @@ export default function CaseDocumentsSection({
     supabase.from('products').select('id, name, partner_name, base_price, price_currency')
       .eq('is_active', true).order('name')
       .then(({ data }) => setProducts((data as Product[]) ?? []))
+  }, [])
+
+  // Load deposit % default from system settings
+  useEffect(() => {
+    supabase.from('system_settings').select('value').eq('key', 'deposit_percentage').maybeSingle()
+      .then(({ data }) => {
+        const pct = (data?.value as { percentage?: number } | null)?.percentage
+        if (pct !== undefined) {
+          const s = String(pct)
+          setDepositPercent(s); setDepositPercentDefault(s)
+        }
+      })
   }, [])
 
   // Load items for all non-quotation docs (quotation items are rendered in
@@ -180,15 +195,10 @@ export default function CaseDocumentsSection({
       if (issued) {
         const label = INTENT_LABEL[intent]
         const recipient: 'client' | 'agent' | 'admin' = issued.to_party
-        const broadcastAdmins = async (msg: string) =>
-          supabase.from('notifications').insert({
-            target_type: 'admin', target_id: null, message: msg,
-            link_url: `/admin/cases/${caseId}`, is_read: false,
-          })
 
         if (recipient === 'admin') {
           // Agent issued commission → notify admins
-          await broadcastAdmins(`${caseNumber} ${label} issued by agent (${issued.document_number})`)
+          await notifyAllAdmins(`${caseNumber} ${label} issued by agent (${issued.document_number})`, `/admin/cases/${caseId}`)
         } else if (recipient === 'agent' && agentId) {
           // Admin issued deposit settlement → notify agent
           await notifyAgent(agentId, `${caseNumber} ${label} issued (${issued.document_number}) — please review`, `/agent/cases/${caseId}`)
@@ -201,7 +211,7 @@ export default function CaseDocumentsSection({
           } else if (actor === 'agent') {
             // Agent issued deposit (to client, after 3-way contract signed) →
             // notify admins so they know money flow has started
-            await broadcastAdmins(`${caseNumber} ${label} issued by agent (${issued.document_number}) — client should pay agent`)
+            await notifyAllAdmins(`${caseNumber} ${label} issued by agent (${issued.document_number}) — client should pay agent`, `/admin/cases/${caseId}`)
           }
         }
       }
@@ -277,6 +287,33 @@ export default function CaseDocumentsSection({
     try {
       await markPaymentReceived(docId, new Date(paidAtValue).toISOString())
       setPaidAtEditingId(null); setPaidAtValue('')
+
+      // Notify the counterparty that money was received. Issuer = receiver of
+      // funds (from_party); the counterparty (the actor's partner) is who
+      // originally needed to know that payment landed.
+      const doc = documents.find(d => d.id === docId)
+      if (doc) {
+        const docNumber = doc.document_number ?? ''
+        if (doc.type === 'deposit_invoice' && doc.from_party === 'agent' && doc.to_party === 'client') {
+          // Agent confirmed client paid them → admins should know money flow started
+          await notifyAllAdmins(`${caseNumber} Deposit received by agent (${docNumber}) — agent should forward to admin`, `/admin/cases/${caseId}`)
+        } else if (doc.type === 'deposit_invoice' && doc.from_party === 'admin' && doc.to_party === 'agent') {
+          // Admin received deposit forward from agent → notify agent
+          if (agentId) await notifyAgent(agentId, `${caseNumber} Deposit forward confirmed by admin (${docNumber})`, `/agent/cases/${caseId}`)
+        } else if (doc.type === 'final_invoice') {
+          // Admin received balance from client (payment confirmation) → notify agent
+          if (agentId) await notifyAgent(agentId, `${caseNumber} Balance payment confirmed (${docNumber})`, `/agent/cases/${caseId}`)
+        } else if (doc.type === 'commission_invoice') {
+          // Admin paid agent commission → notify agent
+          if (agentId) await notifyAgent(agentId, `${caseNumber} Commission paid (${docNumber})`, `/agent/cases/${caseId}`)
+        }
+      }
+
+      // Deposit paid may unblock awaiting_deposit → awaiting_info/_schedule.
+      try {
+        const { notifyCaseInfoChanged } = await import('@/lib/caseTransitions')
+        await notifyCaseInfoChanged(caseId)
+      } catch { /* noop */ }
       await onChanged()
     } catch (e: unknown) {
       setError((e as { message?: string })?.message ?? 'Failed to mark paid.')
@@ -299,6 +336,8 @@ export default function CaseDocumentsSection({
   ).sort((a, b) => (a.created_at ?? '').localeCompare(b.created_at ?? ''))
 
   const canIssue = !!quotation  // need a quotation to base off
+  // Pre-contract: nothing should be issued yet (3-party signing must finish first).
+  const contractPending = caseStatus === 'awaiting_contract'
 
   return (
     <section className="bg-gray-50 rounded-2xl p-4 space-y-3">
@@ -306,16 +345,16 @@ export default function CaseDocumentsSection({
         <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Invoices</p>
         <div className="flex items-center gap-2 flex-wrap">
           {actor === 'agent' && !has.depositToClient && (
-            <button onClick={() => setIssuing('deposit_to_client')} disabled={!canIssue}
+            <button onClick={() => setIssuing('deposit_to_client')} disabled={!canIssue || contractPending}
               className="text-xs font-medium px-2.5 py-1.5 rounded-lg bg-cyan-600 text-white hover:bg-cyan-700 disabled:opacity-40"
-              title="Agent → Client (collect deposit from client)">
+              title={contractPending ? 'Available after the 3-party contract is signed' : 'Agent → Client (collect deposit from client)'}>
               + Deposit
             </button>
           )}
           {actor === 'admin' && !has.depositToAgent && (
-            <button onClick={() => setIssuing('deposit_settlement')} disabled={!canIssue || !has.depositToClient}
+            <button onClick={() => setIssuing('deposit_settlement')} disabled={!canIssue || !has.depositToClient || contractPending}
               className="text-xs font-medium px-2.5 py-1.5 rounded-lg bg-cyan-700 text-white hover:bg-cyan-800 disabled:opacity-40"
-              title={has.depositToClient ? 'Admin → Agent (record deposit forward owed)' : 'Available after agent issues the client-facing deposit invoice'}>
+              title={contractPending ? 'Available after the 3-party contract is signed' : (has.depositToClient ? 'Admin → Agent (record deposit forward owed)' : 'Available after agent issues the client-facing deposit invoice')}>
               + Deposit Settlement
             </button>
           )}
@@ -354,6 +393,7 @@ export default function CaseDocumentsSection({
                   onChange={e => setDepositPercent(e.target.value.replace(/[^0-9]/g, ''))}
                   className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
                 <p className="text-[10px] text-gray-400 mt-1">
+                  Default {depositPercentDefault}% from settings.{' '}
                   {quotation?.total_price ? `≈ ${fmtKRW(Math.round(quotation.total_price * (Number(depositPercent) / 100)))}` : ''}
                 </p>
               </div>
@@ -471,9 +511,12 @@ export default function CaseDocumentsSection({
         // Settlement (admin → agent) gets a darker shade so it visually separates
         // from the agent-issued client-facing deposit on the same case.
         const isSettlement = doc.type === 'deposit_invoice' && doc.to_party === 'agent'
-        const cardTone = isSettlement
-          ? 'border-cyan-300 bg-cyan-100/60'
-          : TYPE_TONE[doc.type]
+        // Paid invoices recede visually so attention goes to pending actions.
+        const cardTone = paid
+          ? 'border-gray-200 bg-gray-50'
+          : isSettlement
+            ? 'border-cyan-300 bg-cyan-100/60'
+            : TYPE_TONE[doc.type]
         return (
           <div key={doc.id} className={`rounded-xl border ${cardTone} p-3 space-y-2`}>
             <div className="flex items-center justify-between flex-wrap gap-2">
@@ -562,39 +605,43 @@ export default function CaseDocumentsSection({
               )
             )}
 
-            {/* Bottom row — links + payment */}
+            {/* Bottom row — uniform 3-column layout: links · payment date · action */}
             <div className="flex items-center justify-between flex-wrap gap-2 pt-1 border-t border-gray-100">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-3">
                 <a href={`${baseUrl}/${customerRouteFor(doc.type)}/${doc.slug}?preview=1`} target="_blank" rel="noopener noreferrer"
                   className="text-[11px] text-gray-500 hover:text-[#0f4c35]">Preview ↗</a>
                 <button onClick={() => copyLink(doc)}
                   className="text-[11px] text-gray-500 hover:text-[#0f4c35]">
                   {copiedId === doc.id ? 'Copied!' : 'Copy link'}
                 </button>
+                {paid ? (
+                  <span className="text-[10px] text-gray-400">Paid {doc.payment_received_at?.slice(0, 10)}</span>
+                ) : doc.payment_due_date ? (
+                  <span className={`text-[10px] ${overdue ? 'text-red-600 font-medium' : 'text-gray-400'}`}>
+                    Due {doc.payment_due_date}
+                  </span>
+                ) : null}
               </div>
-              {!paid && canEdit && (
-                paidAtEditingId === doc.id ? (
-                  <div className="flex items-center gap-1.5">
-                    <input type="date" value={paidAtValue} onChange={e => setPaidAtValue(e.target.value)}
-                      className="border border-gray-200 rounded-lg px-2 py-1 text-[11px] text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
-                    <button onClick={() => { setPaidAtEditingId(null); setPaidAtValue('') }}
-                      className="text-[11px] text-gray-500 hover:text-gray-800">Cancel</button>
-                    <button onClick={() => doMarkPaid(doc.id)} disabled={busy === doc.id || !paidAtValue}
-                      className="text-[11px] font-medium bg-emerald-600 text-white hover:bg-emerald-700 rounded-lg px-2 py-1 disabled:opacity-40">
-                      {busy === doc.id ? 'Saving…' : 'Save'}
-                    </button>
-                  </div>
-                ) : (
-                  <button onClick={() => { setPaidAtEditingId(doc.id); setPaidAtValue(new Date().toISOString().slice(0, 10)) }}
-                    className="text-[11px] font-medium text-emerald-700 hover:text-emerald-800">Mark paid</button>
-                )
-              )}
+              <div className="min-h-[24px] flex items-center">
+                {!paid && canEdit && (
+                  paidAtEditingId === doc.id ? (
+                    <div className="flex items-center gap-1.5">
+                      <input type="date" value={paidAtValue} onChange={e => setPaidAtValue(e.target.value)}
+                        className="border border-gray-200 rounded-lg px-2 py-1 text-[11px] text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
+                      <button onClick={() => { setPaidAtEditingId(null); setPaidAtValue('') }}
+                        className="text-[11px] text-gray-500 hover:text-gray-800">Cancel</button>
+                      <button onClick={() => doMarkPaid(doc.id)} disabled={busy === doc.id || !paidAtValue}
+                        className="text-[11px] font-medium bg-emerald-600 text-white hover:bg-emerald-700 rounded-lg px-2 py-1 disabled:opacity-40">
+                        {busy === doc.id ? 'Saving…' : 'Save'}
+                      </button>
+                    </div>
+                  ) : (
+                    <button onClick={() => { setPaidAtEditingId(doc.id); setPaidAtValue(new Date().toISOString().slice(0, 10)) }}
+                      className="text-[11px] font-medium text-emerald-700 hover:text-emerald-800">Mark paid</button>
+                  )
+                )}
+              </div>
             </div>
-            {doc.payment_due_date && !paid && (
-              <p className={`text-[10px] ${overdue ? 'text-red-600 font-medium' : 'text-gray-400'}`}>
-                Due {doc.payment_due_date}
-              </p>
-            )}
           </div>
         )
       })}

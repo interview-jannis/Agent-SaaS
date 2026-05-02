@@ -16,6 +16,8 @@ import {
 } from '@/lib/caseStatus'
 import { notifyCaseInfoChanged } from '@/lib/caseTransitions'
 import CaseDocumentsSection from '@/components/CaseDocumentsSection'
+import AgentCaseContractSection from '@/components/AgentCaseContractSection'
+import AgentSurveySection from '@/components/AgentSurveySection'
 import type { DocumentRow } from '@/lib/documents'
 import { AgentCaseHero } from '@/components/CaseHeroAction'
 
@@ -59,6 +61,9 @@ type Quote = {
   slug: string | null
   total_price: number
   payment_due_date: string | null
+  payment_received_at: string | null
+  from_party: 'admin' | 'agent'
+  to_party: 'client' | 'agent' | 'admin'
   agent_margin_rate: number
   company_margin_rate: number
   finalized_at: string | null
@@ -134,6 +139,12 @@ export default function CaseDetailPage() {
   const router = useRouter()
 
   const [agentId, setAgentId] = useState('')
+  const [agentName, setAgentName] = useState('')
+  const [agentCountry, setAgentCountry] = useState<string | null>(null)
+  // Contract handle for the Hero "Send Contract" button — populated only after
+  // the agent has signed (the link is meaningless before).
+  const [contractToken, setContractToken] = useState<string | null>(null)
+  const [contractAgentSigned, setContractAgentSigned] = useState(false)
   const [agentClients, setAgentClients] = useState<AgentClient[]>([])
   const [caseData, setCaseData] = useState<CaseDetail | null>(null)
   const [exchangeRate, setExchangeRate] = useState(1350)
@@ -222,6 +233,30 @@ export default function CaseDetailPage() {
       .single()
     const fresh = data as unknown as CaseDetail
     setCaseData(fresh)
+
+    // Side fetch — case contract token + agent-signed flag, used by Hero
+    // "Send Contract" button. Cheap join, runs after main case load.
+    const { data: cc } = await supabase
+      .from('case_contracts')
+      .select('client_token, agent_signed_at')
+      .eq('case_id', id)
+      .eq('contract_type', 'three_party')
+      .maybeSingle()
+    const ccRow = cc as { client_token: string | null; agent_signed_at: string | null } | null
+    setContractToken(ccRow?.client_token ?? null)
+    setContractAgentSigned(!!ccRow?.agent_signed_at)
+
+    // Self-heal: cases can get stuck in a transition-eligible state if Mark
+    // Paid / info save happened before the auto-advance code shipped (or via
+    // direct DB edits). On every case-detail load, opportunistically run the
+    // checker — it's a no-op when already advanced or not eligible.
+    if (fresh && (fresh.status === 'awaiting_info' || fresh.status === 'awaiting_deposit')) {
+      try {
+        const { notifyCaseInfoChanged } = await import('@/lib/caseTransitions')
+        await notifyCaseInfoChanged(fresh.id)
+      } catch { /* noop */ }
+    }
+
     return fresh
   }, [id])
 
@@ -230,9 +265,12 @@ export default function CaseDetailPage() {
       const { data: { session } } = await supabase.auth.getSession()
       const uid = session?.user?.id
       if (!uid) return
-      const { data: ag } = await supabase.from('agents').select('id').eq('auth_user_id', uid).single()
+      const { data: ag } = await supabase.from('agents').select('id, name, country').eq('auth_user_id', uid).single()
       const aid = ag?.id ?? ''
       setAgentId(aid)
+      const agData = ag as { id: string; name: string | null; country: string | null } | null
+      setAgentName(agData?.name ?? '')
+      setAgentCountry(agData?.country ?? null)
 
       const { data: ss } = await supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single()
       const rate = (ss?.value as { usd_krw?: number } | null)?.usd_krw
@@ -253,7 +291,7 @@ export default function CaseDetailPage() {
 
   async function saveDates() {
     if (!caseData) return
-    if (['canceled', 'awaiting_pricing', 'awaiting_payment', 'awaiting_travel', 'completed'].includes(caseData.status)) return
+    if (['canceled', 'awaiting_contract', 'awaiting_pricing', 'awaiting_payment', 'awaiting_travel', 'awaiting_review', 'completed'].includes(caseData.status)) return
     setSavingDates(true)
     await supabase.from('cases').update({ travel_start_date: dateStart || null, travel_end_date: dateEnd || null }).eq('id', caseData.id)
     await fetchCase()
@@ -374,12 +412,14 @@ export default function CaseDetailPage() {
 
   async function markTravelComplete() {
     if (!caseData) return
-    if (!window.confirm('Mark this trip as completed? This will move the case to the settlement queue.')) return
+    if (!window.confirm('Mark this trip as completed? You\'ll be asked to submit a client review next.')) return
     setMarkingTravelComplete(true); setScheduleError('')
     try {
-      const { error } = await supabase.from('cases').update({ status: 'completed', travel_completed_at: new Date().toISOString() }).eq('id', caseData.id)
+      // New SOP: travel done → awaiting_review (agent submits client survey),
+      // then completed. Settlement queue keys off travel_completed_at, not status.
+      const { error } = await supabase.from('cases').update({ status: 'awaiting_review', travel_completed_at: new Date().toISOString() }).eq('id', caseData.id)
       if (error) throw error
-      await notifyAllAdmins(`${caseData.case_number} Travel completed — ready for settlement`, `/admin/settlement`)
+      await notifyAllAdmins(`${caseData.case_number} Travel completed — agent submitting review`, `/admin/cases/${caseData.id}`)
       await logAsCurrentUser('case.travel_completed', { type: 'case', id: caseData.id, label: caseData.case_number })
       await fetchCase()
     } catch (e: unknown) {
@@ -410,7 +450,7 @@ export default function CaseDetailPage() {
 
   async function saveTripInfo() {
     if (!caseData) return
-    if (['canceled', 'awaiting_pricing', 'awaiting_payment', 'awaiting_travel', 'completed'].includes(caseData.status)) return
+    if (['canceled', 'awaiting_contract', 'awaiting_pricing', 'awaiting_payment', 'awaiting_travel', 'awaiting_review', 'completed'].includes(caseData.status)) return
     setSavingTrip(true); setTripError('')
     try {
       const newConcept = tripForm.concept.trim() || null
@@ -576,7 +616,7 @@ export default function CaseDetailPage() {
 
   async function saveMembers() {
     if (!caseData) return
-    if (['canceled', 'awaiting_pricing', 'awaiting_payment', 'awaiting_travel', 'completed'].includes(caseData.status)) return
+    if (['canceled', 'awaiting_contract', 'awaiting_pricing', 'awaiting_payment', 'awaiting_travel', 'awaiting_review', 'completed'].includes(caseData.status)) return
 
     // Validation
     const activeMembers = pendingMembers.filter(p => !p.isRemoved)
@@ -807,7 +847,7 @@ export default function CaseDetailPage() {
 
   const isCanceled = caseData.status === 'canceled'
   // Trip Info / Members / Travel Dates lock — once schedule is confirmed, this info is set in stone.
-  const tripMembersLocked = isCanceled || ['awaiting_pricing', 'awaiting_payment', 'awaiting_travel', 'completed'].includes(caseData.status)
+  const tripMembersLocked = isCanceled || ['awaiting_contract', 'awaiting_pricing', 'awaiting_payment', 'awaiting_travel', 'awaiting_review', 'completed'].includes(caseData.status)
   const lead = caseData.case_members.find(m => m.is_lead)
   const companions = caseData.case_members.filter(m => !m.is_lead)
   const quote = caseData.documents?.find(d => d.type === "quotation") ?? null
@@ -894,20 +934,53 @@ export default function CaseDetailPage() {
             scheduleStatus={(schedule?.status as 'pending' | 'confirmed' | 'revision_requested' | undefined) ?? null}
             hasInvoice={!!quote?.finalized_at}
             paymentDueDate={quote?.payment_due_date ?? null}
+            depositInvoiceIssued={(caseData.documents ?? []).some((d: { type: string; from_party?: string; to_party?: string }) => d.type === 'deposit_invoice' && d.from_party === 'agent' && d.to_party === 'client')}
+            depositPaid={(caseData.documents ?? []).some((d: { type: string; from_party?: string; to_party?: string; payment_received_at?: string | null }) => d.type === 'deposit_invoice' && d.from_party === 'agent' && d.to_party === 'client' && !!d.payment_received_at)}
+            depositSettlementPaid={(caseData.documents ?? []).some((d: { type: string; from_party?: string; to_party?: string; payment_received_at?: string | null }) => d.type === 'deposit_invoice' && d.from_party === 'admin' && d.to_party === 'agent' && !!d.payment_received_at)}
             travelStartDate={caseData.travel_start_date}
             travelCompletedAt={caseData.travel_completed_at}
             onScrollToTrip={() => document.getElementById('trip-info')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
             onScrollToMembers={() => document.getElementById('members')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
             onScrollToSchedule={() => document.getElementById('schedule')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
             onScrollToFinancials={() => document.getElementById('financials')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+            onScrollToDocuments={() => document.getElementById('documents')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
             onSendQuotation={sendInvoice}
             onSendInvoice={sendInvoice}
+            onSendContract={contractToken && contractAgentSigned ? () => {
+              const url = `${window.location.origin}/case-contract/${contractToken}`
+              navigator.clipboard.writeText(url).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000) })
+            } : undefined}
             onConfirmSchedule={confirmSchedule}
             onRequestRevision={() => { setShowRevisionModal(true); setRevisionNote(''); setScheduleError('') }}
             onMarkTravelComplete={markTravelComplete}
             copied={copied}
             busy={confirmingSchedule || markingTravelComplete || submittingRevision}
           />
+
+          {/* 3-Party Contract — visible from awaiting_contract onwards */}
+          {!isCanceled && caseData.status !== 'awaiting_info' && (
+            <AgentCaseContractSection
+              caseId={caseData.id}
+              caseNumber={caseData.case_number}
+              agentName={agentName}
+              agentCountry={agentCountry}
+              clientName={lead?.clients?.name ?? null}
+              quoteNumber={quote?.document_number ?? null}
+              totalKrw={quote?.total_price ?? null}
+              caseStatus={caseData.status}
+              onChanged={async () => { await fetchCase() }}
+            />
+          )}
+
+          {/* Client Review Survey — visible in awaiting_review and after */}
+          {!isCanceled && (caseData.status === 'awaiting_review' || caseData.status === 'completed') && (
+            <AgentSurveySection
+              caseId={caseData.id}
+              caseNumber={caseData.case_number}
+              agentId={agentId}
+              onChanged={async () => { await fetchCase() }}
+            />
+          )}
 
           {/* Travel Dates */}
           <section className="bg-gray-50 rounded-2xl p-5">
@@ -1603,6 +1676,9 @@ export default function CaseDetailPage() {
                     </button>
                   </div>
                 )}
+                {caseData.status === 'awaiting_review' && (
+                  <p className="text-xs text-gray-500">Travel completed. Submit client review next.</p>
+                )}
                 {caseData.status === 'completed' && (
                   <p className="text-xs text-gray-500">Travel completed. Commission pending settlement.</p>
                 )}
@@ -1761,11 +1837,13 @@ export default function CaseDetailPage() {
 
           {/* Invoices — agent issues deposit (to client) + commission (to admin) */}
           {quote && (
+            <div id="documents">
             <CaseDocumentsSection
               caseId={caseData.id}
               caseNumber={caseData.case_number}
               agentId={caseData.agent_id ?? ''}
               actor="agent"
+              caseStatus={caseData.status}
               travelCompletedAt={caseData.travel_completed_at}
               quotation={quote as unknown as DocumentRow}
               finalInvoice={(caseData.documents?.find(d => d.type === 'final_invoice') ?? null) as unknown as DocumentRow | null}
@@ -1773,6 +1851,7 @@ export default function CaseDetailPage() {
               exchangeRate={exchangeRate}
               onChanged={async () => { await fetchCase() }}
             />
+            </div>
           )}
 
           {/* Cancel Case — agent self-service, only before payment */}

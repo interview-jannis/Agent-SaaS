@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { notifyAllAdmins } from '@/lib/notifications'
 import { logAsCurrentUser } from '@/lib/audit'
-import { notifyCaseInfoChanged } from '@/lib/caseTransitions'
 import {
   createDocument,
   addDocumentGroup,
@@ -292,7 +291,10 @@ export default function QuoteReviewPage() {
         .insert({
           case_number: `#C-${String((caseCount ?? 0) + 1).padStart(3, '0')}`,
           agent_id: agentData.id,
-          status: 'awaiting_info',
+          // New SOP flow: case enters at awaiting_contract right after quote is
+          // sent. Detailed client info / trip info is collected in parallel
+          // during the contract + deposit phase, not before.
+          status: 'awaiting_contract',
           travel_start_date: cart.dateStart || null,
           travel_end_date: cart.dateEnd || null,
         })
@@ -367,14 +369,13 @@ export default function QuoteReviewPage() {
       localStorage.removeItem('agent-cart')
       const caseNumber = `#C-${String((caseCount ?? 0) + 1).padStart(3, '0')}`
       await logAsCurrentUser('case.created', { type: 'case', id: caseData.id, label: caseNumber }, { total_krw: totalKRW })
-      // Visibility: admin should know a new case exists, even though it's not actionable yet.
+      // SOP: admin should know a new case exists. Admin will counter-sign the
+      // 3-party contract after agent + client sign — that triggers the move
+      // to awaiting_deposit.
       await notifyAllAdmins(
-        `${caseNumber} new case from ${agentData.name} — awaiting client info`,
+        `${caseNumber} new case from ${agentData.name} — awaiting 3-party contract`,
         `/admin/cases/${caseData.id}`
       )
-      // If everything's already filled (rare — usually trip info is missing), bump status
-      // and emit the "ready for schedule" follow-up.
-      await notifyCaseInfoChanged(caseData.id)
       router.push(`/agent/cases/${caseData.id}`)
     } catch (e: unknown) {
       setError((e as { message?: string })?.message ?? 'Failed to create quote.')

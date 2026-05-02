@@ -134,7 +134,7 @@ export default function AgentPayoutsPage() {
     return q ? commissionKrw(q.total_price, q.agent_margin_rate) : 0
   }
 
-  const unsettled = cases.filter(c => c.status === 'completed' && !settledCaseIds.has(c.id))
+  const unsettled = cases.filter(c => (c.status === 'completed' || c.status === 'awaiting_review') && !settledCaseIds.has(c.id))
   const unsettledTotalKrw = unsettled.reduce((s, c) => s + caseCommissionKrw(c), 0)
 
   const paidSettlements = settlements.filter(s => s.paid_at)

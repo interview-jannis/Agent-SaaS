@@ -148,7 +148,7 @@ export default function AgentCasesPage() {
   })
 
   function getDisplayGroup(c: CaseRow): DisplayGroup {
-    if (c.status === 'completed') {
+    if (c.status === 'completed' || c.status === 'awaiting_review') {
       return settledCaseIds.has(c.id) ? 'completed_settled' : 'completed_pending'
     }
     return c.status as DisplayGroup
@@ -292,7 +292,7 @@ export default function AgentCasesPage() {
                                 </span>
                               </td>
                               <td className="py-3 px-1.5 md:px-4 text-center md:text-left">
-                                {c.status === 'completed' ? (
+                                {(c.status === 'completed' || c.status === 'awaiting_review') ? (
                                   settledCaseIds.has(c.id) ? (
                                     <span className="inline-flex items-center gap-1">
                                       <span className="text-xs font-semibold text-emerald-600">✓</span>

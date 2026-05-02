@@ -4,7 +4,7 @@ import { type CaseStatus } from '@/lib/caseStatus'
 
 // ── Shared bits ──────────────────────────────────────────────────────────────
 
-type Tone = 'amber' | 'violet' | 'blue' | 'cyan' | 'emerald' | 'gray'
+type Tone = 'amber' | 'violet' | 'blue' | 'cyan' | 'emerald' | 'gray' | 'indigo' | 'orange' | 'teal'
 
 const TONE: Record<Tone, { wrap: string; eyebrow: string; primaryBtn: string; ghostBtn: string; icon: string }> = {
   amber:   { wrap: 'border-amber-200 bg-amber-50',     eyebrow: 'text-amber-700',   primaryBtn: 'bg-amber-600 hover:bg-amber-700 text-white',     ghostBtn: 'text-amber-700 hover:bg-amber-100', icon: 'text-amber-500' },
@@ -13,6 +13,9 @@ const TONE: Record<Tone, { wrap: string; eyebrow: string; primaryBtn: string; gh
   cyan:    { wrap: 'border-cyan-200 bg-cyan-50',       eyebrow: 'text-cyan-700',    primaryBtn: 'bg-[#0f4c35] hover:bg-[#0a3828] text-white',     ghostBtn: 'text-cyan-700 hover:bg-cyan-100', icon: 'text-cyan-500' },
   emerald: { wrap: 'border-emerald-200 bg-emerald-50', eyebrow: 'text-emerald-700', primaryBtn: 'bg-[#0f4c35] hover:bg-[#0a3828] text-white',     ghostBtn: 'text-emerald-700 hover:bg-emerald-100', icon: 'text-emerald-500' },
   gray:    { wrap: 'border-gray-200 bg-gray-50',       eyebrow: 'text-gray-500',    primaryBtn: 'bg-gray-700 hover:bg-gray-800 text-white',       ghostBtn: 'text-gray-700 hover:bg-gray-100', icon: 'text-gray-400' },
+  indigo:  { wrap: 'border-indigo-200 bg-indigo-50',   eyebrow: 'text-indigo-700',  primaryBtn: 'bg-indigo-600 hover:bg-indigo-700 text-white',   ghostBtn: 'text-indigo-700 hover:bg-indigo-100', icon: 'text-indigo-500' },
+  orange:  { wrap: 'border-orange-200 bg-orange-50',   eyebrow: 'text-orange-700',  primaryBtn: 'bg-orange-600 hover:bg-orange-700 text-white',   ghostBtn: 'text-orange-700 hover:bg-orange-100', icon: 'text-orange-500' },
+  teal:    { wrap: 'border-teal-200 bg-teal-50',       eyebrow: 'text-teal-700',    primaryBtn: 'bg-teal-600 hover:bg-teal-700 text-white',       ghostBtn: 'text-teal-700 hover:bg-teal-100', icon: 'text-teal-500' },
 }
 
 function CopyIcon() {
@@ -70,6 +73,10 @@ export type AgentHeroProps = {
   // financials
   hasInvoice: boolean
   paymentDueDate: string | null
+  // deposit (new SOP) — both legs of the money flow
+  depositInvoiceIssued?: boolean
+  depositPaid?: boolean             // client → agent leg paid
+  depositSettlementPaid?: boolean   // agent → admin leg paid
   // travel
   travelStartDate: string | null
   travelCompletedAt: string | null
@@ -80,9 +87,12 @@ export type AgentHeroProps = {
   onScrollToFinancials: () => void
   onSendQuotation?: () => void
   onSendInvoice?: () => void
+  onSendContract?: () => void   // copies /case-contract/[token] URL when agent has signed
   onConfirmSchedule?: () => void
   onRequestRevision?: () => void
   onMarkTravelComplete?: () => void
+  onMarkReviewSubmitted?: () => void   // temp until 3차 surveys
+  onScrollToDocuments?: () => void
   // ui state
   copied?: boolean
   busy?: boolean
@@ -97,7 +107,56 @@ export function AgentCaseHero(p: AgentHeroProps) {
     case 'canceled':
       return null
 
+    case 'awaiting_contract':
+      return (
+        <HeroShell
+          tone="indigo"
+          eyebrow="Action needed"
+          headline="Send 3-party contract for signing"
+          subline={<span>Once client + you + admin all sign the contract, the deposit invoice can be issued.</span>}
+        >
+          <button onClick={p.onSendContract ?? (() => document.getElementById('case-contract')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))}
+            className={`text-xs font-medium px-3 py-2 rounded-lg flex items-center gap-1.5 ${TONE.indigo.primaryBtn}`}>
+            {p.copied ? <><CheckIcon /> Copied!</> : p.onSendContract ? <><CopyIcon /> Send Contract</> : <>Send Contract</>}
+          </button>
+        </HeroShell>
+      )
+
+    case 'awaiting_deposit': {
+      // SOP: deposit phase is ONLY about deposit settlement. Info collection
+      // happens in the next state (awaiting_info). Two legs:
+      //   1. Client → Agent paid
+      //   2. Agent → Admin (deposit settlement) paid
+      const subBits: string[] = []
+      subBits.push(p.depositInvoiceIssued ? 'Deposit invoice issued ✓' : 'Issue deposit invoice')
+      subBits.push(p.depositPaid ? 'Client paid agent ✓' : 'Awaiting client payment')
+      subBits.push(p.depositSettlementPaid ? 'Agent paid admin ✓' : 'Awaiting agent forward')
+      const headline = !p.depositInvoiceIssued
+        ? 'Issue deposit invoice to client'
+        : !p.depositPaid
+          ? 'Awaiting client deposit'
+          : !p.depositSettlementPaid
+            ? 'Forward deposit to admin'
+            : 'Deposit settled — moving to info phase'
+      return (
+        <HeroShell
+          tone="orange"
+          eyebrow="Action needed"
+          headline={headline}
+          subline={<span>{subBits.join(' · ')}.</span>}
+        >
+          {p.onScrollToDocuments && (
+            <button onClick={p.onScrollToDocuments}
+              className={`text-xs font-medium px-3 py-2 rounded-lg ${TONE.orange.primaryBtn}`}>
+              Go to Invoices
+            </button>
+          )}
+        </HeroShell>
+      )
+    }
+
     case 'awaiting_info': {
+      // SOP: deposit done, now collect client/trip info before admin schedules.
       const issues: string[] = []
       if (!p.caseInfoComplete) issues.push(`Trip info (${p.missingCaseFields.length})`)
       if (p.membersShortfall > 0) issues.push(`${p.membersShortfall} member${p.membersShortfall > 1 ? 's' : ''} to add`)
@@ -108,11 +167,11 @@ export function AgentCaseHero(p: AgentHeroProps) {
         <HeroShell
           tone="amber"
           eyebrow="Action needed"
-          headline="Complete case information"
+          headline="Complete client & trip info"
           subline={
             issues.length > 0
-              ? <span>Missing: {issues.join(' · ')}</span>
-              : <span>Once trip info, members, and groups are filled, Tiktak will prepare the schedule.</span>
+              ? <span>Missing: {issues.join(' · ')}. Schedule starts once everything is filled.</span>
+              : <span>All set — schedule will start as soon as save propagates.</span>
           }
         >
           <button onClick={primary} className={`text-xs font-medium px-3 py-2 rounded-lg ${TONE.amber.primaryBtn}`}>
@@ -197,6 +256,21 @@ export function AgentCaseHero(p: AgentHeroProps) {
       )
     }
 
+    case 'awaiting_review':
+      return (
+        <HeroShell
+          tone="teal"
+          eyebrow="Action needed"
+          headline="Submit client review"
+          subline={<span>Trip wrapped up. Fill in the survey below to finalize the case and unlock commission claim.</span>}
+        >
+          <button onClick={() => document.getElementById('survey')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+            className={`text-xs font-medium px-3 py-2 rounded-lg ${TONE.teal.primaryBtn}`}>
+            Go to Review
+          </button>
+        </HeroShell>
+      )
+
     case 'completed':
       if (!p.travelCompletedAt) {
         return (
@@ -204,7 +278,7 @@ export function AgentCaseHero(p: AgentHeroProps) {
             tone="emerald"
             eyebrow="Action needed"
             headline="Mark travel complete"
-            subline={<span>Once you confirm the trip ended, settlement enters the queue.</span>}
+            subline={<span>Once you confirm the trip ended, you&apos;ll submit a review and settlement enters the queue.</span>}
           >
             <button onClick={p.onMarkTravelComplete} disabled={p.busy}
               className={`text-xs font-medium px-3 py-2 rounded-lg ${TONE.emerald.primaryBtn} disabled:opacity-40`}>
@@ -214,7 +288,7 @@ export function AgentCaseHero(p: AgentHeroProps) {
         )
       }
       return (
-        <HeroShell tone="gray" eyebrow="Done" headline="Travel completed · awaiting settlement"
+        <HeroShell tone="gray" eyebrow="Done" headline="Case completed · awaiting commission settlement"
           subline={<span>Your commission is queued for payout. Payouts tab tracks status.</span>} />
       )
 
@@ -238,12 +312,17 @@ export type AdminHeroProps = {
   // pricing
   hasInvoice: boolean
   paymentDueDate: string | null
+  // deposit (new SOP) — both legs
+  depositPaid?: boolean             // client → agent leg paid
+  depositSettlementPaid?: boolean   // agent → admin leg paid
   // travel
   travelStartDate: string | null
   // handlers — admin actions live in their own sections; hero scrolls to them
   onScrollToScheduleUpload: () => void
   onScrollToPricing: () => void
   onScrollToConfirmPayment: () => void
+  onMarkContractSigned?: () => void   // temp until 2차 case_contracts feature
+  busy?: boolean
 }
 
 export function AdminCaseHero(p: AdminHeroProps) {
@@ -251,17 +330,49 @@ export function AdminCaseHero(p: AdminHeroProps) {
     case 'canceled':
       return null
 
+    case 'awaiting_contract':
+      return (
+        <HeroShell
+          tone="indigo"
+          eyebrow="Action needed"
+          headline="3-party contract pending signature"
+          subline={<span>Counter-sign once agent + client both sign. Status advances to deposit phase automatically.</span>}
+        >
+          <button onClick={() => document.getElementById('case-contract')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+            className={`text-xs font-medium px-3 py-2 rounded-lg ${TONE.indigo.primaryBtn}`}>
+            Go to Contract
+          </button>
+        </HeroShell>
+      )
+
+    case 'awaiting_deposit':
+      return (
+        <HeroShell
+          tone="orange"
+          eyebrow="Waiting on agent"
+          headline="Deposit settlement in progress"
+          subline={
+            <span>
+              Client → Agent {p.depositPaid ? '✓' : '✗'} ·
+              Agent → Admin {p.depositSettlementPaid ? '✓' : '✗'}
+              {' '}— info collection starts once both legs are paid.
+            </span>
+          }
+        />
+      )
+
     case 'awaiting_info':
       return (
         <HeroShell
-          tone="gray"
+          tone="amber"
           eyebrow="Waiting on agent"
-          headline="Agent is filling in case information"
+          headline="Agent is collecting client + trip info"
           subline={
             <span>
               Trip info {p.caseInfoComplete ? '✓' : '✗'} ·
               Clients {p.allClientsComplete ? '✓' : '✗'} ·
               Groups {p.groupsComplete ? '✓' : '✗'}
+              {' '}— schedule work starts when all are checked.
             </span>
           }
         />
@@ -345,12 +456,22 @@ export function AdminCaseHero(p: AdminHeroProps) {
       return <HeroShell tone="emerald" eyebrow="On track" headline="Payment confirmed · trip booked" subline={sub} />
     }
 
+    case 'awaiting_review':
+      return (
+        <HeroShell
+          tone="teal"
+          eyebrow="Waiting on agent"
+          headline="Travel done · agent submitting client review"
+          subline={<span>Settlement is queued and partner payouts are unlocked. Commission claim becomes available once review is submitted.</span>}
+        />
+      )
+
     case 'completed':
       return (
         <HeroShell
           tone="gray"
           eyebrow="Settlement queue"
-          headline="Travel completed · process payout"
+          headline="Case completed · process payout"
           subline={<span>Pay partners and the agent commission. Track in Settlement and Partner Payouts sections.</span>}
         />
       )

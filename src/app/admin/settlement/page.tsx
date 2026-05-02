@@ -94,7 +94,7 @@ export default function AdminSettlementPage() {
     const [casesRes, settlementsRes, rateRes, partnerRes] = await Promise.all([
       supabase.from('cases')
         .select('id, case_number, travel_start_date, travel_end_date, travel_completed_at, agent_id, agents!cases_agent_id_fkey(id, agent_number, name, email, bank_info), case_members(is_lead, clients(name)), documents(type, total_price, agent_margin_rate, document_groups(document_items(base_price, products(partner_name))))')
-        .eq('status', 'completed')
+        .in('status', ['awaiting_review', 'completed'])
         .order('travel_end_date', { ascending: false }),
       supabase.from('settlements')
         .select('id, settlement_number, agent_id, case_id, amount, paid_at, created_at, agents!settlements_agent_id_fkey(id, agent_number, name, email, bank_info)')

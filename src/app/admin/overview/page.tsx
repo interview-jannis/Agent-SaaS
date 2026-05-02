@@ -96,8 +96,8 @@ export default async function AdminOverviewPage() {
     supabase.from('cases').select(CASE_WITH_ALL).eq('status', 'awaiting_pricing').order('created_at', { ascending: false }),
     // scheduleNeeded — admin needs to upload itinerary PDF
     supabase.from('cases').select(CASE_WITH_ALL).eq('status', 'awaiting_schedule').order('created_at', { ascending: false }),
-    // completedCases — travel done, possibly waiting on settlement
-    supabase.from('cases').select(CASE_WITH_ALL).eq('status', 'completed').order('created_at', { ascending: false }),
+    // completedCases — travel done, possibly waiting on settlement (review pending or fully completed)
+    supabase.from('cases').select(CASE_WITH_ALL).in('status', ['awaiting_review', 'completed']).order('created_at', { ascending: false }),
     // settledCaseIdRows — cases whose agent settlement has been paid
     supabase.from('settlements').select('case_id').not('paid_at', 'is', null),
     // All in-progress cases — used for "stuck" detection. Exclude terminal states.
@@ -111,7 +111,7 @@ export default async function AdminOverviewPage() {
     supabase.from('clients').select('id, created_at'),
     // Active agents total count
     supabase.from('agents').select('id', { count: 'exact', head: true }).eq('is_active', true).eq('onboarding_status', 'approved'),
-    supabase.from('cases').select('agent_id, agents!cases_agent_id_fkey(agent_number, name), documents(type, total_price)').eq('status', 'completed').gte('created_at', monthStart),
+    supabase.from('cases').select('agent_id, agents!cases_agent_id_fkey(agent_number, name), documents(type, total_price)').in('status', ['awaiting_review', 'completed']).gte('created_at', monthStart),
     // Pending agent approvals
     supabase.from('agents').select('id, agent_number, name, onboarding_status').eq('onboarding_status', 'awaiting_approval'),
     supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single(),
