@@ -1,11 +1,12 @@
 # Project Progress
 
 ## 현재 상태
-- **Phase**: Documents 모델 풀 구현 (Phase 1~2c 완료) + 데이터 가공 v11
-- **마지막 작업**: 2026-05-01 — 데이터 v6→v11, Documents 모델 마이그레이션, 5개 invoice 흐름 + from/to_party, Issue UI, Agent/Admin 발행 분리, Bank info 통일, E2E 버그 fix
-- **마지막 업데이트**: 2026-05-01 (개발 마감 5/8, 시뮬레이션 5/11~15, 런칭 5/18)
+- **Phase**: 전체 SOP 1~15단계 흐름 풀 구현 — Status 11단계 / 3자 계약 / 설문 / Stamps / Deposit % / Box 통합. E2E 자동 검증 통과
+- **마지막 작업**: 2026-05-02 — Status 8→11단계, case_contracts 3자 사인, surveys, stamps, deposit %, contract templates 4종 admin 편집, Trip Setup + Financials 박스 통합, Hero 문구 분리, notifyAgent server-first
+- **마지막 업데이트**: 2026-05-02 (개발 마감 5/8, 시뮬레이션 5/11~15, 런칭 5/18)
 - **SaaS 브랜드명**: **Tiktak** (UI 전역, 법인명 Interview Co., Ltd)
 
+> 2026-05-02 상세: `notes/26.05.02.md` (Status v2 + 3자 계약 + 설문 + Stamps + Box 통합 + E2E 자동검증)
 > 2026-05-01 상세: `notes/26.05.01.md` (데이터 v11 + Documents 풀 구현 + E2E)
 > 2026-04-30 미팅: `notes/meetings/26.04.30-meeting.md` (이사님 SOP 점검)
 > 2026-04-30 상세: `notes/26.04.30.md` (모바일 마무리 + 데이터 가공)
@@ -25,50 +26,57 @@
 
 ### 5/8 마감 전 (🔥 시급)
 
-#### Documents Phase 2d (남은 polish)
-- [ ] **Status state machine 부분결제 처리** — deposit / additional / commission이 case status 어떻게 영향 줄지 정책 확정 + 코드 (현재는 final_invoice 결제만 awaiting_payment → awaiting_travel 트리거)
-- [ ] **Phase 2c 정리** — quotes/quote_groups/quote_items/quote_group_members 테이블 DROP (모든 코드가 documents 사용 확인 후)
-- [ ] **Agent Home 페이지 sub-category 필터/그룹핑** — 카테고리 13개 sub로 늘어났으니 별도 트랙
+#### 컨텐츠 (사용자 본인)
+- [ ] 설문 질문 실제 내용 확정 (이사님 검토 후 admin/contracts에서 갱신 — placeholder 12문항 seed됨)
+- [ ] 계약서 4종 본문 법무 검토 후 admin/contracts에서 갱신
+- [ ] Stamp 정식 이미지 업로드 (현재 Stamp 폴더의 회사 도장 PNG)
+- [ ] WHY 컬럼 채우기 — v11 125 rows 비즈니스 카피
+- [ ] 대표 원장 프로파일 컬럼 채우기 (영문 오픈 정보)
+- [ ] has_female_doctor / has_prayer_room 채우기 (Muslim VIP 핵심)
+- [ ] 안과/치과 데이터 추가 (다음주 도착)
+- [ ] 상품 사진 (파트너 홍보 자료)
+- [ ] P-029, 030, 032, 033 (Nest Clinic 4개) name 시술명
 
 #### Wellness 마진 정책
-- [ ] **Wellness 상품 (스파, 헤나 제외) 마진 X, 원가 그대로** — 4/30 미팅 결정 사항. 견적 계산 시 Wellness 카테고리는 회사/에이전트 마진 0 적용. 스파 + 헤나는 패키지 뻥튀기 가능 (예외)
-
-#### 계약서 4종 (홍이사님 검토 예정)
-- [ ] **NDA 계약서** (기존 검토)
-- [ ] **Partnership 계약서** (기존 검토)
-- [ ] **에이전트 ↔ 고객 계약서** 신규
-- [ ] **에이전트 ↔ 고객 ↔ 어드민 3중 계약서** 신규 ⭐ 핵심 — deposit invoice 발행 트리거
-- [ ] **Admin도 계약서 사인 + agent 열람** (현재는 agent만 사인)
+- [ ] **Wellness 상품 (스파, 헤나 제외) 마진 X, 원가 그대로** — 4/30 미팅 결정. 견적 계산 시 Wellness 카테고리는 회사/에이전트 마진 0 적용. 스파 + 헤나는 패키지 뻥튀기 가능 (예외)
 
 #### Agent 등록 정보 확장
 - [ ] 사업자 등록증 업로드 (개인/법인/기타)
-- [ ] SNS 정보 (WhatsApp 등) — 알림 채널 메타 용
+- [ ] SNS 정보 (WhatsApp 등) — 알림 채널 메타
 
 #### 알림 채널 확장 (외부 API)
 - [ ] WhatsApp 발송 (agent 대상)
 - [ ] KakaoTalk 발송 (admin 대상)
 
-#### 상품 데이터 (5/6~7 완료 목표)
-- [ ] WHY 컬럼 채우기 — v11에 빈 컬럼 추가됨, 125개 row 비즈니스 카피 작성 (사용자 본인)
-- [ ] 대표 원장 프로파일 컬럼 채우기 — v11에 빈 컬럼 추가됨, 영문 오픈 정보 검색 (사용자 본인)
-- [ ] has_female_doctor / has_prayer_room 채우기 — Muslim VIP 핵심 필드 (125 row 다 비어있음)
-- [ ] 안과/치과 데이터 추가 (다음주 도착 예정)
-- [ ] 상품 사진 (파트너 홍보 자료에서)
-- [ ] P-029, 030, 032, 033 (Nest Clinic 4개) name 시술명 채우기
+#### 신규 기능 (남은 것)
+- [ ] **엑셀 일괄 업로드** — admin이 엑셀로 상품 일괄 등록
+- [ ] **스케줄 엑셀 업로드 → 자동 링크** (현재 PDF 업로드만)
+- ~~Chrome 한국어 로케일 강제 영어~~ — 드롭
 
-#### 신규 기능
-- [ ] **엑셀 일괄 업로드** — admin 페이지에서 정해진 포맷 엑셀 → 상품 자동 등록 + 카테고리 자동 분류 + agent 자동 매칭
-- [ ] **스케줄 엑셀 업로드 → 자동 링크** (현재는 PDF 업로드만, invoice 자동 생성 패턴 응용)
-- [ ] **Invoice 도장 이미지 삽입** (잔금 invoice 발행 시 법인 인감)
-- [ ] **설문조사 기능** (여행 후, 10~15문항 + 마지막 주관식)
-- ~~Chrome 한국어 로케일 강제 영어~~ — 드롭. Chrome 설정에 따라 자동 변경되는 거라 우리가 건드릴 영역 아님
+#### Polish
+- [ ] Admin case detail에 survey 응답 read-only 노출 (현재 DB만 저장)
+- [ ] 3자 계약 client 페이지 모바일 점검
+- [ ] Stamp invoice 렌더 위치/크기 시뮬에서 실제 확인
 
-#### 4가지 Invoice 종류 (5/1 풀 구현)
-- [x] **Documents 모델** (`documents/document_groups/document_items/document_group_members`)
-- [x] **5개 돈 흐름 매핑** (from_party/to_party): Agent→Client, Admin→Agent settlement, Admin→Client (Balance + Additional), Agent→Admin commission
-- [x] **CaseDocumentsSection 컴포넌트** — admin/agent actor별 발행 버튼, item add/remove, Mark Paid
-- [x] **QuoteDocument from_party 분기** — bank info / signer 양쪽 형식 통일
-- [ ] **Status 부분결제 정책** — 위 별도 항목으로
+### 5/2 완료 (Status v2 + 3자 계약 + 설문 + Stamps + 박스 통합)
+- [x] **Status state machine 11단계** (`awaiting_contract / awaiting_deposit / awaiting_review` 신규)
+- [x] **case_contracts 3자 계약** — agent + client + admin 사인, client_token 공개 페이지
+- [x] **CaseContractViewer 재사용 컴포넌트** — 3개 sig slot, 사인 모드별 SignaturePad
+- [x] **Admin도 NDA/Partnership 카운터사인** — agent_contracts admin sig 컬럼 + Admin 뷰어 SignaturePad UI
+- [x] **계약서 4종 admin 편집** (`/admin/contracts` — NDA/Partnership/Agent-Client/3-Party)
+- [x] **surveys 테이블 + AgentSurveySection** — admin이 system_settings로 질문 관리, agent 제출
+- [x] **Stamps** — Storage 'stamps' 버킷, agents.stamp_url + system_settings.company_stamp, QuoteDocument 절대위치 렌더
+- [x] **Deposit % 설정** (system_settings + Admin Settings UI + CaseDocumentsSection 기본값 로드)
+- [x] **awaiting_contract 잠금** — trip/members/deposit 발행 모두 잠금
+- [x] **Hero 문구 deposit/info 분리** (이전 deposit + info 섞여서 혼란 → 단계별 한 종류 액션만)
+- [x] **isDepositPaid 양 다리 검사** — Client→Agent + Agent→Admin 모두 paid 시에만 advance
+- [x] **Self-heal**: 케이스 detail 페이지 로드 시 자동 advance (stuck case 정정)
+- [x] **notifyAgent server-first endpoint** — RLS/세션 경계 silent fail 방지
+- [x] **Mark Paid 시 counterparty 알림** (deposit / balance / commission 모두)
+- [x] **Trip Setup 박스 통합** — Travel + Trip Info + Lead Client + Members 4개 → 1개 (auto-collapse)
+- [x] **Financials 박스 통합** — Summary + Invoices 2개 → 1개 (CaseDocumentsSection embedded prop)
+- [x] **Selected Products 박스 wrap** + **Contract section collapsible** + **Paid invoice 회색 톤**
+- [x] **E2E 자동화 검증** — Claude Preview MCP로 #C-009 한 바퀴 (Quote → Contract → Deposit → Info → Schedule → Pricing → Payment → Travel → Survey → Commission)
 
 ### 대표님 의사결정 대기 (5/8 admin 링크 공유 후)
 1. **Hotel 마진율** — 20% / 30% / ?

@@ -145,6 +145,10 @@ export default function CaseDetailPage() {
   // the agent has signed (the link is meaningless before).
   const [contractToken, setContractToken] = useState<string | null>(null)
   const [contractAgentSigned, setContractAgentSigned] = useState(false)
+  // Trip Setup collapse — manual toggle; default starts null and resolves to
+  // (collapsed when complete) via the effect below once data loads.
+  const [setupCollapsed, setSetupCollapsed] = useState(false)
+  const [setupCollapseInitialized, setSetupCollapseInitialized] = useState(false)
   const [agentClients, setAgentClients] = useState<AgentClient[]>([])
   const [caseData, setCaseData] = useState<CaseDetail | null>(null)
   const [exchangeRate, setExchangeRate] = useState(1350)
@@ -286,6 +290,23 @@ export default function CaseDetailPage() {
     }
     load()
   }, [fetchCase])
+
+  // First time data resolves and Trip Setup is fully ready, default to collapsed.
+  // Subsequent toggles are user-driven. Placed BEFORE early returns so the hook
+  // count is stable across render passes (Rules of Hooks).
+  useEffect(() => {
+    if (setupCollapseInitialized || !caseData) return
+    const allMembersOk = caseData.case_members.length > 0
+      && caseData.case_members.every(m => getMissingClientFields(m.clients).length === 0)
+    const tripOk = getMissingCaseFields(caseData).length === 0
+    const groupsOk = !caseData.documents?.find(d => d.type === 'quotation')?.document_groups?.length
+      || (caseData.documents?.find(d => d.type === 'quotation')?.document_groups ?? [])
+        .every(g => (g.document_group_members?.length ?? 0) === g.member_count)
+    if (allMembersOk && tripOk && groupsOk && caseData.travel_start_date) {
+      setSetupCollapsed(true)
+    }
+    setSetupCollapseInitialized(true)
+  }, [setupCollapseInitialized, caseData])
 
   // ── Actions ────────────────────────────────────────────────────────────────
 
@@ -982,8 +1003,34 @@ export default function CaseDetailPage() {
             />
           )}
 
+          {/* ─── TRIP SETUP — Travel + Trip Info + Lead Client + Members all-in-one ─── */}
+          <section className="bg-gray-50 rounded-2xl p-5 space-y-5">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Trip Setup</h3>
+                {(caseInfoComplete && allClientsComplete && groupsComplete && caseData.travel_start_date) ? (
+                  <span className="text-[10px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">Ready</span>
+                ) : (
+                  <span className="text-[10px] font-medium text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">In progress</span>
+                )}
+              </div>
+              <button onClick={() => setSetupCollapsed(!setupCollapsed)}
+                className="text-[11px] font-medium text-gray-500 hover:text-gray-800 px-2 py-1 rounded-lg border border-gray-200 hover:bg-gray-100">
+                {setupCollapsed ? '▼ Expand' : '▲ Collapse'}
+              </button>
+            </div>
+
+            {setupCollapsed ? (
+              <div className="text-xs text-gray-600 space-y-0.5">
+                <p>{caseData.travel_start_date ? `Travel ${caseData.travel_start_date} → ${caseData.travel_end_date ?? '—'}` : 'Travel dates not set'}</p>
+                <p>{caseData.case_members.length} member{caseData.case_members.length === 1 ? '' : 's'}{lead?.clients?.name ? ` · Lead ${lead.clients.name}` : ''}</p>
+                <p>{caseInfoComplete ? '✓ Trip info complete' : `✗ ${missingCaseFields.length} trip field${missingCaseFields.length === 1 ? '' : 's'} missing`} · {allClientsComplete ? '✓ All clients complete' : `✗ ${clientsMissingInfo.length} client${clientsMissingInfo.length === 1 ? '' : 's'} pending`} · {groupsComplete ? '✓ Groups assigned' : '✗ Groups incomplete'}</p>
+              </div>
+            ) : (
+            <>
+
           {/* Travel Dates */}
-          <section className="bg-gray-50 rounded-2xl p-5">
+          <div>
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Travel Period</h3>
               {!editDates ? (
@@ -1034,10 +1081,10 @@ export default function CaseDetailPage() {
                 </div>
               </div>
             )}
-          </section>
+          </div>
 
           {/* Trip Info (case-level) */}
-          <section id="trip-info" className={`scroll-mt-20 rounded-2xl p-5 ${caseInfoComplete ? 'bg-gray-50' : 'bg-amber-50 border border-amber-200'}`}>
+          <div id="trip-info" className={`scroll-mt-20 ${caseInfoComplete ? '' : '-mx-2 px-2 py-3 rounded-xl bg-amber-50 border border-amber-200'} pt-5 border-t border-gray-200`}>
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Trip Info</h3>
@@ -1146,11 +1193,11 @@ export default function CaseDetailPage() {
                 {tripError && <p className="col-span-2 text-xs text-red-500">{tripError}</p>}
               </div>
             )}
-          </section>
+          </div>
 
           {/* Lead Client */}
           {lead && (
-            <section className="bg-gray-50 rounded-2xl p-5">
+            <div className="pt-5 border-t border-gray-200">
               <div className="flex items-center gap-2 mb-2">
                 <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Lead Client</h3>
                 <span className="text-[10px] font-mono text-gray-400">{lead.clients?.client_number}</span>
@@ -1163,7 +1210,7 @@ export default function CaseDetailPage() {
                 {lead.clients?.gender && <span className="text-xs text-gray-400 capitalize">· {lead.clients.gender}</span>}
                 {lead.clients?.needs_muslim_friendly && <span className="text-xs text-emerald-600 font-medium">· Muslim Friendly</span>}
               </div>
-            </section>
+            </div>
           )}
 
           {/* Members & Groups — includes member-related readiness */}
@@ -1173,7 +1220,7 @@ export default function CaseDetailPage() {
             const memberIssueCount = (memberShortfall ? 1 : 0) + groupGaps.length + clientsMissingInfo.length
             const memberReady = memberIssueCount === 0 && caseData.case_members.length > 0
             return (
-          <section id="members" className="scroll-mt-20 bg-gray-50 rounded-2xl p-5 space-y-3">
+          <div id="members" className="scroll-mt-20 pt-5 border-t border-gray-200 space-y-3">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div className="flex items-center gap-2">
                 <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
@@ -1478,13 +1525,18 @@ export default function CaseDetailPage() {
                 </ul>
               </div>
             )}
-          </section>
+          </div>
             )
           })()}
 
+            </>
+            )}
+          </section>
+          {/* ─── /TRIP SETUP ─── */}
+
           {/* Selected Products — group subtotals always visible, details collapsible */}
           {quote && quote.document_groups.length > 0 && (
-            <section className="space-y-3">
+            <section className="bg-gray-50 rounded-2xl p-5 space-y-3">
               <div className="flex items-center gap-2">
                 <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Selected Products</h3>
                 <span className="ml-auto text-[10px] font-mono text-gray-400">{quote.document_number}</span>
@@ -1732,7 +1784,7 @@ export default function CaseDetailPage() {
             </div>
           )}
 
-          {/* Financials — tone matches Hero when this is the action target */}
+          {/* ─── FINANCIALS — Summary + Invoices grouped in one box ─── */}
           {quote && (() => {
             const isActionTarget = caseData.status === 'awaiting_payment'
             const sectionClass = isActionTarget
@@ -1831,28 +1883,28 @@ export default function CaseDetailPage() {
                   </div>
                 </div>
               )}
+
+              {/* Invoices — embedded inside Financials wrapper */}
+              <div id="documents">
+                <CaseDocumentsSection
+                  caseId={caseData.id}
+                  caseNumber={caseData.case_number}
+                  agentId={caseData.agent_id ?? ''}
+                  actor="agent"
+                  caseStatus={caseData.status}
+                  embedded
+                  travelCompletedAt={caseData.travel_completed_at}
+                  quotation={quote as unknown as DocumentRow}
+                  finalInvoice={(caseData.documents?.find(d => d.type === 'final_invoice') ?? null) as unknown as DocumentRow | null}
+                  documents={(caseData.documents ?? []) as unknown as DocumentRow[]}
+                  exchangeRate={exchangeRate}
+                  onChanged={async () => { await fetchCase() }}
+                />
+              </div>
             </section>
             )
           })()}
-
-          {/* Invoices — agent issues deposit (to client) + commission (to admin) */}
-          {quote && (
-            <div id="documents">
-            <CaseDocumentsSection
-              caseId={caseData.id}
-              caseNumber={caseData.case_number}
-              agentId={caseData.agent_id ?? ''}
-              actor="agent"
-              caseStatus={caseData.status}
-              travelCompletedAt={caseData.travel_completed_at}
-              quotation={quote as unknown as DocumentRow}
-              finalInvoice={(caseData.documents?.find(d => d.type === 'final_invoice') ?? null) as unknown as DocumentRow | null}
-              documents={(caseData.documents ?? []) as unknown as DocumentRow[]}
-              exchangeRate={exchangeRate}
-              onChanged={async () => { await fetchCase() }}
-            />
-            </div>
-          )}
+          {/* ─── /FINANCIALS ─── */}
 
           {/* Cancel Case — agent self-service, only before payment */}
           {CANCELLABLE_STATUSES.includes(caseData.status) && (

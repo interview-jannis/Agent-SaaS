@@ -178,6 +178,10 @@ export default function AdminCaseDetailPage() {
   const [deletingScheduleId, setDeletingScheduleId] = useState<string | null>(null)
   const [actionError, setActionError] = useState('')
 
+  // Trip Setup collapse — defaults to collapsed when all info is complete.
+  const [setupCollapsed, setSetupCollapsed] = useState(false)
+  const [setupCollapseInitialized, setSetupCollapseInitialized] = useState(false)
+
   // Blob URL for staged PDF preview — lifecycle managed below
   const stagedFileUrl = useMemo(() => stagedFile ? URL.createObjectURL(stagedFile) : null, [stagedFile])
   useEffect(() => {
@@ -246,6 +250,22 @@ export default function AdminCaseDetailPage() {
     }
     init()
   }, [fetchCase])
+
+  // First time data resolves and Trip Setup is fully ready, default to collapsed.
+  // Placed BEFORE early returns so the hook count is stable across renders.
+  useEffect(() => {
+    if (setupCollapseInitialized || !caseData) return
+    const allMembersOk = caseData.case_members.length > 0
+      && caseData.case_members.every(m => getMissingClientFields(m.clients).length === 0)
+    const tripOk = getMissingCaseFields(caseData).length === 0
+    const quotation = caseData.documents?.find(d => d.type === 'quotation')
+    const groupsOk = !quotation?.document_groups?.length
+      || quotation.document_groups.every(g => (g.document_group_members?.length ?? 0) === g.member_count)
+    if (allMembersOk && tripOk && groupsOk && caseData.travel_start_date) {
+      setSetupCollapsed(true)
+    }
+    setSetupCollapseInitialized(true)
+  }, [setupCollapseInitialized, caseData])
 
   // ── Actions ────────────────────────────────────────────────────────────────
 
@@ -489,8 +509,34 @@ export default function AdminCaseDetailPage() {
             />
           )}
 
+          {/* ─── TRIP SETUP — Travel + Trip Info + Lead Client + Members all-in-one ─── */}
+          <section className="bg-gray-50 rounded-2xl p-4 space-y-4">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Trip Setup</h3>
+                {(caseInfoComplete && allClientsComplete && groupsComplete && caseData.travel_start_date) ? (
+                  <span className="text-[10px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">Ready</span>
+                ) : (
+                  <span className="text-[10px] font-medium text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">In progress</span>
+                )}
+              </div>
+              <button onClick={() => setSetupCollapsed(!setupCollapsed)}
+                className="text-[11px] font-medium text-gray-500 hover:text-gray-800 px-2 py-1 rounded-lg border border-gray-200 hover:bg-gray-100">
+                {setupCollapsed ? '▼ Expand' : '▲ Collapse'}
+              </button>
+            </div>
+
+            {setupCollapsed ? (
+              <div className="text-xs text-gray-600 space-y-0.5">
+                <p>{caseData.travel_start_date ? `Travel ${caseData.travel_start_date} → ${caseData.travel_end_date ?? '—'}` : 'Travel dates not set'}</p>
+                <p>{caseData.case_members.length} member{caseData.case_members.length === 1 ? '' : 's'}{lead?.clients?.name ? ` · Lead ${lead.clients.name}` : ''}</p>
+                <p>{caseInfoComplete ? '✓ Trip info complete' : '✗ Trip info incomplete'} · {allClientsComplete ? '✓ All clients complete' : '✗ Clients pending'} · {groupsComplete ? '✓ Groups assigned' : '✗ Groups incomplete'}</p>
+              </div>
+            ) : (
+            <>
+
           {/* Travel Period */}
-          <section className="bg-gray-50 rounded-2xl p-4">
+          <div>
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Travel Period</p>
             <div className="flex items-center gap-4 text-sm">
               <div>
@@ -506,10 +552,10 @@ export default function AdminCaseDetailPage() {
               </div>
               <p className="text-xs text-gray-400 ml-auto">Created: {caseData.created_at.slice(0, 10)}</p>
             </div>
-          </section>
+          </div>
 
           {/* Trip Info (case-level, read-only) */}
-          <section className={`rounded-2xl p-4 ${caseInfoComplete ? 'bg-gray-50' : 'bg-amber-50 border border-amber-200'}`}>
+          <div className={`pt-4 border-t border-gray-200 ${caseInfoComplete ? '' : '-mx-1 px-1 py-2 rounded-xl bg-amber-50 border border-amber-200'}`}>
             <div className="flex items-center gap-2 mb-3">
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Trip Info</p>
               {!caseInfoComplete && <span className="text-[10px] font-medium text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">Incomplete</span>}
@@ -537,11 +583,11 @@ export default function AdminCaseDetailPage() {
                 </div>
               </div>
             </div>
-          </section>
+          </div>
 
           {/* Lead Client */}
           {lead && (
-            <section className="bg-gray-50 rounded-2xl p-4">
+            <div className="pt-4 border-t border-gray-200">
               <div className="flex items-center gap-2 mb-3">
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Lead Client</p>
                 <span className="text-[10px] text-gray-400 font-mono">{lead.clients?.client_number}</span>
@@ -564,7 +610,7 @@ export default function AdminCaseDetailPage() {
                   <div className="col-span-2"><p className="text-[10px] text-gray-400 mb-0.5">Special Requests</p><p className="text-gray-800 text-sm">{lead.clients.special_requests}</p></div>
                 )}
               </div>
-            </section>
+            </div>
           )}
 
           {/* Members + Readiness (merged) */}
@@ -574,7 +620,7 @@ export default function AdminCaseDetailPage() {
             const issueCount = (memberShortfall ? 1 : 0) + groupGaps.length + clientsMissingInfo.length
             const ready = issueCount === 0 && caseData.case_members.length > 0
             return (
-              <section className="bg-gray-50 rounded-2xl p-4 space-y-3">
+              <div className="pt-4 border-t border-gray-200 space-y-3">
                 <div className="flex items-center gap-2">
                   <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
                     Members ({caseData.case_members.length}{expectedMemberCount > 0 ? ` / ${expectedMemberCount}` : ''})
@@ -650,9 +696,14 @@ export default function AdminCaseDetailPage() {
                     </ul>
                   </div>
                 )}
-              </section>
+              </div>
             )
           })()}
+
+            </>
+            )}
+          </section>
+          {/* ─── /TRIP SETUP ─── */}
 
           {/* Quote / Financials */}
           {latestQuote && (
@@ -737,23 +788,22 @@ export default function AdminCaseDetailPage() {
                   <p className="text-sm font-medium text-gray-800">{caseData.payment_date}</p>
                 </div>
               )}
-            </section>
-          )}
 
-          {/* Invoices (deposit / additional / commission) */}
-          {latestQuote && (
-            <CaseDocumentsSection
-              caseId={caseData.id}
-              caseNumber={caseData.case_number}
-              agentId={caseData.agent_id}
-              actor="admin"
-              caseStatus={caseData.status}
-              quotation={latestQuote as unknown as DocumentRow}
-              finalInvoice={(finalInvoice ?? null) as unknown as DocumentRow | null}
-              documents={(caseData.documents ?? []) as unknown as DocumentRow[]}
-              exchangeRate={exchangeRate}
-              onChanged={fetchCase}
-            />
+              {/* Invoices (deposit / additional / commission) — embedded inside Financials */}
+              <CaseDocumentsSection
+                caseId={caseData.id}
+                caseNumber={caseData.case_number}
+                agentId={caseData.agent_id}
+                actor="admin"
+                caseStatus={caseData.status}
+                embedded
+                quotation={latestQuote as unknown as DocumentRow}
+                finalInvoice={(finalInvoice ?? null) as unknown as DocumentRow | null}
+                documents={(caseData.documents ?? []) as unknown as DocumentRow[]}
+                exchangeRate={exchangeRate}
+                onChanged={fetchCase}
+              />
+            </section>
           )}
 
 

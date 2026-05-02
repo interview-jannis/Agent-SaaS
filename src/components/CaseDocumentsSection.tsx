@@ -50,6 +50,8 @@ type Props = {
   actor: 'admin' | 'agent'
   /** Case status — gates issuing/marking actions during pre-contract phase */
   caseStatus?: string
+  /** When true, drop outer bg/rounded so the section can sit inside another wrapper. */
+  embedded?: boolean
   /** travel_completed_at — gates Commission issuance on agent side */
   travelCompletedAt?: string | null
   quotation: DocumentRow | null
@@ -91,7 +93,7 @@ async function captureSigner(): Promise<{ name: string | null; title: string | n
 }
 
 export default function CaseDocumentsSection({
-  caseId, caseNumber, agentId, actor, caseStatus, travelCompletedAt, quotation, finalInvoice, documents, exchangeRate, onChanged,
+  caseId, caseNumber, agentId, actor, caseStatus, embedded, travelCompletedAt, quotation, finalInvoice, documents, exchangeRate, onChanged,
 }: Props) {
   const [products, setProducts] = useState<Product[]>([])
   const [items, setItems] = useState<Record<string, DocumentItemRow[]>>({})
@@ -340,7 +342,7 @@ export default function CaseDocumentsSection({
   const contractPending = caseStatus === 'awaiting_contract'
 
   return (
-    <section className="bg-gray-50 rounded-2xl p-4 space-y-3">
+    <section className={embedded ? 'pt-4 border-t border-gray-200 space-y-3' : 'bg-gray-50 rounded-2xl p-4 space-y-3'}>
       <div className="flex items-center justify-between flex-wrap gap-2">
         <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Invoices</p>
         <div className="flex items-center gap-2 flex-wrap">
