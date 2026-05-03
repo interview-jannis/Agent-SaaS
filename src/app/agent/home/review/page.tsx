@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { notifyAllAdmins } from '@/lib/notifications'
+import { notifyAssignedAdmin } from '@/lib/notifications'
 import { logAsCurrentUser } from '@/lib/audit'
 import {
   createDocument,
@@ -372,7 +372,8 @@ export default function QuoteReviewPage() {
       // SOP: admin should know a new case exists. Admin will counter-sign the
       // 3-party contract after agent + client sign — that triggers the move
       // to awaiting_deposit.
-      await notifyAllAdmins(
+      await notifyAssignedAdmin(
+        { agent_id: agentData.id },
         `${caseNumber} new case from ${agentData.name} — awaiting 3-party contract`,
         `/admin/cases/${caseData.id}`
       )

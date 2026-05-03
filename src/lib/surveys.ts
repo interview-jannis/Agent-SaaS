@@ -4,7 +4,7 @@
 // during wrap-up call). Submission triggers awaiting_review → completed.
 
 import { supabase } from './supabase'
-import { notifyAllAdmins } from './notifications'
+import { notifyAssignedAdmin } from './notifications'
 
 export type RatingScale = 1 | 2 | 3 | 4 | 5
 
@@ -86,6 +86,6 @@ export async function tryAdvanceReviewSubmitted(caseId: string): Promise<{ advan
   const { error } = await supabase
     .from('cases').update({ status: 'completed' }).eq('id', caseId).eq('status', 'awaiting_review')
   if (error) return { advanced: false }
-  await notifyAllAdmins(`${cr.case_number} client review submitted — case completed`, `/admin/cases/${cr.id}`)
+  await notifyAssignedAdmin({ case_id: cr.id }, `${cr.case_number} client review submitted — case completed`, `/admin/cases/${cr.id}`)
   return { advanced: true }
 }

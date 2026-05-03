@@ -1,12 +1,12 @@
 # Project Progress
 
 ## 현재 상태
-- **Phase**: 전체 SOP 1~15단계 흐름 풀 구현 — Status 11단계 / 3자 계약 / 설문 / Stamps / Deposit % / Box 통합. E2E 자동 검증 통과
-- **마지막 작업**: 2026-05-02 — Status 8→11단계, case_contracts 3자 사인, surveys, stamps, deposit %, contract templates 4종 admin 편집, Trip Setup + Financials 박스 통합, Hero 문구 분리, notifyAgent server-first
-- **마지막 업데이트**: 2026-05-02 (개발 마감 5/8, 시뮬레이션 5/11~15, 런칭 5/18)
+- **Phase**: SOP 풀 구현 + 사용성 라운드. Finalize Pricing 항목 추가/삭제 + multi-currency, agent-admin assignment (notification routing), invoice 디테일 (deposit 차감, 도장 위치), 사전-info amber 게이트
+- **마지막 작업**: 2026-05-03 — Finalize 항목 add/remove, 세그먼트 currency 토글, agent.assigned_admin_id + notifyAssignedAdmin (Phase 1+2), Offline client 서명, Final invoice deposit 차감 표시, invoice 카드 톤 통일
+- **마지막 업데이트**: 2026-05-03 (개발 마감 5/8, 시뮬레이션 5/11~15, 런칭 5/18)
 - **SaaS 브랜드명**: **Tiktak** (UI 전역, 법인명 Interview Co., Ltd)
 
-> 2026-05-02 상세: `notes/26.05.02.md` (Status v2 + 3자 계약 + 설문 + Stamps + Box 통합 + E2E 자동검증)
+> 2026-05-02–03 상세: `notes/26.05.02-03.md` (Day 1: Status v2 + 3자 계약 + 설문 + Stamps + 박스 통합 + E2E / Day 2: Finalize add/remove + multi-currency + agent-admin assignment + invoice 디테일 + UX 정리)
 > 2026-05-01 상세: `notes/26.05.01.md` (데이터 v11 + Documents 풀 구현 + E2E)
 > 2026-04-30 미팅: `notes/meetings/26.04.30-meeting.md` (이사님 SOP 점검)
 > 2026-04-30 상세: `notes/26.04.30.md` (모바일 마무리 + 데이터 가공)
@@ -57,6 +57,22 @@
 - [ ] Admin case detail에 survey 응답 read-only 노출 (현재 DB만 저장)
 - [ ] 3자 계약 client 페이지 모바일 점검
 - [ ] Stamp invoice 렌더 위치/크기 시뮬에서 실제 확인
+
+### 5/3 완료 (사용성 라운드 — E2E 피드백 일괄 처리)
+- [x] **Finalize Pricing 항목 추가/삭제** — pre-finalize 단계에서 검색 콤보박스로 line item 추가, × 마킹으로 삭제. staged 일괄 반영. 같은 그룹 내 중복 차단.
+- [x] **Multi-currency 입력 (KRW ↔ USD)** — 행마다 세그먼트 토글 [₩|$], 저장은 KRW canonical. 신규 항목은 product의 price_currency에 따라 자동 시작 단위.
+- [x] **Agent-Admin Assignment (Phase 1)** — `agents.assigned_admin_id`, 승인 시 자동 채움, Reassign UI (super admin only) + audit log. List에 "Assigned to" 컬럼.
+- [x] **Agent-Admin Assignment (Phase 2)** — 11곳 case-bound `notifyAllAdmins` → `notifyAssignedAdmin` 교체 (caseTransitions/surveys/caseContracts/CaseDocumentsSection/AgentCaseContractSection/case-contract/agent home/agent cases). super admin 폴백 포함.
+- [x] **Final invoice deposit 차감** — 표 최상단 emerald 행 ("Deposit (paid · #INV-D-XXX · YYYY-MM-DD)") + Items Subtotal + Balance Due 라벨 분기.
+- [x] **도장 위치 수정** — absolute right-0 → flex inline (admin 이름/Interview Co.,Ltd. 우측에 인라인 배치).
+- [x] **Group 라벨 정리** — auto-generated group name ("Group N") 또는 비어있으면 prefix 생략 (`Group 1 · 1 pax`로만).
+- [x] **Offline 서명** — "Sign on this device" 버튼으로 CaseContractViewer client 모드 직접 호출 (audit log mode='on_device').
+- [x] **사전-info 단계 amber 제거** — `infoCollectionActive` 플래그로 awaiting_contract / awaiting_deposit / canceled에선 yellow 박스/뱃지 비노출 (Trip Info / Trip Setup / Required / member checklist 4곳).
+- [x] **Invoices 섹션 sky-blue CTA 강조** — awaiting_deposit + invoice 미발행 시 cyan-50/200 + actor별 안내 문구.
+- [x] **Selected Products → Expand 패턴** — Trip Setup과 동일 border 버튼 스타일.
+- [x] **Deposit invoice/settlement Add item 제거** — 단일 금액 본질에 맞게.
+- [x] **Invoice 카드 색 통일** — 모든 type을 white/gray로, 차별화는 라벨 색만.
+- [x] **DB 청소 (테스트 환경)** — case + 부속물, 비-Ahmed agent + clients 청소. legacy `quote_*` 테이블 잔존 확인 (post-MVP DROP 예정).
 
 ### 5/2 완료 (Status v2 + 3자 계약 + 설문 + Stamps + 박스 통합)
 - [x] **Status state machine 11단계** (`awaiting_contract / awaiting_deposit / awaiting_review` 신규)
@@ -424,6 +440,24 @@
 ---
 
 ## DB 스키마 변경사항 누적
+
+### 5/3 추가분
+
+```sql
+-- Agent-admin assignment (notification routing + ownership)
+ALTER TABLE agents
+  ADD COLUMN IF NOT EXISTS assigned_admin_id uuid
+    REFERENCES admins(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_agents_assigned_admin_id
+  ON agents(assigned_admin_id);
+
+-- Backfill (super admin이 일단 모든 approved agent 가져감)
+UPDATE agents
+SET assigned_admin_id = (
+  SELECT id FROM admins WHERE is_super_admin = true ORDER BY created_at LIMIT 1
+)
+WHERE onboarding_status = 'approved' AND assigned_admin_id IS NULL;
+```
 
 ### 4/29 추가분
 

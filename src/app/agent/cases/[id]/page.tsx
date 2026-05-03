@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
-import { notifyAllAdmins } from '@/lib/notifications'
+import { notifyAssignedAdmin } from '@/lib/notifications'
 import { logAsCurrentUser } from '@/lib/audit'
 import DOBPicker from '@/components/DOBPicker'
 import DateTime24Picker from '@/components/DateTime24Picker'
@@ -420,7 +420,7 @@ export default function CaseDetailPage() {
       }).eq('id', caseData.id)
       if (error) throw error
 
-      await notifyAllAdmins(`${caseData.case_number} cancelled by agent — "${cancelReason.trim()}"`, `/admin/cases/${caseData.id}`)
+      await notifyAssignedAdmin({ case_id: caseData.id }, `${caseData.case_number} cancelled by agent — "${cancelReason.trim()}"`, `/admin/cases/${caseData.id}`)
       await logAsCurrentUser('case.cancelled',
         { type: 'case', id: caseData.id, label: caseData.case_number },
         { reason: cancelReason.trim() })
@@ -440,7 +440,7 @@ export default function CaseDetailPage() {
       // then completed. Settlement queue keys off travel_completed_at, not status.
       const { error } = await supabase.from('cases').update({ status: 'awaiting_review', travel_completed_at: new Date().toISOString() }).eq('id', caseData.id)
       if (error) throw error
-      await notifyAllAdmins(`${caseData.case_number} Travel completed — agent submitting review`, `/admin/cases/${caseData.id}`)
+      await notifyAssignedAdmin({ case_id: caseData.id }, `${caseData.case_number} Travel completed — agent submitting review`, `/admin/cases/${caseData.id}`)
       await logAsCurrentUser('case.travel_completed', { type: 'case', id: caseData.id, label: caseData.case_number })
       await fetchCase()
     } catch (e: unknown) {
@@ -459,7 +459,7 @@ export default function CaseDetailPage() {
         .eq('id', schedule.id)
       if (se) throw se
       await supabase.from('cases').update({ status: 'awaiting_pricing' }).eq('id', caseData.id)
-      await notifyAllAdmins(`${caseData.case_number} Schedule v${schedule.version} confirmed — finalize pricing to issue invoice`, `/admin/cases/${caseData.id}`)
+      await notifyAssignedAdmin({ case_id: caseData.id }, `${caseData.case_number} Schedule v${schedule.version} confirmed — finalize pricing to issue invoice`, `/admin/cases/${caseData.id}`)
       await logAsCurrentUser('schedule.confirmed', { type: 'case', id: caseData.id, label: caseData.case_number }, { version: schedule.version })
       await fetchCase()
     } catch (e: unknown) {
@@ -847,7 +847,7 @@ export default function CaseDetailPage() {
       if (se) throw se
       // Bump case back to awaiting_schedule so admin queue picks it up for re-upload.
       await supabase.from('cases').update({ status: 'awaiting_schedule' }).eq('id', caseData.id)
-      await notifyAllAdmins(`${caseData.case_number} Schedule v${schedule.version} revision requested`, `/admin/cases/${caseData.id}`)
+      await notifyAssignedAdmin({ case_id: caseData.id }, `${caseData.case_number} Schedule v${schedule.version} revision requested`, `/admin/cases/${caseData.id}`)
       await logAsCurrentUser('schedule.revision_requested',
         { type: 'case', id: caseData.id, label: caseData.case_number },
         { version: schedule.version, note: revisionNote.trim() })
@@ -886,6 +886,9 @@ export default function CaseDetailPage() {
   const missingCaseFields = getMissingCaseFields(caseData)
   const caseInfoComplete = missingCaseFields.length === 0
   const scheduleReady = allClientsComplete && groupsComplete && caseInfoComplete
+  // Info collection is the agent's task only from awaiting_info onward.
+  // Pre-info phases (awaiting_contract / awaiting_deposit) shouldn't pulse amber.
+  const infoCollectionActive = !['awaiting_contract', 'awaiting_deposit', 'canceled'].includes(caseData.status)
 
   // case_member_id → quote_group_id map
   const memberGroupMap = new Map<string, string>()
@@ -1010,9 +1013,9 @@ export default function CaseDetailPage() {
                 <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Trip Setup</h3>
                 {(caseInfoComplete && allClientsComplete && groupsComplete && caseData.travel_start_date) ? (
                   <span className="text-[10px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">Ready</span>
-                ) : (
+                ) : infoCollectionActive ? (
                   <span className="text-[10px] font-medium text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">In progress</span>
-                )}
+                ) : null}
               </div>
               <button onClick={() => setSetupCollapsed(!setupCollapsed)}
                 className="text-[11px] font-medium text-gray-500 hover:text-gray-800 px-2 py-1 rounded-lg border border-gray-200 hover:bg-gray-100">
@@ -1084,11 +1087,11 @@ export default function CaseDetailPage() {
           </div>
 
           {/* Trip Info (case-level) */}
-          <div id="trip-info" className={`scroll-mt-20 ${caseInfoComplete ? '' : '-mx-2 px-2 py-3 rounded-xl bg-amber-50 border border-amber-200'} pt-5 border-t border-gray-200`}>
+          <div id="trip-info" className={`scroll-mt-20 ${(caseInfoComplete || !infoCollectionActive) ? '' : '-mx-2 px-2 py-3 rounded-xl bg-amber-50 border border-amber-200'} pt-5 border-t border-gray-200`}>
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Trip Info</h3>
-                {!caseInfoComplete && <span className="text-[10px] font-medium text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">Required</span>}
+                {!caseInfoComplete && infoCollectionActive && <span className="text-[10px] font-medium text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">Required</span>}
               </div>
               {!editTrip ? (
                 !tripMembersLocked && (
@@ -1502,7 +1505,7 @@ export default function CaseDetailPage() {
             )}
 
             {/* Member-related readiness checklist (embedded, view mode only) */}
-            {!editMembers && !memberReady && (
+            {!editMembers && !memberReady && infoCollectionActive && (
               <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mt-1">
                 <p className="text-[10px] font-semibold text-amber-800 uppercase tracking-wide mb-1.5">{memberIssueCount} issue{memberIssueCount > 1 ? 's' : ''} to resolve</p>
                 <ul className="space-y-1 text-xs text-amber-800">
@@ -1538,14 +1541,11 @@ export default function CaseDetailPage() {
           {quote && quote.document_groups.length > 0 && (
             <section className="bg-gray-50 rounded-2xl p-5 space-y-3">
               <div className="flex items-center gap-2">
-                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Selected Products</h3>
+                <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Selected Products</h3>
                 <span className="ml-auto text-[10px] font-mono text-gray-400">{quote.document_number}</span>
                 <button onClick={() => setProductsOpen(v => !v)}
-                  className="flex items-center gap-1 text-[10px] font-medium text-gray-500 hover:text-[#0f4c35]">
-                  <span>{productsOpen ? 'Hide details' : 'Show details'}</span>
-                  <svg className={`w-3 h-3 transition-transform ${productsOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-                  </svg>
+                  className="text-[11px] font-medium text-gray-500 hover:text-gray-800 px-2 py-1 rounded-lg border border-gray-200 hover:bg-gray-100">
+                  {productsOpen ? '▲ Collapse' : '▼ Expand'}
                 </button>
               </div>
               {[...quote.document_groups].sort((a, b) => a.order - b.order).map(group => {

@@ -94,6 +94,31 @@ export default async function QuoteDocument({
     quotationRef = (qdata as { document_number?: string } | null)?.document_number ?? null
   }
 
+  // For final_invoice (Balance Invoice), fetch the agent→client deposit if any —
+  // we'll show it as a deduction at the top of the items table so the customer
+  // sees they only owe the balance.
+  type DepositInfo = { amount: number; paidAt: string | null; documentNumber: string }
+  let depositInfo: DepositInfo | null = null
+  const docType = (quote as { type: string }).type
+  if (docType === 'final_invoice') {
+    const { data: depRow } = await supabase
+      .from('documents')
+      .select('document_number, total_price, payment_received_at, from_party, to_party')
+      .eq('case_id', (quote as { case_id: string }).case_id)
+      .eq('type', 'deposit_invoice')
+      .eq('from_party', 'agent')
+      .eq('to_party', 'client')
+      .maybeSingle()
+    const dep = depRow as { document_number: string; total_price: number | null; payment_received_at: string | null } | null
+    if (dep && dep.total_price && dep.total_price > 0) {
+      depositInfo = {
+        amount: dep.total_price,
+        paidAt: dep.payment_received_at,
+        documentNumber: dep.document_number,
+      }
+    }
+  }
+
   // Record open + notify agent (skip in preview mode).
   if (!preview) {
     const caseRef = quote.cases as unknown as { id: string; agent_id: string | null } | null
@@ -182,7 +207,13 @@ export default async function QuoteDocument({
   let no = 1
   groups.forEach((group, gi) => {
     const memberCount = Math.max(group.member_count ?? 1, 1)
-    const groupLabel = `Group ${gi + 1}: ${group.name} · ${memberCount} pax`
+    const autoName = `Group ${gi + 1}`
+    const customName = group.name?.trim() ?? ''
+    // Skip the prefix when no custom name is given (or the user just typed the
+    // auto-name back) so the label doesn't repeat itself ("Group 1: Group 1 · 1 pax").
+    const groupLabel = !customName || customName === autoName
+      ? `${autoName} · ${memberCount} pax`
+      : `${autoName}: ${customName} · ${memberCount} pax`
     for (const item of group.document_items) {
       const amtUSD = item.final_price / exchangeRate
       const unitUSD = amtUSD / memberCount
@@ -209,7 +240,9 @@ export default async function QuoteDocument({
     })
   }
 
-  const totalUSD = lineItems.reduce((s, r) => s + r.amtUSD, 0)
+  const itemsTotalUSD = lineItems.reduce((s, r) => s + r.amtUSD, 0)
+  const depositUSD = depositInfo ? depositInfo.amount / exchangeRate : 0
+  const totalUSD = itemsTotalUSD - depositUSD
 
   // Dates: use case's created_at as issue date.
   // Due date comes from document.payment_due_date which is pre-computed as issue + 7 days.
@@ -359,6 +392,25 @@ export default async function QuoteDocument({
                 </tr>
               </thead>
               <tbody>
+                {/* Deposit row at top — only on final_invoice (Balance Invoice) */}
+                {depositInfo && (
+                  <tr className="bg-emerald-50">
+                    <td className="py-3 px-2 md:px-3 text-center text-emerald-700 border border-gray-300">—</td>
+                    <td className="py-3 px-2 md:px-3 border border-gray-300">
+                      <p className="font-medium text-emerald-800">Deposit (paid)</p>
+                      <p className="text-xs text-emerald-700/70 mt-0.5">
+                        {depositInfo.documentNumber}
+                        {depositInfo.paidAt ? ` · ${fmtDate(depositInfo.paidAt)}` : ''}
+                      </p>
+                    </td>
+                    <td className="py-3 px-2 md:px-3 text-center text-emerald-700 border border-gray-300 hidden md:table-cell">—</td>
+                    <td className="py-3 px-2 md:px-3 text-right text-emerald-700 font-mono border border-gray-300 hidden md:table-cell">—</td>
+                    <td className="py-3 px-2 md:px-3 text-right border border-gray-300">
+                      <p className="font-semibold text-emerald-700 font-mono">−$ {fmtUSD(depositUSD)}</p>
+                    </td>
+                    <td className="py-3 px-2 md:px-3 border border-gray-300 hidden md:table-cell" />
+                  </tr>
+                )}
                 {lineItems.map((row, idx) => (
                   <tr key={row.no} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                     <td className="py-3 px-2 md:px-3 text-center text-gray-600 border border-gray-300">{row.no}</td>
@@ -386,14 +438,30 @@ export default async function QuoteDocument({
                 )}
               </tbody>
               <tfoot>
+                {depositInfo && (
+                  <tr className="bg-gray-50">
+                    <td className="py-2 px-2 md:px-3 border border-gray-300" />
+                    <td className="py-2 px-2 md:px-3 text-right md:text-left text-xs text-gray-600 border border-gray-300" colSpan={1}>
+                      Items Subtotal
+                    </td>
+                    <td className="py-2 px-2 md:px-3 border border-gray-300 hidden md:table-cell" />
+                    <td className="py-2 px-2 md:px-3 text-right text-xs text-gray-600 border border-gray-300 hidden md:table-cell">
+                      Items Subtotal
+                    </td>
+                    <td className="py-2 px-2 md:px-3 text-right text-gray-700 font-mono border border-gray-300 text-sm whitespace-nowrap tracking-tight">
+                      $ {fmtUSD(itemsTotalUSD)}
+                    </td>
+                    <td className="py-2 px-2 md:px-3 border border-gray-300 hidden md:table-cell" />
+                  </tr>
+                )}
                 <tr className="bg-gray-100">
                   <td className="py-3 px-2 md:px-3 border border-gray-300" />
                   <td className="py-3 px-2 md:px-3 text-right md:text-left font-bold text-gray-900 border border-gray-300">
-                    <span className="md:hidden">{isInvoice ? 'Total Amount (USD)' : 'Estimated Total (USD)'}</span>
+                    <span className="md:hidden">{depositInfo ? 'Balance Due (USD)' : isInvoice ? 'Total Amount (USD)' : 'Estimated Total (USD)'}</span>
                   </td>
                   <td className="py-3 px-2 md:px-3 border border-gray-300 hidden md:table-cell" />
                   <td className="py-3 px-2 md:px-3 text-right font-bold text-gray-900 border border-gray-300 hidden md:table-cell">
-                    {isInvoice ? 'Total Amount (USD)' : 'Estimated Total (USD)'}
+                    {depositInfo ? 'Balance Due (USD)' : isInvoice ? 'Total Amount (USD)' : 'Estimated Total (USD)'}
                   </td>
                   <td className="py-3 px-2 md:px-3 text-right font-bold text-gray-900 font-mono border border-gray-300 text-base whitespace-nowrap tracking-tight">
                     $ {fmtUSD(totalUSD)}
@@ -476,30 +544,34 @@ export default async function QuoteDocument({
               : null
             const issuerName = isAgentIssued ? agentName : 'Interview Co.,Ltd.'
             return (
-              <div className="mb-12 relative">
+              <div className="mb-12">
                 <p className="text-sm text-gray-600 italic mb-5">Yours Faithfully,</p>
-                {isAgentIssued ? (
-                  <>
-                    <p className="text-base font-semibold text-gray-900">{agentName}</p>
-                    <p className="text-sm text-gray-600 mb-1">Independent Agent</p>
-                  </>
-                ) : (
-                  <>
-                    {signer?.name && (
+                <div className="flex items-end gap-4">
+                  <div className="min-w-0">
+                    {isAgentIssued ? (
                       <>
-                        <p className="text-base font-semibold text-gray-900">{signer.name}</p>
-                        {signer.title && <p className="text-sm text-gray-600 mb-1">{signer.title}</p>}
+                        <p className="text-base font-semibold text-gray-900">{agentName}</p>
+                        <p className="text-sm text-gray-600 mb-1">Independent Agent</p>
+                      </>
+                    ) : (
+                      <>
+                        {signer?.name && (
+                          <>
+                            <p className="text-base font-semibold text-gray-900">{signer.name}</p>
+                            {signer.title && <p className="text-sm text-gray-600 mb-1">{signer.title}</p>}
+                          </>
+                        )}
+                        <p className="text-base font-bold text-gray-900">Interview Co.,Ltd.</p>
                       </>
                     )}
-                    <p className="text-base font-bold text-gray-900">Interview Co.,Ltd.</p>
-                  </>
-                )}
-                {stampUrl && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={stampUrl} alt={`${issuerName} stamp`}
-                    className="absolute right-0 -top-4 h-24 w-auto object-contain opacity-90 print:opacity-100"
-                    style={{ mixBlendMode: 'multiply' }} />
-                )}
+                  </div>
+                  {stampUrl && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={stampUrl} alt={`${issuerName} stamp`}
+                      className="h-20 w-auto object-contain opacity-90 print:opacity-100 shrink-0 -mb-2"
+                      style={{ mixBlendMode: 'multiply' }} />
+                  )}
+                </div>
               </div>
             )
           })()}

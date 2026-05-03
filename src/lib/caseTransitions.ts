@@ -18,7 +18,7 @@ import {
   type ClientInfo,
   type FlightInfo,
 } from './clientCompleteness'
-import { notifyAllAdmins } from './notifications'
+import { notifyAssignedAdmin } from './notifications'
 
 type DocumentRow = {
   type: string
@@ -123,7 +123,8 @@ export async function notifyCaseInfoChanged(
       .eq('id', caseId)
       .eq('status', 'awaiting_info')
     if (error) return
-    await notifyAllAdmins(
+    await notifyAssignedAdmin(
+      { case_id: caseId },
       `${c.case_number} ready for schedule — all client info complete`,
       `/admin/cases/${caseId}`,
     )
@@ -142,7 +143,8 @@ export async function notifyCaseInfoChanged(
       .eq('status', 'awaiting_deposit')
     if (error) return
     if (nextStatus === 'awaiting_schedule') {
-      await notifyAllAdmins(
+      await notifyAssignedAdmin(
+        { case_id: caseId },
         `${c.case_number} deposit received and info complete — ready for schedule`,
         `/admin/cases/${caseId}`,
       )
@@ -167,7 +169,7 @@ export async function notifyCaseInfoChanged(
   } else {
     message = `${c.case_number} ${change.header}`
   }
-  await notifyAllAdmins(message, `/admin/cases/${caseId}`)
+  await notifyAssignedAdmin({ case_id: caseId }, message, `/admin/cases/${caseId}`)
 }
 
 // Mark the 3-party contract as signed → advance awaiting_contract → awaiting_deposit.
@@ -183,7 +185,8 @@ export async function markContractSigned(caseId: string): Promise<void> {
     .eq('id', caseId)
     .eq('status', 'awaiting_contract')
   if (error) return
-  await notifyAllAdmins(
+  await notifyAssignedAdmin(
+    { case_id: caseId },
     `${c.case_number} 3-party contract signed — deposit phase started`,
     `/admin/cases/${caseId}`,
   )
@@ -202,7 +205,8 @@ export async function markReviewSubmitted(caseId: string): Promise<void> {
     .eq('id', caseId)
     .eq('status', 'awaiting_review')
   if (error) return
-  await notifyAllAdmins(
+  await notifyAssignedAdmin(
+    { case_id: caseId },
     `${c.case_number} client review submitted — case completed`,
     `/admin/cases/${caseId}`,
   )

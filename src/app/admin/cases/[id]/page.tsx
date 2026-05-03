@@ -177,9 +177,12 @@ export default function AdminCaseDetailPage() {
 
   // Pre-finalize add/remove staging
   const [removedItemIds, setRemovedItemIds] = useState<Set<string>>(new Set())
-  type NewPricingItem = { tempId: string; groupId: string; productId: string; productName: string; partnerName: string | null; basePrice: number; finalPrice: string }
+  type ItemCurrency = 'KRW' | 'USD'
+  type NewPricingItem = { tempId: string; groupId: string; productId: string; productName: string; partnerName: string | null; basePrice: number; nativeCurrency: ItemCurrency; finalPriceKrw: string; displayCurrency: ItemCurrency }
   const [newItems, setNewItems] = useState<NewPricingItem[]>([])
-  const [products, setProducts] = useState<Array<{ id: string; name: string; partner_name: string | null; base_price: number }>>([])
+  // Per-existing-item display currency (data is always stored in KRW)
+  const [pricingCurrencies, setPricingCurrencies] = useState<Record<string, ItemCurrency>>({})
+  const [products, setProducts] = useState<Array<{ id: string; name: string; partner_name: string | null; base_price: number; price_currency: ItemCurrency | null }>>([])
   const [pickerGroupId, setPickerGroupId] = useState<string>('')
   const [pickerQuery, setPickerQuery] = useState<string>('')
   const [pickerOpen, setPickerOpen] = useState<boolean>(false)
@@ -267,12 +270,12 @@ export default function AdminCaseDetailPage() {
     let cancelled = false
     ;(async () => {
       const { data, error } = await supabase.from('products')
-        .select('id, name, partner_name, base_price, is_active')
+        .select('id, name, partner_name, base_price, price_currency, is_active')
         .order('name', { ascending: true })
       if (error) { console.error('[case] products fetch error:', error); return }
       if (cancelled) return
-      const rows = (data ?? []) as Array<{ id: string; name: string; partner_name: string | null; base_price: number; is_active: boolean | null }>
-      setProducts(rows.filter(r => r.is_active !== false).map(({ id, name, partner_name, base_price }) => ({ id, name, partner_name, base_price })))
+      const rows = (data ?? []) as Array<{ id: string; name: string; partner_name: string | null; base_price: number; price_currency: 'KRW' | 'USD' | null; is_active: boolean | null }>
+      setProducts(rows.filter(r => r.is_active !== false).map(({ id, name, partner_name, base_price, price_currency }) => ({ id, name, partner_name, base_price, price_currency })))
     })()
     return () => { cancelled = true }
   }, [])
@@ -947,7 +950,7 @@ export default function AdminCaseDetailPage() {
                   {latestQuote.finalized_at ? 'Edit Final Pricing' : 'Finalize Pricing'}
                 </p>
                 {latestQuote.finalized_at && (
-                  <button onClick={() => { setEditingPricing(false); setPricingEdits({}); setDueDateEdit(''); setPricingError(''); setRemovedItemIds(new Set()); setNewItems([]) }}
+                  <button onClick={() => { setEditingPricing(false); setPricingEdits({}); setDueDateEdit(''); setPricingError(''); setRemovedItemIds(new Set()); setNewItems([]); setPricingCurrencies({}) }}
                     className="text-xs text-gray-500 hover:text-gray-800">Cancel</button>
                 )}
               </div>
@@ -962,16 +965,22 @@ export default function AdminCaseDetailPage() {
               <div className="bg-white rounded-xl border border-violet-100 divide-y divide-gray-100">
                 {sortedGroups.flatMap(g => g.document_items.map(item => {
                   const isRemoved = removedItemIds.has(item.id)
-                  // pricingEdits stores raw digit string; display with thousands separators.
-                  const rawVal = pricingEdits[item.id] ?? String(item.final_price)
-                  const displayVal = rawVal === '' ? '' : Number(rawVal).toLocaleString('en-US')
+                  // pricingEdits stores canonical KRW digits; currency toggle only changes display.
+                  const krwDigits = pricingEdits[item.id] ?? String(item.final_price)
+                  const krwNum = Number(krwDigits) || 0
+                  const currency: ItemCurrency = pricingCurrencies[item.id] ?? 'KRW'
+                  const displayNum = currency === 'USD' ? Math.round(krwNum / exchangeRate) : krwNum
+                  const displayVal = krwDigits === '' ? '' : displayNum.toLocaleString('en-US')
+                  const origDisplay = currency === 'USD'
+                    ? `$${Math.round(item.final_price / exchangeRate).toLocaleString('en-US')}`
+                    : fmtKRW(item.final_price)
                   return (
                     <div key={item.id} className={`flex items-center gap-3 px-3 py-2 ${isRemoved ? 'opacity-40' : ''}`}>
                       <div className="flex-1 min-w-0">
                         <p className={`text-sm text-gray-900 truncate ${isRemoved ? 'line-through' : ''}`}>{item.products?.name ?? 'Item'}</p>
                         <p className="text-[10px] text-gray-400">{g.name}</p>
                       </div>
-                      <span className="text-[10px] text-gray-400 tabular-nums shrink-0">orig {fmtKRW(item.final_price)}</span>
+                      <span className="text-[10px] text-gray-400 tabular-nums shrink-0">orig {origDisplay}</span>
                       <input
                         type="text"
                         inputMode="numeric"
@@ -979,10 +988,30 @@ export default function AdminCaseDetailPage() {
                         disabled={isRemoved}
                         onChange={(e) => {
                           const cleaned = e.target.value.replace(/[^0-9]/g, '')
-                          setPricingEdits(p => ({ ...p, [item.id]: cleaned }))
+                          if (cleaned === '') { setPricingEdits(p => ({ ...p, [item.id]: '' })); return }
+                          const userNum = Number(cleaned) || 0
+                          const krwVal = currency === 'USD' ? Math.round(userNum * exchangeRate) : userNum
+                          setPricingEdits(p => ({ ...p, [item.id]: String(krwVal) }))
                         }}
                         className="w-32 border border-gray-200 rounded-lg px-2 py-1 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35] tabular-nums text-right disabled:bg-gray-50" />
-                      <span className="text-[10px] text-gray-400 shrink-0 w-3">₩</span>
+                      <div className="flex shrink-0 rounded-md border border-gray-200 overflow-hidden text-[10px] font-medium">
+                        <button
+                          type="button"
+                          disabled={isRemoved}
+                          aria-pressed={currency === 'KRW'}
+                          onClick={() => setPricingCurrencies(p => ({ ...p, [item.id]: 'KRW' }))}
+                          className={`px-1.5 py-0.5 ${currency === 'KRW' ? 'bg-violet-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'} disabled:opacity-40`}>
+                          ₩
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isRemoved}
+                          aria-pressed={currency === 'USD'}
+                          onClick={() => setPricingCurrencies(p => ({ ...p, [item.id]: 'USD' }))}
+                          className={`px-1.5 py-0.5 border-l border-gray-200 ${currency === 'USD' ? 'bg-violet-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'} disabled:opacity-40`}>
+                          $
+                        </button>
+                      </div>
                       {!latestQuote.finalized_at && (
                         isRemoved ? (
                           <button type="button"
@@ -998,25 +1027,52 @@ export default function AdminCaseDetailPage() {
                   )
                 }))}
                 {newItems.map((n) => {
-                  const displayVal = n.finalPrice === '' ? '' : Number(n.finalPrice).toLocaleString('en-US')
+                  const krwNum = Number(n.finalPriceKrw) || 0
+                  const displayNum = n.displayCurrency === 'USD' ? Math.round(krwNum / exchangeRate) : krwNum
+                  const displayVal = n.finalPriceKrw === '' ? '' : displayNum.toLocaleString('en-US')
                   const groupName = sortedGroups.find(g => g.id === n.groupId)?.name ?? ''
+                  // Base label: show in product's native currency
+                  const baseDisplay = n.nativeCurrency === 'USD'
+                    ? `$${n.basePrice.toLocaleString('en-US')}`
+                    : fmtKRW(n.basePrice)
                   return (
                     <div key={n.tempId} className="flex items-center gap-3 px-3 py-2 bg-violet-50/50">
                       <div className="flex-1 min-w-0">
                         <p className="text-sm text-gray-900 truncate">{n.productName}</p>
                         <p className="text-[10px] text-violet-700">New · {groupName}</p>
                       </div>
-                      <span className="text-[10px] text-gray-400 tabular-nums shrink-0">base {fmtKRW(n.basePrice)}</span>
+                      <span className="text-[10px] text-gray-400 tabular-nums shrink-0">base {baseDisplay}</span>
                       <input
                         type="text"
                         inputMode="numeric"
                         value={displayVal}
                         onChange={(e) => {
                           const cleaned = e.target.value.replace(/[^0-9]/g, '')
-                          setNewItems(arr => arr.map(x => x.tempId === n.tempId ? { ...x, finalPrice: cleaned } : x))
+                          if (cleaned === '') {
+                            setNewItems(arr => arr.map(x => x.tempId === n.tempId ? { ...x, finalPriceKrw: '' } : x))
+                            return
+                          }
+                          const userNum = Number(cleaned) || 0
+                          const krwVal = n.displayCurrency === 'USD' ? Math.round(userNum * exchangeRate) : userNum
+                          setNewItems(arr => arr.map(x => x.tempId === n.tempId ? { ...x, finalPriceKrw: String(krwVal) } : x))
                         }}
                         className="w-32 border border-gray-200 rounded-lg px-2 py-1 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35] tabular-nums text-right" />
-                      <span className="text-[10px] text-gray-400 shrink-0 w-3">₩</span>
+                      <div className="flex shrink-0 rounded-md border border-gray-200 overflow-hidden text-[10px] font-medium">
+                        <button
+                          type="button"
+                          aria-pressed={n.displayCurrency === 'KRW'}
+                          onClick={() => setNewItems(arr => arr.map(x => x.tempId === n.tempId ? { ...x, displayCurrency: 'KRW' } : x))}
+                          className={`px-1.5 py-0.5 ${n.displayCurrency === 'KRW' ? 'bg-violet-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
+                          ₩
+                        </button>
+                        <button
+                          type="button"
+                          aria-pressed={n.displayCurrency === 'USD'}
+                          onClick={() => setNewItems(arr => arr.map(x => x.tempId === n.tempId ? { ...x, displayCurrency: 'USD' } : x))}
+                          className={`px-1.5 py-0.5 border-l border-gray-200 ${n.displayCurrency === 'USD' ? 'bg-violet-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
+                          $
+                        </button>
+                      </div>
                       <button type="button" aria-label="Remove new item"
                         onClick={() => setNewItems(arr => arr.filter(x => x.tempId !== n.tempId))}
                         className="text-gray-300 hover:text-red-500 shrink-0 w-4 h-4 flex items-center justify-center text-sm leading-none">×</button>
@@ -1046,6 +1102,9 @@ export default function AdminCaseDetailPage() {
                   const product = products.find(p => p.id === productId)
                   if (!product) return
                   const groupId = pickerGroupId || sortedGroups[0].id
+                  const native: ItemCurrency = product.price_currency === 'USD' ? 'USD' : 'KRW'
+                  // Canonical KRW value: convert if product is USD-native.
+                  const krwBase = native === 'USD' ? Math.round(product.base_price * exchangeRate) : product.base_price
                   setNewItems(arr => [...arr, {
                     tempId: `new-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
                     groupId,
@@ -1053,7 +1112,9 @@ export default function AdminCaseDetailPage() {
                     productName: product.name,
                     partnerName: product.partner_name,
                     basePrice: product.base_price,
-                    finalPrice: String(product.base_price),
+                    nativeCurrency: native,
+                    finalPriceKrw: String(krwBase),
+                    displayCurrency: native,
                   }])
                   setPickerQuery('')
                   setPickerOpen(false)
@@ -1091,7 +1152,11 @@ export default function AdminCaseDetailPage() {
                               <div className="text-gray-900 truncate">{p.name}</div>
                               <div className="text-[10px] text-gray-400 flex justify-between gap-2">
                                 <span className="truncate">{p.partner_name ?? '—'}</span>
-                                <span className="tabular-nums shrink-0">{fmtKRW(p.base_price)}</span>
+                                <span className="tabular-nums shrink-0">
+                                  {p.price_currency === 'USD'
+                                    ? `$${p.base_price.toLocaleString('en-US')}`
+                                    : fmtKRW(p.base_price)}
+                                </span>
                               </div>
                             </button>
                           ))}
@@ -1112,7 +1177,7 @@ export default function AdminCaseDetailPage() {
                   .flatMap(g => g.document_items)
                   .filter(item => !removedItemIds.has(item.id))
                   .reduce((s, item) => s + (Number(pricingEdits[item.id] ?? item.final_price) || 0), 0)
-                const newSum = newItems.reduce((s, n) => s + (Number(n.finalPrice) || 0), 0)
+                const newSum = newItems.reduce((s, n) => s + (Number(n.finalPriceKrw) || 0), 0)
                 const newTotal = liveSum + newSum
                 const diff = newTotal - latestQuote.total_price
                 return (
@@ -1163,7 +1228,7 @@ export default function AdminCaseDetailPage() {
                     const items = sortedGroups.flatMap(g => g.document_items)
                     const liveItems = items.filter(item => !removedItemIds.has(item.id))
                     const liveSum = liveItems.reduce((s, item) => s + (Number(pricingEdits[item.id] ?? item.final_price) || 0), 0)
-                    const newSum = newItems.reduce((s, n) => s + (Number(n.finalPrice) || 0), 0)
+                    const newSum = newItems.reduce((s, n) => s + (Number(n.finalPriceKrw) || 0), 0)
                     const newTotal = liveSum + newSum
                     const newDueDate = dueDateValue
 
@@ -1172,7 +1237,7 @@ export default function AdminCaseDetailPage() {
                       await removeDocumentItem(itemId)
                     }
 
-                    // Insert staged new items
+                    // Insert staged new items (final_price is canonical KRW; basePrice stored in product's native currency for traceability)
                     for (const n of newItems) {
                       await addDocumentItem({
                         documentId: latestQuote.id,
@@ -1181,7 +1246,7 @@ export default function AdminCaseDetailPage() {
                         productNameSnapshot: n.productName,
                         productPartnerSnapshot: n.partnerName,
                         basePrice: n.basePrice,
-                        finalPrice: Number(n.finalPrice) || 0,
+                        finalPrice: Number(n.finalPriceKrw) || 0,
                       })
                     }
 

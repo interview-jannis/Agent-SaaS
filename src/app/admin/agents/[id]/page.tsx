@@ -26,7 +26,10 @@ type Agent = {
   rejected_at: string | null
   invite_token: string | null
   invite_expires_at: string | null
+  assigned_admin_id: string | null
 }
+
+type AdminLite = { id: string; name: string | null; is_super_admin: boolean | null }
 
 type ContractRow = {
   id: string
@@ -70,16 +73,24 @@ export default function AdminAgentDetailPage() {
   const [cases, setCases] = useState<CaseRow[]>([])
   const [settlements, setSettlements] = useState<SettlementRow[]>([])
   const [contracts, setContracts] = useState<ContractRow[]>([])
+  const [admins, setAdmins] = useState<AdminLite[]>([])
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false)
   const [exchangeRate, setExchangeRate] = useState(1350)
   const [loading, setLoading] = useState(true)
   const [toggling, setToggling] = useState(false)
   const [approving, setApproving] = useState(false)
   const [error, setError] = useState('')
 
+  // Reassign modal
+  const [showReassign, setShowReassign] = useState(false)
+  const [reassignTargetId, setReassignTargetId] = useState<string>('')
+  const [reassigning, setReassigning] = useState(false)
+  const [reassignError, setReassignError] = useState('')
+
   const fetchData = useCallback(async () => {
-    const [agentRes, casesRes, settlementsRes, contractsRes, rateRes] = await Promise.all([
+    const [agentRes, casesRes, settlementsRes, contractsRes, rateRes, adminsRes, sessionRes] = await Promise.all([
       supabase.from('agents')
-        .select('id, agent_number, name, email, phone, country, margin_rate, is_active, bank_info, onboarding_status, rejection_reason, rejected_at, invite_token, invite_expires_at')
+        .select('id, agent_number, name, email, phone, country, margin_rate, is_active, bank_info, onboarding_status, rejection_reason, rejected_at, invite_token, invite_expires_at, assigned_admin_id')
         .eq('id', id).single(),
       supabase.from('cases')
         .select('id, case_number, status, travel_start_date, travel_end_date, travel_completed_at, payment_date, created_at, documents(type, total_price, company_margin_rate, agent_margin_rate), case_members(is_lead, clients(name))')
@@ -94,13 +105,23 @@ export default function AdminAgentDetailPage() {
         .eq('agent_id', id)
         .order('contract_type', { ascending: true }),  // 'nda' < 'partnership' alphabetically
       supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single(),
+      supabase.from('admins').select('id, name, is_super_admin').order('name'),
+      supabase.auth.getSession(),
     ])
     setAgent((agentRes.data as Agent) ?? null)
     setCases((casesRes.data as unknown as CaseRow[]) ?? [])
     setSettlements((settlementsRes.data as SettlementRow[]) ?? [])
     setContracts((contractsRes.data as ContractRow[]) ?? [])
+    setAdmins((adminsRes.data as AdminLite[]) ?? [])
     const r = (rateRes.data?.value as { usd_krw?: number } | null)?.usd_krw
     if (r) setExchangeRate(r)
+
+    // Determine if current user is super admin
+    const uid = sessionRes.data.session?.user?.id
+    if (uid) {
+      const { data: meRow } = await supabase.from('admins').select('is_super_admin').eq('auth_user_id', uid).maybeSingle()
+      setIsSuperAdmin(!!(meRow as { is_super_admin: boolean | null } | null)?.is_super_admin)
+    }
   }, [id])
 
   useEffect(() => {
@@ -138,14 +159,21 @@ export default function AdminAgentDetailPage() {
       const { data: { session } } = await supabase.auth.getSession()
       const { data: adminRow } = await supabase.from('admins').select('id').eq('auth_user_id', session?.user?.id ?? '').maybeSingle()
 
+      const approverAdminId = (adminRow as { id: string } | null)?.id ?? null
       const { error: aErr } = await supabase.from('agents')
-        .update({ onboarding_status: 'approved', is_active: true, rejection_reason: null, rejected_at: null })
+        .update({
+          onboarding_status: 'approved',
+          is_active: true,
+          rejection_reason: null,
+          rejected_at: null,
+          assigned_admin_id: approverAdminId,
+        })
         .eq('id', agent.id)
       if (aErr) throw aErr
 
       // Stamp approval on each contract
       await supabase.from('agent_contracts')
-        .update({ approved_at: now, approved_by: (adminRow as { id: string } | null)?.id ?? null })
+        .update({ approved_at: now, approved_by: approverAdminId })
         .eq('agent_id', agent.id)
 
       await logAsCurrentUser('agent.approved', { type: 'agent', id: agent.id, label: `${agent.name}${agent.agent_number ? ` · ${agent.agent_number}` : ''}` })
@@ -187,6 +215,30 @@ export default function AdminAgentDetailPage() {
   const [showDelete, setShowDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [copiedInvite, setCopiedInvite] = useState(false)
+
+  async function reassignAgent() {
+    if (!agent || !reassignTargetId) return
+    if (reassignTargetId === agent.assigned_admin_id) { setShowReassign(false); return }
+    setReassigning(true); setReassignError('')
+    try {
+      const newAdmin = admins.find(a => a.id === reassignTargetId)
+      const oldAdmin = agent.assigned_admin_id ? admins.find(a => a.id === agent.assigned_admin_id) : null
+      const { error: rErr } = await supabase.from('agents')
+        .update({ assigned_admin_id: reassignTargetId })
+        .eq('id', agent.id)
+      if (rErr) throw rErr
+      await logAsCurrentUser('agent.reassigned',
+        { type: 'agent', id: agent.id, label: `${agent.name}${agent.agent_number ? ` · ${agent.agent_number}` : ''}` },
+        { from: oldAdmin?.name ?? null, to: newAdmin?.name ?? null })
+      setShowReassign(false)
+      setReassignTargetId('')
+      await fetchData()
+    } catch (e: unknown) {
+      setReassignError((e as { message?: string })?.message ?? 'Failed to reassign.')
+    } finally {
+      setReassigning(false)
+    }
+  }
 
   async function deleteAgent() {
     if (!agent) return
@@ -279,6 +331,25 @@ export default function AdminAgentDetailPage() {
           {/* Approved-only blocks (metrics/profile/bank/cases/settlements) — skip for temp accounts */}
           {agent.onboarding_status === 'approved' && (
           <>
+          {/* Assigned admin */}
+          <div className="bg-white border border-gray-200 rounded-2xl px-4 py-3 flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">Assigned to</p>
+              <p className="text-sm text-gray-900">
+                {agent.assigned_admin_id
+                  ? (admins.find(a => a.id === agent.assigned_admin_id)?.name ?? '—')
+                  : <span className="text-gray-400">Unassigned</span>}
+              </p>
+            </div>
+            {isSuperAdmin && (
+              <button
+                onClick={() => { setReassignTargetId(agent.assigned_admin_id ?? ''); setShowReassign(true); setReassignError('') }}
+                className="text-xs text-[#0f4c35] hover:underline shrink-0">
+                Reassign
+              </button>
+            )}
+          </div>
+
           {/* Basic + margin (snapshot) */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div className="bg-gray-50 rounded-2xl p-4">
@@ -655,6 +726,42 @@ export default function AdminAgentDetailPage() {
 
         </div>
       </div>
+
+      {/* Reassign modal — super admin only */}
+      {showReassign && agent && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => !reassigning && setShowReassign(false)}>
+          <div className="bg-white rounded-2xl max-w-md w-full p-5 space-y-4" onClick={e => e.stopPropagation()}>
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900">Reassign Agent</h3>
+              <p className="text-xs text-gray-500 mt-1">
+                Choose which admin owns <span className="text-gray-900">{agent.name}</span>. Notifications for this agent&apos;s
+                cases will route to the assigned admin.
+              </p>
+            </div>
+            {reassignError && <p className="text-xs text-red-500">{reassignError}</p>}
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Assigned admin</label>
+              <select
+                value={reassignTargetId}
+                onChange={(e) => setReassignTargetId(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35] bg-white">
+                <option value="">— Unassigned —</option>
+                {admins.map(a => (
+                  <option key={a.id} value={a.id}>{a.name ?? '(unnamed)'}{a.is_super_admin ? ' · super' : ''}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
+              <button onClick={() => setShowReassign(false)} disabled={reassigning}
+                className="text-xs text-gray-500 hover:text-gray-800 px-3 py-1.5 rounded-lg disabled:opacity-40">Cancel</button>
+              <button onClick={reassignAgent} disabled={reassigning || reassignTargetId === (agent.assigned_admin_id ?? '')}
+                className="text-xs font-medium bg-[#0f4c35] text-white hover:bg-[#0a3828] px-4 py-1.5 rounded-lg disabled:opacity-40">
+                {reassigning ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

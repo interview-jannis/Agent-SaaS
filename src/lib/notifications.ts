@@ -70,6 +70,64 @@ export async function notifyAllAdmins(message: string, link_url?: string | null)
   if (error) console.error('[notification] admin broadcast failed', error)
 }
 
+// Notify the admin assigned to an agent (or to a case, via its agent). If no
+// admin is assigned, falls back to broadcasting to all super_admins so the
+// message isn't lost. Server-first via service-role API; client-side fallback.
+export async function notifyAssignedAdmin(
+  target: { agent_id?: string; case_id?: string },
+  message: string,
+  link_url?: string | null,
+) {
+  if (typeof window !== 'undefined') {
+    try {
+      const res = await fetch('/api/notifications/notify-assigned-admin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...target, message, link_url: link_url ?? null }),
+      })
+      if (res.ok) return
+      console.warn('[notification] notify-assigned-admin server non-OK, falling back', await res.text().catch(() => ''))
+    } catch (e) {
+      console.warn('[notification] notify-assigned-admin server threw, falling back', e)
+    }
+  }
+
+  // Client fallback — resolve agent_id then assigned_admin_id
+  let agentId = target.agent_id ?? null
+  if (!agentId && target.case_id) {
+    const { data: caseRow } = await supabase.from('cases').select('agent_id').eq('id', target.case_id).maybeSingle()
+    agentId = (caseRow as { agent_id: string } | null)?.agent_id ?? null
+  }
+  if (!agentId) return
+  const { data: agent } = await supabase.from('agents')
+    .select('assigned_admin_id').eq('id', agentId).maybeSingle()
+  const assignedAdminId = (agent as { assigned_admin_id: string | null } | null)?.assigned_admin_id ?? null
+
+  let recipients: Array<{ id: string; auth_user_id: string | null }> = []
+  if (assignedAdminId) {
+    const { data: a } = await supabase.from('admins').select('id, auth_user_id').eq('id', assignedAdminId).maybeSingle()
+    if (a) recipients = [a as { id: string; auth_user_id: string | null }]
+  }
+  if (recipients.length === 0) {
+    const { data: supers } = await supabase.from('admins').select('id, auth_user_id').eq('is_super_admin', true)
+    recipients = (supers as Array<{ id: string; auth_user_id: string | null }>) ?? []
+  }
+  const seen = new Set<string>()
+  const rows = recipients
+    .filter(r => r.auth_user_id && !seen.has(r.auth_user_id) && seen.add(r.auth_user_id))
+    .map(r => ({
+      auth_user_id: r.auth_user_id!,
+      target_type: 'admin' as const,
+      target_id: r.id,
+      message,
+      link_url: link_url ?? null,
+      is_read: false,
+    }))
+  if (rows.length === 0) return
+  const { error } = await supabase.from('notifications').insert(rows)
+  if (error) console.error('[notification] assigned-admin insert failed', error)
+}
+
 // Notify a single agent by agent_id. Server-first to dodge cross-user INSERT
 // edge cases (admin/client → agent row); falls back to direct client insert
 // if the API isn't reachable.

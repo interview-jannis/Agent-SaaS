@@ -11,11 +11,12 @@ import {
   createCaseContract,
   getCaseContract,
   signAsAgent,
+  signAsClient,
   tryAdvanceContractSigned,
   type CaseContractRow,
 } from '@/lib/caseContracts'
 import { logAsCurrentUser } from '@/lib/audit'
-import { notifyAllAdmins } from '@/lib/notifications'
+import { notifyAssignedAdmin } from '@/lib/notifications'
 
 type Props = {
   caseId: string
@@ -40,6 +41,10 @@ export default function AgentCaseContractSection({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
+  // Offline signing — when client is physically present and the agent collects
+  // the signature on this device instead of sending the link.
+  const [clientSignMode, setClientSignMode] = useState(false)
+  const [clientSignerName, setClientSignerName] = useState('')
   const [depositPctDefault, setDepositPctDefault] = useState('50')
   // Collapsible — auto-collapse when fully signed (no action needed) so the
   // long contract body doesn't dominate the case detail page.
@@ -89,8 +94,28 @@ export default function AgentCaseContractSection({
       await signAsAgent(contract.id, sig, agentName)
       await logAsCurrentUser('case_contract.signed_agent', { type: 'case', id: caseId, label: caseNumber })
       // Notify admin (informational — they can prepare to counter-sign once client signs)
-      await notifyAllAdmins(`${caseNumber} agent signed contract — awaiting client signature`, `/admin/cases/${caseId}`)
+      await notifyAssignedAdmin({ case_id: caseId }, `${caseNumber} agent signed contract — awaiting client signature`, `/admin/cases/${caseId}`)
       setSigning(false)
+      await load()
+      await onChanged?.()
+    } catch (e: unknown) {
+      setError((e as { message?: string })?.message ?? 'Failed to sign.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function submitClientSig(sig: string) {
+    if (!contract) return
+    if (!clientSignerName.trim()) { setError('Please enter the client\'s full legal name.'); return }
+    setSaving(true); setError('')
+    try {
+      await signAsClient(contract.id, sig, clientSignerName.trim())
+      await logAsCurrentUser('case_contract.signed_client', { type: 'case', id: caseId, label: caseNumber }, { mode: 'on_device' })
+      // Try advance — won't fire (admin still hasn't signed), but harmless.
+      await tryAdvanceContractSigned(caseId)
+      setClientSignMode(false)
+      setClientSignerName('')
       await load()
       await onChanged?.()
     } catch (e: unknown) {
@@ -132,10 +157,16 @@ export default function AgentCaseContractSection({
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {contract && contract.agent_signed_at && contract.client_token && !contract.client_signed_at && (
-            <button onClick={copyClientLink}
-              className="text-xs font-medium px-3 py-1.5 rounded-lg bg-[#0f4c35] text-white hover:bg-[#0a3828]">
-              {copied ? '✓ Copied!' : 'Copy Client Link'}
-            </button>
+            <>
+              <button onClick={copyClientLink}
+                className="text-xs font-medium px-3 py-1.5 rounded-lg bg-[#0f4c35] text-white hover:bg-[#0a3828]">
+                {copied ? '✓ Copied!' : 'Copy Client Link'}
+              </button>
+              <button onClick={() => { setClientSignMode(v => !v); setError('') }}
+                className="text-xs font-medium px-3 py-1.5 rounded-lg border border-[#0f4c35] text-[#0f4c35] hover:bg-[#0f4c35]/5">
+                {clientSignMode ? 'Cancel' : 'Sign on this device'}
+              </button>
+            </>
           )}
           {contract && (
             <button onClick={() => setExpanded(!isExpanded)}
@@ -158,13 +189,25 @@ export default function AgentCaseContractSection({
           </button>
         </div>
       ) : isExpanded ? (
-        <CaseContractViewer
-          contract={contract}
-          signMode={!contract.agent_signed_at ? 'agent' : (signing ? 'agent' : null)}
-          onSubmit={submitAgentSig}
-          saving={saving}
-          error={error}
-        />
+        clientSignMode && contract.agent_signed_at && !contract.client_signed_at ? (
+          <CaseContractViewer
+            contract={contract}
+            signMode="client"
+            clientSignerName={clientSignerName}
+            onClientSignerNameChange={setClientSignerName}
+            onSubmit={submitClientSig}
+            saving={saving}
+            error={error}
+          />
+        ) : (
+          <CaseContractViewer
+            contract={contract}
+            signMode={!contract.agent_signed_at ? 'agent' : (signing ? 'agent' : null)}
+            onSubmit={submitAgentSig}
+            saving={saving}
+            error={error}
+          />
+        )
       ) : null}
 
       {/* Status hints — always visible (compact summary even when collapsed) */}

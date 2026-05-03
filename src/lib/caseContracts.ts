@@ -3,7 +3,7 @@
 // are collected, the case auto-transitions awaiting_contract → awaiting_deposit.
 
 import { supabase } from './supabase'
-import { notifyAgent, notifyAllAdmins } from './notifications'
+import { notifyAgent, notifyAssignedAdmin } from './notifications'
 
 export type CaseContractType = 'three_party' | 'agent_client'
 
@@ -167,6 +167,6 @@ export async function tryAdvanceContractSigned(caseId: string): Promise<{ advanc
   if (cr.agent_id) {
     await notifyAgent(cr.agent_id, `${cr.case_number} 3-party contract signed — issue deposit invoice now`, `/agent/cases/${cr.id}`)
   }
-  await notifyAllAdmins(`${cr.case_number} 3-party contract signed — deposit phase started`, `/admin/cases/${cr.id}`)
+  await notifyAssignedAdmin({ case_id: cr.id }, `${cr.case_number} 3-party contract signed — deposit phase started`, `/admin/cases/${cr.id}`)
   return { advanced: true }
 }

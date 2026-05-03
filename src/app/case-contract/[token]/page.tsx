@@ -13,7 +13,7 @@ import {
   tryAdvanceContractSigned,
   type CaseContractRow,
 } from '@/lib/caseContracts'
-import { notifyAllAdmins } from '@/lib/notifications'
+import { notifyAssignedAdmin } from '@/lib/notifications'
 
 export default function CaseContractPublicPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = useUnwrap(params)
@@ -45,7 +45,7 @@ export default function CaseContractPublicPage({ params }: { params: Promise<{ t
     try {
       await signAsClient(contract.id, sig, clientName.trim())
       // Notify admins so they know to counter-sign
-      await notifyAllAdmins(`${caseNumber} client signed contract — admin counter-signature needed`, `/admin/cases/${contract.case_id}`)
+      await notifyAssignedAdmin({ case_id: contract.case_id }, `${caseNumber} client signed contract — admin counter-signature needed`, `/admin/cases/${contract.case_id}`)
       // Try to auto-advance (won't fire — admin still hasn't signed)
       await tryAdvanceContractSigned(contract.case_id)
       setDone(true)

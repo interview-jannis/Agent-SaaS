@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { notifyAgent, notifyAllAdmins } from '@/lib/notifications'
+import { notifyAgent, notifyAssignedAdmin } from '@/lib/notifications'
 import {
   type DocumentRow,
   type DocumentItemRow,
@@ -61,12 +61,14 @@ type Props = {
   onChanged: () => Promise<void> | void       // parent re-fetches
 }
 
+// Card styling — all white so no single invoice type dominates the section
+// visually. Type identification comes from TYPE_LABEL_TONE on the label chip.
 const TYPE_TONE: Record<DocumentType, string> = {
   quotation: 'border-gray-200 bg-white',
-  deposit_invoice: 'border-cyan-200 bg-cyan-50',
-  final_invoice: 'border-violet-200 bg-violet-50',
-  additional_invoice: 'border-amber-200 bg-amber-50',
-  commission_invoice: 'border-emerald-200 bg-emerald-50',
+  deposit_invoice: 'border-gray-200 bg-white',
+  final_invoice: 'border-gray-200 bg-white',
+  additional_invoice: 'border-gray-200 bg-white',
+  commission_invoice: 'border-gray-200 bg-white',
 }
 
 const TYPE_LABEL_TONE: Record<DocumentType, string> = {
@@ -200,7 +202,7 @@ export default function CaseDocumentsSection({
 
         if (recipient === 'admin') {
           // Agent issued commission → notify admins
-          await notifyAllAdmins(`${caseNumber} ${label} issued by agent (${issued.document_number})`, `/admin/cases/${caseId}`)
+          await notifyAssignedAdmin({ case_id: caseId }, `${caseNumber} ${label} issued by agent (${issued.document_number})`, `/admin/cases/${caseId}`)
         } else if (recipient === 'agent' && agentId) {
           // Admin issued deposit settlement → notify agent
           await notifyAgent(agentId, `${caseNumber} ${label} issued (${issued.document_number}) — please review`, `/agent/cases/${caseId}`)
@@ -213,7 +215,7 @@ export default function CaseDocumentsSection({
           } else if (actor === 'agent') {
             // Agent issued deposit (to client, after 3-way contract signed) →
             // notify admins so they know money flow has started
-            await notifyAllAdmins(`${caseNumber} ${label} issued by agent (${issued.document_number}) — client should pay agent`, `/admin/cases/${caseId}`)
+            await notifyAssignedAdmin({ case_id: caseId }, `${caseNumber} ${label} issued by agent (${issued.document_number}) — client should pay agent`, `/admin/cases/${caseId}`)
           }
         }
       }
@@ -298,7 +300,7 @@ export default function CaseDocumentsSection({
         const docNumber = doc.document_number ?? ''
         if (doc.type === 'deposit_invoice' && doc.from_party === 'agent' && doc.to_party === 'client') {
           // Agent confirmed client paid them → admins should know money flow started
-          await notifyAllAdmins(`${caseNumber} Deposit received by agent (${docNumber}) — agent should forward to admin`, `/admin/cases/${caseId}`)
+          await notifyAssignedAdmin({ case_id: caseId }, `${caseNumber} Deposit received by agent (${docNumber}) — agent should forward to admin`, `/admin/cases/${caseId}`)
         } else if (doc.type === 'deposit_invoice' && doc.from_party === 'admin' && doc.to_party === 'agent') {
           // Admin received deposit forward from agent → notify agent
           if (agentId) await notifyAgent(agentId, `${caseNumber} Deposit forward confirmed by admin (${docNumber})`, `/agent/cases/${caseId}`)
@@ -340,9 +342,13 @@ export default function CaseDocumentsSection({
   const canIssue = !!quotation  // need a quotation to base off
   // Pre-contract: nothing should be issued yet (3-party signing must finish first).
   const contractPending = caseStatus === 'awaiting_contract'
+  // Highlight the section when it's the active CTA (deposit phase, no invoice yet)
+  const ctaHighlight = caseStatus === 'awaiting_deposit' && invoiceDocs.length === 0
 
   return (
-    <section className={embedded ? 'pt-4 border-t border-gray-200 space-y-3' : 'bg-gray-50 rounded-2xl p-4 space-y-3'}>
+    <section className={embedded
+      ? 'pt-4 border-t border-gray-200 space-y-3'
+      : `${ctaHighlight ? 'bg-cyan-50 border border-cyan-200' : 'bg-gray-50'} rounded-2xl p-4 space-y-3`}>
       <div className="flex items-center justify-between flex-wrap gap-2">
         <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Invoices</p>
         <div className="flex items-center gap-2 flex-wrap">
@@ -378,6 +384,12 @@ export default function CaseDocumentsSection({
       </div>
       {!canIssue && (
         <p className="text-[11px] text-gray-500">Issue Quotation first via Home flow.</p>
+      )}
+      {ctaHighlight && actor === 'agent' && (
+        <p className="text-[11px] text-cyan-800">3-party contract signed — issue the deposit invoice to start collecting from the client.</p>
+      )}
+      {ctaHighlight && actor === 'admin' && (
+        <p className="text-[11px] text-cyan-800">Awaiting deposit. After the agent issues the client deposit invoice, record the settlement here.</p>
       )}
       {error && <p className="text-xs text-red-500">{error}</p>}
 
@@ -516,9 +528,8 @@ export default function CaseDocumentsSection({
         // Paid invoices recede visually so attention goes to pending actions.
         const cardTone = paid
           ? 'border-gray-200 bg-gray-50'
-          : isSettlement
-            ? 'border-cyan-300 bg-cyan-100/60'
-            : TYPE_TONE[doc.type]
+          : TYPE_TONE[doc.type]
+        void isSettlement
         return (
           <div key={doc.id} className={`rounded-xl border ${cardTone} p-3 space-y-2`}>
             <div className="flex items-center justify-between flex-wrap gap-2">
@@ -567,8 +578,8 @@ export default function CaseDocumentsSection({
               ))}
             </div>
 
-            {/* Add item inline form */}
-            {!paid && canEdit && (
+            {/* Add item inline form — deposit invoice/settlement are flat amounts, no line items */}
+            {!paid && canEdit && doc.type !== 'deposit_invoice' && (
               addingItemTo === doc.id ? (
                 <div className="bg-white rounded-lg border border-gray-200 p-2.5 space-y-2">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2">

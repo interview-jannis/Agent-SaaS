@@ -16,7 +16,10 @@ type Agent = {
   is_active: boolean
   onboarding_status: OnboardingStatus | null
   rejection_reason: string | null
+  assigned_admin_id: string | null
 }
+
+type AdminLite = { id: string; name: string | null }
 
 type CaseRow = {
   id: string
@@ -37,6 +40,7 @@ function commissionKrw(totalKrw: number, margin: number): number {
 export default function AdminAgentsPage() {
   const router = useRouter()
   const [agents, setAgents] = useState<Agent[]>([])
+  const [admins, setAdmins] = useState<AdminLite[]>([])
   const [cases, setCases] = useState<CaseRow[]>([])
   const [clients, setClients] = useState<ClientRow[]>([])
   const [settlements, setSettlements] = useState<SettlementRow[]>([])
@@ -53,22 +57,26 @@ export default function AdminAgentsPage() {
   const [copiedInvite, setCopiedInvite] = useState(false)
 
   async function fetchAll() {
-    const [agentsRes, casesRes, clientsRes, settlementsRes, rateRes] = await Promise.all([
+    const [agentsRes, adminsRes, casesRes, clientsRes, settlementsRes, rateRes] = await Promise.all([
       supabase.from('agents')
-        .select('id, agent_number, name, email, country, margin_rate, is_active, onboarding_status, rejection_reason')
+        .select('id, agent_number, name, email, country, margin_rate, is_active, onboarding_status, rejection_reason, assigned_admin_id')
         .order('name'),
+      supabase.from('admins').select('id, name'),
       supabase.from('cases').select('id, agent_id, status, documents(type, total_price, agent_margin_rate)'),
       supabase.from('clients').select('id, agent_id'),
       supabase.from('settlements').select('id, agent_id, case_id, amount'),
       supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single(),
     ])
     setAgents((agentsRes.data as Agent[]) ?? [])
+    setAdmins((adminsRes.data as AdminLite[]) ?? [])
     setCases((casesRes.data as unknown as CaseRow[]) ?? [])
     setClients((clientsRes.data as ClientRow[]) ?? [])
     setSettlements((settlementsRes.data as SettlementRow[]) ?? [])
     const r = (rateRes.data?.value as { usd_krw?: number } | null)?.usd_krw
     if (r) setExchangeRate(r)
   }
+
+  const adminNameById = new Map(admins.map(a => [a.id, a.name ?? '—']))
 
   useEffect(() => {
     async function init() { await fetchAll(); setLoading(false) }
@@ -192,6 +200,7 @@ export default function AdminAgentsPage() {
                       <th className="py-2.5 px-2 md:px-4 text-xs font-medium text-gray-400 text-left">Agent #</th>
                       <th className="py-2.5 px-2 md:px-4 text-xs font-medium text-gray-400 text-left">Name</th>
                       <th className="py-2.5 px-2 md:px-4 text-xs font-medium text-gray-400 text-left hidden md:table-cell">Country</th>
+                      <th className="py-2.5 px-2 md:px-4 text-xs font-medium text-gray-400 text-left hidden md:table-cell">Assigned to</th>
                       <th className="py-2.5 px-2 md:px-4 text-xs font-medium text-gray-400 text-left hidden md:table-cell">Cases</th>
                       <th className="py-2.5 px-2 md:px-4 text-xs font-medium text-gray-400 text-left hidden md:table-cell">Margin</th>
                       <th className="py-2.5 px-2 md:px-4 text-xs font-medium text-gray-400 text-left">Unsettled</th>
@@ -211,6 +220,7 @@ export default function AdminAgentsPage() {
                             <p className="text-[10px] text-gray-400 truncate max-w-[160px] md:max-w-none">{a.email ?? ''}</p>
                           </td>
                           <td className="py-3 px-2 md:px-4 text-gray-500 hidden md:table-cell">{a.country ?? '—'}</td>
+                          <td className="py-3 px-2 md:px-4 text-gray-600 hidden md:table-cell">{a.assigned_admin_id ? adminNameById.get(a.assigned_admin_id) ?? '—' : <span className="text-gray-300">Unassigned</span>}</td>
                           <td className="py-3 px-2 md:px-4 text-gray-500 text-center hidden md:table-cell">{m.cases}</td>
                           <td className="py-3 px-2 md:px-4 text-gray-700 hidden md:table-cell">{a.margin_rate != null ? `${(a.margin_rate * 100).toFixed(0)}%` : '—'}</td>
                           <td className={`py-3 px-2 md:px-4 font-medium ${m.unsettledKrw > 0 ? 'text-amber-700' : 'text-gray-400'}`}>{fmtUSD(m.unsettledKrw / exchangeRate)}</td>
