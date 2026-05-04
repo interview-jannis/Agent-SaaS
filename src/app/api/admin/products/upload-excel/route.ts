@@ -125,8 +125,9 @@ export async function POST(req: Request) {
   const { data: userData } = await supabase.auth.getUser(token)
   const uid = userData?.user?.id
   if (!uid) return NextResponse.json({ error: 'Invalid session.' }, { status: 401 })
-  const { data: admin } = await supabase.from('admins').select('id').eq('auth_user_id', uid).maybeSingle()
+  const { data: admin } = await supabase.from('admins').select('id, name').eq('auth_user_id', uid).maybeSingle()
   if (!admin) return NextResponse.json({ error: 'Admin only.' }, { status: 403 })
+  const adminRow = admin as { id: string; name: string | null }
 
   // Read file
   const form = await req.formData()
@@ -292,9 +293,24 @@ export async function POST(req: Request) {
       if (dryRun) {
         productId = `dryrun-prod-${grp.partner}::${grp.name}`
       } else {
-        // Need a product_number. Use next sequential by counting.
-        const { count } = await supabase.from('products').select('*', { count: 'exact', head: true })
-        const productNumber = `#P-${String(((count ?? 0) + 1)).padStart(3, '0')}`
+        // Need a product_number. Use MAX(numeric part) + 1 — count-based
+        // numbering collides when existing #P-XXX values are sparse (e.g.
+        // #P-306..#P-311 occupied while count = 109 → tries #P-110 then
+        // crashes into an existing high number).
+        const { data: maxRow } = await supabase
+          .from('products')
+          .select('product_number')
+          .order('product_number', { ascending: false })
+          .limit(200)
+        let maxNum = 0
+        for (const r of (maxRow as { product_number: string | null }[] | null) ?? []) {
+          const m = /(\d+)/.exec(r.product_number ?? '')
+          if (m) {
+            const n = parseInt(m[1], 10)
+            if (n > maxNum) maxNum = n
+          }
+        }
+        const productNumber = `#P-${String(maxNum + 1).padStart(3, '0')}`
         const { data: created, error: insErr } = await supabase
           .from('products')
           .insert({
@@ -413,6 +429,29 @@ export async function POST(req: Request) {
         productsDeleted = count ?? ids.length
       }
     }
+  }
+
+  // Audit log — only on real commit, not dry-run preview.
+  if (!dryRun && (productsInserted + productsUpdated + productsDeleted + variantsInserted + variantsUpdated > 0)) {
+    await supabase.from('audit_logs').insert({
+      actor_type: 'admin',
+      actor_id: adminRow.id,
+      actor_label: adminRow.name ?? 'admin',
+      action: 'product.bulk_uploaded',
+      target_type: 'products',
+      target_id: null,
+      target_label: file.name,
+      details: {
+        file_name: file.name,
+        delete_missing: deleteMissing,
+        products: {
+          inserted: productsInserted, updated: productsUpdated,
+          unchanged: productsUnchanged, deleted: productsDeleted,
+        },
+        variants: { inserted: variantsInserted, updated: variantsUpdated, unchanged: variantsUnchanged },
+        errors_count: errors.length,
+      },
+    })
   }
 
   return NextResponse.json({

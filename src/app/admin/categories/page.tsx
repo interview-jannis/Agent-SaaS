@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { logAsCurrentUser } from '@/lib/audit'
 
 type Category = { id: string; name: string }
 type Subcategory = { id: string; category_id: string; name: string; sort_order: number }
@@ -45,8 +46,10 @@ export default function AdminCategoriesPage() {
   async function addCategory() {
     if (!newCatName.trim()) return
     setAddingCat(true); setError('')
-    const { error: err } = await supabase.from('product_categories').insert({ name: newCatName.trim() })
+    const name = newCatName.trim()
+    const { data, error: err } = await supabase.from('product_categories').insert({ name }).select('id').single()
     if (err) { setError(err.message); setAddingCat(false); return }
+    await logAsCurrentUser('category.created', { type: 'category', id: (data as { id: string } | null)?.id ?? null, label: name })
     setNewCatName('')
     setAddingCat(false)
     load()
@@ -55,8 +58,13 @@ export default function AdminCategoriesPage() {
   async function updateCategory(id: string) {
     if (!editCatName.trim()) return
     setSavingCat(true); setError('')
-    const { error: err } = await supabase.from('product_categories').update({ name: editCatName.trim() }).eq('id', id)
+    const oldName = categories.find(c => c.id === id)?.name ?? ''
+    const newName = editCatName.trim()
+    const { error: err } = await supabase.from('product_categories').update({ name: newName }).eq('id', id)
     if (err) { setError(err.message); setSavingCat(false); return }
+    if (oldName !== newName) {
+      await logAsCurrentUser('category.updated', { type: 'category', id, label: newName }, { from: oldName, to: newName })
+    }
     setEditCatId(null)
     setSavingCat(false)
     load()
@@ -66,6 +74,7 @@ export default function AdminCategoriesPage() {
     if (!confirm(`Delete category "${name}"? Products using this category will be unassigned. Sub-categories will also be deleted.`)) return
     const { error: err } = await supabase.from('product_categories').delete().eq('id', id)
     if (err) { setError(err.message); return }
+    await logAsCurrentUser('category.deleted', { type: 'category', id, label: name })
     load()
   }
 
@@ -78,8 +87,14 @@ export default function AdminCategoriesPage() {
     // sort_order = max + 1 within this category
     const existing = subcategories.filter(s => s.category_id === categoryId)
     const nextOrder = existing.reduce((m, s) => Math.max(m, s.sort_order ?? 0), 0) + 1
-    const { error: err } = await supabase.from('product_subcategories').insert({ category_id: categoryId, name, sort_order: nextOrder })
+    const parentName = categories.find(c => c.id === categoryId)?.name ?? ''
+    const { data, error: err } = await supabase.from('product_subcategories').insert({ category_id: categoryId, name, sort_order: nextOrder }).select('id').single()
     if (err) { setError(err.message); setAddingSubFor(null); return }
+    await logAsCurrentUser(
+      'subcategory.created',
+      { type: 'subcategory', id: (data as { id: string } | null)?.id ?? null, label: `${parentName} / ${name}` },
+      { parent_category: parentName },
+    )
     setNewSubName(p => ({ ...p, [categoryId]: '' }))
     setAddingSubFor(null)
     load()
@@ -88,8 +103,19 @@ export default function AdminCategoriesPage() {
   async function updateSubcategory(id: string) {
     if (!editSubName.trim()) return
     setSavingSub(true); setError('')
-    const { error: err } = await supabase.from('product_subcategories').update({ name: editSubName.trim() }).eq('id', id)
+    const oldRow = subcategories.find(s => s.id === id)
+    const oldName = oldRow?.name ?? ''
+    const newName = editSubName.trim()
+    const parentName = oldRow ? (categories.find(c => c.id === oldRow.category_id)?.name ?? '') : ''
+    const { error: err } = await supabase.from('product_subcategories').update({ name: newName }).eq('id', id)
     if (err) { setError(err.message); setSavingSub(false); return }
+    if (oldName !== newName) {
+      await logAsCurrentUser(
+        'subcategory.updated',
+        { type: 'subcategory', id, label: `${parentName} / ${newName}` },
+        { from: oldName, to: newName, parent_category: parentName },
+      )
+    }
     setEditSubId(null)
     setSavingSub(false)
     load()
@@ -97,8 +123,15 @@ export default function AdminCategoriesPage() {
 
   async function deleteSubcategory(id: string, name: string) {
     if (!confirm(`Delete sub-category "${name}"? Products using it will be unassigned (still keep the parent category).`)) return
+    const oldRow = subcategories.find(s => s.id === id)
+    const parentName = oldRow ? (categories.find(c => c.id === oldRow.category_id)?.name ?? '') : ''
     const { error: err } = await supabase.from('product_subcategories').delete().eq('id', id)
     if (err) { setError(err.message); return }
+    await logAsCurrentUser(
+      'subcategory.deleted',
+      { type: 'subcategory', id, label: `${parentName} / ${name}` },
+      { parent_category: parentName },
+    )
     load()
   }
 

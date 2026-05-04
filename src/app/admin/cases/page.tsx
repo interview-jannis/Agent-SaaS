@@ -240,7 +240,8 @@ export default function AdminCasesPage() {
     <div className="flex flex-col h-full bg-white">
 
       {/* Header */}
-      <div className="shrink-0 border-b border-gray-100 px-4 md:px-6 py-3 md:py-0 md:h-14 flex flex-col md:flex-row md:items-center gap-3 md:gap-4">
+      <div className="shrink-0 border-b border-gray-100 px-4 md:px-6 py-3 flex flex-col gap-2.5">
+        {/* Row 1: title + search */}
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2 shrink-0">
             <h1 className="text-base font-semibold text-gray-900">Cases</h1>
@@ -250,12 +251,12 @@ export default function AdminCasesPage() {
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search..."
-            className="md:hidden flex-1 text-xs border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:border-[#0f4c35] bg-white text-gray-900 placeholder-gray-400"
+            placeholder="Search by case #, agent, or client name"
+            className="ml-auto flex-1 md:flex-none md:w-72 text-xs border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:border-[#0f4c35] bg-white text-gray-900 placeholder-gray-400"
           />
         </div>
         {!loading && filtered.length > 0 && (
-          <div className="flex-1 min-w-0 flex items-center gap-1 bg-gray-50 border border-gray-100 rounded-lg px-2 py-1 flex-wrap md:flex-nowrap md:overflow-x-auto md:no-scrollbar">
+          <div className="flex items-center gap-1 bg-gray-50 border border-gray-100 rounded-lg px-2 py-1 overflow-x-auto no-scrollbar">
             <span className="shrink-0 text-[10px] font-semibold text-gray-400 uppercase tracking-wider pr-1.5 mr-0.5 border-r border-gray-200">Jump</span>
             {DISPLAY_ORDER.map((g) => {
               const count = groupedByDisplay.get(g)?.length ?? 0
@@ -279,13 +280,6 @@ export default function AdminCasesPage() {
             })}
           </div>
         )}
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by case #, agent, or client name"
-          className="hidden md:block shrink-0 text-xs border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:border-[#0f4c35] bg-white text-gray-900 placeholder-gray-400 ml-auto w-72"
-        />
       </div>
 
       {/* Body */}

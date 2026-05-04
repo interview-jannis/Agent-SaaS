@@ -157,6 +157,10 @@ export default function AgentHomePage() {
   const [renameValue, setRenameValue] = useState('')
   const [imageIndexes, setImageIndexes] = useState<Record<string, number>>({})
   const [detailProduct, setDetailProduct] = useState<Product | null>(null)
+  // Tracks which variant prefix-groups are expanded inside the detail modal.
+  // Key: `${productId}::${groupIndex}`. Defaults to expanded if any child is
+  // already in cart (computed at render time).
+  const [expandedVariantGroup, setExpandedVariantGroup] = useState<Record<string, boolean>>({})
   const [modalImageIndex, setModalImageIndex] = useState(0)
 
   function openDetail(product: Product) {
@@ -255,14 +259,37 @@ export default function AgentHomePage() {
     return true
   }
 
+  const marginMult = (1 + companyMargin) * (1 + agentMargin)
+
+  // Sort key: max active-variant price in USD (with margin rule applied).
+  // Drives "most expensive first" catalog ordering — we want agents leading
+  // with the high-ticket items. Future: swap/blend with popularity (case count)
+  // once we have ≥5–10 cases of signal.
+  function priceSortKey(p: Product): number {
+    const variants = (p.product_variants ?? []).filter(v => v.is_active)
+    if (variants.length === 0) return -1
+    const apply = appliesMargin(p.product_categories?.name, p.product_subcategories?.name)
+    let max = 0
+    for (const v of variants) {
+      const usd = variantPriceUsd({
+        basePrice: v.base_price,
+        priceCurrency: v.price_currency,
+        exchangeRate, marginMult, applyMargin: apply,
+      })
+      if (usd > max) max = usd
+    }
+    return max
+  }
+
   const filteredProducts = useMemo(() => {
-    return products.filter((p) => {
+    const list = products.filter((p) => {
       if (selectedCategoryId && p.category_id !== selectedCategoryId) return false
       if (selectedSubcategoryName && p.product_subcategories?.name !== selectedSubcategoryName) return false
       return passesCrossFilters(p)
     })
+    return list.sort((a, b) => priceSortKey(b) - priceSortKey(a))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [products, search, selectedCategoryId, selectedSubcategoryName, filterPrayerRoom, filterDietary, filterFemaleMedical])
+  }, [products, search, selectedCategoryId, selectedSubcategoryName, filterPrayerRoom, filterDietary, filterFemaleMedical, exchangeRate, marginMult])
 
   // Subcategories present within the currently selected category, sorted by appearance.
   const availableSubcategories = useMemo(() => {
@@ -286,22 +313,21 @@ export default function AgentHomePage() {
       const bucket = map.get(p.category_id)
       if (bucket) bucket.push(p)
     }
-    // Sort each bucket: pinned (was in cart at snapshot time) first, rest keeps original order.
-    // Items added to cart AFTER snapshot are NOT re-pinned (prevents cards jumping while user clicks).
+    // Sort each bucket: pinned (was in cart at snapshot time) first, then by
+    // price desc so high-ticket items lead. Items added to cart AFTER snapshot
+    // are NOT re-pinned (prevents cards jumping while user clicks).
     for (const bucket of map.values()) {
       bucket.sort((a, b) => {
         const ap = pinnedProductIds.has(a.id) ? 0 : 1
         const bp = pinnedProductIds.has(b.id) ? 0 : 1
         if (ap !== bp) return ap - bp
-        return 0
+        return priceSortKey(b) - priceSortKey(a)
       })
-      // Still useful: if user JUST added an item (not in snapshot) keep it in original position.
-      // But if the only pinned items are already at front, nothing changes.
       void cartIds
     }
     return map
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [products, categories, search, filterPrayerRoom, filterDietary, filterFemaleMedical, pinnedProductIds])
+  }, [products, categories, search, filterPrayerRoom, filterDietary, filterFemaleMedical, pinnedProductIds, exchangeRate, marginMult])
 
   // When entering section view (selectedCategoryId cleared), snapshot current cart.
   useEffect(() => {
@@ -316,8 +342,6 @@ export default function AgentHomePage() {
     groups.forEach((g, idx) => g.items.forEach((it) => map.set(it.productId, idx)))
     return map
   }, [groups])
-
-  const marginMult = (1 + companyMargin) * (1 + agentMargin)
 
   const totalUSD = useMemo(() => {
     return groups.reduce((total, g) => {
@@ -706,8 +730,9 @@ export default function AgentHomePage() {
             so the product grid can use the full window width. Categories are
             pills inline, Muslim/dietary filters are tucked behind a popover
             so they don't crowd the bar. */}
-        <div className="shrink-0 bg-white border-b border-gray-100 px-4 md:px-6 py-2.5 flex items-center gap-3 flex-wrap">
-          {/* Search */}
+        <div className="shrink-0 bg-white border-b border-gray-100 px-4 md:px-6 py-2.5 flex flex-col gap-2.5">
+          {/* Row 1: Search (left) + Muslim Friendly (right) */}
+          <div className="flex items-center gap-3">
           <div className="relative flex-1 min-w-[180px] max-w-xs">
             <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
@@ -721,29 +746,11 @@ export default function AgentHomePage() {
             />
           </div>
 
-          {/* Category pills — horizontal scroll on narrow widths */}
-          <div className="flex items-center gap-1.5 overflow-x-auto -mx-1 px-1">
-            {[{ id: '', name: 'All' }, ...categories].map(cat => {
-              const active = selectedCategoryId === cat.id
-              return (
-                <button
-                  key={cat.id || 'all'}
-                  onClick={() => { setSelectedCategoryId(cat.id); setSelectedSubcategoryName('') }}
-                  className={`shrink-0 px-3 py-1.5 text-xs rounded-full border transition-colors ${active
-                    ? 'bg-[#0f4c35] border-[#0f4c35] text-white'
-                    : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'}`}
-                >
-                  {cat.name}
-                </button>
-              )
-            })}
-          </div>
-
-          {/* Muslim/Dietary filters — popover */}
+          {/* Muslim/Dietary filters — popover (right side of row 1) */}
           {(() => {
             const activeCount = (filterPrayerRoom ? 1 : 0) + (filterFemaleMedical ? 1 : 0) + filterDietary.length
             return (
-              <div className="relative ml-auto">
+              <div className="relative ml-auto shrink-0">
                 <button
                   onClick={() => setFilterOpen(v => !v)}
                   className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${activeCount > 0
@@ -797,6 +804,25 @@ export default function AgentHomePage() {
               </div>
             )
           })()}
+          </div>
+
+          {/* Row 2: Category pills (horizontal scroll on narrow widths) */}
+          <div className="flex items-center gap-1.5 overflow-x-auto -mx-1 px-1">
+            {[{ id: '', name: 'All' }, ...categories].map(cat => {
+              const active = selectedCategoryId === cat.id
+              return (
+                <button
+                  key={cat.id || 'all'}
+                  onClick={() => { setSelectedCategoryId(cat.id); setSelectedSubcategoryName('') }}
+                  className={`shrink-0 px-3 py-1.5 text-xs rounded-full border transition-colors ${active
+                    ? 'bg-[#0f4c35] border-[#0f4c35] text-white'
+                    : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'}`}
+                >
+                  {cat.name}
+                </button>
+              )
+            })}
+          </div>
         </div>
 
         {/* Subcategory pill row — only shown when a parent category is selected
@@ -1036,9 +1062,10 @@ export default function AgentHomePage() {
                 </button>
               </div>
 
-              {/* Variant picker — one row per variant when there are multiple,
-                  showing label + price. Each acts as a toggle in the active
-                  cart group. Single-variant products get the simpler price box. */}
+              {/* Variant picker — groups variants by the prefix before the last
+                  " · " separator. Multiple groups → 2-level accordion (click
+                  group header to expand its options). Single group → flat list
+                  (current behavior). Single variant → just the price box. */}
               {(() => {
                 const variants = (detailProduct.product_variants ?? [])
                   .filter(v => v.is_active)
@@ -1059,27 +1086,93 @@ export default function AgentHomePage() {
                   )
                 }
                 const activeGroup = groups[activeGroupIndex]
+                const usdFor = (v: typeof variants[number]) => variantPriceUsd({
+                  basePrice: v.base_price, priceCurrency: v.price_currency,
+                  exchangeRate, marginMult, applyMargin: margin,
+                })
+
+                // Group by prefix (everything before the LAST " · "). Variants
+                // without a separator form a singleton group keyed by full label.
+                const groupsByPrefix: { prefix: string; items: typeof variants }[] = []
+                const prefixIdx = new Map<string, number>()
+                for (const v of variants) {
+                  const label = v.variant_label || 'Default'
+                  const sepIdx = label.lastIndexOf(' · ')
+                  const prefix = sepIdx >= 0 ? label.slice(0, sepIdx) : label
+                  if (!prefixIdx.has(prefix)) {
+                    prefixIdx.set(prefix, groupsByPrefix.length)
+                    groupsByPrefix.push({ prefix, items: [] })
+                  }
+                  groupsByPrefix[prefixIdx.get(prefix)!].items.push(v)
+                }
+
+                // If only one prefix group exists, flat render.
+                const useTwoLevel = groupsByPrefix.length >= 2
+                const renderVariantRow = (v: typeof variants[number], showFullLabel: boolean) => {
+                  const inCart = activeGroup?.items.some(it => it.productId === detailProduct.id && it.variantId === v.id) ?? false
+                  const usd = usdFor(v)
+                  const label = v.variant_label || 'Default'
+                  const sepIdx = label.lastIndexOf(' · ')
+                  const display = showFullLabel || sepIdx < 0 ? label : label.slice(sepIdx + 3)
+                  return (
+                    <button key={v.id}
+                      onClick={() => toggleItem(detailProduct.id, v.id)}
+                      className={`w-full flex items-center justify-between px-4 py-2.5 rounded-xl border transition-colors ${inCart ? 'border-[#0f4c35] bg-[#0f4c35]/5' : 'border-gray-200 hover:border-gray-300'}`}>
+                      <div className="text-left">
+                        <p className="text-sm font-medium text-gray-900">{display}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className={`text-sm font-bold ${inCart ? 'text-[#0f4c35]' : 'text-gray-900'}`}>${usd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                        <p className="text-[10px] text-gray-400">{inCart ? '✓ in cart' : 'tap to add'}</p>
+                      </div>
+                    </button>
+                  )
+                }
+
+                if (!useTwoLevel) {
+                  return (
+                    <div className="space-y-2">
+                      <p className="text-xs font-medium text-gray-500">Choose option</p>
+                      {variants.map(v => renderVariantRow(v, true))}
+                    </div>
+                  )
+                }
+
                 return (
                   <div className="space-y-2">
                     <p className="text-xs font-medium text-gray-500">Choose option</p>
-                    {variants.map(v => {
-                      const inCart = activeGroup?.items.some(it => it.productId === detailProduct.id && it.variantId === v.id) ?? false
-                      const usd = variantPriceUsd({
-                        basePrice: v.base_price, priceCurrency: v.price_currency,
-                        exchangeRate, marginMult, applyMargin: margin,
-                      })
+                    {groupsByPrefix.map((g, gi) => {
+                      // Singleton group → render directly as a row (full label).
+                      if (g.items.length === 1) return renderVariantRow(g.items[0], true)
+                      // Multi-item group → expandable. Auto-expand if any child is in cart.
+                      const anyInCart = g.items.some(v =>
+                        activeGroup?.items.some(it => it.productId === detailProduct.id && it.variantId === v.id) ?? false)
+                      const expanded = expandedVariantGroup[`${detailProduct.id}::${gi}`] ?? anyInCart
+                      const prices = g.items.map(usdFor)
+                      const min = Math.min(...prices), max = Math.max(...prices)
+                      const range = min === max
+                        ? `$${min.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
+                        : `$${min.toLocaleString('en-US', { maximumFractionDigits: 0 })} – $${max.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
                       return (
-                        <button key={v.id}
-                          onClick={() => toggleItem(detailProduct.id, v.id)}
-                          className={`w-full flex items-center justify-between px-4 py-2.5 rounded-xl border transition-colors ${inCart ? 'border-[#0f4c35] bg-[#0f4c35]/5' : 'border-gray-200 hover:border-gray-300'}`}>
-                          <div className="text-left">
-                            <p className="text-sm font-medium text-gray-900">{v.variant_label || 'Default'}</p>
-                          </div>
-                          <div className="text-right">
-                            <p className={`text-sm font-bold ${inCart ? 'text-[#0f4c35]' : 'text-gray-900'}`}>${usd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-                            <p className="text-[10px] text-gray-400">{inCart ? '✓ in cart' : 'tap to add'}</p>
-                          </div>
-                        </button>
+                        <div key={g.prefix} className="space-y-2">
+                          <button
+                            onClick={() => setExpandedVariantGroup(s => ({ ...s, [`${detailProduct.id}::${gi}`]: !expanded }))}
+                            className={`w-full flex items-center justify-between px-4 py-2.5 rounded-xl border transition-colors ${anyInCart ? 'border-[#0f4c35] bg-[#0f4c35]/5' : 'border-gray-200 hover:border-gray-300'}`}>
+                            <div className="text-left flex items-center gap-2">
+                              <svg className={`w-3.5 h-3.5 text-gray-400 transition-transform ${expanded ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                              </svg>
+                              <p className="text-sm font-medium text-gray-900">{g.prefix}</p>
+                              <span className="text-[10px] text-gray-400">({g.items.length})</span>
+                            </div>
+                            <p className="text-sm font-semibold text-gray-700">{range}</p>
+                          </button>
+                          {expanded && (
+                            <div className="pl-6 space-y-2">
+                              {g.items.map(v => renderVariantRow(v, false))}
+                            </div>
+                          )}
+                        </div>
                       )
                     })}
                   </div>

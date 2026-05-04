@@ -89,8 +89,9 @@ Agent 수동 개입:
 
 ## 화면 구조
 - Agent (6탭): Home / Cases / Clients / Payouts / Dashboard / Profile
-- Admin: Overview / Cases / Products / Agents / Clients / Settlement / Contracts / **Admins** / Audit Log / Settings
-  - 권한 분기: 일반 admin은 **Admins** 메뉴 안 보임. 모든 admin이 시스템 설정/계약서 **조회**는 가능하나 **수정**은 super admin만.
+- Admin: Overview / Cases / Products / Agents / Clients / Settlement / Contracts / **Surveys** / **Admins** / Audit Log / Settings
+  - 권한 분기: 일반 admin은 **Admins** 메뉴 안 보임. 모든 admin이 시스템 설정/계약서/설문 **조회**는 가능하나 **수정**은 super admin만.
+  - **/admin/surveys**: Questions 탭 (post-trip 질문 편집, super admin 전용) + Responses 탭 (제출된 응답 모음). 이전엔 /admin/contracts에 섞여 있었으나 결이 달라 분리 (5/4).
 - 고객용 URL 페이지:
   - **/quote/[slug]** — Quotation (가격 finalize 전 단계)
   - **/invoice/[slug]** — Commercial Invoice (finalize 후, 은행 정보 포함)
@@ -140,7 +141,7 @@ Agent 수동 개입:
 - **product_categories**: id, name, sort_order. 6개 fixed (K-Medical, K-Beauty, K-Wellness, K-Education, K-Starcation, Subpackage). Excel upload는 카테고리 자동 추가 X — Manage Categories에서 명시 추가만.
 - **product_subcategories**: id, category_id, name, sort_order. K-Beauty는 클리닉명(DIAR/Dr.Tune's/...), K-Medical은 진료과(Health Check-up). Excel upload 시 자동 생성.
 - **products**: id, product_number, category_id, **subcategory_id**, name, description, base_price, price_currency, partner_name, duration_value, duration_unit, has_female_doctor, has_prayer_room, dietary_type, location_address, contact_channels(jsonb), is_active. ⚠️ `sort_order` 컬럼 없음 — sort는 product_number로.
-- **product_variants** (2026-05-04): id, product_id, variant_label(NULL=default/sole), base_price, price_currency, sort_order, is_active. 같은 base name 상품의 다른 회차/사이즈/grade를 묶음. 모든 product에 최소 1개 default variant 보장.
+- **product_variants** (2026-05-04): id, product_id, variant_label(NULL=default/sole), base_price, price_currency, sort_order, is_active. 같은 base name 상품의 다른 회차/사이즈/grade를 묶음. 모든 product에 최소 1개 default variant 보장. **편집 경로 2가지**: ProductForm(인라인 CRUD, 일상 운영) + Excel upload(bulk seed). Agent detail 모달은 variant_label에 ` · ` 있을 때 prefix 그룹핑해서 2-level 아코디언 노출 (예: `Face · 1 session` / `Face · 3 sessions` → "Face" 그룹 펼치면 sessions). product.base_price/price_currency는 첫 variant 값으로 sync되는 legacy 컬럼 — UI는 variants 사용.
 - **product_images**: id, product_id, image_url, is_primary, order
 - **admins**: id, auth_user_id, name, email, **title** (signer 직책), **is_super_admin** (BOOLEAN, 권한 분기), created_at
   - 초대 플로우: invite_token(UNIQUE), invite_secret, invited_at, invite_expires_at (agent와 동일 패턴)
@@ -188,7 +189,7 @@ Agent 수동 개입:
 - 고객 URL 페이지: src/app/quote/[slug]/ , src/app/invoice/[slug]/ , src/app/schedule/[slug]/
 - API 라우트: src/app/api/ (service role 필요한 작업용)
   - **계약서 sign API** (2026-05-04): `/api/onboarding/sign-contract` (agent 사인), `/api/admin/sign-contract` (admin counter-sign). 서버사이드 IP/SHA-256 hash/typed_name 본인검증/body token 서버 substitute.
-  - **상품 일괄 업로드** (2026-05-04): `/api/admin/products/upload-excel`. multipart xlsx, UPSERT (cat+partner+name natural key, variant_label로 variant 매칭), `?dryRun=true`로 preview, missing 항목 리포트(자동 삭제 X).
+  - **상품 일괄 업로드** (2026-05-04): `/api/admin/products/upload-excel`. multipart xlsx, UPSERT (cat+partner+name natural key, variant_label로 variant 매칭), `?dryRun=true`로 preview, `?deleteMissing=true`로 옵트인 일괄 삭제 (누락 row 자동 클린업). 신규 product_number는 MAX(numeric)+1로 발번 (count+1은 sparse 번호와 충돌함).
   - 그 외: agent setup, create-agent, claim-admin-invite, notify-signed, etc.
 - 타입 정의는 src/types/
 
@@ -199,7 +200,7 @@ Agent 수동 개입:
 - `src/lib/documents.ts` — documents 모델 read/write 헬퍼 (4/30 SOP 5종 invoice)
 - `src/lib/pricing.ts` (2026-05-04) — `appliesMargin(category, subcategory)` 단일 진실 소스. K-Wellness>Spa만 마진, 나머지 Wellness + Subpackage는 원가 통과. `variantPriceUsd/Krw` 헬퍼 — agent home cart, review page, quote 모두 이걸 통해 가격 계산.
 - `src/lib/notifications.ts` — `createNotification`, `notifyAgent`, `notifyAllAdmins`
-- `src/lib/audit.ts` — `logAudit`, `getActor`, `logAsCurrentUser`
+- `src/lib/audit.ts` — `logAudit`, `getActor`, `logAsCurrentUser`. **5/4 sweep**: products(create/update/delete/bulk_upload), categories/subcategories, system_settings, contract_templates, clients(create/update), admins(invite/delete), documents(issue/item_added/item_removed/paid)도 모두 logged. `/admin/audit` 아이콘 톤 monochrome 통일. 새 액션 추가 시 [`/admin/audit/page.tsx`](src/app/admin/audit/page.tsx)의 `ACTION_VERB` + `ACTION_TONE` + `ActionIcon` paths 3곳 모두 등록 필요 (안 그러면 dot fallback).
 - `src/hooks/useNotifications.ts` — Realtime 구독
 - `src/components/`: NotificationBell, DOBPicker, DateTime24Picker, SignaturePad, ContractStep, AgentOnboardingGuard, ChangePasswordCard, PrintPdfButton, AutoPrint, PrintButton, **QuoteDocument**(고객용 모든 invoice/quotation 공용 렌더, from_party/to_party 기반 분기, variant_label_snapshot 노출), **CaseDocumentsSection**(case 페이지 내 documents 리스트), **SelectedProductsSection**(2026-05-04, admin/agent case 페이지 공용 — quotation + additional_invoice 합쳐 표시, variant_label snapshot, ProductDetailModal), SparklineCard, MobileTopBar, MobileNavContext, AdminCaseContractSection, AgentCaseContractSection, CaseHeroAction(AdminCaseHero/AgentCaseHero — Hero ACTION NEEDED 박스, status별 분기)
 

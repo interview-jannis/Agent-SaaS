@@ -50,6 +50,8 @@ export default function AdminProductsPage() {
   const [partnerFilter, setPartnerFilter] = useState('')
   const [activeFilter, setActiveFilter] = useState('')
   const [imageIndexes, setImageIndexes] = useState<Record<string, number>>({})
+  // Tracks which product rows have their variant breakdown expanded inline.
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
   const [exporting, setExporting] = useState(false)
   const [exportProgress, setExportProgress] = useState('')
 
@@ -386,7 +388,7 @@ export default function AdminProductsPage() {
 
   return (
     <div className="flex flex-col h-full bg-white">
-      <div className="shrink-0 border-b border-gray-100 px-4 md:px-6 py-3 md:py-0 md:h-14 flex flex-col md:flex-row md:items-center gap-3 md:gap-4">
+      <div className="shrink-0 border-b border-gray-100 px-4 md:px-6 py-3 xl:py-0 xl:h-14 flex flex-wrap xl:flex-nowrap items-center gap-y-2 gap-x-4">
         <h1 className="text-base font-semibold text-gray-900 shrink-0">Products</h1>
         {!loading && filtered.length > 0 && (
           <div className="flex-1 min-w-0 flex items-center gap-1 bg-gray-50 border border-gray-100 rounded-lg px-2 py-1 overflow-x-auto no-scrollbar">
@@ -408,7 +410,7 @@ export default function AdminProductsPage() {
             })}
           </div>
         )}
-        <div className="flex items-center gap-2 flex-wrap md:shrink-0 md:ml-auto">
+        <div className="w-full xl:w-auto order-3 xl:order-none flex items-center gap-2 flex-wrap xl:shrink-0 xl:ml-auto">
           <button
             onClick={handleExportBackup}
             disabled={loading || exporting || filtered.length === 0}
@@ -742,22 +744,70 @@ export default function AdminProductsPage() {
                                 if (vs.length > 1) {
                                   const usds = vs.map(v => toUSD(v.base_price, v.price_currency))
                                   const lo = Math.min(...usds), hi = Math.max(...usds)
-                                  return lo !== hi ? (
-                                    <span className="text-sm font-semibold text-gray-900">{fmtUSD(lo)} – {fmtUSD(hi)}</span>
-                                  ) : (
-                                    <span className="text-sm font-semibold text-gray-900">{fmtUSD(lo)}</span>
+                                  const krwFmt = (n: number) => `₩${Math.round(n * exchangeRate).toLocaleString('ko-KR')}`
+                                  return (
+                                    <>
+                                      <div className="flex items-center gap-2">
+                                        {lo !== hi ? (
+                                          <span className="text-sm font-semibold text-gray-900">{fmtUSD(lo)} – {fmtUSD(hi)}</span>
+                                        ) : (
+                                          <span className="text-sm font-semibold text-gray-900">{fmtUSD(lo)}</span>
+                                        )}
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation()
+                                            setExpandedRows((prev) => {
+                                              const next = new Set(prev)
+                                              if (next.has(p.id)) next.delete(p.id); else next.add(p.id)
+                                              return next
+                                            })
+                                          }}
+                                          className="text-[11px] text-gray-500 inline-flex items-center gap-0.5"
+                                        >
+                                          <svg className={`w-3 h-3 transition-transform ${expandedRows.has(p.id) ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                                          </svg>
+                                          {vs.length}
+                                        </button>
+                                      </div>
+                                      <div className="text-[11px] text-gray-400">
+                                        {lo !== hi ? `≈ ${krwFmt(lo)} – ${krwFmt(hi)}` : `≈ ${krwFmt(lo)}`}
+                                      </div>
+                                    </>
                                   )
                                 }
                                 return (
                                   <>
                                     <span className="text-sm font-semibold text-gray-900">{fmtPrice(p.base_price, p.price_currency)}</span>
-                                    {p.price_currency !== 'USD' && (
+                                    {p.price_currency === 'USD' ? (
+                                      <span className="ml-1.5 text-[11px] text-gray-400">≈ ₩{Math.round(p.base_price * exchangeRate).toLocaleString('ko-KR')}</span>
+                                    ) : (
                                       <span className="ml-1.5 text-[11px] text-gray-400">≈ {fmtUSD(toUSD(p.base_price, p.price_currency))}</span>
                                     )}
                                   </>
                                 )
                               })()}
                             </div>
+                            {expandedRows.has(p.id) && (() => {
+                              const vs = (p.product_variants ?? []).filter(v => v.is_active)
+                              const sorted = [...vs].sort((a, b) => a.sort_order - b.sort_order)
+                              if (sorted.length <= 1) return null
+                              return (
+                                <div className="mt-2 pt-2 border-t border-gray-100 space-y-1">
+                                  {sorted.map((v) => (
+                                    <div key={v.id} className="flex items-center justify-between gap-2 text-[11px]">
+                                      <span className="text-gray-600 truncate" title={v.variant_label ?? ''}>
+                                        {v.variant_label ?? '—'}
+                                      </span>
+                                      <span className="font-semibold text-gray-900 tabular-nums shrink-0">
+                                        {fmtUSD(toUSD(v.base_price, v.price_currency))}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )
+                            })()}
                           </div>
                         </div>
                       )
@@ -781,8 +831,7 @@ export default function AdminProductsPage() {
                 <tr className="border-b border-gray-100">
                   <th className="px-3 xl:px-6 py-3.5 text-left text-[11px] xl:text-xs font-medium text-gray-400 whitespace-nowrap">Number</th>
                   <th className="px-2 xl:px-4 py-3.5" />
-                  <th className="px-3 xl:px-6 py-3.5 text-left text-[11px] xl:text-xs font-medium text-gray-400 max-w-[140px]">Partner Name</th>
-                  <th className="px-3 xl:px-6 py-3.5 text-left text-[11px] xl:text-xs font-medium text-gray-400 whitespace-nowrap min-w-[160px] max-w-[240px] xl:w-auto w-full">Product Name</th>
+                  <th className="px-3 xl:px-6 py-3.5 text-left text-[11px] xl:text-xs font-medium text-gray-400 whitespace-nowrap min-w-[200px] max-w-[280px] xl:w-auto w-full">Product Name</th>
                   <th className="hidden xl:table-cell px-6 py-3.5 text-left text-xs font-medium text-gray-400 w-full">Description</th>
                   <th className="px-3 xl:px-6 py-3.5 text-left text-[11px] xl:text-xs font-medium text-gray-400 whitespace-nowrap">Category</th>
                   <th className="px-3 xl:px-6 py-3.5 text-[11px] xl:text-xs font-medium text-gray-400 whitespace-nowrap">
@@ -791,7 +840,6 @@ export default function AdminProductsPage() {
                       <div className="hidden xl:block min-w-[110px]" />
                     </div>
                   </th>
-                  <th className="px-3 xl:px-6 py-3.5 text-center text-[11px] xl:text-xs font-medium text-gray-400 whitespace-nowrap">Status</th>
                   <th className="px-3 xl:px-6 py-3.5" />
                 </tr>
               </thead>
@@ -802,7 +850,7 @@ export default function AdminProductsPage() {
                   return (
                     <Fragment key={cat.id}>
                       <tr id={`cat-section-${cat.id}`} className="scroll-mt-20 bg-gray-100">
-                        <td colSpan={9} className="border-b border-gray-200 px-6 py-2">
+                        <td colSpan={7} className="border-b border-gray-200 px-6 py-2">
                           <div className="flex items-center gap-2">
                             <span className="text-[10px] uppercase tracking-wide text-gray-800 font-semibold">{cat.name}</span>
                             <span className="text-[10px] tabular-nums text-gray-500">{items.length}</span>
@@ -810,8 +858,8 @@ export default function AdminProductsPage() {
                         </td>
                       </tr>
                       {items.map((p) => (
+                        <Fragment key={p.id}>
                         <tr
-                          key={p.id}
                           onClick={() => router.push(`/admin/products/${p.id}`)}
                           className="hover:bg-gray-50 cursor-pointer transition-colors group"
                         >
@@ -871,11 +919,18 @@ export default function AdminProductsPage() {
                         )
                       })()}
                     </td>
-                    <td className="px-3 xl:px-6 py-4 text-xs xl:text-sm text-gray-700 max-w-[140px]">
-                      <p className="line-clamp-2 break-words">{p.partner_name ?? '—'}</p>
-                    </td>
-                    <td className="px-3 xl:px-6 py-4 text-xs xl:text-sm font-medium text-gray-900 min-w-[160px] max-w-[240px]">
-                      <p className="line-clamp-2 break-words">{p.name}</p>
+                    <td className="px-3 xl:px-6 py-4 text-xs xl:text-sm font-medium text-gray-900 min-w-[200px] max-w-[280px]">
+                      <p className="line-clamp-2 break-words">
+                        {p.name}
+                        {!p.is_active && (
+                          <span className="ml-1.5 inline-flex items-center px-1.5 py-0 rounded bg-gray-100 text-gray-500 text-[9px] font-medium align-middle">
+                            Inactive
+                          </span>
+                        )}
+                      </p>
+                      {p.partner_name && (
+                        <p className="text-[11px] text-gray-500 truncate mt-0.5">{p.partner_name}</p>
+                      )}
                     </td>
                     <td className="hidden xl:table-cell px-6 py-4 text-sm text-gray-500 max-w-md">
                       <p className="line-clamp-3 whitespace-pre-line break-words">{p.description ?? '—'}</p>
@@ -901,35 +956,69 @@ export default function AdminProductsPage() {
                         const krw = (vUsd: number) => vUsd * exchangeRate
                         return (
                           <div className="flex items-center">
-                            <div className="min-w-[110px] xl:min-w-[140px] text-right pr-2 xl:pr-4">
+                            <div className="w-[110px] xl:w-[180px] flex-none text-right pr-2 xl:pr-4">
                               <div className="text-xs xl:text-base font-semibold text-gray-900">
                                 {isRange
                                   ? `${fmtUSD(minUsd)} – ${fmtUSD(maxUsd)}`
                                   : fmtPrice(primary?.base_price ?? p.base_price, primary?.price_currency ?? p.price_currency)}
                               </div>
-                              {!isRange && (primary?.price_currency ?? p.price_currency) !== 'USD' && (
-                                <div className="text-[10px] xl:text-[11px] text-gray-400 mt-0.5">
-                                  ≈ {fmtUSD(toUSD(primary?.base_price ?? p.base_price, primary?.price_currency ?? p.price_currency))}
-                                </div>
-                              )}
-                              {isRange && (
-                                <div className="text-[10px] xl:text-[11px] text-gray-400 mt-0.5">
+                              {(() => {
+                                // Show the other currency under in small grey for orientation.
+                                if (isRange) {
+                                  const krw = (n: number) => `₩${Math.round(n * exchangeRate).toLocaleString('ko-KR')}`
+                                  return (
+                                    <div className="text-[10px] xl:text-[11px] text-gray-400 mt-0.5">
+                                      ≈ {krw(minUsd)} – {krw(maxUsd)}
+                                    </div>
+                                  )
+                                }
+                                const cur = primary?.price_currency ?? p.price_currency
+                                const amt = primary?.base_price ?? p.base_price
+                                if (cur === 'USD') {
+                                  return (
+                                    <div className="text-[10px] xl:text-[11px] text-gray-400 mt-0.5">
+                                      ≈ ₩{Math.round(amt * exchangeRate).toLocaleString('ko-KR')}
+                                    </div>
+                                  )
+                                }
+                                return (
+                                  <div className="text-[10px] xl:text-[11px] text-gray-400 mt-0.5">
+                                    ≈ {fmtUSD(toUSD(amt, cur))}
+                                  </div>
+                                )
+                              })()}
+                              {sorted.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    setExpandedRows((prev) => {
+                                      const next = new Set(prev)
+                                      if (next.has(p.id)) next.delete(p.id); else next.add(p.id)
+                                      return next
+                                    })
+                                  }}
+                                  className="text-[10px] xl:text-[11px] text-gray-500 hover:text-[#0f4c35] mt-0.5 inline-flex items-center gap-0.5"
+                                >
+                                  <svg className={`w-3 h-3 transition-transform ${expandedRows.has(p.id) ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                                  </svg>
                                   {sorted.length} variants
-                                </div>
+                                </button>
                               )}
                             </div>
-                            <div className="hidden xl:block min-w-[200px] text-left pl-4 border-l border-gray-100 space-y-0.5">
+                            <div className="hidden xl:block flex-none w-[260px] text-left pl-4 border-l border-gray-100 space-y-0.5">
                               {sorted.length > 1 ? (
                                 <div className="space-y-0.5 max-h-24 overflow-y-auto">
                                   {sorted.map(v => {
                                     const vUsd = toUSD(v.base_price, v.price_currency)
                                     return (
                                       <div key={v.id} className="text-[11px] text-gray-500 flex items-center gap-2">
-                                        <span className="text-gray-400 truncate max-w-[110px]" title={v.variant_label ?? ''}>
+                                        <span className="text-gray-400 truncate flex-1 min-w-0" title={v.variant_label ?? ''}>
                                           {v.variant_label ?? '—'}
                                         </span>
-                                        <span className="ml-auto font-medium text-gray-700 tabular-nums">{fmtUSD(vUsd)}</span>
-                                        <span className="text-gray-400 tabular-nums">{`₩${Math.round(krw(vUsd)).toLocaleString('ko-KR')}`}</span>
+                                        <span className="font-medium text-gray-700 tabular-nums shrink-0">{fmtUSD(vUsd)}</span>
+                                        <span className="text-gray-400 tabular-nums shrink-0">{`₩${Math.round(krw(vUsd)).toLocaleString('ko-KR')}`}</span>
                                       </div>
                                     )
                                   })}
@@ -951,21 +1040,41 @@ export default function AdminProductsPage() {
                         )
                       })()}
                     </td>
-                    <td className="px-3 xl:px-6 py-4 text-center">
-                      <span className={`inline-flex items-center px-2 xl:px-2.5 py-0.5 xl:py-1 rounded-full text-[10px] xl:text-xs font-medium ${
-                        p.is_active
-                          ? 'bg-green-50 text-[#0f4c35]'
-                          : 'bg-gray-100 text-gray-400'
-                      }`}>
-                        {p.is_active ? 'Active' : 'Inactive'}
-                      </span>
-                    </td>
                     <td className="px-3 xl:px-6 py-4 text-right">
                       <svg className="w-4 h-4 text-gray-300 group-hover:text-[#0f4c35] transition-colors ml-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
                       </svg>
                     </td>
                   </tr>
+                      {expandedRows.has(p.id) && (() => {
+                        const vs = (p.product_variants ?? []).filter(v => v.is_active)
+                        const sorted = [...vs].sort((a, b) => a.sort_order - b.sort_order)
+                        if (sorted.length <= 1) return null
+                        return (
+                          <tr className="bg-gray-50/60 border-t border-gray-100">
+                            <td colSpan={7} className="px-6 py-3">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-1.5">
+                                {sorted.map((v) => {
+                                  const usd = toUSD(v.base_price, v.price_currency)
+                                  const krw = v.price_currency === 'KRW' ? v.base_price : Math.round(v.base_price * exchangeRate)
+                                  return (
+                                    <div key={v.id} className="flex items-center justify-between gap-3 py-1 border-b border-gray-100 last:border-0">
+                                      <span className="text-[12px] text-gray-700 truncate" title={v.variant_label ?? ''}>
+                                        {v.variant_label ?? '—'}
+                                      </span>
+                                      <div className="text-right tabular-nums shrink-0">
+                                        <div className="text-[12px] font-semibold text-gray-900">{fmtUSD(usd)}</div>
+                                        <div className="text-[10px] text-gray-400">₩{krw.toLocaleString('ko-KR')}</div>
+                                      </div>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })()}
+                        </Fragment>
                       ))}
                     </Fragment>
                   )

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { notifyAgent, notifyAssignedAdmin } from '@/lib/notifications'
+import { logAsCurrentUser } from '@/lib/audit'
 import {
   type DocumentRow,
   type DocumentItemRow,
@@ -200,6 +201,12 @@ export default function CaseDocumentsSection({
         const label = INTENT_LABEL[intent]
         const recipient: 'client' | 'agent' | 'admin' = issued.to_party
 
+        await logAsCurrentUser(
+          'document.issued',
+          { type: 'case', id: caseId, label: caseNumber },
+          { intent, document_number: issued.document_number, document_type: issued.type, to_party: recipient, total_price: issued.total_price },
+        )
+
         if (recipient === 'admin') {
           // Agent issued commission → notify admins
           await notifyAssignedAdmin({ case_id: caseId }, `${caseNumber} ${label} issued by agent (${issued.document_number})`, `/admin/cases/${caseId}`)
@@ -251,8 +258,14 @@ export default function CaseDocumentsSection({
   async function doRemoveItem(itemId: string, docId: string) {
     setBusy(itemId); setError('')
     try {
+      const doc = documents.find(d => d.id === docId)
       await removeDocumentItem(itemId)
       await recalcDocumentTotal(docId)
+      await logAsCurrentUser(
+        'document.item_removed',
+        { type: 'case', id: caseId, label: caseNumber },
+        { document_number: doc?.document_number ?? null, item_id: itemId },
+      )
       await onChanged()
     } catch (e: unknown) {
       setError((e as { message?: string })?.message ?? 'Failed to remove item.')
@@ -275,6 +288,12 @@ export default function CaseDocumentsSection({
         finalPrice: priceVal,
       })
       await recalcDocumentTotal(docId)
+      const doc = documents.find(d => d.id === docId)
+      await logAsCurrentUser(
+        'document.item_added',
+        { type: 'case', id: caseId, label: caseNumber },
+        { document_number: doc?.document_number ?? null, name, price: priceVal },
+      )
       setAddingItemTo(null)
       setNewItemProductId('')
       setNewItemPriceRaw('')
@@ -296,6 +315,11 @@ export default function CaseDocumentsSection({
       // funds (from_party); the counterparty (the actor's partner) is who
       // originally needed to know that payment landed.
       const doc = documents.find(d => d.id === docId)
+      await logAsCurrentUser(
+        'document.paid',
+        { type: 'case', id: caseId, label: caseNumber },
+        { document_number: doc?.document_number ?? null, document_type: doc?.type, paid_at: paidAtValue, total_price: doc?.total_price ?? null },
+      )
       if (doc) {
         const docNumber = doc.document_number ?? ''
         if (doc.type === 'deposit_invoice' && doc.from_party === 'agent' && doc.to_party === 'client') {

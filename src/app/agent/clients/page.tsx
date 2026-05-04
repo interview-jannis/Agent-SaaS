@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { logAsCurrentUser } from '@/lib/audit'
 import DOBPicker from '@/components/DOBPicker'
 import { type ClientInfo, getMissingClientFields, CLIENT_INFO_COLUMNS } from '@/lib/clientCompleteness'
 
@@ -91,8 +92,9 @@ export default function AgentClientsPage() {
     try {
       const { count } = await supabase.from('clients').select('*', { count: 'exact', head: true })
       const next = (count ?? 0) + 1
-      const { error } = await supabase.from('clients').insert({
-        client_number: `#CL-${String(next).padStart(3, '0')}`,
+      const clientNumber = `#CL-${String(next).padStart(3, '0')}`
+      const { data: created, error } = await supabase.from('clients').insert({
+        client_number: clientNumber,
         agent_id: agentId,
         name: form.name.trim(),
         nationality: form.nationality.trim(),
@@ -103,8 +105,13 @@ export default function AgentClientsPage() {
         needs_muslim_friendly: form.needs_muslim_friendly,
         dietary_restriction: form.dietary_restriction,
         special_requests: form.special_requests || null,
-      })
+      }).select('id').single()
       if (error) throw error
+      await logAsCurrentUser(
+        'client.created',
+        { type: 'client', id: (created as { id: string } | null)?.id ?? null, label: `${form.name.trim()} · ${clientNumber}` },
+        { nationality: form.nationality.trim() },
+      )
       setShowModal(false)
       setForm(DEFAULT_FORM)
       await fetchClients(agentId)

@@ -14,7 +14,7 @@ export type SurveyQuestion = {
   type: 'rating' | 'text'
 }
 
-// Load survey questions from system_settings (admin-managed via /admin/contracts).
+// Load survey questions from system_settings (admin-managed via /admin/surveys).
 // Returns an empty array if not yet configured — caller should show a hint.
 export async function getSurveyQuestions(): Promise<SurveyQuestion[]> {
   const { data } = await supabase

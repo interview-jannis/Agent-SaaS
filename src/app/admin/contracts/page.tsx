@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
+import { logAsCurrentUser } from '@/lib/audit'
 
 type ContractType = 'nda' | 'partnership' | 'agent_client' | 'three_party'
 
@@ -23,9 +24,6 @@ const TYPE_LABELS: Record<ContractType, string> = {
 // Tokens an admin can use in case-level templates. Substituted at sign time.
 const CASE_TEMPLATE_TOKENS = '{{AGENT_NAME}}, {{AGENT_COUNTRY}}, {{CLIENT_NAME}}, {{CASE_NUMBER}}, {{QUOTE_NUMBER}}, {{TOTAL_AMOUNT}}, {{DEPOSIT_PERCENTAGE}}'
 
-// Survey question types
-type SurveyQuestion = { id: string; prompt: string; type: 'rating' | 'text' }
-
 type OtSetting = { pdf_url?: string; file_name?: string; updated_at?: string }
 
 export default function AdminContractsPage() {
@@ -45,14 +43,6 @@ export default function AdminContractsPage() {
   const [stagedOt, setStagedOt] = useState<File | null>(null)
   const [deletingOt, setDeletingOt] = useState(false)
 
-  // Survey questions (post-travel client review)
-  const [surveyQs, setSurveyQs] = useState<SurveyQuestion[]>([])
-  const [surveyQsOriginal, setSurveyQsOriginal] = useState<SurveyQuestion[]>([])
-  const [editingSurvey, setEditingSurvey] = useState(false)
-  const [savingSurvey, setSavingSurvey] = useState(false)
-  const [surveyError, setSurveyError] = useState('')
-  const [surveySaved, setSurveySaved] = useState(false)
-
   const fetchTemplates = useCallback(async () => {
     const { data } = await supabase.from('contract_templates').select('*')
     setTemplates((data as Template[]) ?? [])
@@ -61,12 +51,6 @@ export default function AdminContractsPage() {
   const fetchOt = useCallback(async () => {
     const { data } = await supabase.from('system_settings').select('value').eq('key', 'onboarding_ot').maybeSingle()
     setOt((data?.value as OtSetting | null) ?? null)
-  }, [])
-
-  const fetchSurvey = useCallback(async () => {
-    const { data } = await supabase.from('system_settings').select('value').eq('key', 'survey_questions').maybeSingle()
-    const qs = ((data?.value as { questions?: SurveyQuestion[] } | null)?.questions) ?? []
-    setSurveyQs(qs); setSurveyQsOriginal(qs)
   }, [])
 
   useEffect(() => {
@@ -78,11 +62,11 @@ export default function AdminContractsPage() {
           .select('is_super_admin').eq('auth_user_id', uid).maybeSingle()
         setIsSuperAdmin(!!(caller as { is_super_admin?: boolean } | null)?.is_super_admin)
       }
-      await Promise.all([fetchTemplates(), fetchOt(), fetchSurvey()])
+      await Promise.all([fetchTemplates(), fetchOt()])
       setLoading(false)
     }
     init()
-  }, [fetchTemplates, fetchOt, fetchSurvey])
+  }, [fetchTemplates, fetchOt])
 
   function stageOt(file: File) {
     if (file.type !== 'application/pdf') { setOtError('Only PDF files are allowed.'); return }
@@ -102,6 +86,7 @@ export default function AdminContractsPage() {
       const value: OtSetting = { pdf_url: urlData.publicUrl, file_name: stagedOt.name, updated_at: new Date().toISOString() }
       const { error: upsertErr } = await supabase.from('system_settings').upsert({ key: 'onboarding_ot', value }, { onConflict: 'key' })
       if (upsertErr) throw upsertErr
+      await logAsCurrentUser('settings.updated', { type: 'system_setting', label: 'onboarding_ot' }, { action: 'uploaded', file_name: stagedOt.name })
       await fetchOt()
       setStagedOt(null)
     } catch (e: unknown) {
@@ -122,6 +107,7 @@ export default function AdminContractsPage() {
       if (match) await supabase.storage.from('schedules').remove([match[1]])
       const { error } = await supabase.from('system_settings').delete().eq('key', 'onboarding_ot')
       if (error) throw error
+      await logAsCurrentUser('settings.updated', { type: 'system_setting', label: 'onboarding_ot' }, { action: 'cleared', file_name: ot?.file_name ?? null })
       await fetchOt()
     } catch (e: unknown) {
       setOtError((e as { message?: string })?.message ?? 'Delete failed.')
@@ -137,56 +123,6 @@ export default function AdminContractsPage() {
     setError('')
   }
 
-  // ── Survey question editing ────────────────────────────────────────────────
-
-  function genQuestionId() {
-    return 'q_' + Math.random().toString(36).slice(2, 8)
-  }
-  function addSurveyQuestion() {
-    setSurveyQs((p) => [...p, { id: genQuestionId(), prompt: '', type: 'rating' }])
-  }
-  function removeSurveyQuestion(idx: number) {
-    setSurveyQs((p) => p.filter((_, i) => i !== idx))
-  }
-  function moveSurveyQuestion(idx: number, dir: -1 | 1) {
-    setSurveyQs((p) => {
-      const next = [...p]
-      const swap = idx + dir
-      if (swap < 0 || swap >= next.length) return p
-      ;[next[idx], next[swap]] = [next[swap], next[idx]]
-      return next
-    })
-  }
-  function setSurveyQuestion(idx: number, patch: Partial<SurveyQuestion>) {
-    setSurveyQs((p) => p.map((q, i) => (i === idx ? { ...q, ...patch } : q)))
-  }
-  async function saveSurvey() {
-    // Validate: every question needs prompt; ids must be unique.
-    const trimmed = surveyQs.map(q => ({ ...q, prompt: q.prompt.trim(), id: q.id.trim() }))
-    if (trimmed.length === 0) { setSurveyError('At least one question is required.'); return }
-    if (trimmed.some(q => !q.prompt)) { setSurveyError('Every question must have a prompt.'); return }
-    const ids = new Set<string>()
-    for (const q of trimmed) {
-      if (!q.id) q.id = genQuestionId()
-      if (ids.has(q.id)) { setSurveyError(`Duplicate question id: ${q.id}`); return }
-      ids.add(q.id)
-    }
-    setSavingSurvey(true); setSurveyError(''); setSurveySaved(false)
-    const { error } = await supabase
-      .from('system_settings')
-      .upsert({ key: 'survey_questions', value: { questions: trimmed } }, { onConflict: 'key' })
-    if (error) { setSurveyError(error.message) }
-    else {
-      setSurveyQs(trimmed); setSurveyQsOriginal(trimmed)
-      setEditingSurvey(false)
-      setSurveySaved(true); setTimeout(() => setSurveySaved(false), 3000)
-    }
-    setSavingSurvey(false)
-  }
-  function cancelSurveyEdit() {
-    setSurveyQs(surveyQsOriginal); setEditingSurvey(false); setSurveyError('')
-  }
-
   async function save() {
     if (!editingType) return
     if (!form.title.trim() || !form.body.trim()) { setError('Title and body are required.'); return }
@@ -200,6 +136,11 @@ export default function AdminContractsPage() {
           updated_at: new Date().toISOString(),
         }, { onConflict: 'contract_type' })
       if (error) throw error
+      await logAsCurrentUser(
+        'contract_template.updated',
+        { type: 'contract_template', label: `${TYPE_LABELS[editingType]}` },
+        { contract_type: editingType, title: form.title.trim() },
+      )
       await fetchTemplates()
       setEditingType(null)
     } catch (e: unknown) {
@@ -373,83 +314,6 @@ export default function AdminContractsPage() {
               )
             })}
 
-            {/* Survey Questions — post-travel client review (managed here so admin can edit prompts) */}
-            <section className="bg-gray-50 rounded-2xl p-5 space-y-3">
-              <div className="flex items-center justify-between gap-2 flex-wrap">
-                <div>
-                  <p className="text-[10px] font-semibold text-gray-900 uppercase tracking-wide">Post-Travel Review Questions</p>
-                  <p className="text-[10px] text-gray-500 mt-0.5">Shown to the agent after Mark Travel Complete. Agent fills on the client&apos;s behalf.</p>
-                </div>
-                {!editingSurvey ? (
-                  <div className="flex items-center gap-3">
-                    {surveySaved && <span className="text-[10px] text-[#0f4c35]">Saved.</span>}
-                    {isSuperAdmin && (
-                      <button onClick={() => setEditingSurvey(true)}
-                        className="text-xs font-medium text-[#0f4c35] hover:underline">Edit</button>
-                    )}
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-3">
-                    <button onClick={cancelSurveyEdit} disabled={savingSurvey}
-                      className="text-xs text-gray-900 hover:text-gray-900 disabled:opacity-40">Cancel</button>
-                    <button onClick={saveSurvey} disabled={savingSurvey}
-                      className="px-3 py-1 text-xs font-medium bg-[#0f4c35] text-white rounded-lg hover:bg-[#0a3828] disabled:opacity-40">
-                      {savingSurvey ? 'Saving...' : 'Save'}
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {!editingSurvey ? (
-                <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-2">
-                  {surveyQsOriginal.length === 0 ? (
-                    <p className="text-sm text-gray-400 italic">No questions configured yet.</p>
-                  ) : (
-                    <ol className="text-sm text-gray-700 space-y-1.5 list-decimal pl-5">
-                      {surveyQsOriginal.map((q) => (
-                        <li key={q.id}>
-                          <span>{q.prompt}</span>
-                          <span className="ml-2 text-[10px] text-gray-400 uppercase">{q.type}</span>
-                        </li>
-                      ))}
-                    </ol>
-                  )}
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {surveyQs.map((q, idx) => (
-                    <div key={`${q.id}-${idx}`} className="bg-white border border-gray-200 rounded-xl p-3 space-y-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-mono text-gray-400 w-6 shrink-0">#{idx + 1}</span>
-                        <input value={q.prompt}
-                          onChange={(e) => setSurveyQuestion(idx, { prompt: e.target.value })}
-                          placeholder="Question prompt"
-                          className="flex-1 border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35] bg-white" />
-                        <select value={q.type}
-                          onChange={(e) => setSurveyQuestion(idx, { type: e.target.value as 'rating' | 'text' })}
-                          className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-900 bg-white">
-                          <option value="rating">Rating (1-5)</option>
-                          <option value="text">Open text</option>
-                        </select>
-                        <div className="flex items-center gap-0.5">
-                          <button onClick={() => moveSurveyQuestion(idx, -1)} disabled={idx === 0}
-                            className="px-1.5 py-1 text-xs text-gray-500 hover:text-gray-900 disabled:opacity-30">↑</button>
-                          <button onClick={() => moveSurveyQuestion(idx, 1)} disabled={idx === surveyQs.length - 1}
-                            className="px-1.5 py-1 text-xs text-gray-500 hover:text-gray-900 disabled:opacity-30">↓</button>
-                          <button onClick={() => removeSurveyQuestion(idx)}
-                            className="px-1.5 py-1 text-xs text-red-500 hover:text-red-700">×</button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                  <button onClick={addSurveyQuestion}
-                    className="px-3 py-1.5 text-xs font-medium border border-dashed border-gray-300 text-gray-600 rounded-lg hover:border-[#0f4c35] hover:text-[#0f4c35] w-full">
-                    + Add Question
-                  </button>
-                  {surveyError && <p className="text-xs text-red-500">{surveyError}</p>}
-                </div>
-              )}
-            </section>
             </>
           )}
         </div>

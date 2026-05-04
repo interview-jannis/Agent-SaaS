@@ -1,8 +1,8 @@
 # Project Progress
 
 ## 현재 상태
-- **Phase**: 데이터 모델 변경 + 사용성 폴리시. Variants 모델 도입(product_variants 테이블), Excel 일괄 upsert UI(dry-run preview), 카탈로그 K-prefix + subcategory 재정의, 계약서 evidentiary 강화, Selected Products 공용 컴포넌트.
-- **마지막 작업**: 2026-05-04 — variants 모델, agent home 전면 개편(필터 toolbar + subcategory pills + 카드 컴팩트), Excel upload (dry-run preview + UPSERT), Agent 카탈로그 마진 룰 분기(Spa/Wellness 원가, 그 외 마진), 데이터 마스터 v12~v16, contract counter-sign 강화 + signature hash + typed_name. 저녁 라운드: admin/products half-screen 컬럼 압축 + description 입력창 키움, agent home 카드 사이즈 통일, partner_name 복귀, 데이터 v17 빌드(selection grade 괄호 제거 + gender→variant + K-Medical desc \n 복구), upload-excel deleteMissing 토글 추가, admin /products 가격 컬럼 variant 인지화(USD range + variant별 행).
+- **Phase**: 데이터 모델 변경 + 사용성 폴리시. Variants 모델 도입(product_variants 테이블), Excel 일괄 upsert UI(dry-run preview + deleteMissing), 카탈로그 K-prefix + subcategory 재정의, 계약서 evidentiary 강화, Selected Products 공용 컴포넌트, ProductForm 인라인 variants 편집기, 감사 로그 전 surface sweep.
+- **마지막 작업**: 2026-05-04 — variants 모델, agent home 전면 개편(필터 toolbar + subcategory pills + 카드 컴팩트), Excel upload (dry-run preview + UPSERT + deleteMissing), Agent 카탈로그 마진 룰 분기(Spa/Wellness 원가, 그 외 마진), 데이터 마스터 v12~v17, contract counter-sign 강화 + signature hash + typed_name. 저녁 라운드: admin/products half-screen 컬럼 압축, agent home 카드 사이즈 통일, partner_name 복귀, upload-excel deleteMissing 토글, admin /products 가격 컬럼 variant 인지화. 저녁 라운드 2: agent 가격 desc 정렬, **DIAR/Hotel 컨솔리데이션(v18 마스터)**, **Excel upload product_number MAX+1 fix**, **2-level variant 아코디언**, **ProductForm variants 풀 편집기 + 리스트 펼치기**, Status 컬럼 제거 + partner 인라인 + 절반화면 헤더 정리, **감사 로그 7 surface 일괄 + monochrome 아이콘**, **`/admin/surveys` 신규 페이지**(질문 + 응답).
 - **마지막 업데이트**: 2026-05-04 (개발 마감 5/8, 시뮬레이션 5/11~15, 런칭 5/18)
 - **SaaS 브랜드명**: **Tiktak** (UI 전역, 법인명 Interview Co., Ltd)
 
@@ -50,14 +50,19 @@
 - [ ] KakaoTalk 발송 (admin 대상)
 
 #### 신규 기능 (남은 것)
-- [x] **엑셀 일괄 업로드** — admin이 엑셀로 상품 일괄 등록 (5/4: dry-run preview + UPSERT, missing 알림, 자동 삭제 안 함)
+- [x] **엑셀 일괄 업로드** — admin이 엑셀로 상품 일괄 등록 (5/4: dry-run preview + UPSERT, deleteMissing 토글, product_number MAX+1 fix)
 - [ ] **스케줄 엑셀 업로드 → 자동 링크** (현재 PDF 업로드만)
-- [ ] **데이터 마스터 v17** — grade 컬럼 제거, description 줄바꿈 살림, 성별 → variants 통합 (사용자 직접 정리)
-- [ ] **Agent 카탈로그 정렬 정책** — 가격 desc / 인기순 (5건+ 케이스부터) 토글
+- [x] **데이터 마스터 v17 → v18** (5/4 저녁: DIAR 159 rows → 11 base + 159 variants, Hotel 37 rows → 13 base + 37 variants. `[★5 Hotel]` strip + grade paren strip + Hanok inline. 사용자 검수 후 deleteMissing으로 옛 row 정리)
+- [x] **Agent 카탈로그 정렬 정책** — 가격 desc 적용 (5/4 저녁). 인기순(5건+)은 케이스 쌓이면 도입 (backlog)
 - ~~Chrome 한국어 로케일 강제 영어~~ — 드롭
 
 #### Polish
-- [ ] Admin case detail에 survey 응답 read-only 노출 (현재 DB만 저장)
+- [x] **Admin /products variants 풀 편집기 + 리스트 펼치기** (5/4 저녁) — ProductForm에 variants 섹션 신설(label/price/currency/active/delete), Save에서 INSERT/UPDATE/DELETE diff. 리스트 "5 variants" 배지 click-to-expand로 sub-row에 라벨/USD/KRW
+- [x] **Agent detail 모달 2-level variant 아코디언** (5/4 저녁) — `· ` separator 기반 prefix 그룹핑, 그룹 ≥2 시 펼침 UX
+- [x] **감사 로그 7 surface 일괄** (5/4 저녁) — products(create/update/delete/bulk_upload), categories/subcategories, system_settings 7키, contract_templates, clients, admins(invite/delete), documents(issue/item_add/remove/paid). 아이콘 톤 monochrome 통일
+- [x] **`/admin/surveys` 신규 페이지** (5/4 저녁) — Questions 탭(편집) + Responses 탭(제출 응답). 기존 contracts 페이지에서 분리
+- [x] **Layout 폴리시** (5/4 저녁) — Status 컬럼 제거(inactive 인라인 배지), Partner Name 컬럼 → 상품명 아래 회색 텍스트, 절반화면 헤더 줄바꿈(admin products/agent home/admin cases/agent cases). USD 상품에도 KRW 환산 표시 (단일+range 모두)
+- [ ] Admin case detail에 survey 응답 read-only 노출 (현재 `/admin/surveys`엔 있으나 case 페이지 안에도 필요)
 - [ ] 3자 계약 client 페이지 모바일 점검
 - [ ] Stamp invoice 렌더 위치/크기 시뮬에서 실제 확인
 

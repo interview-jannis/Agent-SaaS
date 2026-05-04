@@ -31,8 +31,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Invalid session.' }, { status: 401 })
   }
   const { data: callerAdmin } = await supabase.from('admins')
-    .select('is_super_admin').eq('auth_user_id', userData.user.id).maybeSingle()
-  if (!callerAdmin || !(callerAdmin as { is_super_admin?: boolean }).is_super_admin) {
+    .select('id, name, is_super_admin').eq('auth_user_id', userData.user.id).maybeSingle()
+  const caller = callerAdmin as { id: string; name: string | null; is_super_admin?: boolean } | null
+  if (!caller || !caller.is_super_admin) {
     return NextResponse.json({ error: 'Super admin access required.' }, { status: 403 })
   }
 
@@ -70,6 +71,16 @@ export async function POST(req: Request) {
     await supabase.auth.admin.deleteUser(authData.user.id)
     return NextResponse.json({ error: insertError.message }, { status: 500 })
   }
+
+  await supabase.from('audit_logs').insert({
+    actor_type: 'admin',
+    actor_id: caller.id,
+    actor_label: caller.name ?? 'admin',
+    action: 'admin.invited',
+    target_type: 'admin',
+    target_label: placeholderEmail,
+    details: { invite_path: `/admin-invite/${token}`, expires_at: expiresAt.toISOString() },
+  })
 
   return NextResponse.json({
     token,

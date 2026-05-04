@@ -1,5 +1,5 @@
 import { createServerClient } from '@/lib/supabase-server'
-import ProductForm, { FormState, ImageItem } from '@/components/admin/ProductForm'
+import ProductForm, { FormState, ImageItem, VariantItem } from '@/components/admin/ProductForm'
 import { notFound } from 'next/navigation'
 
 export const dynamic = 'force-dynamic'
@@ -8,10 +8,11 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
   const { id } = await params
   const supabase = createServerClient()
 
-  const [{ data: product }, { data: categories }, { data: images }] = await Promise.all([
+  const [{ data: product }, { data: categories }, { data: images }, { data: variants }] = await Promise.all([
     supabase.from('products').select('*').eq('id', id).single(),
     supabase.from('product_categories').select('id, name').order('sort_order').order('name'),
     supabase.from('product_images').select('*').eq('product_id', id).order('order'),
+    supabase.from('product_variants').select('*').eq('product_id', id).order('sort_order'),
   ])
 
   if (!product) notFound()
@@ -41,12 +42,20 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
     order: img.order,
   }))
 
+  const initialVariants: VariantItem[] = (variants ?? []).map((v) => ({
+    id: v.id,
+    variant_label: v.variant_label ?? '',
+    base_price: String(v.base_price ?? ''),
+    price_currency: (v.price_currency as 'KRW' | 'USD') ?? 'KRW',
+    is_active: v.is_active ?? true,
+  }))
+
   return (
     <ProductForm
       productId={product.id}
       productNumber={product.product_number}
       categories={categories ?? []}
-      initial={{ form: initialForm, images: initialImages }}
+      initial={{ form: initialForm, images: initialImages, variants: initialVariants }}
     />
   )
 }

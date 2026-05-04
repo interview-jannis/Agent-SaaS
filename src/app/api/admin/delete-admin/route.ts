@@ -28,8 +28,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Invalid session.' }, { status: 401 })
   }
   const { data: callerAdmin } = await supabase.from('admins')
-    .select('id, is_super_admin').eq('auth_user_id', userData.user.id).maybeSingle()
-  const caller = callerAdmin as { id: string; is_super_admin?: boolean } | null
+    .select('id, name, is_super_admin').eq('auth_user_id', userData.user.id).maybeSingle()
+  const caller = callerAdmin as { id: string; name: string | null; is_super_admin?: boolean } | null
   if (!caller || !caller.is_super_admin) {
     return NextResponse.json({ error: 'Super admin access required.' }, { status: 403 })
   }
@@ -42,8 +42,8 @@ export async function POST(req: Request) {
   }
 
   const { data: target } = await supabase.from('admins')
-    .select('auth_user_id, is_super_admin').eq('id', body.admin_id).maybeSingle()
-  const t = target as { auth_user_id: string | null; is_super_admin?: boolean } | null
+    .select('auth_user_id, name, email, is_super_admin').eq('id', body.admin_id).maybeSingle()
+  const t = target as { auth_user_id: string | null; name: string | null; email: string | null; is_super_admin?: boolean } | null
   if (!t) return NextResponse.json({ error: 'Admin not found.' }, { status: 404 })
   if (t.is_super_admin) {
     return NextResponse.json({ error: 'Cannot delete a super admin from the UI. Demote first via Supabase.' }, { status: 400 })
@@ -58,6 +58,17 @@ export async function POST(req: Request) {
   if (t.auth_user_id) {
     await supabase.auth.admin.deleteUser(t.auth_user_id)
   }
+
+  await supabase.from('audit_logs').insert({
+    actor_type: 'admin',
+    actor_id: caller.id,
+    actor_label: caller.name ?? 'admin',
+    action: 'admin.deleted',
+    target_type: 'admin',
+    target_id: body.admin_id,
+    target_label: t.name ?? t.email ?? body.admin_id,
+    details: { email: t.email },
+  })
 
   return NextResponse.json({ ok: true })
 }

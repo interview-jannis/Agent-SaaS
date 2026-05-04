@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { logAsCurrentUser } from '@/lib/audit'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -15,6 +16,16 @@ export type ImageItem = {
   is_primary: boolean
   order: number
   file?: File
+}
+
+// Variant editor state. `id` present → existing row in DB (diff against
+// `initialVariants` to detect updates/deletes). Missing → new row to insert.
+export type VariantItem = {
+  id?: string
+  variant_label: string
+  base_price: string  // raw numeric string for input control
+  price_currency: 'KRW' | 'USD'
+  is_active: boolean
 }
 
 export type FormState = {
@@ -38,6 +49,7 @@ export type FormState = {
 export type ProductFormInitial = {
   form: FormState
   images: ImageItem[]
+  variants?: VariantItem[]
 }
 
 type Props = {
@@ -91,6 +103,14 @@ export default function ProductForm({ productId, productNumber, categories, init
 
   const [form, setForm] = useState<FormState>(initial?.form ?? DEFAULT_FORM)
   const [images, setImages] = useState<ImageItem[]>(initial?.images ?? [])
+  const [variants, setVariants] = useState<VariantItem[]>(
+    initial?.variants && initial.variants.length > 0
+      ? initial.variants
+      : [{ variant_label: '', base_price: '', price_currency: 'KRW', is_active: true }]
+  )
+  // Track ids that existed at load time but the user removed — needed for the
+  // delete pass at save time.
+  const [toDeleteVariantIds, setToDeleteVariantIds] = useState<string[]>([])
   const [toDeleteImageIds, setToDeleteImageIds] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -146,6 +166,41 @@ export default function ProductForm({ productId, productNumber, categories, init
     return `≈ ₩${Math.round(n * exchangeRate).toLocaleString()} (₩${exchangeRate.toLocaleString()}/$)`
   }
 
+  // ── Variants ─────────────────────────────────────────────────
+
+  function variantPriceHint(v: VariantItem): string {
+    if (!v.base_price) return ''
+    const n = Number(v.base_price)
+    if (v.price_currency === 'KRW') {
+      return `≈ $${(n / exchangeRate).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    }
+    return `≈ ₩${Math.round(n * exchangeRate).toLocaleString()}`
+  }
+
+  function updateVariant(idx: number, patch: Partial<VariantItem>) {
+    setVariants((prev) => prev.map((v, i) => (i === idx ? { ...v, ...patch } : v)))
+  }
+
+  function addVariant() {
+    setVariants((prev) => [
+      ...prev,
+      { variant_label: '', base_price: '', price_currency: 'KRW', is_active: true },
+    ])
+  }
+
+  function removeVariant(idx: number) {
+    setVariants((prev) => {
+      const removed = prev[idx]
+      if (removed.id) setToDeleteVariantIds((ids) => [...ids, removed.id!])
+      const next = prev.filter((_, i) => i !== idx)
+      // Always keep at least one row — collapse to a fresh blank if user
+      // removed the last variant.
+      return next.length === 0
+        ? [{ variant_label: '', base_price: '', price_currency: 'KRW', is_active: true }]
+        : next
+    })
+  }
+
   // ── Contact channels ─────────────────────────────────────────
 
   function addChannel() {
@@ -199,12 +254,19 @@ export default function ProductForm({ productId, productNumber, categories, init
     if (!form.name.trim()) return 'Product name is required.'
     if (!form.category_id) return 'Category is required.'
     if (!form.description.trim()) return 'Description is required.'
-    if (!form.base_price) return 'Price is required.'
     if (!form.duration_value) return 'Duration is required.'
     if (!form.partner_name.trim()) return 'Partner name is required.'
     if (!form.location_address.trim()) return 'Address is required.'
     if (form.contact_channels.length === 0) return 'At least one contact channel is required.'
     if (form.contact_channels.some((ch) => !ch.value.trim())) return 'All contact channel values must be filled in.'
+    if (variants.length === 0) return 'At least one variant is required.'
+    if (variants.some((v) => !v.base_price || Number(v.base_price) <= 0)) return 'Every variant needs a base price.'
+    // Variant labels must be unique within a product (the only exception is a
+    // single sole variant with blank label).
+    const labels = variants.map((v) => v.variant_label.trim())
+    const dup = labels.find((l, i) => labels.indexOf(l) !== i)
+    if (dup !== undefined) return `Duplicate variant label: "${dup || '(blank)'}". Each variant label must be unique.`
+    if (variants.length > 1 && labels.some((l) => !l)) return 'Variant labels are required when there is more than one variant.'
     return null
   }
 
@@ -218,13 +280,17 @@ export default function ProductForm({ productId, productNumber, categories, init
     setError('')
 
     try {
+      // product.base_price / price_currency are dormant once variants exist;
+      // we still write the first variant's values to keep the legacy column
+      // in sync (some old read paths fall back to it).
+      const firstVariant = variants[0]
       const payload = {
         name: form.name.trim(),
         category_id: form.category_id,
         subcategory_id: form.subcategory_id || null,
         description: form.description.trim(),
-        base_price: Number(form.base_price),
-        price_currency: form.price_currency,
+        base_price: Number(firstVariant.base_price) || 0,
+        price_currency: firstVariant.price_currency,
         duration_value: Number(form.duration_value),
         duration_unit: form.duration_unit,
         partner_name: form.partner_name.trim(),
@@ -242,9 +308,22 @@ export default function ProductForm({ productId, productNumber, categories, init
         const { error: err } = await supabase.from('products').update(payload).eq('id', productId)
         if (err) throw err
       } else {
-        const { count } = await supabase.from('products').select('*', { count: 'exact', head: true })
-        const next = (count ?? 0) + 1
-        const productNum = `#P-${String(next).padStart(3, '0')}`
+        // MAX(numeric) + 1 — count-based numbering collides with sparse
+        // product_numbers (matches upload-excel route fix).
+        const { data: maxRow } = await supabase
+          .from('products')
+          .select('product_number')
+          .order('product_number', { ascending: false })
+          .limit(200)
+        let maxNum = 0
+        for (const r of (maxRow as { product_number: string | null }[] | null) ?? []) {
+          const m = /(\d+)/.exec(r.product_number ?? '')
+          if (m) {
+            const n = parseInt(m[1], 10)
+            if (n > maxNum) maxNum = n
+          }
+        }
+        const productNum = `#P-${String(maxNum + 1).padStart(3, '0')}`
         const { data, error: err } = await supabase
           .from('products')
           .insert({ ...payload, product_number: productNum })
@@ -252,6 +331,36 @@ export default function ProductForm({ productId, productNumber, categories, init
           .single()
         if (err) throw err
         savedId = data.id
+      }
+
+      // ── Variants: delete removed, then upsert the rest in current order ──
+      if (toDeleteVariantIds.length > 0) {
+        const { error: delErr } = await supabase
+          .from('product_variants')
+          .delete()
+          .in('id', toDeleteVariantIds)
+        if (delErr) throw delErr
+      }
+      for (let i = 0; i < variants.length; i++) {
+        const v = variants[i]
+        const row = {
+          product_id: savedId,
+          variant_label: v.variant_label.trim() || null,
+          base_price: Number(v.base_price) || 0,
+          price_currency: v.price_currency,
+          sort_order: i,
+          is_active: v.is_active,
+        }
+        if (v.id) {
+          const { error: vErr } = await supabase
+            .from('product_variants')
+            .update(row)
+            .eq('id', v.id)
+          if (vErr) throw vErr
+        } else {
+          const { error: vErr } = await supabase.from('product_variants').insert(row)
+          if (vErr) throw vErr
+        }
       }
 
       // Delete removed images
@@ -285,6 +394,22 @@ export default function ProductForm({ productId, productNumber, categories, init
         if (imgErr) throw imgErr
       }
 
+      // Audit: distinguish create vs update by whether productId was set on entry.
+      const isCreate = !productId
+      await logAsCurrentUser(
+        isCreate ? 'product.created' : 'product.updated',
+        { type: 'product', id: savedId ?? null, label: `${form.partner_name.trim()} / ${form.name.trim()}` },
+        {
+          partner_name: form.partner_name.trim(),
+          name: form.name.trim(),
+          variants_count: variants.length,
+          variants_deleted: toDeleteVariantIds.length,
+          images_deleted: toDeleteImageIds.length,
+          images_added: images.filter(i => i.file).length,
+          is_active: form.is_active,
+        },
+      )
+
       router.push('/admin/products')
     } catch (e: unknown) {
       const msg =
@@ -303,9 +428,15 @@ export default function ProductForm({ productId, productNumber, categories, init
     if (!productId || !confirm('Are you sure you want to delete this product?')) return
     setDeleting(true)
     try {
+      const label = `${form.partner_name.trim()} / ${form.name.trim()}`
       await supabase.from('product_images').delete().eq('product_id', productId)
       const { error: err } = await supabase.from('products').delete().eq('id', productId)
       if (err) throw err
+      await logAsCurrentUser(
+        'product.deleted',
+        { type: 'product', id: productId, label },
+        { partner_name: form.partner_name.trim(), name: form.name.trim() },
+      )
       router.push('/admin/products')
     } catch (e: unknown) {
       setError((e as { message?: string })?.message ?? 'Failed to delete product.')
@@ -399,78 +530,6 @@ export default function ProductForm({ productId, productNumber, categories, init
             />
           </div>
 
-          {/* Dual currency price */}
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="text-xs font-medium text-gray-500">
-                Price <span className="text-red-400">*</span>
-              </label>
-              <div className="flex items-center gap-0.5 bg-gray-100 rounded-lg p-0.5">
-                <button
-                  type="button"
-                  onClick={() => { set('price_currency', 'KRW'); set('base_price', '') }}
-                  className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all ${
-                    form.price_currency === 'KRW'
-                      ? 'bg-white text-gray-900 shadow-sm'
-                      : 'text-gray-400 hover:text-gray-600'
-                  }`}
-                >
-                  KRW
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { set('price_currency', 'USD'); set('base_price', '') }}
-                  className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all ${
-                    form.price_currency === 'USD'
-                      ? 'bg-white text-gray-900 shadow-sm'
-                      : 'text-gray-400 hover:text-gray-600'
-                  }`}
-                >
-                  USD
-                </button>
-              </div>
-            </div>
-            <div className="flex items-center border border-gray-200 rounded-xl overflow-hidden focus-within:border-[#0f4c35] focus-within:ring-2 focus-within:ring-[#0f4c35]/10 transition-all">
-              <span className="px-3 py-2.5 text-sm text-gray-400 bg-gray-50 border-r border-gray-200">
-                {form.price_currency === 'KRW' ? '₩' : '$'}
-              </span>
-              <input
-                type="text"
-                inputMode="numeric"
-                value={fmtNum(form.base_price)}
-                onChange={(e) => handlePriceChange(e.target.value)}
-                placeholder="0"
-                className="flex-1 px-3 py-2.5 text-sm focus:outline-none bg-white"
-              />
-            </div>
-            {priceHint() && (
-              <p className="text-xs text-gray-400 mt-1">{priceHint()}</p>
-            )}
-            {form.base_price && (
-              <div className="mt-3 p-3 bg-gray-50 rounded-lg border border-gray-100">
-                <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-1.5">
-                  Customer Price by Agent Tier
-                </p>
-                <div className="space-y-1">
-                  {[0.15, 0.20, 0.25].map((tier) => {
-                    const n = Number(form.base_price)
-                    const final = n * (1 + companyMargin) * (1 + tier)
-                    const isUSD = form.price_currency === 'USD'
-                    const display = isUSD
-                      ? `$${final.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                      : `₩${Math.round(final).toLocaleString('ko-KR')}`
-                    return (
-                      <div key={tier} className="flex justify-between text-xs">
-                        <span className="text-gray-500">Agent {Math.round(tier * 100)}%</span>
-                        <span className="font-semibold text-gray-800 tabular-nums">{display}</span>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
-
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1.5">
               Duration <span className="text-red-400">*</span>
@@ -498,6 +557,124 @@ export default function ProductForm({ productId, productNumber, categories, init
                 </label>
               ))}
             </div>
+          </div>
+        </section>
+
+        {/* ── Variants ── */}
+        <section className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-semibold text-gray-900">Variants <span className="text-red-400">*</span></h2>
+              <p className="text-[11px] text-gray-400 mt-0.5">Each variant is a sellable line item (e.g. session count, room type, brand). At least one is required.</p>
+            </div>
+            <button
+              type="button"
+              onClick={addVariant}
+              className="flex items-center gap-1.5 text-sm text-[#0f4c35] font-medium hover:underline shrink-0"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+              Add Variant
+            </button>
+          </div>
+
+          <div className="space-y-3">
+            {variants.map((v, idx) => (
+              <div key={v.id ?? `new-${idx}`} className={`rounded-xl border ${v.is_active ? 'border-gray-200 bg-white' : 'border-gray-100 bg-gray-50'} p-4 space-y-3`}>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">#{idx + 1}</span>
+                  {!v.is_active && (
+                    <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-gray-200 text-gray-600">Inactive</span>
+                  )}
+                  <div className="ml-auto flex items-center gap-3">
+                    <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={v.is_active}
+                        onChange={(e) => updateVariant(idx, { is_active: e.target.checked })}
+                        className="accent-[#0f4c35]"
+                      />
+                      Active
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => removeVariant(idx)}
+                      className="text-xs text-red-500 hover:text-red-700"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="sm:col-span-2">
+                    <label className="block text-[11px] font-medium text-gray-500 mb-1">
+                      Variant label
+                    </label>
+                    <input
+                      type="text"
+                      value={v.variant_label}
+                      onChange={(e) => updateVariant(idx, { variant_label: e.target.value })}
+                      placeholder="e.g. 1 session, Premier Suite, Allergan (USA)"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#0f4c35] focus:ring-2 focus:ring-[#0f4c35]/10"
+                    />
+                    <p className="text-[10px] text-gray-400 mt-1">Leave blank only if this is the sole variant of the product.</p>
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[11px] font-medium text-gray-500">Base price</label>
+                      <div className="flex items-center gap-0.5 bg-gray-100 rounded-md p-0.5">
+                        {(['KRW', 'USD'] as const).map((cur) => (
+                          <button
+                            key={cur}
+                            type="button"
+                            onClick={() => updateVariant(idx, { price_currency: cur, base_price: '' })}
+                            className={`px-2 py-0.5 text-[10px] font-medium rounded transition-all ${v.price_currency === cur ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+                          >
+                            {cur}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden focus-within:border-[#0f4c35] focus-within:ring-2 focus-within:ring-[#0f4c35]/10">
+                      <span className="px-2.5 py-2 text-sm text-gray-400 bg-gray-50 border-r border-gray-200">
+                        {v.price_currency === 'KRW' ? '₩' : '$'}
+                      </span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={fmtNum(v.base_price)}
+                        onChange={(e) => updateVariant(idx, { base_price: e.target.value.replace(/[^0-9]/g, '') })}
+                        placeholder="0"
+                        className="flex-1 px-2.5 py-2 text-sm focus:outline-none bg-white"
+                      />
+                    </div>
+                    {variantPriceHint(v) && (
+                      <p className="text-[10px] text-gray-400 mt-0.5">{variantPriceHint(v)}</p>
+                    )}
+                  </div>
+                </div>
+
+                {v.base_price && (
+                  <div className="grid grid-cols-3 gap-2 pt-1">
+                    {[0.15, 0.20, 0.25].map((tier) => {
+                      const n = Number(v.base_price)
+                      const final = n * (1 + companyMargin) * (1 + tier)
+                      const display = v.price_currency === 'USD'
+                        ? `$${final.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                        : `₩${Math.round(final).toLocaleString('ko-KR')}`
+                      return (
+                        <div key={tier} className="bg-gray-50 rounded-md px-2 py-1.5 border border-gray-100">
+                          <p className="text-[9px] text-gray-400 uppercase tracking-wide">Agent {Math.round(tier * 100)}%</p>
+                          <p className="text-[11px] font-semibold text-gray-800 tabular-nums">{display}</p>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         </section>
 
@@ -728,7 +905,7 @@ export default function ProductForm({ productId, productNumber, categories, init
               type="button"
               onClick={handleDelete}
               disabled={deleting}
-              className="px-4 py-2.5 text-sm font-medium text-red-500 hover:bg-red-50 rounded-xl transition-colors disabled:opacity-40"
+              className="px-4 py-2.5 text-sm font-medium text-red-500 border border-red-200 hover:bg-red-50 rounded-xl transition-colors disabled:opacity-40"
             >
               {deleting ? 'Deleting...' : 'Delete Product'}
             </button>

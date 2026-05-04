@@ -12,6 +12,7 @@ import {
 } from '@/lib/clientCompleteness'
 import { type CaseStatus, STATUS_LABELS, STATUS_STYLES } from '@/lib/caseStatus'
 import { notifyCaseInfoChanged } from '@/lib/caseTransitions'
+import { logAsCurrentUser } from '@/lib/audit'
 
 type Client = {
   id: string
@@ -422,6 +423,13 @@ export default function ClientDetailPage() {
         .filter(c => c.status !== 'completed' && c.status !== 'canceled')
         .map(c => c.id)
       await Promise.all(targetCaseIds.map(cid => notifyCaseInfoChanged(cid, change)))
+      if (changedFields.length > 0) {
+        await logAsCurrentUser(
+          'client.updated',
+          { type: 'client', id: client.id, label: `${clientName} · ${client.client_number}` },
+          { fields_changed: changedFields },
+        )
+      }
       await fetchData()
       setEditing(false)
     } catch (e: unknown) {

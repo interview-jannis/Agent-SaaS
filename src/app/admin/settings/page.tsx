@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { logAsCurrentUser } from '@/lib/audit'
 import ChangePasswordCard from '@/components/ChangePasswordCard'
 
 type BankDetails = {
@@ -136,6 +137,7 @@ export default function AdminSettingsPage() {
       .upsert({ key: 'exchange_rate', value: { usd_krw: Number(rate) } }, { onConflict: 'key' })
     if (error) { setRateError(error.message) }
     else {
+      await logAsCurrentUser('settings.updated', { type: 'system_setting', label: 'exchange_rate' }, { from: rateOriginal, to: rate })
       setRateOriginal(rate)
       setEditing(null)
       setRateSaved(true); setTimeout(() => setRateSaved(false), 3000)
@@ -157,6 +159,7 @@ export default function AdminSettingsPage() {
       .upsert({ key: 'company_margin_rate', value: { rate: pct / 100 } }, { onConflict: 'key' })
     if (error) { setMarginError(error.message) }
     else {
+      await logAsCurrentUser('settings.updated', { type: 'system_setting', label: 'company_margin_rate' }, { from: companyMarginOriginal, to: companyMargin })
       setCompanyMarginOriginal(companyMargin)
       setEditing(null)
       setMarginSaved(true); setTimeout(() => setMarginSaved(false), 3000)
@@ -173,6 +176,14 @@ export default function AdminSettingsPage() {
       .upsert({ key: 'bank_details', value: bank }, { onConflict: 'key' })
     if (error) { setBankError(error.message) }
     else {
+      // Diff which bank fields changed for the audit detail
+      const changed: string[] = []
+      const oldBank = bankOriginal as Record<string, string>
+      const newBank = bank as Record<string, string>
+      for (const k of new Set([...Object.keys(oldBank), ...Object.keys(newBank)])) {
+        if (oldBank[k] !== newBank[k]) changed.push(k)
+      }
+      await logAsCurrentUser('settings.updated', { type: 'system_setting', label: 'bank_details' }, { fields_changed: changed })
       setBankOriginal(bank)
       setEditing(null)
       setBankSaved(true); setTimeout(() => setBankSaved(false), 3000)
@@ -192,6 +203,7 @@ export default function AdminSettingsPage() {
       .upsert({ key: 'deposit_percentage', value: { percentage: pct } }, { onConflict: 'key' })
     if (error) { setDepositError(error.message) }
     else {
+      await logAsCurrentUser('settings.updated', { type: 'system_setting', label: 'deposit_percentage' }, { from: depositPctOriginal, to: depositPct })
       setDepositPctOriginal(depositPct)
       setEditing(null)
       setDepositSaved(true); setTimeout(() => setDepositSaved(false), 3000)
@@ -212,6 +224,7 @@ export default function AdminSettingsPage() {
         .from('system_settings')
         .upsert({ key: 'company_stamp', value: { url } }, { onConflict: 'key' })
       if (dbErr) throw dbErr
+      await logAsCurrentUser('settings.updated', { type: 'system_setting', label: 'company_stamp' }, { action: 'uploaded', file_name: file.name })
       setStampUrl(url); setStampUrlOriginal(url)
       setEditing(null)
       setStampSaved(true); setTimeout(() => setStampSaved(false), 3000)
@@ -230,6 +243,7 @@ export default function AdminSettingsPage() {
       .upsert({ key: 'company_stamp', value: { url: null } }, { onConflict: 'key' })
     if (error) { setStampError(error.message) }
     else {
+      await logAsCurrentUser('settings.updated', { type: 'system_setting', label: 'company_stamp' }, { action: 'cleared' })
       setStampUrl(null); setStampUrlOriginal(null)
       setStampSaved(true); setTimeout(() => setStampSaved(false), 3000)
     }
