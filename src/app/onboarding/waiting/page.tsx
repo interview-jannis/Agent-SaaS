@@ -9,6 +9,7 @@ type ContractRow = {
   contract_type: 'nda' | 'partnership'
   title_snapshot: string
   signed_at: string
+  admin_signed_at: string | null
 }
 
 type AgentState = {
@@ -38,7 +39,7 @@ export default function OnboardingWaitingPage() {
       const a = agent as AgentState
       setAgentState(a)
       const { data } = await supabase.from('agent_contracts')
-        .select('id, contract_type, title_snapshot, signed_at')
+        .select('id, contract_type, title_snapshot, signed_at, admin_signed_at')
         .eq('agent_id', a.id)
         .order('contract_type', { ascending: true })
       if (!cancelled) {
@@ -68,6 +69,12 @@ export default function OnboardingWaitingPage() {
           rejected_at: row.rejected_at,
         })
       }
+      // Refresh contracts so admin counter-signature status updates without reload
+      const { data: cs } = await supabase.from('agent_contracts')
+        .select('id, contract_type, title_snapshot, signed_at, admin_signed_at')
+        .eq('agent_id', row.id)
+        .order('contract_type', { ascending: true })
+      if (!cancelled) setContracts((cs as ContractRow[]) ?? [])
     }
 
     load()
@@ -140,7 +147,7 @@ export default function OnboardingWaitingPage() {
         </div>
         <div>
           <h1 className="text-xl font-semibold text-gray-900">Thanks — your signatures have been received</h1>
-          <p className="text-sm text-gray-500 mt-2">Your account will be activated by an admin shortly.<br />This page will redirect automatically once your account is ready.</p>
+          <p className="text-sm text-gray-500 mt-2">An admin will counter-sign your agreements and approve your account.<br />Once approved, you&apos;ll be taken in automatically — no need to refresh.</p>
         </div>
       </div>
 
@@ -162,6 +169,11 @@ export default function OnboardingWaitingPage() {
                   <p className="text-sm font-medium text-gray-900 truncate">{c.title_snapshot}</p>
                   <p className="text-[11px] text-gray-500">Signed {new Date(c.signed_at).toLocaleDateString('en-US', { dateStyle: 'long' })}</p>
                 </div>
+                {c.admin_signed_at ? (
+                  <span className="text-[10px] px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-full border border-emerald-200 shrink-0">Counter-signed</span>
+                ) : (
+                  <span className="text-[10px] px-2 py-0.5 bg-amber-50 text-amber-700 rounded-full border border-amber-200 shrink-0">Awaiting admin</span>
+                )}
                 <span className="text-xs text-[#0f4c35] font-medium shrink-0">View ↗</span>
               </button>
             ))}

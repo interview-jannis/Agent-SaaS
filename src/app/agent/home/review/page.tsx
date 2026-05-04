@@ -11,6 +11,7 @@ import {
   addDocumentItem,
   addDocumentGroupMember,
 } from '@/lib/documents'
+import { createCaseContract } from '@/lib/caseContracts'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -276,7 +277,7 @@ export default function QuoteReviewPage() {
       if (!session?.user?.id) throw new Error('Not authenticated')
 
       const { data: agentData } = await supabase
-        .from('agents').select('id, name, margin_rate').eq('auth_user_id', session.user.id).single()
+        .from('agents').select('id, name, country, margin_rate').eq('auth_user_id', session.user.id).single()
       if (!agentData) throw new Error('Agent not found')
 
       const { data: companyRateSetting } = await supabase
@@ -369,6 +370,31 @@ export default function QuoteReviewPage() {
       localStorage.removeItem('agent-cart')
       const caseNumber = `#C-${String((caseCount ?? 0) + 1).padStart(3, '0')}`
       await logAsCurrentUser('case.created', { type: 'case', id: caseData.id, label: caseNumber }, { total_krw: totalKRW })
+
+      // Auto-generate the 3-party contract immediately. Case enters
+      // awaiting_contract right away — there's no in-between step where the
+      // agent would want to delay generation, so don't make them click
+      // "Generate Contract" on the case page. If creation fails, the case
+      // page will show the manual generate button as a fallback.
+      try {
+        const { data: depositSetting } = await supabase
+          .from('system_settings').select('value').eq('key', 'deposit_percentage').maybeSingle()
+        const depositPct = String((depositSetting?.value as { percentage?: number } | null)?.percentage ?? 50)
+        const totalDisplay = `₩${totalKRW.toLocaleString('ko-KR')}`
+        await createCaseContract(caseData.id, 'three_party', {
+          AGENT_NAME: agentData.name,
+          AGENT_COUNTRY: (agentData as { country: string | null }).country ?? '',
+          CLIENT_NAME: lead.name,
+          CASE_NUMBER: caseNumber,
+          QUOTE_NUMBER: quotation.document_number ?? '',
+          TOTAL_AMOUNT: totalDisplay,
+          DEPOSIT_PERCENTAGE: depositPct,
+        })
+      } catch (e: unknown) {
+        // Non-fatal — agent can still hit "Generate Contract" on the case page.
+        console.warn('[case.create] auto-create 3-party contract failed', (e as { message?: string })?.message)
+      }
+
       // SOP: admin should know a new case exists. Admin will counter-sign the
       // 3-party contract after agent + client sign — that triggers the move
       // to awaiting_deposit.

@@ -49,7 +49,7 @@ export const STATUS_LABELS: Record<CaseStatus, string> = {
   awaiting_deposit: 'Awaiting Deposit',
   awaiting_schedule: 'Awaiting Schedule',
   reviewing_schedule: 'Reviewing Schedule',
-  awaiting_pricing: 'Awaiting Pricing',
+  awaiting_pricing: 'Awaiting Final Pricing',
   awaiting_payment: 'Awaiting Balance Payment',
   awaiting_travel: 'Awaiting Travel',
   awaiting_review: 'Awaiting Review',

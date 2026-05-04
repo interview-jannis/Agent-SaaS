@@ -7,16 +7,20 @@ import MobileTopBar from '@/components/MobileTopBar'
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
     <MobileNavProvider>
-      <div className="flex h-[100svh] bg-white overflow-hidden">
+      <div className="flex h-[100svh] bg-white overflow-hidden print:block print:h-auto print:overflow-visible">
         <SessionGuard />
-        <AdminSidebar />
-        <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-white">
-          <MobileTopBar homeHref="/admin/overview" />
-          <main className="flex-1 overflow-hidden bg-white">
+        <div className="print:hidden contents">
+          <AdminSidebar />
+        </div>
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-white print:block print:overflow-visible">
+          <div className="print:hidden">
+            <MobileTopBar homeHref="/admin/overview" />
+          </div>
+          <main className="flex-1 overflow-hidden bg-white print:overflow-visible print:flex-none">
             {children}
           </main>
         </div>
-        <div className="hidden md:block">
+        <div className="hidden md:block print:hidden">
           <NotificationBell />
         </div>
       </div>

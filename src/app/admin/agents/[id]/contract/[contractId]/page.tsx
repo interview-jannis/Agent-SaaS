@@ -13,12 +13,16 @@ type Contract = {
   title_snapshot: string
   body_snapshot: string
   signature_data_url: string | null
+  signature_hash: string | null
+  signed_typed_name: string | null
   signed_at: string
   ip_address: string | null
   user_agent: string | null
   approved_at: string | null
-  // Admin countersignature (added 2026-05-02)
+  // Admin countersignature (added 2026-05-02 / 04)
   admin_signature_data_url: string | null
+  admin_signature_hash: string | null
+  admin_signed_typed_name: string | null
   admin_signed_at: string | null
   admin_signer_id: string | null
   admin_signer_name: string | null
@@ -90,6 +94,8 @@ export default function ContractViewerPage() {
   // Admin sign state
   const [signing, setSigning] = useState(false)
   const [adminSig, setAdminSig] = useState<string | null>(null)
+  const [adminTypedName, setAdminTypedName] = useState('')
+  const [adminAgree, setAdminAgree] = useState(false)
   const [savingSig, setSavingSig] = useState(false)
   const [sigError, setSigError] = useState('')
   const [adminProfile, setAdminProfile] = useState<{ id: string; name: string; title: string | null } | null>(null)
@@ -114,23 +120,38 @@ export default function ContractViewerPage() {
   useEffect(() => { load() }, [id, contractId])
 
   async function submitSignature() {
-    if (!contract || !adminProfile || !adminSig) {
-      setSigError('Please sign above.'); return
+    if (!contract || !adminProfile) { setSigError('Not ready.'); return }
+    if (!adminAgree) { setSigError('Please confirm you are counter-signing as the named admin.'); return }
+    if (!adminTypedName.trim()) { setSigError('Please type your full name.'); return }
+    if (adminTypedName.trim().toLowerCase() !== adminProfile.name.trim().toLowerCase()) {
+      setSigError(`The typed name must exactly match "${adminProfile.name}".`); return
     }
+    if (!adminSig) { setSigError('Please sign above.'); return }
+
     setSavingSig(true); setSigError('')
     try {
-      const { error } = await supabase.from('agent_contracts').update({
-        admin_signature_data_url: adminSig,
-        admin_signed_at: new Date().toISOString(),
-        admin_signer_id: adminProfile.id,
-        admin_signer_name: adminProfile.name,
-        admin_signer_title: adminProfile.title,
-      }).eq('id', contract.id)
-      if (error) throw error
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) throw new Error('Not signed in.')
+
+      const res = await fetch('/api/admin/sign-contract', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          contract_id: contract.id,
+          signature_data_url: adminSig,
+          signed_typed_name: adminTypedName.trim(),
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error((data as { error?: string }).error ?? 'Failed to save signature.')
+
       await logAsCurrentUser('agent_contract.countersigned', {
         type: 'agent', id: contract.agent_id, label: agent?.name ?? '',
       }, { contract_type: contract.contract_type })
-      setSigning(false); setAdminSig(null)
+      setSigning(false); setAdminSig(null); setAdminTypedName(''); setAdminAgree(false)
       await load()
     } catch (e: unknown) {
       setSigError((e as { message?: string })?.message ?? 'Failed to save signature.')
@@ -143,7 +164,7 @@ export default function ContractViewerPage() {
   if (!contract || !agent) return <div className="flex-1 flex items-center justify-center"><p className="text-sm text-gray-400">Contract not found.</p></div>
 
   return (
-    <div className="flex flex-col h-full bg-white">
+    <div className="flex flex-col h-full bg-white print:block print:h-auto">
       {/* Top bar — hidden when printing */}
       <div className="h-14 shrink-0 flex items-center gap-3 px-6 border-b border-gray-100 print:hidden">
         <button onClick={() => router.push(`/admin/agents/${id}`)}
@@ -165,7 +186,7 @@ export default function ContractViewerPage() {
       </div>
 
       {/* Document */}
-      <div className="flex-1 overflow-y-auto print:overflow-visible">
+      <div className="flex-1 overflow-y-auto print:overflow-visible print:flex-none">
         <div className="max-w-[750px] mx-auto px-12 py-10 print:p-0 print:max-w-none">
           {/* Header */}
           <div className="text-center mb-8 pb-6 border-b-2 border-gray-800">
@@ -204,19 +225,22 @@ export default function ContractViewerPage() {
           </div>
 
           {/* Signature block — Agent + Admin */}
-          <div className="mt-12 pt-6 border-t border-gray-300 grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div className="mt-12 pt-6 border-t border-gray-300 grid grid-cols-1 md:grid-cols-2 print:grid-cols-2 gap-8 print:gap-4 print:break-inside-avoid">
             {/* Agent signature */}
             <div>
               <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-3">Agent Signature</p>
               {contract.signature_data_url ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={contract.signature_data_url} alt="Agent signature"
-                  className="max-h-32 border border-gray-200 rounded bg-white" />
+                  className="h-32 w-full object-contain border border-gray-200 rounded bg-white" />
               ) : (
                 <p className="text-xs text-gray-400 italic">No signature captured.</p>
               )}
               <div className="mt-3 text-[11px] text-gray-600 space-y-0.5">
                 <p><span className="font-semibold text-gray-500">Name:</span> {agent.name}</p>
+                {contract.signed_typed_name && (
+                  <p><span className="font-semibold text-gray-500">Typed Confirmation:</span> {contract.signed_typed_name}</p>
+                )}
                 <p><span className="font-semibold text-gray-500">Date:</span> {new Date(contract.signed_at).toLocaleDateString('en-US', { dateStyle: 'long' })}</p>
               </div>
             </div>
@@ -228,22 +252,37 @@ export default function ContractViewerPage() {
                 <>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={contract.admin_signature_data_url} alt="Admin signature"
-                    className="max-h-32 border border-gray-200 rounded bg-white" />
+                    className="h-32 w-full object-contain border border-gray-200 rounded bg-white" />
                   <div className="mt-3 text-[11px] text-gray-600 space-y-0.5">
                     <p><span className="font-semibold text-gray-500">Name:</span> {contract.admin_signer_name ?? '—'}{contract.admin_signer_title ? ` (${contract.admin_signer_title})` : ''}</p>
+                    {contract.admin_signed_typed_name && (
+                      <p><span className="font-semibold text-gray-500">Typed Confirmation:</span> {contract.admin_signed_typed_name}</p>
+                    )}
                     <p><span className="font-semibold text-gray-500">Date:</span> {contract.admin_signed_at ? new Date(contract.admin_signed_at).toLocaleDateString('en-US', { dateStyle: 'long' }) : '—'}</p>
                   </div>
                 </>
               ) : signing ? (
-                <div className="space-y-2 print:hidden">
+                <div className="space-y-3 print:hidden">
+                  <label className="flex items-start gap-2 cursor-pointer select-none">
+                    <input type="checkbox" checked={adminAgree} onChange={e => setAdminAgree(e.target.checked)}
+                      className="w-4 h-4 mt-0.5 accent-[#0f4c35] shrink-0" />
+                    <span className="text-xs text-gray-700">
+                      I, <span className="font-semibold text-gray-900">{adminProfile?.name}</span>
+                      {adminProfile?.title ? ` (${adminProfile.title})` : ''}, am counter-signing this agreement on
+                      behalf of Interview Co., Ltd. and intend the signature below as my legal signature.
+                    </span>
+                  </label>
+                  <input type="text" value={adminTypedName} onChange={e => setAdminTypedName(e.target.value)}
+                    placeholder={`Type "${adminProfile?.name ?? ''}" to confirm`}
+                    className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
                   <SignaturePad onChange={setAdminSig} />
                   {sigError && <p className="text-xs text-red-500">{sigError}</p>}
                   <div className="flex gap-2">
-                    <button onClick={submitSignature} disabled={savingSig || !adminSig}
+                    <button onClick={submitSignature} disabled={savingSig || !adminSig || !adminAgree || !adminTypedName.trim()}
                       className="px-3 py-1.5 text-xs font-medium bg-[#0f4c35] text-white rounded-lg hover:bg-[#0a3828] disabled:opacity-40">
                       {savingSig ? 'Saving...' : 'Save Signature'}
                     </button>
-                    <button onClick={() => { setSigning(false); setAdminSig(null); setSigError('') }}
+                    <button onClick={() => { setSigning(false); setAdminSig(null); setAdminTypedName(''); setAdminAgree(false); setSigError('') }}
                       disabled={savingSig}
                       className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-800 disabled:opacity-40">Cancel</button>
                   </div>
@@ -262,11 +301,17 @@ export default function ContractViewerPage() {
             </div>
           </div>
 
-          {/* Audit footer — small print */}
+          {/* Audit footer — small print, evidentiary metadata */}
           <div className="mt-10 pt-4 border-t border-gray-100 text-[10px] text-gray-400 space-y-0.5">
             <p>Document ID: {contract.id}</p>
-            {contract.ip_address && <p>IP Address: {contract.ip_address}</p>}
-            {contract.user_agent && <p className="break-all">User Agent: {contract.user_agent}</p>}
+            {contract.ip_address && <p>Signing IP Address: {contract.ip_address}</p>}
+            {contract.signature_hash && <p className="break-all">Agent Signature SHA-256: {contract.signature_hash}</p>}
+            {contract.admin_signature_hash && <p className="break-all">Counter-signature SHA-256: {contract.admin_signature_hash}</p>}
+            {contract.user_agent && <p className="break-all">Agent User Agent: {contract.user_agent}</p>}
+            <p className="pt-1 text-gray-400">
+              Signed electronically under Korea&apos;s Electronic Signatures Act (Article 3, general electronic signature).
+              Hashes above let either party verify after the fact that the stored signature image has not been altered.
+            </p>
           </div>
         </div>
       </div>

@@ -96,6 +96,8 @@ export default function ContractStep({ type, step, nextHref, nextLabel, isFinal 
   const [agentCountry, setAgentCountry] = useState('')
   const [loading, setLoading] = useState(true)
   const [agree, setAgree] = useState(false)
+  const [confirmIdentity, setConfirmIdentity] = useState(false)
+  const [typedName, setTypedName] = useState('')
   const [signature, setSignature] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -131,71 +133,70 @@ export default function ContractStep({ type, step, nextHref, nextLabel, isFinal 
       if (!agentName.trim()) { setError('Please enter your full legal name.'); return }
       if (!agentCountry.trim()) { setError('Please enter your country of residence.'); return }
     }
-    if (!agree || !signature) { setError('Please agree to the terms and sign above.'); return }
+    if (!agree) { setError('Please confirm you have read and agree to the terms.'); return }
+    if (!confirmIdentity) { setError('Please confirm you are the named individual signing this agreement.'); return }
+    if (!typedName.trim()) { setError('Please type your full legal name to confirm.'); return }
+    if (!signature) { setError('Please sign above.'); return }
+
+    const expectedName = agentName.trim()
+    if (typedName.trim().toLowerCase() !== expectedName.toLowerCase()) {
+      setError(`The typed name must exactly match "${expectedName}".`)
+      return
+    }
+
     setSaving(true); setError('')
     try {
       const { data: { session } } = await supabase.auth.getSession()
       const uid = session?.user?.id
-      if (!uid) throw new Error('Not signed in.')
-      const { data: agent } = await supabase.from('agents').select('id, name, country, agent_number').eq('auth_user_id', uid).maybeSingle()
+      if (!uid || !session?.access_token) throw new Error('Not signed in.')
+      const { data: agent } = await supabase.from('agents').select('id, agent_number').eq('auth_user_id', uid).maybeSingle()
       if (!agent) throw new Error('Agent record not found.')
+      const agentRow = agent as { id: string; agent_number: string | null }
 
-      // First contract: persist identity to the agent record
+      // First contract: persist identity to the agent record BEFORE the
+      // server-side sign call so the API can validate typed_name against
+      // the just-saved name.
       if (collectIdentity) {
         const { error: uErr } = await supabase.from('agents')
           .update({ name: agentName.trim(), country: agentCountry.trim() })
-          .eq('id', (agent as { id: string }).id)
+          .eq('id', agentRow.id)
         if (uErr) throw uErr
       }
 
-      const agentNumber = (agent as { agent_number: string | null }).agent_number ?? ''
-      const finalName = collectIdentity ? agentName.trim() : ((agent as { name: string }).name)
-      const finalCountry = collectIdentity ? agentCountry.trim() : ((agent as { country: string | null }).country ?? '')
-
-      // Substitute identity tokens at sign-time so the body_snapshot is the contract-as-signed.
-      // Handle both bare and **wrapped** forms of the name token so templates don't double-up stars.
-      const substitutedBody = template.body
-        .replace(/\*\*\{\{AGENT_NAME\}\}\*\*/g, `**${finalName}**`)
-        .replace(/\{\{AGENT_NAME\}\}/g, `**${finalName}**`)
-        .replace(/\{\{AGENT_COUNTRY\}\}/g, finalCountry)
-
-      const { error: insErr } = await supabase.from('agent_contracts').insert({
-        agent_id: (agent as { id: string }).id,
-        contract_type: type,
-        title_snapshot: template.title,
-        body_snapshot: substitutedBody,
-        ot_acknowledged_at: new Date().toISOString(),
-        signature_data_url: signature,
-        signed_at: new Date().toISOString(),
-        ip_address: null,
-        user_agent: typeof navigator !== 'undefined' ? navigator.userAgent : null,
+      // Server-side sign — captures IP, hashes signature, validates typed
+      // name matches stored agent.name, substitutes body tokens server-side.
+      const res = await fetch('/api/onboarding/sign-contract', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          contract_type: type,
+          signature_data_url: signature,
+          signed_typed_name: typedName.trim(),
+          is_final: !!isFinal,
+        }),
       })
-      if (insErr) throw insErr
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error((data as { error?: string }).error ?? 'Failed to sign.')
 
       if (isFinal) {
-        await supabase.from('agents').update({
-          onboarding_status: 'awaiting_approval',
-          // Clear rejection markers so a re-signed agent doesn't look rejected anymore.
-          rejection_reason: null,
-          rejected_at: null,
-        }).eq('id', (agent as { id: string }).id)
-
+        const agentNumber = agentRow.agent_number ?? ''
         // Server-side notify (service role) — more reliable than client-side broadcast.
         try {
-          const res = await fetch('/api/onboarding/notify-signed', {
+          const r2 = await fetch('/api/onboarding/notify-signed', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ agent_id: (agent as { id: string }).id }),
+            body: JSON.stringify({ agent_id: agentRow.id }),
           })
-          if (!res.ok) {
-            // Fall back to client-side broadcast so we don't lose the notification.
+          if (!r2.ok) {
             await notifyAllAdmins(`${agentNumber} signed contracts — review needed`, '/admin/agents')
           }
         } catch {
           await notifyAllAdmins(`${agentNumber} signed contracts — review needed`, '/admin/agents')
         }
-
-        await logAsCurrentUser('agent.contracts_signed', { type: 'agent', id: (agent as { id: string }).id, label: agentNumber })
+        await logAsCurrentUser('agent.contracts_signed', { type: 'agent', id: agentRow.id, label: agentNumber })
       }
 
       router.push(nextHref)
@@ -278,18 +279,54 @@ export default function ContractStep({ type, step, nextHref, nextLabel, isFinal 
       )}
 
       {template && (
-        <>
-          <label className="flex items-start gap-3 cursor-pointer select-none">
-            <input type="checkbox" checked={agree} onChange={e => setAgree(e.target.checked)}
-              className="w-4 h-4 mt-0.5 accent-[#0f4c35]" />
-            <span className="text-sm text-gray-700">I have read and agree to the terms of the {template.title}.</span>
-          </label>
+        <section className="bg-white rounded-2xl border border-gray-200 p-6 space-y-4">
+          <div className="space-y-3">
+            <label className="flex items-start gap-3 cursor-pointer select-none">
+              <input type="checkbox" checked={agree} onChange={e => setAgree(e.target.checked)}
+                className="w-4 h-4 mt-0.5 accent-[#0f4c35] shrink-0" />
+              <span className="text-sm text-gray-700">
+                I have read this {template.title} <span className="font-semibold text-gray-900">in full</span>, understand its terms,
+                and voluntarily agree to be legally bound by them.
+              </span>
+            </label>
+
+            <label className="flex items-start gap-3 cursor-pointer select-none">
+              <input type="checkbox" checked={confirmIdentity} onChange={e => setConfirmIdentity(e.target.checked)}
+                className="w-4 h-4 mt-0.5 accent-[#0f4c35] shrink-0" />
+              <span className="text-sm text-gray-700">
+                I confirm I am <span className="font-semibold text-gray-900">{agentName.trim() || 'the named individual'}</span>,
+                and that the signature below is mine and is intended as my legal signature on this agreement.
+              </span>
+            </label>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">
+              Type your full legal name to confirm *
+            </label>
+            <input
+              type="text"
+              value={typedName}
+              onChange={e => setTypedName(e.target.value)}
+              placeholder={agentName.trim() || 'Your full legal name'}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]"
+            />
+            <p className="text-[11px] text-gray-400 mt-1">
+              Must exactly match the name above. Recorded as explicit-intent evidence alongside your drawn signature.
+            </p>
+          </div>
 
           <div>
             <p className="text-xs font-medium text-gray-500 mb-2">Signature *</p>
             <SignaturePad onChange={setSignature} />
           </div>
-        </>
+
+          <p className="text-[11px] text-gray-400 leading-relaxed">
+            By signing, you acknowledge that this electronic signature has the same legal effect as a handwritten one
+            under Korea&apos;s Electronic Signatures Act. Your IP address, device, and a cryptographic hash of
+            your signature image are recorded server-side as audit evidence.
+          </p>
+        </section>
       )}
 
       {error && <p className="text-xs text-red-500">{error}</p>}
@@ -301,7 +338,7 @@ export default function ContractStep({ type, step, nextHref, nextLabel, isFinal 
         </button>
         <button
           onClick={submit}
-          disabled={saving || !template || !agree || !signature}
+          disabled={saving || !template || !agree || !confirmIdentity || !typedName.trim() || !signature}
           className="ml-auto px-5 py-2.5 text-sm font-medium bg-[#0f4c35] text-white rounded-xl hover:bg-[#0a3828] disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
           {saving ? 'Signing...' : nextLabel}
         </button>

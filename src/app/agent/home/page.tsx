@@ -441,7 +441,7 @@ export default function AgentHomePage() {
       >
         {/* Image with carousel */}
         <div
-          className={`${compact ? 'aspect-video' : 'aspect-[4/3]'} bg-gray-100 overflow-hidden relative group/img cursor-pointer`}
+          className={`${compact ? 'aspect-[16/10]' : 'aspect-[16/10]'} bg-gray-100 overflow-hidden relative group/img cursor-pointer`}
           onClick={() => openDetail(product)}
         >
           {currentImg ? (
@@ -479,52 +479,48 @@ export default function AgentHomePage() {
           )}
         </div>
 
-        {/* Content */}
-        <div className="p-3 flex flex-col flex-1 gap-1.5">
+        {/* Content — compact: name + price/duration row + tag row + add button */}
+        <div className="p-2.5 flex flex-col flex-1 gap-1">
           <button
             onClick={() => openDetail(product)}
-            className="text-sm font-semibold text-gray-900 leading-tight text-left hover:text-[#0f4c35] transition-colors line-clamp-1"
+            className="text-xs font-semibold text-gray-900 leading-tight text-left hover:text-[#0f4c35] transition-colors line-clamp-1"
           >
             {product.name}
           </button>
-          {!compact && (
-            <p className="text-xs text-gray-400 line-clamp-2 leading-relaxed whitespace-pre-line">{product.description}</p>
-          )}
 
-          <div className="mt-auto pt-1 space-y-1.5">
-            <div>
-              <p className="text-sm font-bold text-gray-900">{toUSD(product)}</p>
-              <p className="text-[11px] text-gray-400">{product.duration_value} {product.duration_unit}</p>
-            </div>
-            {(product.has_female_doctor || product.has_prayer_room) && (
-              <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-gray-500">
-                {product.has_female_doctor && (
-                  <span title="Female medical staff" className="inline-flex items-center gap-0.5 whitespace-nowrap">
-                    <svg className="w-3 h-3 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                    </svg>
-                    Female staff
-                  </span>
-                )}
-                {product.has_prayer_room && (
-                  <span title="Prayer room" className="inline-flex items-center gap-0.5 whitespace-nowrap">
-                    <svg className="w-3 h-3 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                    </svg>
-                    Prayer room
-                  </span>
-                )}
-              </div>
-            )}
+          <div className="flex items-baseline justify-between gap-2 mt-auto">
+            <p className="text-sm font-bold text-gray-900 truncate">{toUSD(product)}</p>
+            <p className="text-[10px] text-gray-400 shrink-0">{product.duration_value} {product.duration_unit}</p>
           </div>
+
+          {(product.has_female_doctor || product.has_prayer_room) && (
+            <div className="flex flex-wrap gap-x-2 gap-y-0 text-[10px] text-gray-500">
+              {product.has_female_doctor && (
+                <span title="Female medical staff" className="inline-flex items-center gap-0.5 whitespace-nowrap">
+                  <svg className="w-3 h-3 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                  Female
+                </span>
+              )}
+              {product.has_prayer_room && (
+                <span title="Prayer room" className="inline-flex items-center gap-0.5 whitespace-nowrap">
+                  <svg className="w-3 h-3 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                  Prayer
+                </span>
+              )}
+            </div>
+          )}
 
           <button
             onClick={() => toggleProduct(product.id)}
-            className={`mt-1 w-full py-1.5 rounded-lg text-xs font-medium transition-all ${
+            className={`mt-1 w-full py-1 rounded-lg text-[11px] font-medium transition-all ${
               inActiveGroup ? activePalette.btn : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
             }`}
           >
-            {inActiveGroup ? `✓ ${groups[activeGroupIndex]?.name}` : `Add to ${groups[activeGroupIndex]?.name ?? 'Group'}`}
+            {inActiveGroup ? `✓ ${groups[activeGroupIndex]?.name}` : `+ ${groups[activeGroupIndex]?.name ?? 'Group'}`}
           </button>
         </div>
       </div>
@@ -593,28 +589,15 @@ export default function AgentHomePage() {
       </div>
 
       {/* ── Main ── */}
-      <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
+      <div className="flex flex-col flex-1 overflow-hidden">
 
-        {/* ── Left Filter Panel ── */}
-        <div className="md:w-52 md:shrink-0 bg-white border-b md:border-b-0 md:border-r border-gray-100 md:overflow-y-auto md:px-4 md:py-4 md:space-y-5">
-          <button
-            onClick={() => setFilterOpen(v => !v)}
-            className="md:hidden w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-gray-700"
-          >
-            <span className="flex items-center gap-2">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3 4.5h18M6 12h12M10 19.5h4" />
-              </svg>
-              Filters
-            </span>
-            <svg className={`w-4 h-4 transition-transform ${filterOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-            </svg>
-          </button>
-          <div className={`${filterOpen ? 'block px-4 pb-4 space-y-5' : 'hidden'} md:block md:p-0 md:space-y-5`}>
-
+        {/* ── Top Filter Bar ── horizontal toolbar replaces the old left sidebar
+            so the product grid can use the full window width. Categories are
+            pills inline, Muslim/dietary filters are tucked behind a popover
+            so they don't crowd the bar. */}
+        <div className="shrink-0 bg-white border-b border-gray-100 px-4 md:px-6 py-2.5 flex items-center gap-3 flex-wrap">
           {/* Search */}
-          <div className="relative">
+          <div className="relative flex-1 min-w-[180px] max-w-xs">
             <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
             </svg>
@@ -627,81 +610,82 @@ export default function AgentHomePage() {
             />
           </div>
 
-          {/* Categories (single-select radio) */}
-          <div>
-            <p className="text-xs font-semibold text-gray-500 mb-2">Category</p>
-            <div className="space-y-1.5">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="category-filter"
-                  checked={selectedCategoryId === ''}
-                  onChange={() => setSelectedCategoryId('')}
-                  className="accent-[#0f4c35] w-3.5 h-3.5"
-                />
-                <span className="text-xs text-gray-600">All</span>
-              </label>
-              {categories.map((cat) => (
-                <label key={cat.id} className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="category-filter"
-                    checked={selectedCategoryId === cat.id}
-                    onChange={() => setSelectedCategoryId(cat.id)}
-                    className="accent-[#0f4c35] w-3.5 h-3.5"
-                  />
-                  <span className="text-xs text-gray-600">{cat.name}</span>
-                </label>
-              ))}
-            </div>
+          {/* Category pills — horizontal scroll on narrow widths */}
+          <div className="flex items-center gap-1.5 overflow-x-auto -mx-1 px-1">
+            {[{ id: '', name: 'All' }, ...categories].map(cat => {
+              const active = selectedCategoryId === cat.id
+              return (
+                <button
+                  key={cat.id || 'all'}
+                  onClick={() => setSelectedCategoryId(cat.id)}
+                  className={`shrink-0 px-3 py-1.5 text-xs rounded-full border transition-colors ${active
+                    ? 'bg-[#0f4c35] border-[#0f4c35] text-white'
+                    : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'}`}
+                >
+                  {cat.name}
+                </button>
+              )
+            })}
           </div>
 
-          <div className="border-t border-gray-100" />
-
-          {/* Muslim Friendly */}
-          <div>
-            <p className="text-xs font-semibold text-gray-500 mb-2">Muslim Friendly</p>
-
-            <label className="flex items-center gap-2 cursor-pointer mb-3">
-              <input
-                type="checkbox"
-                checked={filterPrayerRoom}
-                onChange={(e) => setFilterPrayerRoom(e.target.checked)}
-                className="accent-[#0f4c35] w-3.5 h-3.5"
-              />
-              <span className="text-xs text-gray-600">Prayer room</span>
-            </label>
-
-            <p className="text-[11px] text-gray-400 mb-1.5">Dietary</p>
-            <div className="space-y-1.5 mb-3">
-              {DIETARY_FILTER_OPTIONS.map((opt) => (
-                <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={filterDietary.includes(opt.value)}
-                    onChange={(e) => {
-                      setFilterDietary((prev) =>
-                        e.target.checked ? [...prev, opt.value] : prev.filter((v) => v !== opt.value)
-                      )
-                    }}
-                    className="accent-[#0f4c35] w-3.5 h-3.5"
-                  />
-                  <span className="text-xs text-gray-600">{opt.label}</span>
-                </label>
-              ))}
-            </div>
-
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={filterFemaleMedical}
-                onChange={(e) => setFilterFemaleMedical(e.target.checked)}
-                className="accent-[#0f4c35] w-3.5 h-3.5"
-              />
-              <span className="text-xs text-gray-600">Female medical staff</span>
-            </label>
-          </div>
-          </div>
+          {/* Muslim/Dietary filters — popover */}
+          {(() => {
+            const activeCount = (filterPrayerRoom ? 1 : 0) + (filterFemaleMedical ? 1 : 0) + filterDietary.length
+            return (
+              <div className="relative ml-auto">
+                <button
+                  onClick={() => setFilterOpen(v => !v)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${activeCount > 0
+                    ? 'border-[#0f4c35] text-[#0f4c35] bg-[#0f4c35]/5'
+                    : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 4.5h18M6 12h12M10 19.5h4" />
+                  </svg>
+                  Muslim Friendly{activeCount > 0 ? ` · ${activeCount}` : ''}
+                  <svg className={`w-3 h-3 transition-transform ${filterOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                  </svg>
+                </button>
+                {filterOpen && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setFilterOpen(false)} />
+                    <div className="absolute right-0 top-full mt-1.5 z-20 bg-white border border-gray-200 rounded-xl shadow-lg p-4 space-y-3 w-60">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" checked={filterPrayerRoom} onChange={(e) => setFilterPrayerRoom(e.target.checked)}
+                          className="accent-[#0f4c35] w-3.5 h-3.5" />
+                        <span className="text-xs text-gray-700">Prayer room</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" checked={filterFemaleMedical} onChange={(e) => setFilterFemaleMedical(e.target.checked)}
+                          className="accent-[#0f4c35] w-3.5 h-3.5" />
+                        <span className="text-xs text-gray-700">Female medical staff</span>
+                      </label>
+                      <div className="border-t border-gray-100 pt-2">
+                        <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Dietary</p>
+                        <div className="space-y-1.5">
+                          {DIETARY_FILTER_OPTIONS.map(opt => (
+                            <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
+                              <input type="checkbox" checked={filterDietary.includes(opt.value)}
+                                onChange={(e) => setFilterDietary(prev => e.target.checked ? [...prev, opt.value] : prev.filter(v => v !== opt.value))}
+                                className="accent-[#0f4c35] w-3.5 h-3.5" />
+                              <span className="text-xs text-gray-700">{opt.label}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                      {activeCount > 0 && (
+                        <button onClick={() => { setFilterPrayerRoom(false); setFilterFemaleMedical(false); setFilterDietary([]) }}
+                          className="text-[11px] text-gray-500 hover:text-gray-800 underline">
+                          Clear all
+                        </button>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            )
+          })()}
         </div>
 
         {/* ── Product Area: sections (no category filter) OR flat grid (category selected) ── */}

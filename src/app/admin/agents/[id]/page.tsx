@@ -37,6 +37,7 @@ type ContractRow = {
   title_snapshot: string
   signed_at: string
   approved_at: string | null
+  admin_signed_at: string | null
 }
 
 type CaseRow = {
@@ -101,7 +102,7 @@ export default function AdminAgentDetailPage() {
         .eq('agent_id', id)
         .order('created_at', { ascending: false }),
       supabase.from('agent_contracts')
-        .select('id, contract_type, title_snapshot, signed_at, approved_at')
+        .select('id, contract_type, title_snapshot, signed_at, approved_at, admin_signed_at')
         .eq('agent_id', id)
         .order('contract_type', { ascending: true }),  // 'nda' < 'partnership' alphabetically
       supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single(),
@@ -458,6 +459,11 @@ export default function AdminAgentDetailPage() {
                       <p className="text-sm font-medium text-gray-900 truncate">{c.title_snapshot}</p>
                       <p className="text-[11px] text-gray-500">Signed {c.signed_at.slice(0, 10)}{c.approved_at ? ` · Approved ${c.approved_at.slice(0, 10)}` : ''}</p>
                     </div>
+                    {c.admin_signed_at ? (
+                      <span className="text-[10px] px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-full border border-emerald-200 shrink-0">Counter-signed</span>
+                    ) : (
+                      <span className="text-[10px] px-2 py-0.5 bg-amber-50 text-amber-700 rounded-full border border-amber-200 shrink-0">Needs sign</span>
+                    )}
                     <span className="text-xs text-[#0f4c35] font-medium shrink-0">View ↗</span>
                   </button>
                 ))}
@@ -525,18 +531,30 @@ export default function AdminAgentDetailPage() {
             <section className="bg-amber-50 border border-amber-200 rounded-2xl p-5 flex items-center justify-between flex-wrap gap-3">
               <div>
                 <h3 className="text-xs font-semibold text-amber-800 uppercase tracking-wide mb-1">Awaiting Approval</h3>
-                <p className="text-xs text-amber-800">Review the signed contracts above. Approve to activate the account, or reject to send the agent back to the onboarding step.</p>
+                <p className="text-xs text-amber-800">Open each signed contract above and counter-sign it. Once every contract is counter-signed, you can approve to activate the account — or reject to send the agent back to onboarding.</p>
               </div>
               <div className="flex items-center gap-2">
                 <button onClick={() => { setShowReject(true); setError('') }} disabled={approving || rejecting}
                   className="px-4 py-2 text-xs font-medium border border-red-200 text-red-600 rounded-lg hover:bg-red-50 disabled:opacity-40">
                   Reject
                 </button>
-                <button onClick={approveAgent} disabled={approving || rejecting || contracts.length < 2}
-                  title={contracts.length < 2 ? 'Agent has not signed all required contracts yet.' : ''}
-                  className="px-4 py-2 text-xs font-medium bg-[#0f4c35] text-white rounded-lg hover:bg-[#0a3828] disabled:opacity-40">
-                  {approving ? 'Approving...' : 'Approve & Activate'}
-                </button>
+                {(() => {
+                  const allAgentSigned = contracts.length >= 2
+                  const allAdminSigned = contracts.length >= 2 && contracts.every(c => c.admin_signed_at)
+                  const blocked = !allAgentSigned || !allAdminSigned
+                  const reason = !allAgentSigned
+                    ? 'Agent has not signed all required contracts yet.'
+                    : !allAdminSigned
+                      ? 'Counter-sign every contract above before approving.'
+                      : ''
+                  return (
+                    <button onClick={approveAgent} disabled={approving || rejecting || blocked}
+                      title={reason}
+                      className="px-4 py-2 text-xs font-medium bg-[#0f4c35] text-white rounded-lg hover:bg-[#0a3828] disabled:opacity-40">
+                      {approving ? 'Approving...' : 'Approve & Activate'}
+                    </button>
+                  )
+                })()}
               </div>
             </section>
           )}

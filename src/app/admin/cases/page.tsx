@@ -13,6 +13,8 @@ type DisplayGroup =
   | 'awaiting_pricing'
   | 'reviewing_schedule'
   | 'awaiting_schedule'
+  | 'awaiting_deposit'
+  | 'awaiting_contract'
   | 'awaiting_info'
   | 'completed_pending'
   | 'completed_settled'
@@ -25,7 +27,9 @@ const DISPLAY_ORDER: DisplayGroup[] = [
   'awaiting_pricing',
   'reviewing_schedule',
   'awaiting_schedule',
+  'awaiting_deposit',
   'awaiting_info',
+  'awaiting_contract',
   'completed_settled',
   'canceled',
 ]
@@ -36,6 +40,8 @@ const DISPLAY_LABELS: Record<DisplayGroup, string> = {
   awaiting_pricing: STATUS_LABELS.awaiting_pricing,
   reviewing_schedule: STATUS_LABELS.reviewing_schedule,
   awaiting_schedule: STATUS_LABELS.awaiting_schedule,
+  awaiting_deposit: STATUS_LABELS.awaiting_deposit,
+  awaiting_contract: STATUS_LABELS.awaiting_contract,
   awaiting_info: STATUS_LABELS.awaiting_info,
   completed_pending: 'Completed · Pending Settlement',
   completed_settled: 'Completed · Settled',
@@ -46,10 +52,12 @@ const DISPLAY_LABELS: Record<DisplayGroup, string> = {
 // Full labels stay on section headers (tooltip on chips preserves them).
 const SHORT_LABELS: Record<DisplayGroup, string> = {
   awaiting_travel: 'Travel',
-  awaiting_payment: 'Payment',
+  awaiting_payment: 'Balance',
   awaiting_pricing: 'Pricing',
   reviewing_schedule: 'Schedule Review',
   awaiting_schedule: 'Schedule Prep',
+  awaiting_deposit: 'Deposit',
+  awaiting_contract: 'Contract',
   awaiting_info: 'Client Info',
   completed_pending: 'Pending Payout',
   completed_settled: 'Settled',
@@ -59,6 +67,8 @@ const SHORT_LABELS: Record<DisplayGroup, string> = {
 // Small monochrome icons for section headers — visual variety without color.
 const GROUP_ICON_PATHS: Record<DisplayGroup, string> = {
   awaiting_info:      'M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z',
+  awaiting_contract:  'M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z',
+  awaiting_deposit:   'M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
   awaiting_schedule:  'M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5',
   reviewing_schedule: 'M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178zM15 12a3 3 0 11-6 0 3 3 0 016 0z',
   awaiting_pricing:   'M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z',
@@ -75,6 +85,8 @@ const DISPLAY_STYLES: Record<DisplayGroup, string> = {
   awaiting_pricing: STATUS_STYLES.awaiting_pricing,
   reviewing_schedule: STATUS_STYLES.reviewing_schedule,
   awaiting_schedule: STATUS_STYLES.awaiting_schedule,
+  awaiting_deposit: STATUS_STYLES.awaiting_deposit,
+  awaiting_contract: STATUS_STYLES.awaiting_contract,
   awaiting_info: STATUS_STYLES.awaiting_info,
   completed_pending: 'bg-amber-50 text-amber-700 border-amber-200',
   completed_settled: STATUS_STYLES.completed,

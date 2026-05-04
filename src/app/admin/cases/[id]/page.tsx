@@ -9,6 +9,7 @@ import { type CaseStatus, STATUS_LABELS, STATUS_STYLES } from '@/lib/caseStatus'
 import { AdminCaseHero } from '@/components/CaseHeroAction'
 import CaseDocumentsSection from '@/components/CaseDocumentsSection'
 import AdminCaseContractSection from '@/components/AdminCaseContractSection'
+import SelectedProductsSection from '@/components/SelectedProductsSection'
 import type { DocumentRow } from '@/lib/documents'
 
 import type { ClientInfo, FlightInfo } from '@/lib/clientCompleteness'
@@ -218,7 +219,7 @@ export default function AdminCaseDetailPage() {
         ),
         documents(
           id, type, document_number, slug, total_price, payment_due_date, payment_received_at, agent_margin_rate, company_margin_rate, finalized_at, from_party, to_party, created_at,
-          document_groups(id, name, order, member_count, document_items(id, base_price, final_price, products(id, name, description, partner_name)), document_group_members(id, case_member_id))
+          document_groups(id, name, order, member_count, document_items(id, base_price, final_price, products(id, name, description, partner_name, duration_value, duration_unit, has_female_doctor, has_prayer_room, dietary_type, location_address)), document_group_members(id, case_member_id))
         ),
         schedules(id, slug, pdf_url, status, version, file_name, revision_note, admin_note, confirmed_at, created_at, first_opened_at)
       `)
@@ -448,6 +449,10 @@ export default function AdminCaseDetailPage() {
   const groupsComplete = !latestQuote || latestQuote.document_groups.every(g => (g.document_group_members?.length ?? 0) === g.member_count)
   const missingCaseFields = getMissingCaseFields(caseData)
   const caseInfoComplete = missingCaseFields.length === 0
+  // Info-missing warnings only matter while the case is still in awaiting_info
+  // (the info-collection stage). Once it moves on, gaps are no longer the
+  // active task — keep boxes neutral so they don't add noise.
+  const flagMissingInfo = caseData.status === 'awaiting_info'
   const scheduleReady = allClientsComplete && groupsComplete && caseInfoComplete
   // Schedule is locked once the agent confirms (or beyond) — no more uploads or deletes.
   const scheduleLocked =
@@ -483,11 +488,9 @@ export default function AdminCaseDetailPage() {
         </span>
       </div>
 
-      {/* 50/50 on desktop, stacked on mobile */}
-      <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
-
-        {/* LEFT — Case Info + Actions */}
-        <div className="w-full md:w-1/2 overflow-y-auto border-b md:border-b-0 md:border-r border-gray-100 px-4 md:px-6 py-4 md:py-6 space-y-5">
+      {/* Single column scrollable body (matches agent layout) */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="max-w-3xl mx-auto px-4 md:px-6 py-4 md:py-6 space-y-5">
 
           {/* Canceled banner */}
           {caseData.status === 'canceled' && (
@@ -545,8 +548,10 @@ export default function AdminCaseDetailPage() {
                 <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Trip Setup</h3>
                 {(caseInfoComplete && allClientsComplete && groupsComplete && caseData.travel_start_date) ? (
                   <span className="text-[10px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">Ready</span>
-                ) : (
+                ) : flagMissingInfo ? (
                   <span className="text-[10px] font-medium text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">In progress</span>
+                ) : (
+                  <span className="text-[10px] font-medium text-gray-500 bg-gray-100 border border-gray-200 px-1.5 py-0.5 rounded">In progress</span>
                 )}
               </div>
               <button onClick={() => setSetupCollapsed(!setupCollapsed)}
@@ -584,12 +589,12 @@ export default function AdminCaseDetailPage() {
           </div>
 
           {/* Trip Info (case-level, read-only) */}
-          <div className={`pt-4 border-t border-gray-200 ${caseInfoComplete ? '' : '-mx-1 px-1 py-2 rounded-xl bg-amber-50 border border-amber-200'}`}>
+          <div className={`pt-4 border-t border-gray-200 ${flagMissingInfo && !caseInfoComplete ? '-mx-1 px-1 py-2 rounded-xl bg-amber-50 border border-amber-200' : ''}`}>
             <div className="flex items-center gap-2 mb-3">
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Trip Info</p>
-              {!caseInfoComplete && <span className="text-[10px] font-medium text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">Incomplete</span>}
+              {flagMissingInfo && !caseInfoComplete && <span className="text-[10px] font-medium text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">Incomplete</span>}
             </div>
-            {!caseInfoComplete && (
+            {flagMissingInfo && !caseInfoComplete && (
               <p className="text-xs text-amber-800 mb-3">Missing: {missingCaseFields.join(' · ')}</p>
             )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
@@ -656,7 +661,9 @@ export default function AdminCaseDetailPage() {
                   </h3>
                   {ready
                     ? <span className="text-[10px] font-medium text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">Ready</span>
-                    : <span className="text-[10px] font-medium text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">{issueCount} issue{issueCount > 1 ? 's' : ''}</span>}
+                    : flagMissingInfo
+                      ? <span className="text-[10px] font-medium text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">{issueCount} issue{issueCount > 1 ? 's' : ''}</span>
+                      : null}
                 </div>
 
                 {caseData.case_members.length > 0 && (() => {
@@ -702,7 +709,7 @@ export default function AdminCaseDetailPage() {
                   )
                 })()}
 
-                {!ready && (
+                {!ready && flagMissingInfo && (
                   <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
                     <p className="text-[10px] font-semibold text-amber-800 uppercase tracking-wide mb-1.5">{issueCount} issue{issueCount > 1 ? 's' : ''} to resolve</p>
                     <ul className="space-y-1 text-xs text-amber-800">
@@ -734,11 +741,53 @@ export default function AdminCaseDetailPage() {
           </section>
           {/* ─── /TRIP SETUP ─── */}
 
+          {/* Selected Products — placed right after Trip Setup to match agent layout */}
+          {(caseData.documents?.length ?? 0) > 0 && (
+            <SelectedProductsSection
+              documents={(caseData.documents ?? [])
+                .filter(d => d.type === 'quotation' || d.type === 'additional_invoice')
+                .map(d => ({
+                  id: d.id,
+                  type: d.type as 'quotation' | 'additional_invoice',
+                  document_number: d.document_number ?? null,
+                  total_price: d.total_price ?? null,
+                  finalized_at: d.finalized_at ?? null,
+                  document_groups: d.document_groups,
+                }))}
+              exchangeRate={exchangeRate}
+              defaultExpanded={true}
+            />
+          )}
+
+          {/* Schedule placeholder — telegraphs that the Schedule slot lives here.
+              Real upload UI / history sit lower in the page; once a schedule
+              exists, this placeholder hides and the full UI takes over below. */}
+          {sortedSchedules.length === 0 && (
+            <section className="bg-gray-50 rounded-2xl p-5">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Schedule</h3>
+                <span className="text-[10px] text-gray-400">not yet uploaded</span>
+              </div>
+              <p className="text-xs text-gray-500">
+                {scheduleReady
+                  ? 'Ready to upload — see the Upload Schedule section below.'
+                  : 'Will be uploaded once Trip Info, every client’s info, and group assignments are complete.'}
+              </p>
+            </section>
+          )}
+
           {/* Quote / Financials */}
           {latestQuote && (
             <section className="bg-gray-50 rounded-2xl p-4 space-y-3">
               <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Financials</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Financials</p>
+                  {!latestQuote.finalized_at && (
+                    <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5 uppercase tracking-wide">
+                      Estimated
+                    </span>
+                  )}
+                </div>
                 <div className="flex items-center gap-3">
                   <span className="text-[10px] font-mono text-gray-400">
                     {latestQuote.document_number}
@@ -761,13 +810,41 @@ export default function AdminCaseDetailPage() {
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3 text-sm">
-                <div><p className="text-[10px] text-gray-400 mb-0.5">Total (KRW)</p><p className="font-semibold text-gray-900">{fmtKRW(latestQuote.total_price)}</p></div>
-                <div><p className="text-[10px] text-gray-400 mb-0.5">Total (USD)</p><p className="font-semibold text-gray-900">{fmtUSD(latestQuote.total_price / exchangeRate)}</p></div>
+                <div>
+                  <p className="text-[10px] text-gray-400 mb-0.5">
+                    {latestQuote.finalized_at ? 'Total (KRW)' : 'Estimated (KRW)'}
+                  </p>
+                  <p className="font-semibold text-gray-900">{fmtKRW(latestQuote.total_price)}</p>
+                  {!latestQuote.finalized_at && (
+                    <p className="mt-1">
+                      <span className="text-[10px] font-medium text-amber-900 bg-yellow-200 px-1.5 py-0.5 rounded">
+                        May change after you finalize
+                      </span>
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <p className="text-[10px] text-gray-400 mb-0.5">
+                    {latestQuote.finalized_at ? 'Total (USD)' : 'Estimated (USD)'}
+                  </p>
+                  <p className="font-semibold text-gray-900">{fmtUSD(latestQuote.total_price / exchangeRate)}</p>
+                  {!latestQuote.finalized_at && (
+                    <p className="mt-1">
+                      <span className="text-[10px] font-medium text-amber-900 bg-yellow-200 px-1.5 py-0.5 rounded">
+                        May change after you finalize
+                      </span>
+                    </p>
+                  )}
+                </div>
                 <div>
                   <p className="text-[10px] text-gray-400 mb-0.5">Payment Due</p>
-                  <p className={`font-medium text-sm ${caseData.status === 'awaiting_payment' && latestQuote.payment_due_date && new Date(latestQuote.payment_due_date) < new Date() ? 'text-red-500' : 'text-gray-800'}`}>
-                    {latestQuote.payment_due_date ?? '—'}
-                  </p>
+                  {latestQuote.finalized_at && latestQuote.payment_due_date ? (
+                    <p className={`font-medium text-sm ${caseData.status === 'awaiting_payment' && new Date(latestQuote.payment_due_date) < new Date() ? 'text-red-500' : 'text-gray-800'}`}>
+                      {latestQuote.payment_due_date}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-gray-400">Set on finalize</p>
+                  )}
                 </div>
                 <div><p className="text-[10px] text-gray-400 mb-0.5">Margins</p><p className="text-gray-700 text-xs">Co. {(latestQuote.company_margin_rate * 100).toFixed(0)}% / Agent {(latestQuote.agent_margin_rate * 100).toFixed(0)}%</p></div>
               </div>
@@ -786,7 +863,7 @@ export default function AdminCaseDetailPage() {
                     <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Revenue Breakdown</p>
                     <div className="space-y-1.5">
                       <div className="flex items-baseline justify-between">
-                        <span className="text-xs text-gray-600">Partner Cost (원가)</span>
+                        <span className="text-xs text-gray-600">Partner Cost</span>
                         <span className="text-right tabular-nums">
                           <span className="text-sm font-medium text-gray-800">{fmtUSD(base / exchangeRate)}</span>
                           <span className="text-[10px] text-gray-400 ml-2">{fmtKRW(base)}</span>
@@ -1809,71 +1886,6 @@ export default function AdminCaseDetailPage() {
           })()}
 
         </div>
-
-        {/* RIGHT — Selected Products */}
-        <div className="w-full md:w-1/2 overflow-y-auto px-4 md:px-6 py-4 md:py-6">
-          <p className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-4">Selected Products</p>
-
-          {sortedGroups.length === 0 ? (
-            <p className="text-sm text-gray-300">No products selected.</p>
-          ) : (
-            <div className="space-y-4">
-              {sortedGroups.map((group) => {
-                const memberCount = Math.max(group.member_count ?? 1, 1)
-                const groupTotal = group.document_items.reduce((s, item) => s + item.final_price, 0)
-                return (
-                  <div key={group.id} className="bg-gray-50 rounded-2xl overflow-hidden">
-                    {/* Group header */}
-                    <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
-                      <span className="text-sm font-semibold text-gray-800">{group.name}</span>
-                      <span className="text-[11px] text-gray-500">{memberCount} pax · {group.document_items.length} item{group.document_items.length !== 1 ? 's' : ''}</span>
-                    </div>
-
-                    {/* Item rows */}
-                    <div className="divide-y divide-gray-200">
-                      {group.document_items.map((item) => {
-                        const amtKRW = item.final_price
-                        const amtUSD = amtKRW / exchangeRate
-                        return (
-                          <div key={item.id} className="flex items-start gap-3 px-4 py-2.5">
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium text-gray-800 truncate">{item.products?.name ?? '—'}</p>
-                              <p className="text-[10px] text-gray-500 mt-0.5">{fmtKRW(amtKRW / memberCount)} × {memberCount}</p>
-                            </div>
-                            <div className="text-right shrink-0">
-                              <p className="text-sm font-semibold text-gray-800">{fmtUSD(amtUSD)}</p>
-                              <p className="text-[10px] text-gray-400">{fmtKRW(amtKRW)}</p>
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-
-                    {/* Subtotal */}
-                    <div className="flex items-center justify-between px-4 py-2.5 bg-gray-100/70 border-t border-gray-200">
-                      <span className="text-xs font-medium text-gray-600 uppercase tracking-wide">Subtotal</span>
-                      <div className="text-right">
-                        <span className="text-sm font-semibold text-gray-900">{fmtUSD(groupTotal / exchangeRate)}</span>
-                        <span className="text-[10px] text-gray-500 ml-2">{fmtKRW(groupTotal)}</span>
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
-
-              {latestQuote && (
-                <div className="flex items-center justify-between px-4 py-3 border-t-2 border-gray-300">
-                  <span className="text-base font-bold text-gray-900">Total</span>
-                  <div className="text-right">
-                    <p className="text-lg font-bold text-gray-900">{fmtUSD(latestQuote.total_price / exchangeRate)}</p>
-                    <p className="text-xs text-gray-500">{fmtKRW(latestQuote.total_price)}</p>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
       </div>
     </div>
   )

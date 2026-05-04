@@ -180,11 +180,11 @@ export default function AgentCaseContractSection({
       {error && <p className="text-xs text-red-500 bg-red-50 px-3 py-2 rounded-lg">{error}</p>}
 
       {!contract ? (
-        <div className="bg-white border border-dashed border-gray-300 rounded-xl p-5 text-center space-y-3">
-          <p className="text-sm text-gray-700">No contract generated yet.</p>
-          <p className="text-xs text-gray-500">Click below to generate the 3-party agreement using the company template, then sign it as the agent and send the link to your client.</p>
+        <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-5 text-center space-y-3">
+          <p className="text-sm font-medium text-indigo-900">No contract generated yet.</p>
+          <p className="text-xs text-indigo-700">Click below to generate the 3-party agreement using the company template, then sign it as the agent and send the link to your client.</p>
           <button onClick={generate} disabled={creating}
-            className="px-4 py-2 text-xs font-medium bg-[#0f4c35] text-white rounded-lg hover:bg-[#0a3828] disabled:opacity-40">
+            className="px-4 py-2 text-xs font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-40">
             {creating ? 'Generating...' : 'Generate Contract'}
           </button>
         </div>

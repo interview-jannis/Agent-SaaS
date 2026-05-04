@@ -19,6 +19,7 @@ import CaseDocumentsSection from '@/components/CaseDocumentsSection'
 import AgentCaseContractSection from '@/components/AgentCaseContractSection'
 import AgentSurveySection from '@/components/AgentSurveySection'
 import type { DocumentRow } from '@/lib/documents'
+import SelectedProductsSection from '@/components/SelectedProductsSection'
 import { AgentCaseHero } from '@/components/CaseHeroAction'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -186,9 +187,6 @@ export default function CaseDetailPage() {
   const [membersError, setMembersError] = useState('')
   const [editMembers, setEditMembers] = useState(false)
 
-  // Selected Products collapse toggle
-  const [productsOpen, setProductsOpen] = useState(false)
-
   // Invoice
   const [copied, setCopied] = useState(false)
   const [scheduleCopied, setScheduleCopied] = useState(false)
@@ -227,7 +225,7 @@ export default function CaseDetailPage() {
           id, type, document_number, slug, total_price, payment_due_date, payment_received_at, agent_margin_rate, company_margin_rate, finalized_at, from_party, to_party, created_at,
           document_groups(
             id, name, order, member_count,
-            document_items(id, final_price, products(id, name, base_price, price_currency, duration_value, duration_unit)),
+            document_items(id, final_price, products(id, name, description, partner_name, base_price, price_currency, duration_value, duration_unit, has_female_doctor, has_prayer_room, dietary_type, location_address)),
             document_group_members(id, case_member_id)
           )
         ),
@@ -1537,80 +1535,23 @@ export default function CaseDetailPage() {
           </section>
           {/* ─── /TRIP SETUP ─── */}
 
-          {/* Selected Products — group subtotals always visible, details collapsible */}
-          {quote && quote.document_groups.length > 0 && (
-            <section className="bg-gray-50 rounded-2xl p-5 space-y-3">
-              <div className="flex items-center gap-2">
-                <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Selected Products</h3>
-                <span className="ml-auto text-[10px] font-mono text-gray-400">{quote.document_number}</span>
-                <button onClick={() => setProductsOpen(v => !v)}
-                  className="text-[11px] font-medium text-gray-500 hover:text-gray-800 px-2 py-1 rounded-lg border border-gray-200 hover:bg-gray-100">
-                  {productsOpen ? '▲ Collapse' : '▼ Expand'}
-                </button>
-              </div>
-              {[...quote.document_groups].sort((a, b) => a.order - b.order).map(group => {
-                const qty = Math.max(group.member_count ?? 1, 1)
-                const marginMult = (1 + (quote.company_margin_rate ?? 0)) * (1 + (quote.agent_margin_rate ?? 0))
-                const unitUsdFor = (item: QuoteItem) => {
-                  const baseUSD = item.products.price_currency === 'USD'
-                    ? item.products.base_price
-                    : item.products.base_price / exchangeRate
-                  return baseUSD * marginMult
-                }
-                const groupTotalUsd = group.document_items.reduce(
-                  (sum, item) => sum + unitUsdFor(item) * qty,
-                  0
-                )
-                return (
-                  <div key={group.id} className="bg-gray-50 rounded-2xl p-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-semibold text-gray-700">{group.name}</span>
-                        <span className="text-[10px] text-gray-400 bg-white border border-gray-100 rounded-full px-2 py-0.5">
-                          {qty} member{qty > 1 ? 's' : ''}
-                        </span>
-                        <span className="text-[10px] text-gray-400">· {group.document_items.length} item{group.document_items.length > 1 ? 's' : ''}</span>
-                      </div>
-                      <span className="text-sm font-bold text-gray-900">${groupTotalUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                    </div>
-
-                    {productsOpen && (
-                      <div className="mt-3 pt-3 border-t border-gray-200">
-                        <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-4 text-[10px] font-medium text-gray-400 pb-2 border-b border-gray-100 mb-2">
-                          <span>Product</span>
-                          <span>Unit Price</span>
-                          <span>Qty</span>
-                          <span className="text-right">Total</span>
-                        </div>
-                        {group.document_items.map(item => {
-                          const unitUsd = unitUsdFor(item)
-                          const totalUsd = unitUsd * qty
-                          return (
-                            <div key={item.id} className="grid grid-cols-[1fr_auto_auto_auto] gap-x-4 py-2 border-b border-gray-100 last:border-0 text-sm">
-                              <div>
-                                <p className="text-gray-800">{item.products.name}</p>
-                                {item.products.duration_value && (
-                                  <p className="text-xs text-gray-400">{item.products.duration_value} {item.products.duration_unit}</p>
-                                )}
-                              </div>
-                              <span className="text-gray-500 text-xs self-center">${unitUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                              <span className="text-gray-500 text-xs self-center">×{qty}</span>
-                              <span className="text-right font-medium text-gray-900 self-center">${totalUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-
-              {/* Grand total — always visible */}
-              <div className="flex items-center justify-between bg-[#0f4c35]/5 border border-[#0f4c35]/15 rounded-2xl px-4 py-3">
-                <span className="text-sm font-semibold text-gray-700">Total</span>
-                <span className="text-base font-bold text-[#0f4c35]">${(quote.total_price / exchangeRate).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-              </div>
-            </section>
+          {/* Selected Products — shared component (matches admin) */}
+          {(caseData.documents?.length ?? 0) > 0 && (
+            <SelectedProductsSection
+              documents={(caseData.documents ?? [])
+                .filter(d => d.type === 'quotation' || d.type === 'additional_invoice')
+                .map(d => ({
+                  id: d.id,
+                  type: d.type as 'quotation' | 'additional_invoice',
+                  document_number: d.document_number ?? null,
+                  total_price: d.total_price ?? null,
+                  finalized_at: d.finalized_at ?? null,
+                  document_groups: d.document_groups,
+                }))}
+              exchangeRate={exchangeRate}
+              defaultExpanded={false}
+              showKRW={false}
+            />
           )}
 
           {/* Schedule — tone matches Hero when this section is the action target */}
@@ -1796,7 +1737,14 @@ export default function CaseDetailPage() {
             return (
             <section id="financials" className={sectionClass}>
               <div className="flex items-center justify-between">
-                <h3 className={labelClass}>Financials</h3>
+                <div className="flex items-center gap-2">
+                  <h3 className={labelClass}>Financials</h3>
+                  {!quote.finalized_at && (
+                    <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5 uppercase tracking-wide">
+                      Estimated
+                    </span>
+                  )}
+                </div>
                 {quote.slug && (() => {
                   const finalInvoice = caseData?.documents?.find(d => d.type === 'final_invoice')
                   const previewSlug = quote.finalized_at && finalInvoice?.slug ? finalInvoice.slug : quote.slug
@@ -1856,10 +1804,19 @@ export default function CaseDetailPage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-white rounded-xl border border-gray-100 p-3">
-                  <p className="text-[10px] text-gray-400 mb-1">Total Amount</p>
+                  <p className="text-[10px] text-gray-400 mb-1">
+                    {quote.finalized_at ? 'Total Amount' : 'Estimated Quote'}
+                  </p>
                   <p className="text-base font-bold text-gray-900">{fmtUsd(toUsd(totalKrw))}</p>
+                  {!quote.finalized_at && (
+                    <p className="mt-1">
+                      <span className="text-[10px] font-medium text-amber-900 bg-yellow-200 px-1.5 py-0.5 rounded">
+                        May change after admin finalizes
+                      </span>
+                    </p>
+                  )}
                 </div>
-                {quote.payment_due_date && (
+                {quote.finalized_at && quote.payment_due_date ? (
                   <div className="bg-white rounded-xl border border-gray-100 p-3">
                     <p className="text-[10px] text-gray-400 mb-1">Payment Due</p>
                     <p className={`text-sm font-medium ${caseData.status === 'awaiting_payment' && new Date(quote.payment_due_date) < new Date() ? 'text-red-500' : 'text-gray-900'}`}>
@@ -1868,6 +1825,11 @@ export default function CaseDetailPage() {
                     {caseData.status === 'awaiting_payment' && new Date(quote.payment_due_date) < new Date() && (
                       <p className="text-[10px] text-red-400 mt-0.5">Overdue</p>
                     )}
+                  </div>
+                ) : (
+                  <div className="bg-gray-50 rounded-xl border border-dashed border-gray-200 p-3">
+                    <p className="text-[10px] text-gray-400 mb-1">Payment Due</p>
+                    <p className="text-xs text-gray-400">Set when admin finalizes pricing</p>
                   </div>
                 )}
               </div>
