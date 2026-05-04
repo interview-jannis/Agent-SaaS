@@ -9,6 +9,15 @@ type Category = {
   name: string
 }
 
+type Variant = {
+  id: string
+  variant_label: string | null
+  base_price: number
+  price_currency: 'KRW' | 'USD' | null
+  sort_order: number
+  is_active: boolean
+}
+
 type Product = {
   id: string
   product_number: string
@@ -23,6 +32,7 @@ type Product = {
   product_categories: { name: string } | null
   product_subcategories: { name: string } | null
   product_images: { image_url: string; is_primary: boolean }[]
+  product_variants: Variant[]
 }
 
 const AGENT_TIERS = [0.15, 0.20, 0.25] as const
@@ -44,7 +54,7 @@ export default function AdminProductsPage() {
   const [exportProgress, setExportProgress] = useState('')
 
   // Excel upload — bulk upsert from spreadsheet (two-step: dry-run preview → confirm)
-  type UploadCounts = { inserted: number; updated: number; unchanged: number }
+  type UploadCounts = { inserted: number; updated: number; unchanged: number; deleted?: number }
   type UploadChange = { field: string; before: unknown; after: unknown }
   type UploadUpdate = { kind: 'product' | 'variant'; label: string; changes: UploadChange[] }
   type UploadMissing = { label: string; category: string }
@@ -56,13 +66,15 @@ export default function AdminProductsPage() {
   const [pendingFile, setPendingFile] = useState<File | null>(null)
   const [previewResult, setPreviewResult] = useState<UploadResp | null>(null)
   const [uploadResult, setUploadResult] = useState<UploadResp | null>(null)
+  // Opt-in: delete products in DB that aren't in the spreadsheet. Off by default.
+  const [deleteMissing, setDeleteMissing] = useState(false)
 
   async function loadAll() {
     const [{ data: cats }, { data: prods }, { data: cmSetting }, { data: rateSetting }] = await Promise.all([
       supabase.from('product_categories').select('id, name').order('sort_order').order('name'),
       supabase
         .from('products')
-        .select('id, product_number, name, description, partner_name, base_price, price_currency, is_active, category_id, subcategory_id, product_categories(name), product_subcategories(name), product_images(image_url, is_primary)')
+        .select('id, product_number, name, description, partner_name, base_price, price_currency, is_active, category_id, subcategory_id, product_categories(name), product_subcategories(name), product_images(image_url, is_primary), product_variants(id, variant_label, base_price, price_currency, sort_order, is_active)')
         .order('product_number', { ascending: false }),
       supabase.from('system_settings').select('value').eq('key', 'company_margin_rate').single(),
       supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single(),
@@ -154,14 +166,16 @@ export default function AdminProductsPage() {
 
   // Two-step upload: file → dry-run preview → user confirms → real commit.
   // Step 1 — file selected, ask server "what would happen" without writing.
-  async function handlePreviewExcel(file: File) {
-    setUploading(true); setPreviewResult(null); setUploadResult(null); setPendingFile(file)
+  // Re-runs whenever deleteMissing toggle changes so the preview counts stay live.
+  async function runPreview(file: File, withDelete: boolean) {
+    setUploading(true)
     try {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session?.access_token) throw new Error('Not signed in.')
       const fd = new FormData()
       fd.append('file', file)
-      const res = await fetch('/api/admin/products/upload-excel?dryRun=true', {
+      const qs = `?dryRun=true${withDelete ? '&deleteMissing=true' : ''}`
+      const res = await fetch(`/api/admin/products/upload-excel${qs}`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${session.access_token}` },
         body: fd,
@@ -180,6 +194,17 @@ export default function AdminProductsPage() {
     }
   }
 
+  async function handlePreviewExcel(file: File) {
+    setPreviewResult(null); setUploadResult(null); setPendingFile(file); setDeleteMissing(false)
+    await runPreview(file, false)
+  }
+
+  // Toggle handler — re-runs the dry-run preview against the same file
+  async function handleToggleDeleteMissing(next: boolean) {
+    setDeleteMissing(next)
+    if (pendingFile) await runPreview(pendingFile, next)
+  }
+
   // Step 2 — user confirmed, actually commit.
   async function handleConfirmUpload() {
     if (!pendingFile) return
@@ -189,7 +214,8 @@ export default function AdminProductsPage() {
       if (!session?.access_token) throw new Error('Not signed in.')
       const fd = new FormData()
       fd.append('file', pendingFile)
-      const res = await fetch('/api/admin/products/upload-excel', {
+      const qs = deleteMissing ? '?deleteMissing=true' : ''
+      const res = await fetch(`/api/admin/products/upload-excel${qs}`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${session.access_token}` },
         body: fd,
@@ -199,6 +225,7 @@ export default function AdminProductsPage() {
       setUploadResult(data)
       setPreviewResult(null)
       setPendingFile(null)
+      setDeleteMissing(false)
       await loadAll()
     } catch (e: unknown) {
       setUploadResult({
@@ -214,6 +241,7 @@ export default function AdminProductsPage() {
   function handleCancelUpload() {
     setPreviewResult(null)
     setPendingFile(null)
+    setDeleteMissing(false)
   }
 
   async function handleExportBackup() {
@@ -500,14 +528,33 @@ export default function AdminProductsPage() {
               )}
 
               {(previewResult.missingInUpload ?? []).length > 0 && (
-                <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
-                  <p className="text-xs font-semibold text-gray-700">
-                    {(previewResult.missingInUpload ?? []).length} item{(previewResult.missingInUpload ?? []).length > 1 ? 's' : ''} in DB are not in this upload
-                  </p>
-                  <p className="text-[11px] text-gray-500 mt-0.5">These will be left alone — delete via product detail if intended.</p>
+                <div className={`rounded-xl p-3 border ${deleteMissing ? 'border-red-200 bg-red-50' : 'border-gray-200 bg-gray-50'}`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1">
+                      <p className={`text-xs font-semibold ${deleteMissing ? 'text-red-800' : 'text-gray-700'}`}>
+                        {(previewResult.missingInUpload ?? []).length} item{(previewResult.missingInUpload ?? []).length > 1 ? 's' : ''} in DB are not in this upload
+                        {deleteMissing && ' — will be DELETED'}
+                      </p>
+                      <p className={`text-[11px] mt-0.5 ${deleteMissing ? 'text-red-700' : 'text-gray-500'}`}>
+                        {deleteMissing
+                          ? 'Cascading: their variants will be removed too. Documents that referenced them keep their snapshots.'
+                          : 'These will be left alone — turn on the toggle to delete.'}
+                      </p>
+                    </div>
+                    <label className="flex items-center gap-1.5 text-[11px] font-medium text-gray-700 cursor-pointer shrink-0">
+                      <input
+                        type="checkbox"
+                        checked={deleteMissing}
+                        disabled={uploading}
+                        onChange={(e) => handleToggleDeleteMissing(e.target.checked)}
+                        className="w-3.5 h-3.5 accent-red-600"
+                      />
+                      Remove missing
+                    </label>
+                  </div>
                   <details className="mt-1">
-                    <summary className="text-[11px] text-gray-600 cursor-pointer">Show list</summary>
-                    <ul className="mt-1 text-[10px] text-gray-600 space-y-0.5 list-disc pl-4 max-h-32 overflow-y-auto">
+                    <summary className={`text-[11px] cursor-pointer ${deleteMissing ? 'text-red-700' : 'text-gray-600'}`}>Show list</summary>
+                    <ul className="mt-1 text-[10px] space-y-0.5 list-disc pl-4 max-h-32 overflow-y-auto text-gray-600">
                       {(previewResult.missingInUpload ?? []).map((m, i) => (
                         <li key={i}><span className="text-gray-400">[{m.category}]</span> {m.label}</li>
                       ))}
@@ -529,8 +576,16 @@ export default function AdminProductsPage() {
                 <button onClick={handleCancelUpload} disabled={uploading}
                   className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-800 disabled:opacity-40">Cancel</button>
                 <button onClick={handleConfirmUpload} disabled={uploading}
-                  className="px-4 py-1.5 text-xs font-medium bg-[#0f4c35] text-white rounded-lg hover:bg-[#0a3828] disabled:opacity-40">
-                  {uploading ? 'Saving…' : 'Confirm Save'}
+                  className={`px-4 py-1.5 text-xs font-medium text-white rounded-lg disabled:opacity-40 ${
+                    deleteMissing
+                      ? 'bg-red-600 hover:bg-red-700'
+                      : 'bg-[#0f4c35] hover:bg-[#0a3828]'
+                  }`}>
+                  {uploading
+                    ? 'Saving…'
+                    : deleteMissing
+                      ? `Confirm — Save & Delete ${(previewResult.missingInUpload ?? []).length}`
+                      : 'Confirm Save'}
                 </button>
               </div>
             </div>
@@ -552,6 +607,12 @@ export default function AdminProductsPage() {
                     <span className="font-medium text-blue-700">{uploadResult.products.updated} updated</span>
                     {' · '}
                     <span className="text-gray-500">{uploadResult.products.unchanged} unchanged</span>
+                    {(uploadResult.products.deleted ?? 0) > 0 && (
+                      <>
+                        {' · '}
+                        <span className="font-medium text-red-700">{uploadResult.products.deleted} deleted</span>
+                      </>
+                    )}
                   </p>
                   <p>
                     Variants — <span className="font-medium text-emerald-700">{uploadResult.variants.inserted} new</span>
@@ -676,10 +737,26 @@ export default function AdminProductsPage() {
                             <p className="text-xs text-gray-500 truncate mt-0.5">{p.partner_name ?? '—'}</p>
                             <p className="text-[10px] font-mono text-gray-400 mt-0.5">{p.product_number}</p>
                             <div className="mt-1.5 tabular-nums">
-                              <span className="text-sm font-semibold text-gray-900">{fmtPrice(p.base_price, p.price_currency)}</span>
-                              {p.price_currency !== 'USD' && (
-                                <span className="ml-1.5 text-[11px] text-gray-400">≈ {fmtUSD(toUSD(p.base_price, p.price_currency))}</span>
-                              )}
+                              {(() => {
+                                const vs = (p.product_variants ?? []).filter(v => v.is_active)
+                                if (vs.length > 1) {
+                                  const usds = vs.map(v => toUSD(v.base_price, v.price_currency))
+                                  const lo = Math.min(...usds), hi = Math.max(...usds)
+                                  return lo !== hi ? (
+                                    <span className="text-sm font-semibold text-gray-900">{fmtUSD(lo)} – {fmtUSD(hi)}</span>
+                                  ) : (
+                                    <span className="text-sm font-semibold text-gray-900">{fmtUSD(lo)}</span>
+                                  )
+                                }
+                                return (
+                                  <>
+                                    <span className="text-sm font-semibold text-gray-900">{fmtPrice(p.base_price, p.price_currency)}</span>
+                                    {p.price_currency !== 'USD' && (
+                                      <span className="ml-1.5 text-[11px] text-gray-400">≈ {fmtUSD(toUSD(p.base_price, p.price_currency))}</span>
+                                    )}
+                                  </>
+                                )
+                              })()}
                             </div>
                           </div>
                         </div>
@@ -810,29 +887,69 @@ export default function AdminProductsPage() {
                       )}
                     </td>
                     <td className="px-3 xl:px-6 py-4 tabular-nums whitespace-nowrap">
-                      <div className="flex items-center">
-                        <div className="min-w-[110px] xl:min-w-[140px] text-right pr-2 xl:pr-4">
-                          <div className="text-xs xl:text-base font-semibold text-gray-900">
-                            {fmtPrice(p.base_price, p.price_currency)}
-                          </div>
-                          {p.price_currency !== 'USD' && (
-                            <div className="text-[10px] xl:text-[11px] text-gray-400 mt-0.5">
-                              ≈ {fmtUSD(toUSD(p.base_price, p.price_currency))}
-                            </div>
-                          )}
-                        </div>
-                        <div className="hidden xl:block min-w-[160px] text-left pl-4 border-l border-gray-100 space-y-0.5">
-                          {AGENT_TIERS.map((tier) => {
-                            const finalUSD = toUSD(p.base_price, p.price_currency) * (1 + companyMargin) * (1 + tier)
-                            return (
-                              <div key={tier} className="text-xs text-gray-500">
-                                <span className="text-gray-400">{Math.round(tier * 100)}%</span>
-                                <span className="ml-2 font-medium text-gray-700">{fmtUSD(finalUSD)}</span>
+                      {(() => {
+                        // variant-aware: fall back to product.base_price if no variants
+                        const vs = (p.product_variants ?? []).filter(v => v.is_active)
+                        const sorted = [...vs].sort((a, b) => a.sort_order - b.sort_order)
+                        const usdList = sorted.length > 0
+                          ? sorted.map(v => ({ usd: toUSD(v.base_price, v.price_currency), v }))
+                          : [{ usd: toUSD(p.base_price, p.price_currency), v: null as Variant | null }]
+                        const minUsd = Math.min(...usdList.map(x => x.usd))
+                        const maxUsd = Math.max(...usdList.map(x => x.usd))
+                        const isRange = sorted.length > 1 && minUsd !== maxUsd
+                        const primary = sorted[0] ?? null
+                        const krw = (vUsd: number) => vUsd * exchangeRate
+                        return (
+                          <div className="flex items-center">
+                            <div className="min-w-[110px] xl:min-w-[140px] text-right pr-2 xl:pr-4">
+                              <div className="text-xs xl:text-base font-semibold text-gray-900">
+                                {isRange
+                                  ? `${fmtUSD(minUsd)} – ${fmtUSD(maxUsd)}`
+                                  : fmtPrice(primary?.base_price ?? p.base_price, primary?.price_currency ?? p.price_currency)}
                               </div>
-                            )
-                          })}
-                        </div>
-                      </div>
+                              {!isRange && (primary?.price_currency ?? p.price_currency) !== 'USD' && (
+                                <div className="text-[10px] xl:text-[11px] text-gray-400 mt-0.5">
+                                  ≈ {fmtUSD(toUSD(primary?.base_price ?? p.base_price, primary?.price_currency ?? p.price_currency))}
+                                </div>
+                              )}
+                              {isRange && (
+                                <div className="text-[10px] xl:text-[11px] text-gray-400 mt-0.5">
+                                  {sorted.length} variants
+                                </div>
+                              )}
+                            </div>
+                            <div className="hidden xl:block min-w-[200px] text-left pl-4 border-l border-gray-100 space-y-0.5">
+                              {sorted.length > 1 ? (
+                                <div className="space-y-0.5 max-h-24 overflow-y-auto">
+                                  {sorted.map(v => {
+                                    const vUsd = toUSD(v.base_price, v.price_currency)
+                                    return (
+                                      <div key={v.id} className="text-[11px] text-gray-500 flex items-center gap-2">
+                                        <span className="text-gray-400 truncate max-w-[110px]" title={v.variant_label ?? ''}>
+                                          {v.variant_label ?? '—'}
+                                        </span>
+                                        <span className="ml-auto font-medium text-gray-700 tabular-nums">{fmtUSD(vUsd)}</span>
+                                        <span className="text-gray-400 tabular-nums">{`₩${Math.round(krw(vUsd)).toLocaleString('ko-KR')}`}</span>
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              ) : (
+                                AGENT_TIERS.map((tier) => {
+                                  const baseUsd = toUSD(primary?.base_price ?? p.base_price, primary?.price_currency ?? p.price_currency)
+                                  const finalUSD = baseUsd * (1 + companyMargin) * (1 + tier)
+                                  return (
+                                    <div key={tier} className="text-xs text-gray-500">
+                                      <span className="text-gray-400">{Math.round(tier * 100)}%</span>
+                                      <span className="ml-2 font-medium text-gray-700">{fmtUSD(finalUSD)}</span>
+                                    </div>
+                                  )
+                                })
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })()}
                     </td>
                     <td className="px-3 xl:px-6 py-4 text-center">
                       <span className={`inline-flex items-center px-2 xl:px-2.5 py-0.5 xl:py-1 rounded-full text-[10px] xl:text-xs font-medium ${

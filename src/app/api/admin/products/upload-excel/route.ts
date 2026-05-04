@@ -102,6 +102,11 @@ function normDietary(v: unknown): string {
 export async function POST(req: Request) {
   const url = new URL(req.url)
   const dryRun = url.searchParams.get('dryRun') === 'true'
+  // When true, products in DB whose (category, partner, name) is NOT present
+  // in the upload will be DELETED (cascading their variants). Off by default
+  // — caller must opt in. UI surfaces the count both in the dry-run preview
+  // and as a separate "will delete" warning before commit.
+  const deleteMissing = url.searchParams.get('deleteMissing') === 'true'
 
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!serviceKey) {
@@ -378,26 +383,49 @@ export async function POST(req: Request) {
     }
   }
 
-  // Compile "in DB but not in this upload" — informational only, no deletion.
+  // Compile "in DB but not in this upload". Default: informational. With
+  // deleteMissing=true we actually remove these (cascading their variants).
   const { data: allDb } = await supabase
     .from('products')
     .select('id, name, partner_name, category_id, product_categories(name)')
   type DbProd = { id: string; name: string; partner_name: string | null; category_id: string;
     product_categories: { name: string } | null }
-  const missingInUpload = ((allDb as unknown as DbProd[]) ?? [])
+  const missingProds = ((allDb as unknown as DbProd[]) ?? [])
     .filter(p => p.partner_name && !seenKeys.has(`${p.category_id}::${p.partner_name}::${p.name}`))
-    .map(p => ({
-      label: `${p.partner_name} / ${p.name}`,
-      category: p.product_categories?.name ?? '',
-    }))
+  const missingInUpload = missingProds.map(p => ({
+    label: `${p.partner_name} / ${p.name}`,
+    category: p.product_categories?.name ?? '',
+  }))
+
+  let productsDeleted = 0
+  if (deleteMissing && missingProds.length > 0) {
+    if (dryRun) {
+      productsDeleted = missingProds.length  // preview only
+    } else {
+      const ids = missingProds.map(p => p.id)
+      const { error: delErr, count } = await supabase
+        .from('products')
+        .delete({ count: 'exact' })
+        .in('id', ids)
+      if (delErr) {
+        errors.push(`Delete-missing failed: ${delErr.message}`)
+      } else {
+        productsDeleted = count ?? ids.length
+      }
+    }
+  }
 
   return NextResponse.json({
     ok: true,
     dryRun,
-    products: { inserted: productsInserted, updated: productsUpdated, unchanged: productsUnchanged },
+    deleteMissing,
+    products: {
+      inserted: productsInserted, updated: productsUpdated, unchanged: productsUnchanged,
+      deleted: productsDeleted,
+    },
     variants: { inserted: variantsInserted, updated: variantsUpdated, unchanged: variantsUnchanged },
     updates,  // detail of each updated row — for preview UI
-    missingInUpload,  // products in DB not present in this xlsx (not deleted)
+    missingInUpload,  // products in DB not present in this xlsx
     errors,
   })
 }
