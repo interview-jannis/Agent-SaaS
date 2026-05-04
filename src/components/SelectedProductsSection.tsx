@@ -25,6 +25,7 @@ type Item = {
   final_price: number
   products?: ProductSnapshot
   product_name_snapshot?: string | null
+  variant_label_snapshot?: string | null
 }
 
 type Group = {
@@ -132,7 +133,12 @@ export default function SelectedProductsSection({
                         <button key={item.id} onClick={() => setDetailItem(item)}
                           className="w-full flex items-center gap-3 px-4 py-2 text-left hover:bg-gray-50 transition-colors">
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm text-gray-800 truncate">{itemName(item)}</p>
+                            <p className="text-sm text-gray-800 truncate">
+                              {itemName(item)}
+                              {item.variant_label_snapshot && (
+                                <span className="text-gray-500 font-normal"> · {item.variant_label_snapshot}</span>
+                              )}
+                            </p>
                             <p className="text-[10px] text-gray-400 truncate">{metaBits.join(' · ')}</p>
                           </div>
                           <div className="text-right shrink-0">

@@ -4,8 +4,18 @@ import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import DOBPicker from '@/components/DOBPicker'
+import { appliesMargin, variantPriceUsd } from '@/lib/pricing'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
+
+type Variant = {
+  id: string
+  variant_label: string | null
+  base_price: number
+  price_currency: 'KRW' | 'USD'
+  sort_order: number
+  is_active: boolean
+}
 
 type Product = {
   id: string
@@ -20,8 +30,11 @@ type Product = {
   has_prayer_room: boolean
   dietary_type: string
   category_id: string
+  subcategory_id: string | null
   product_categories: { name: string } | null
+  product_subcategories: { name: string } | null
   product_images: { image_url: string; is_primary: boolean }[]
+  product_variants: Variant[]
 }
 
 type Category = { id: string; name: string }
@@ -33,11 +46,15 @@ type Client = {
   nationality: string
 }
 
+// Cart item: which variant of which product. Variant resolves price + label;
+// product holds shared metadata.
+type CartItem = { productId: string; variantId: string }
+
 type Group = {
   id: string
   name: string
   memberCount: number
-  productIds: string[]
+  items: CartItem[]
 }
 
 type DietaryRestriction = 'halal_certified' | 'halal_friendly' | 'muslim_friendly' | 'pork_free' | 'none'
@@ -115,6 +132,7 @@ export default function AgentHomePage() {
   // Filters
   const [search, setSearch] = useState('')
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('')
+  const [selectedSubcategoryName, setSelectedSubcategoryName] = useState<string>('')
   // Snapshot of cart product IDs at the moment of entering section view — used to pin
   // already-selected products to the front of each section so they stay visible after
   // un-filtering. Updated only when transitioning into section view, not on every add.
@@ -125,7 +143,7 @@ export default function AgentHomePage() {
 
   // Cart
   const [groups, setGroups] = useState<Group[]>([
-    { id: 'g1', name: 'Group 1', memberCount: 1, productIds: [] },
+    { id: 'g1', name: 'Group 1', memberCount: 1, items: [] },
   ])
   const [activeGroupId, setActiveGroupId] = useState('g1')
 
@@ -158,13 +176,22 @@ export default function AgentHomePage() {
     try {
       const raw = localStorage.getItem('agent-cart')
       if (!raw) return
-      const cart = JSON.parse(raw) as { clientId?: string; dateStart?: string; dateEnd?: string; groups?: Group[] }
+      const cart = JSON.parse(raw) as { clientId?: string; dateStart?: string; dateEnd?: string; groups?: Array<{id: string; name: string; memberCount: number; items?: CartItem[]; productIds?: string[]}> }
       if (cart.clientId) setSelectedClientId(cart.clientId)
       if (cart.dateStart) setDateStart(cart.dateStart)
       if (cart.dateEnd) setDateEnd(cart.dateEnd)
       if (cart.groups && cart.groups.length > 0) {
-        setGroups(cart.groups)
-        setActiveGroupId(cart.groups[0].id)
+        // Migration: drop pre-variant cart shape (productIds without variantId)
+        const valid = cart.groups.every(g => Array.isArray(g.items))
+        if (!valid) {
+          localStorage.removeItem('agent-cart')
+          return
+        }
+        const restored: Group[] = cart.groups.map(g => ({
+          id: g.id, name: g.name, memberCount: g.memberCount, items: g.items as CartItem[],
+        }))
+        setGroups(restored)
+        setActiveGroupId(restored[0].id)
       }
     } catch { /* ignore malformed cart */ }
   }, [])
@@ -183,7 +210,7 @@ export default function AgentHomePage() {
         supabase.from('system_settings').select('value').eq('key', 'company_margin_rate').single(),
         supabase
           .from('products')
-          .select('id, name, description, base_price, price_currency, duration_value, duration_unit, partner_name, has_female_doctor, has_prayer_room, dietary_type, category_id, product_categories(name), product_images(image_url, is_primary)')
+          .select('id, name, description, base_price, price_currency, duration_value, duration_unit, partner_name, has_female_doctor, has_prayer_room, dietary_type, category_id, subcategory_id, product_categories(name), product_subcategories(name), product_images(image_url, is_primary), product_variants(id, variant_label, base_price, price_currency, sort_order, is_active)')
           .eq('is_active', true),
         supabase.from('product_categories').select('id, name').order('sort_order').order('name'),
       ])
@@ -231,14 +258,27 @@ export default function AgentHomePage() {
   const filteredProducts = useMemo(() => {
     return products.filter((p) => {
       if (selectedCategoryId && p.category_id !== selectedCategoryId) return false
+      if (selectedSubcategoryName && p.product_subcategories?.name !== selectedSubcategoryName) return false
       return passesCrossFilters(p)
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [products, search, selectedCategoryId, filterPrayerRoom, filterDietary, filterFemaleMedical])
+  }, [products, search, selectedCategoryId, selectedSubcategoryName, filterPrayerRoom, filterDietary, filterFemaleMedical])
+
+  // Subcategories present within the currently selected category, sorted by appearance.
+  const availableSubcategories = useMemo(() => {
+    if (!selectedCategoryId) return [] as string[]
+    const set = new Set<string>()
+    for (const p of products) {
+      if (p.category_id !== selectedCategoryId) continue
+      const s = p.product_subcategories?.name
+      if (s) set.add(s)
+    }
+    return Array.from(set).sort()
+  }, [products, selectedCategoryId])
 
   // Products grouped by category, with cart-pinned items first. Used in section view.
   const productsByCategory = useMemo(() => {
-    const cartIds = new Set(groups.flatMap((g) => g.productIds))
+    const cartIds = new Set(groups.flatMap((g) => g.items.map(it => it.productId)))
     const map = new Map<string, Product[]>()
     for (const cat of categories) map.set(cat.id, [])
     for (const p of products) {
@@ -266,14 +306,14 @@ export default function AgentHomePage() {
   // When entering section view (selectedCategoryId cleared), snapshot current cart.
   useEffect(() => {
     if (selectedCategoryId === '') {
-      setPinnedProductIds(new Set(groups.flatMap((g) => g.productIds)))
+      setPinnedProductIds(new Set(groups.flatMap((g) => g.items.map(it => it.productId))))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCategoryId])
 
   const productGroupIndex = useMemo(() => {
     const map = new Map<string, number>()
-    groups.forEach((g, idx) => g.productIds.forEach((pid) => map.set(pid, idx)))
+    groups.forEach((g, idx) => g.items.forEach((it) => map.set(it.productId, idx)))
     return map
   }, [groups])
 
@@ -281,11 +321,18 @@ export default function AgentHomePage() {
 
   const totalUSD = useMemo(() => {
     return groups.reduce((total, g) => {
-      return total + g.productIds.reduce((sum, pid) => {
-        const p = products.find((x) => x.id === pid)
-        if (!p) return sum
-        const baseUSD = p.price_currency === 'USD' ? p.base_price : p.base_price / exchangeRate
-        return sum + baseUSD * marginMult * g.memberCount
+      return total + g.items.reduce((sum, it) => {
+        const p = products.find((x) => x.id === it.productId)
+        const v = p?.product_variants?.find((x) => x.id === it.variantId)
+        if (!p || !v) return sum
+        const usd = variantPriceUsd({
+          basePrice: v.base_price,
+          priceCurrency: v.price_currency,
+          exchangeRate,
+          marginMult,
+          applyMargin: appliesMargin(p.product_categories?.name, p.product_subcategories?.name),
+        })
+        return sum + usd * g.memberCount
       }, 0)
     }, 0)
   }, [groups, products, exchangeRate, marginMult])
@@ -294,14 +341,33 @@ export default function AgentHomePage() {
 
   // ── Cart handlers ──────────────────────────────────────────────────────────
 
+  function defaultVariantId(p: Product): string | null {
+    const active = (p.product_variants ?? []).filter(v => v.is_active)
+    const sorted = [...active].sort((a, b) => a.sort_order - b.sort_order)
+    return sorted[0]?.id ?? null
+  }
+
+  // Toggle the default variant of a product. For products with multiple
+  // variants the agent should open the detail modal to choose explicitly,
+  // but the quick + button still works using the first variant.
   function toggleProduct(productId: string) {
+    const p = products.find(x => x.id === productId)
+    const variantId = p ? defaultVariantId(p) : null
+    if (!variantId) return
+    toggleItem(productId, variantId)
+  }
+
+  function toggleItem(productId: string, variantId: string) {
     setGroups((prev) =>
       prev.map((g) => {
-        if (g.id === activeGroupId) {
-          const isIn = g.productIds.includes(productId)
-          return { ...g, productIds: isIn ? g.productIds.filter((id) => id !== productId) : [...g.productIds, productId] }
+        if (g.id !== activeGroupId) return g
+        const isIn = g.items.some(it => it.productId === productId && it.variantId === variantId)
+        return {
+          ...g,
+          items: isIn
+            ? g.items.filter(it => !(it.productId === productId && it.variantId === variantId))
+            : [...g.items, { productId, variantId }],
         }
-        return g
       })
     )
   }
@@ -312,7 +378,7 @@ export default function AgentHomePage() {
       id: `g-${Date.now()}`,
       name: `Group ${groups.length + 1}`,
       memberCount: 1,
-      productIds: [],
+      items: [],
     }
     setGroups((prev) => [...prev, newGroup])
     setActiveGroupId(newGroup.id)
@@ -344,7 +410,7 @@ export default function AgentHomePage() {
   // ── Quote flow ─────────────────────────────────────────────────────────────
 
   function handleCreateQuote() {
-    const hasProducts = groups.some((g) => g.productIds.length > 0)
+    const hasProducts = groups.some((g) => g.items.length > 0)
     if (!hasProducts) return
     if (!dateStart || !dateEnd) return
 
@@ -418,14 +484,33 @@ export default function AgentHomePage() {
 
   // ── Price helper ───────────────────────────────────────────────────────────
 
+  // Catalog card price. Single variant: that variant's price. Multi-variant:
+  // "min – max" range so the agent sees the spread before opening the detail
+  // modal (real per-variant price revealed on selection).
+  function priceLabel(p: Product): string {
+    const variants = (p.product_variants ?? []).filter(v => v.is_active)
+    if (variants.length === 0) return '—'
+    const apply = appliesMargin(p.product_categories?.name, p.product_subcategories?.name)
+    const prices = variants.map(v => variantPriceUsd({
+      basePrice: v.base_price,
+      priceCurrency: v.price_currency,
+      exchangeRate, marginMult, applyMargin: apply,
+    }))
+    const min = Math.min(...prices)
+    const max = Math.max(...prices)
+    const fmt = (n: number) => `$${n.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
+    if (min === max) return `$${min.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    return `${fmt(min)} – ${fmt(max)}`
+  }
+  // Kept for backwards compat in modal etc.
   function toUSD(p: Product): string {
-    const baseUSD = p.price_currency === 'USD' ? p.base_price : p.base_price / exchangeRate
-    const withMargin = baseUSD * marginMult
-    return `$${withMargin.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    return priceLabel(p)
   }
 
   function renderProductCard(product: Product, compact = false) {
-    const inActiveGroup = groups[activeGroupIndex]?.productIds.includes(product.id)
+    const activeGroup = groups[activeGroupIndex]
+    const inActiveGroup = activeGroup?.items.some(it => it.productId === product.id) ?? false
+    const variantCount = (product.product_variants ?? []).filter(v => v.is_active).length
     const activePalette = GROUP_PALETTE[activeGroupIndex]
     const imgs = product.product_images ?? []
     const sortedImgs = [...imgs].sort((a, b) => (b.is_primary ? 1 : 0) - (a.is_primary ? 1 : 0))
@@ -479,8 +564,13 @@ export default function AgentHomePage() {
           )}
         </div>
 
-        {/* Content — compact: name + price/duration row + tag row + add button */}
+        {/* Content — compact: subcategory tag + name + price/duration row + tag row + add button */}
         <div className="p-2.5 flex flex-col flex-1 gap-1">
+          {product.product_subcategories?.name && (
+            <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide truncate leading-tight">
+              {product.product_subcategories.name}
+            </p>
+          )}
           <button
             onClick={() => openDetail(product)}
             className="text-xs font-semibold text-gray-900 leading-tight text-left hover:text-[#0f4c35] transition-colors line-clamp-1"
@@ -488,9 +578,11 @@ export default function AgentHomePage() {
             {product.name}
           </button>
 
-          <div className="flex items-baseline justify-between gap-2 mt-auto">
-            <p className="text-sm font-bold text-gray-900 truncate">{toUSD(product)}</p>
-            <p className="text-[10px] text-gray-400 shrink-0">{product.duration_value} {product.duration_unit}</p>
+          <div className="mt-auto min-w-0">
+            <p className="text-sm font-bold text-gray-900 leading-tight truncate">{priceLabel(product)}</p>
+            {product.duration_value && (
+              <p className="text-[10px] text-gray-400 leading-tight">{product.duration_value} {product.duration_unit}</p>
+            )}
           </div>
 
           {(product.has_female_doctor || product.has_prayer_room) && (
@@ -514,14 +606,28 @@ export default function AgentHomePage() {
             </div>
           )}
 
-          <button
-            onClick={() => toggleProduct(product.id)}
-            className={`mt-1 w-full py-1 rounded-lg text-[11px] font-medium transition-all ${
-              inActiveGroup ? activePalette.btn : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}
-          >
-            {inActiveGroup ? `✓ ${groups[activeGroupIndex]?.name}` : `+ ${groups[activeGroupIndex]?.name ?? 'Group'}`}
-          </button>
+          {variantCount > 1 ? (
+            // Multi-variant: open detail modal to pick which variant
+            <button
+              onClick={() => openDetail(product)}
+              className={`mt-1 w-full py-1 rounded-lg text-[11px] font-medium transition-all ${
+                inActiveGroup ? activePalette.btn : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              {inActiveGroup
+                ? `✓ in ${groups[activeGroupIndex]?.name} · pick more`
+                : `Choose · ${variantCount} options`}
+            </button>
+          ) : (
+            <button
+              onClick={() => toggleProduct(product.id)}
+              className={`mt-1 w-full py-1 rounded-lg text-[11px] font-medium transition-all ${
+                inActiveGroup ? activePalette.btn : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              {inActiveGroup ? `✓ ${groups[activeGroupIndex]?.name}` : `+ ${groups[activeGroupIndex]?.name ?? 'Group'}`}
+            </button>
+          )}
         </div>
       </div>
     )
@@ -617,7 +723,7 @@ export default function AgentHomePage() {
               return (
                 <button
                   key={cat.id || 'all'}
-                  onClick={() => setSelectedCategoryId(cat.id)}
+                  onClick={() => { setSelectedCategoryId(cat.id); setSelectedSubcategoryName('') }}
                   className={`shrink-0 px-3 py-1.5 text-xs rounded-full border transition-colors ${active
                     ? 'bg-[#0f4c35] border-[#0f4c35] text-white'
                     : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'}`}
@@ -688,15 +794,41 @@ export default function AgentHomePage() {
           })()}
         </div>
 
+        {/* Subcategory pill row — only shown when a parent category is selected
+            and that category has more than one subcategory worth filtering on. */}
+        {selectedCategoryId && availableSubcategories.length > 1 && (
+          <div className="shrink-0 bg-white border-b border-gray-100 px-4 md:px-6 py-2 flex items-center gap-1.5 overflow-x-auto">
+            <button
+              onClick={() => setSelectedSubcategoryName('')}
+              className={`shrink-0 px-2.5 py-1 text-[11px] rounded-full border transition-colors ${selectedSubcategoryName === ''
+                ? 'bg-gray-800 border-gray-800 text-white'
+                : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'}`}>
+              All
+            </button>
+            {availableSubcategories.map(sub => {
+              const active = selectedSubcategoryName === sub
+              return (
+                <button key={sub}
+                  onClick={() => setSelectedSubcategoryName(sub)}
+                  className={`shrink-0 px-2.5 py-1 text-[11px] rounded-full border transition-colors ${active
+                    ? 'bg-gray-800 border-gray-800 text-white'
+                    : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'}`}>
+                  {sub}
+                </button>
+              )
+            })}
+          </div>
+        )}
+
         {/* ── Product Area: sections (no category filter) OR flat grid (category selected) ── */}
-        <div className={`flex-1 bg-gray-50 p-4 md:p-6 ${selectedCategoryId === '' ? 'overflow-y-auto md:overflow-hidden' : 'overflow-y-auto'}`}>
+        <div className="flex-1 bg-gray-50 p-4 md:p-6 overflow-y-auto">
           {selectedCategoryId === '' ? (
             Array.from(productsByCategory.values()).every((arr) => arr.length === 0) ? (
               <div className="flex items-center justify-center h-48">
                 <p className="text-sm text-gray-400">No products found</p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 md:grid-rows-2 gap-4 md:h-full">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {categories.map((cat) => {
                   const items = productsByCategory.get(cat.id) ?? []
                   if (items.length === 0) return null
@@ -704,8 +836,8 @@ export default function AgentHomePage() {
                   const preview = items.slice(0, PREVIEW)
                   const hasMore = items.length > PREVIEW
                   return (
-                    <section key={cat.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex flex-col min-h-0">
-                      <div className="flex items-center justify-between mb-3 pb-2 border-b border-gray-100 shrink-0">
+                    <section key={cat.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex flex-col">
+                      <div className="flex items-center justify-between mb-3 pb-2 border-b border-gray-100">
                         <h2 className="text-sm font-semibold text-gray-800">{cat.name}</h2>
                         <button
                           onClick={() => setSelectedCategoryId(cat.id)}
@@ -714,7 +846,7 @@ export default function AgentHomePage() {
                           {hasMore ? `See all (${items.length}) →` : 'See all →'}
                         </button>
                       </div>
-                      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 flex-1 min-h-0">
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                         {preview.map((product) => renderProductCard(product, true))}
                       </div>
                     </section>
@@ -727,7 +859,7 @@ export default function AgentHomePage() {
               <p className="text-sm text-gray-400">No products found</p>
             </div>
           ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
               {filteredProducts.map((product) => renderProductCard(product))}
             </div>
           )}
@@ -825,7 +957,7 @@ export default function AgentHomePage() {
 
         {/* Total + CTA */}
         {(() => {
-          const hasProducts = groups.some((g) => g.productIds.length > 0)
+          const hasProducts = groups.some((g) => g.items.length > 0)
           const missingDates = !dateStart || !dateEnd
           const hint = !hasProducts ? 'Add at least one product to continue'
             : missingDates ? 'Select travel dates to continue'
@@ -893,17 +1025,55 @@ export default function AgentHomePage() {
                 </button>
               </div>
 
-              {/* Price + Duration */}
-              <div className="flex items-center gap-4">
-                <div className="bg-gray-50 rounded-xl px-4 py-2.5 text-center">
-                  <p className="text-lg font-bold text-gray-900">{toUSD(detailProduct)}</p>
-                  <p className="text-xs text-gray-400">per person</p>
-                </div>
-                <div className="bg-gray-50 rounded-xl px-4 py-2.5 text-center">
-                  <p className="text-base font-semibold text-gray-900">{detailProduct.duration_value} {detailProduct.duration_unit}</p>
-                  <p className="text-xs text-gray-400">duration</p>
-                </div>
-              </div>
+              {/* Variant picker — one row per variant when there are multiple,
+                  showing label + price. Each acts as a toggle in the active
+                  cart group. Single-variant products get the simpler price box. */}
+              {(() => {
+                const variants = (detailProduct.product_variants ?? [])
+                  .filter(v => v.is_active)
+                  .sort((a, b) => a.sort_order - b.sort_order)
+                const margin = appliesMargin(detailProduct.product_categories?.name, detailProduct.product_subcategories?.name)
+                if (variants.length <= 1) {
+                  return (
+                    <div className="flex items-center gap-4">
+                      <div className="bg-gray-50 rounded-xl px-4 py-2.5 text-center">
+                        <p className="text-lg font-bold text-gray-900">{toUSD(detailProduct)}</p>
+                        <p className="text-xs text-gray-400">per person</p>
+                      </div>
+                      <div className="bg-gray-50 rounded-xl px-4 py-2.5 text-center">
+                        <p className="text-base font-semibold text-gray-900">{detailProduct.duration_value} {detailProduct.duration_unit}</p>
+                        <p className="text-xs text-gray-400">duration</p>
+                      </div>
+                    </div>
+                  )
+                }
+                const activeGroup = groups[activeGroupIndex]
+                return (
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-gray-500">Choose option</p>
+                    {variants.map(v => {
+                      const inCart = activeGroup?.items.some(it => it.productId === detailProduct.id && it.variantId === v.id) ?? false
+                      const usd = variantPriceUsd({
+                        basePrice: v.base_price, priceCurrency: v.price_currency,
+                        exchangeRate, marginMult, applyMargin: margin,
+                      })
+                      return (
+                        <button key={v.id}
+                          onClick={() => toggleItem(detailProduct.id, v.id)}
+                          className={`w-full flex items-center justify-between px-4 py-2.5 rounded-xl border transition-colors ${inCart ? 'border-[#0f4c35] bg-[#0f4c35]/5' : 'border-gray-200 hover:border-gray-300'}`}>
+                          <div className="text-left">
+                            <p className="text-sm font-medium text-gray-900">{v.variant_label || 'Default'}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className={`text-sm font-bold ${inCart ? 'text-[#0f4c35]' : 'text-gray-900'}`}>${usd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                            <p className="text-[10px] text-gray-400">{inCart ? '✓ in cart' : 'tap to add'}</p>
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )
+              })()}
 
               {/* Description */}
               <div>
@@ -944,17 +1114,29 @@ export default function AgentHomePage() {
                 </div>
               )}
 
-              {/* Add button */}
-              <button
-                onClick={() => { toggleProduct(detailProduct.id); setDetailProduct(null) }}
-                className={`w-full py-2.5 rounded-xl text-sm font-medium transition-all ${
-                  groups[activeGroupIndex]?.productIds.includes(detailProduct.id)
-                    ? GROUP_PALETTE[activeGroupIndex].btn
-                    : 'bg-[#0f4c35] hover:bg-[#0a3828] text-white'
-                }`}
-              >
-                {groups[activeGroupIndex]?.productIds.includes(detailProduct.id) ? '✓ Added to ' + groups[activeGroupIndex]?.name : 'Add to ' + (groups[activeGroupIndex]?.name ?? 'Group')}
-              </button>
+              {/* Add button — only for single-variant products. Multi-variant
+                  uses per-row toggle above. */}
+              {((detailProduct.product_variants ?? []).filter(v => v.is_active).length <= 1) && (
+                <button
+                  onClick={() => { toggleProduct(detailProduct.id); setDetailProduct(null) }}
+                  className={`w-full py-2.5 rounded-xl text-sm font-medium transition-all ${
+                    groups[activeGroupIndex]?.items.some(it => it.productId === detailProduct.id)
+                      ? GROUP_PALETTE[activeGroupIndex].btn
+                      : 'bg-[#0f4c35] hover:bg-[#0a3828] text-white'
+                  }`}
+                >
+                  {groups[activeGroupIndex]?.items.some(it => it.productId === detailProduct.id)
+                    ? '✓ Added to ' + groups[activeGroupIndex]?.name
+                    : 'Add to ' + (groups[activeGroupIndex]?.name ?? 'Group')}
+                </button>
+              )}
+              {((detailProduct.product_variants ?? []).filter(v => v.is_active).length > 1) && (
+                <button
+                  onClick={() => setDetailProduct(null)}
+                  className="w-full py-2.5 rounded-xl text-sm font-medium border border-gray-200 text-gray-700 hover:bg-gray-50">
+                  Done
+                </button>
+              )}
             </div>
           </div>
         </div>

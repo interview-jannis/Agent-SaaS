@@ -43,26 +43,42 @@ export default function AdminProductsPage() {
   const [exporting, setExporting] = useState(false)
   const [exportProgress, setExportProgress] = useState('')
 
+  // Excel upload — bulk upsert from spreadsheet (two-step: dry-run preview → confirm)
+  type UploadCounts = { inserted: number; updated: number; unchanged: number }
+  type UploadChange = { field: string; before: unknown; after: unknown }
+  type UploadUpdate = { kind: 'product' | 'variant'; label: string; changes: UploadChange[] }
+  type UploadMissing = { label: string; category: string }
+  type UploadResp = {
+    products: UploadCounts; variants: UploadCounts;
+    updates?: UploadUpdate[]; missingInUpload?: UploadMissing[]; errors: string[]
+  }
+  const [uploading, setUploading] = useState(false)
+  const [pendingFile, setPendingFile] = useState<File | null>(null)
+  const [previewResult, setPreviewResult] = useState<UploadResp | null>(null)
+  const [uploadResult, setUploadResult] = useState<UploadResp | null>(null)
+
+  async function loadAll() {
+    const [{ data: cats }, { data: prods }, { data: cmSetting }, { data: rateSetting }] = await Promise.all([
+      supabase.from('product_categories').select('id, name').order('sort_order').order('name'),
+      supabase
+        .from('products')
+        .select('id, product_number, name, description, partner_name, base_price, price_currency, is_active, category_id, subcategory_id, product_categories(name), product_subcategories(name), product_images(image_url, is_primary)')
+        .order('product_number', { ascending: false }),
+      supabase.from('system_settings').select('value').eq('key', 'company_margin_rate').single(),
+      supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single(),
+    ])
+    setCategories(cats ?? [])
+    setProducts((prods as unknown as Product[]) ?? [])
+    const cm = (cmSetting?.value as { rate?: number } | null)?.rate
+    if (typeof cm === 'number') setCompanyMargin(cm)
+    const rate = (rateSetting?.value as { usd_krw?: number } | null)?.usd_krw
+    if (typeof rate === 'number') setExchangeRate(rate)
+    setLoading(false)
+  }
+
   useEffect(() => {
-    async function load() {
-      const [{ data: cats }, { data: prods }, { data: cmSetting }, { data: rateSetting }] = await Promise.all([
-        supabase.from('product_categories').select('id, name').order('sort_order').order('name'),
-        supabase
-          .from('products')
-          .select('id, product_number, name, description, partner_name, base_price, price_currency, is_active, category_id, subcategory_id, product_categories(name), product_subcategories(name), product_images(image_url, is_primary)')
-          .order('product_number', { ascending: false }),
-        supabase.from('system_settings').select('value').eq('key', 'company_margin_rate').single(),
-        supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single(),
-      ])
-      setCategories(cats ?? [])
-      setProducts((prods as unknown as Product[]) ?? [])
-      const cm = (cmSetting?.value as { rate?: number } | null)?.rate
-      if (typeof cm === 'number') setCompanyMargin(cm)
-      const rate = (rateSetting?.value as { usd_krw?: number } | null)?.usd_krw
-      if (typeof rate === 'number') setExchangeRate(rate)
-      setLoading(false)
-    }
-    load()
+    loadAll()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   function fmtPrice(amount: number, currency: 'KRW' | 'USD' | null): string {
@@ -134,6 +150,70 @@ export default function AdminProductsPage() {
     } catch {
       return 'jpg'
     }
+  }
+
+  // Two-step upload: file → dry-run preview → user confirms → real commit.
+  // Step 1 — file selected, ask server "what would happen" without writing.
+  async function handlePreviewExcel(file: File) {
+    setUploading(true); setPreviewResult(null); setUploadResult(null); setPendingFile(file)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) throw new Error('Not signed in.')
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await fetch('/api/admin/products/upload-excel?dryRun=true', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session.access_token}` },
+        body: fd,
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error((data as { error?: string }).error ?? 'Preview failed.')
+      setPreviewResult(data)
+    } catch (e: unknown) {
+      setPreviewResult({
+        products: { inserted: 0, updated: 0, unchanged: 0 },
+        variants: { inserted: 0, updated: 0, unchanged: 0 },
+        errors: [(e as { message?: string })?.message ?? 'Preview failed.'],
+      })
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  // Step 2 — user confirmed, actually commit.
+  async function handleConfirmUpload() {
+    if (!pendingFile) return
+    setUploading(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) throw new Error('Not signed in.')
+      const fd = new FormData()
+      fd.append('file', pendingFile)
+      const res = await fetch('/api/admin/products/upload-excel', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session.access_token}` },
+        body: fd,
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error((data as { error?: string }).error ?? 'Upload failed.')
+      setUploadResult(data)
+      setPreviewResult(null)
+      setPendingFile(null)
+      await loadAll()
+    } catch (e: unknown) {
+      setUploadResult({
+        products: { inserted: 0, updated: 0, unchanged: 0 },
+        variants: { inserted: 0, updated: 0, unchanged: 0 },
+        errors: [(e as { message?: string })?.message ?? 'Upload failed.'],
+      })
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  function handleCancelUpload() {
+    setPreviewResult(null)
+    setPendingFile(null)
   }
 
   async function handleExportBackup() {
@@ -317,6 +397,23 @@ export default function AdminProductsPage() {
           >
             Manage Categories
           </button>
+          <label className={`flex items-center gap-1.5 px-3 py-1.5 bg-[#0f4c35] text-white text-xs font-medium rounded-lg transition-colors ${uploading ? 'opacity-40 cursor-wait' : 'hover:bg-[#0a3828] cursor-pointer'}`}>
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M7.5 12L12 7.5m0 0l4.5 4.5M12 7.5v9" />
+            </svg>
+            {uploading ? 'Uploading…' : 'Upload Excel'}
+            <input
+              type="file"
+              accept=".xlsx,.xls"
+              className="hidden"
+              disabled={uploading}
+              onChange={(e) => {
+                const f = e.target.files?.[0]
+                e.target.value = ''  // reset so re-uploading the same file fires onChange
+                if (f) handlePreviewExcel(f)
+              }}
+            />
+          </label>
           <button
             onClick={() => router.push('/admin/products/new')}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-[#0f4c35] text-white text-xs font-medium rounded-lg hover:bg-[#0a3828] transition-colors"
@@ -331,6 +428,153 @@ export default function AdminProductsPage() {
 
       <div className="flex-1 overflow-y-auto">
         <div className="px-4 md:px-12 py-6 md:py-8 space-y-6">
+
+        {/* Excel upload preview modal — shows what would change before commit */}
+        {previewResult && (
+          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => !uploading && handleCancelUpload()}>
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto p-5 space-y-4" onClick={(e) => e.stopPropagation()}>
+              <div>
+                <h3 className="text-base font-semibold text-gray-900">Review changes</h3>
+                <p className="text-xs text-gray-500 mt-1">
+                  {pendingFile?.name} · No changes have been written yet.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+                  <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Products</p>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-emerald-700 font-medium">+{previewResult.products.inserted} new</span>
+                    <span className="text-blue-700 font-medium">{previewResult.products.updated} updated</span>
+                    <span className="text-gray-500">{previewResult.products.unchanged} unchanged</span>
+                  </div>
+                </div>
+                <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+                  <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Variants</p>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-emerald-700 font-medium">+{previewResult.variants.inserted} new</span>
+                    <span className="text-blue-700 font-medium">{previewResult.variants.updated} updated</span>
+                    <span className="text-gray-500">{previewResult.variants.unchanged} unchanged</span>
+                  </div>
+                </div>
+              </div>
+
+              {(previewResult.updates ?? []).length > 0 && (
+                <div className="border border-blue-200 rounded-xl overflow-hidden">
+                  <div className="bg-blue-50 px-3 py-2 border-b border-blue-200">
+                    <p className="text-xs font-semibold text-blue-800">
+                      {(previewResult.updates ?? []).length} item{(previewResult.updates ?? []).length > 1 ? 's' : ''} will be updated
+                    </p>
+                  </div>
+                  <div className="max-h-64 overflow-y-auto">
+                    <table className="w-full text-[11px]">
+                      <thead className="bg-blue-50/40 sticky top-0">
+                        <tr className="text-left text-blue-700">
+                          <th className="px-3 py-1.5 font-medium w-16">Type</th>
+                          <th className="px-3 py-1.5 font-medium">Item</th>
+                          <th className="px-3 py-1.5 font-medium">Field</th>
+                          <th className="px-3 py-1.5 font-medium">Before</th>
+                          <th className="px-3 py-1.5 font-medium">After</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-blue-50">
+                        {(previewResult.updates ?? []).flatMap((u, i) =>
+                          u.changes.map((c, j) => (
+                            <tr key={`${i}-${j}`} className="hover:bg-blue-50/30">
+                              {j === 0 && (
+                                <>
+                                  <td className="px-3 py-1.5 align-top text-[10px] uppercase text-blue-700" rowSpan={u.changes.length}>{u.kind}</td>
+                                  <td className="px-3 py-1.5 align-top font-medium text-gray-900" rowSpan={u.changes.length}>{u.label}</td>
+                                </>
+                              )}
+                              <td className="px-3 py-1.5 font-mono text-gray-600 whitespace-nowrap">{c.field}</td>
+                              <td className="px-3 py-1.5 text-gray-500 line-through max-w-[160px] truncate" title={String(c.before ?? '')}>{String(c.before ?? '∅')}</td>
+                              <td className="px-3 py-1.5 font-medium text-gray-900 max-w-[160px] truncate" title={String(c.after ?? '')}>{String(c.after ?? '∅')}</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {(previewResult.missingInUpload ?? []).length > 0 && (
+                <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
+                  <p className="text-xs font-semibold text-gray-700">
+                    {(previewResult.missingInUpload ?? []).length} item{(previewResult.missingInUpload ?? []).length > 1 ? 's' : ''} in DB are not in this upload
+                  </p>
+                  <p className="text-[11px] text-gray-500 mt-0.5">These will be left alone — delete via product detail if intended.</p>
+                  <details className="mt-1">
+                    <summary className="text-[11px] text-gray-600 cursor-pointer">Show list</summary>
+                    <ul className="mt-1 text-[10px] text-gray-600 space-y-0.5 list-disc pl-4 max-h-32 overflow-y-auto">
+                      {(previewResult.missingInUpload ?? []).map((m, i) => (
+                        <li key={i}><span className="text-gray-400">[{m.category}]</span> {m.label}</li>
+                      ))}
+                    </ul>
+                  </details>
+                </div>
+              )}
+
+              {previewResult.errors.length > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                  <p className="text-xs font-semibold text-amber-800 mb-1">{previewResult.errors.length} notice{previewResult.errors.length > 1 ? 's' : ''}</p>
+                  <ul className="text-[11px] text-amber-700 space-y-0.5 list-disc pl-4 max-h-32 overflow-y-auto">
+                    {previewResult.errors.map((e, i) => <li key={i}>{e}</li>)}
+                  </ul>
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
+                <button onClick={handleCancelUpload} disabled={uploading}
+                  className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-800 disabled:opacity-40">Cancel</button>
+                <button onClick={handleConfirmUpload} disabled={uploading}
+                  className="px-4 py-1.5 text-xs font-medium bg-[#0f4c35] text-white rounded-lg hover:bg-[#0a3828] disabled:opacity-40">
+                  {uploading ? 'Saving…' : 'Confirm Save'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Upload result banner */}
+        {uploadResult && (
+          <div className={`rounded-xl border p-4 text-sm ${uploadResult.errors.length > 0 ? 'border-amber-200 bg-amber-50' : 'border-emerald-200 bg-emerald-50'}`}>
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex-1">
+                <p className={`font-semibold ${uploadResult.errors.length > 0 ? 'text-amber-800' : 'text-emerald-800'}`}>
+                  {uploadResult.errors.length > 0 ? 'Upload finished with notices' : 'Upload complete'}
+                </p>
+                <div className="text-xs text-gray-700 mt-1 space-y-0.5">
+                  <p>
+                    Products — <span className="font-medium text-emerald-700">{uploadResult.products.inserted} new</span>
+                    {' · '}
+                    <span className="font-medium text-blue-700">{uploadResult.products.updated} updated</span>
+                    {' · '}
+                    <span className="text-gray-500">{uploadResult.products.unchanged} unchanged</span>
+                  </p>
+                  <p>
+                    Variants — <span className="font-medium text-emerald-700">{uploadResult.variants.inserted} new</span>
+                    {' · '}
+                    <span className="font-medium text-blue-700">{uploadResult.variants.updated} updated</span>
+                    {' · '}
+                    <span className="text-gray-500">{uploadResult.variants.unchanged} unchanged</span>
+                  </p>
+                </div>
+                {uploadResult.errors.length > 0 && (
+                  <details className="mt-2">
+                    <summary className="text-xs text-amber-800 cursor-pointer">{uploadResult.errors.length} notice{uploadResult.errors.length > 1 ? 's' : ''}</summary>
+                    <ul className="mt-1 text-xs text-amber-700 space-y-0.5 list-disc pl-4 max-h-40 overflow-y-auto">
+                      {uploadResult.errors.map((e, i) => <li key={i}>{e}</li>)}
+                    </ul>
+                  </details>
+                )}
+              </div>
+              <button onClick={() => setUploadResult(null)}
+                className="text-gray-400 hover:text-gray-600 text-lg leading-none shrink-0">×</button>
+            </div>
+          </div>
+        )}
 
         {/* Filters */}
         <div className="flex items-center gap-2 md:gap-3 flex-wrap">
@@ -460,14 +704,14 @@ export default function AdminProductsPage() {
                 <tr className="border-b border-gray-100">
                   <th className="px-6 py-3.5 text-left text-xs font-medium text-gray-400 whitespace-nowrap">Number</th>
                   <th className="px-4 py-3.5" />
-                  <th className="px-6 py-3.5 text-left text-xs font-medium text-gray-400 whitespace-nowrap">Partner Name</th>
-                  <th className="px-6 py-3.5 text-left text-xs font-medium text-gray-400 whitespace-nowrap">Product Name</th>
+                  <th className="px-6 py-3.5 text-left text-xs font-medium text-gray-400 max-w-[140px]">Partner Name</th>
+                  <th className="px-6 py-3.5 text-left text-xs font-medium text-gray-400 whitespace-nowrap min-w-[180px] max-w-[240px]">Product Name</th>
                   <th className="px-6 py-3.5 text-left text-xs font-medium text-gray-400 w-full">Description</th>
                   <th className="px-6 py-3.5 text-left text-xs font-medium text-gray-400 whitespace-nowrap">Category</th>
                   <th className="px-6 py-3.5 text-xs font-medium text-gray-400 whitespace-nowrap">
                     <div className="flex">
-                      <div className="min-w-[140px] text-left pl-3">Price</div>
-                      <div className="min-w-[160px]" />
+                      <div className="min-w-[100px] text-left pl-3">Price</div>
+                      <div className="min-w-[110px]" />
                     </div>
                   </th>
                   <th className="px-6 py-3.5 text-center text-xs font-medium text-gray-400 whitespace-nowrap">Status</th>
@@ -550,14 +794,14 @@ export default function AdminProductsPage() {
                         )
                       })()}
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-700 whitespace-nowrap">
-                      {p.partner_name ?? '—'}
+                    <td className="px-6 py-4 text-sm text-gray-700 max-w-[140px]">
+                      <p className="line-clamp-2 break-words">{p.partner_name ?? '—'}</p>
                     </td>
-                    <td className="px-6 py-4 text-sm font-medium text-gray-900 whitespace-nowrap">
-                      {p.name}
+                    <td className="px-6 py-4 text-sm font-medium text-gray-900 min-w-[180px] max-w-[240px]">
+                      <p className="line-clamp-2 break-words">{p.name}</p>
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-500">
-                      <p className="whitespace-pre-line">{p.description ?? '—'}</p>
+                    <td className="px-6 py-4 text-sm text-gray-500 max-w-md">
+                      <p className="line-clamp-3 whitespace-pre-line break-words">{p.description ?? '—'}</p>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-500 whitespace-nowrap">
                       <p>{p.product_categories?.name ?? '—'}</p>

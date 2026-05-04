@@ -12,10 +12,12 @@ import {
   addDocumentGroupMember,
 } from '@/lib/documents'
 import { createCaseContract } from '@/lib/caseContracts'
+import { appliesMargin, variantPriceUsd, variantPriceKrw } from '@/lib/pricing'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type CartGroup = { id: string; name: string; memberCount: number; productIds: string[] }
+type CartItem = { productId: string; variantId: string }
+type CartGroup = { id: string; name: string; memberCount: number; items: CartItem[] }
 type CartDraft = { clientId: string; dateStart: string; dateEnd: string; groups: CartGroup[] }
 
 type Client = {
@@ -28,7 +30,21 @@ type Client = {
   dietary_restriction: string
 }
 
-type Product = { id: string; name: string; base_price: number; price_currency: 'KRW' | 'USD' }
+type Variant = {
+  id: string
+  variant_label: string | null
+  base_price: number
+  price_currency: 'KRW' | 'USD'
+  sort_order: number
+}
+
+type Product = {
+  id: string
+  name: string
+  product_categories: { name: string } | null
+  product_subcategories: { name: string } | null
+  product_variants: Variant[]
+}
 
 type NewClientForm = {
   name: string; nationality: string; gender: 'male' | 'female'
@@ -105,7 +121,7 @@ export default function QuoteReviewPage() {
     const draft: CartDraft = JSON.parse(raw)
     setCart(draft)
 
-    const allProductIds = draft.groups.flatMap((g) => g.productIds)
+    const allProductIds = draft.groups.flatMap((g) => g.items.map(it => it.productId))
 
     async function load() {
       const { data: { session } } = await supabase.auth.getSession()
@@ -115,7 +131,7 @@ export default function QuoteReviewPage() {
       const [leadRes, productsRes, rateRes, companyRateRes, agentRes] = await Promise.all([
         supabase.from('clients').select('id, client_number, name, nationality, gender, needs_muslim_friendly, dietary_restriction').eq('id', draft.clientId).single(),
         allProductIds.length
-          ? supabase.from('products').select('id, name, base_price, price_currency').in('id', allProductIds)
+          ? supabase.from('products').select('id, name, product_categories(name), product_subcategories(name), product_variants(id, variant_label, base_price, price_currency, sort_order)').in('id', allProductIds)
           : Promise.resolve({ data: [] }),
         supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single(),
         supabase.from('system_settings').select('value').eq('key', 'company_margin_rate').single(),
@@ -123,7 +139,7 @@ export default function QuoteReviewPage() {
       ])
 
       setLead(leadRes.data)
-      setProducts((productsRes.data as Product[]) ?? [])
+      setProducts((productsRes.data as unknown as Product[]) ?? [])
       const rate = (rateRes.data?.value as { usd_krw?: number } | null)?.usd_krw
       if (rate) setExchangeRate(rate)
 
@@ -155,26 +171,30 @@ export default function QuoteReviewPage() {
 
   const marginMult = (1 + companyMargin) * (1 + agentMargin)
 
-  // USD with all margins applied — used for display on this review page (matches Home display).
-  function toUSD(p: Product): number {
-    const baseUSD = p.price_currency === 'USD' ? p.base_price : p.base_price / exchangeRate
-    return baseUSD * marginMult
+  function findVariant(productId: string, variantId: string): { product: Product; variant: Variant } | null {
+    const p = products.find(x => x.id === productId)
+    const v = p?.product_variants?.find(x => x.id === variantId)
+    if (!p || !v) return null
+    return { product: p, variant: v }
+  }
+
+  function itemUsd(item: CartItem): number {
+    const found = findVariant(item.productId, item.variantId)
+    if (!found) return 0
+    return variantPriceUsd({
+      basePrice: found.variant.base_price,
+      priceCurrency: found.variant.price_currency,
+      exchangeRate, marginMult,
+      applyMargin: appliesMargin(found.product.product_categories?.name, found.product.product_subcategories?.name),
+    })
   }
 
   function fmtUSD(n: number): string {
     return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
   }
 
-  // Raw KRW base price — used ONLY to compute final_price at save time (margins applied there).
-  function toKRW(p: Product): number {
-    return p.price_currency === 'KRW' ? p.base_price : Math.round(p.base_price * exchangeRate)
-  }
-
   function groupSubtotalUSD(group: CartGroup): number {
-    return group.productIds.reduce((sum, pid) => {
-      const p = products.find((x) => x.id === pid)
-      return p ? sum + toUSD(p) * group.memberCount : sum
-    }, 0)
+    return group.items.reduce((sum, it) => sum + itemUsd(it) * group.memberCount, 0)
   }
 
   const totalUSD = cart?.groups.reduce((s, g) => s + groupSubtotalUSD(g), 0) ?? 0
@@ -314,11 +334,19 @@ export default function QuoteReviewPage() {
       const memberIdMap: Record<string, string> = {}
       caseMembersData?.forEach((m) => { memberIdMap[m.client_id] = m.id })
 
-      // Create quote
+      // Create quote — totalKRW respects per-category margin rule (Subpackage
+      // and non-Spa Wellness pass through at cost; everything else gets margin).
       const totalKRW = cart.groups.reduce((sum, g) =>
-        sum + g.productIds.reduce((gs, pid) => {
-          const p = products.find((x) => x.id === pid)
-          return p ? gs + Math.round(toKRW(p) * g.memberCount * (1 + companyMargin) * (1 + agentMargin)) : gs
+        sum + g.items.reduce((gs, it) => {
+          const found = findVariant(it.productId, it.variantId)
+          if (!found) return gs
+          const krwPer = variantPriceKrw({
+            basePrice: found.variant.base_price,
+            priceCurrency: found.variant.price_currency,
+            exchangeRate, marginMult,
+            applyMargin: appliesMargin(found.product.product_categories?.name, found.product.product_subcategories?.name),
+          })
+          return gs + krwPer * g.memberCount
         }, 0), 0)
 
       const paymentDue = new Date(); paymentDue.setDate(paymentDue.getDate() + 7)
@@ -338,22 +366,34 @@ export default function QuoteReviewPage() {
       // Create document groups, items, and group members
       for (let i = 0; i < cart.groups.length; i++) {
         const group = cart.groups[i]
-        if (group.productIds.length === 0) continue
+        if (group.items.length === 0) continue
 
         const dg = await addDocumentGroup(quotation.id, group.name, i, group.memberCount)
 
-        // Items
-        for (const pid of group.productIds) {
-          const p = products.find((x) => x.id === pid)
-          if (!p) continue
-          const baseKRW = toKRW(p) * group.memberCount
+        // Items — one per cart variant, with margin per category rule.
+        for (const it of group.items) {
+          const found = findVariant(it.productId, it.variantId)
+          if (!found) continue
+          const apply = appliesMargin(found.product.product_categories?.name, found.product.product_subcategories?.name)
+          const basePerPersonKrw = found.variant.price_currency === 'USD'
+            ? Math.round(found.variant.base_price * exchangeRate)
+            : found.variant.base_price
+          const baseKRW = basePerPersonKrw * group.memberCount
+          const finalPerPersonKrw = variantPriceKrw({
+            basePrice: found.variant.base_price,
+            priceCurrency: found.variant.price_currency,
+            exchangeRate, marginMult,
+            applyMargin: apply,
+          })
           await addDocumentItem({
             documentId: quotation.id,
             groupId: dg.id,
-            productId: pid,
-            productNameSnapshot: p.name,
+            productId: it.productId,
+            productNameSnapshot: found.product.name,
             basePrice: baseKRW,
-            finalPrice: Math.round(baseKRW * (1 + companyMargin) * (1 + agentMargin)),
+            finalPrice: finalPerPersonKrw * group.memberCount,
+            variantId: it.variantId,
+            variantLabelSnapshot: found.variant.variant_label ?? null,
           })
         }
 
@@ -591,7 +631,7 @@ export default function QuoteReviewPage() {
         </section>
 
         {/* Group Assignment */}
-        {cart.groups.filter((g) => g.productIds.length > 0).length > 0 && (
+        {cart.groups.filter((g) => g.items.length > 0).length > 0 && (
           <section className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4">
             <div>
               <h2 className="text-sm font-semibold text-gray-900">Group Assignment</h2>
@@ -600,7 +640,7 @@ export default function QuoteReviewPage() {
               )}
             </div>
 
-            {cart.groups.filter((g) => g.productIds.length > 0).map((group, idx) => {
+            {cart.groups.filter((g) => g.items.length > 0).map((group, idx) => {
               const assigned = (groupAssignments[group.id] ?? [])
                 .map((id) => allCaseMembers.find((c) => c.id === id))
                 .filter(Boolean) as Client[]
@@ -642,7 +682,7 @@ export default function QuoteReviewPage() {
         <section className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-5">
           <h2 className="text-sm font-semibold text-gray-900">Quote Details</h2>
 
-          {cart.groups.filter((g) => g.productIds.length > 0).map((group, idx) => (
+          {cart.groups.filter((g) => g.items.length > 0).map((group, idx) => (
             <div key={group.id}>
               <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border mb-3 ${GROUP_COLORS[idx % GROUP_COLORS.length]}`}>
                 {group.name}
@@ -658,14 +698,19 @@ export default function QuoteReviewPage() {
               </div>
 
               <div className="space-y-1.5">
-                {group.productIds.map((pid) => {
-                  const p = products.find((x) => x.id === pid)
-                  if (!p) return null
-                  const unitUSD = toUSD(p)
+                {group.items.map((it, itIdx) => {
+                  const found = findVariant(it.productId, it.variantId)
+                  if (!found) return null
+                  const unitUSD = itemUsd(it)
                   const totalItemUSD = unitUSD * group.memberCount
                   return (
-                    <div key={pid} className="grid grid-cols-[1fr_auto_auto_auto] gap-x-4 items-center py-2 px-3 bg-gray-50 rounded-xl">
-                      <span className="text-sm text-gray-800 truncate">{p.name}</span>
+                    <div key={`${it.productId}:${it.variantId}:${itIdx}`} className="grid grid-cols-[1fr_auto_auto_auto] gap-x-4 items-center py-2 px-3 bg-gray-50 rounded-xl">
+                      <div className="min-w-0">
+                        <p className="text-sm text-gray-800 truncate">{found.product.name}</p>
+                        {found.variant.variant_label && (
+                          <p className="text-[10px] text-gray-500 truncate">{found.variant.variant_label}</p>
+                        )}
+                      </div>
                       <span className="text-sm text-gray-600 tabular-nums text-right">{fmtUSD(unitUSD)}</span>
                       <span className="text-sm text-gray-400 text-center">×{group.memberCount}</span>
                       <span className="text-sm font-semibold text-gray-900 tabular-nums text-right">{fmtUSD(totalItemUSD)}</span>

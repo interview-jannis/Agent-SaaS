@@ -137,8 +137,10 @@ Agent 수동 개입:
 - audit_logs.actor_type: agent / admin / system
 
 ### 테이블 목록 (현재 스키마)
-- **product_categories**: id, name, sort_order
-- **products**: id, product_number, category_id, name, description, base_price, price_currency, partner_name, duration_value, duration_unit, has_female_doctor, has_prayer_room, dietary_type, location_address, contact_channels(jsonb), sort_order, is_active
+- **product_categories**: id, name, sort_order. 6개 fixed (K-Medical, K-Beauty, K-Wellness, K-Education, K-Starcation, Subpackage). Excel upload는 카테고리 자동 추가 X — Manage Categories에서 명시 추가만.
+- **product_subcategories**: id, category_id, name, sort_order. K-Beauty는 클리닉명(DIAR/Dr.Tune's/...), K-Medical은 진료과(Health Check-up). Excel upload 시 자동 생성.
+- **products**: id, product_number, category_id, **subcategory_id**, name, description, base_price, price_currency, partner_name, duration_value, duration_unit, has_female_doctor, has_prayer_room, dietary_type, location_address, contact_channels(jsonb), is_active. ⚠️ `sort_order` 컬럼 없음 — sort는 product_number로.
+- **product_variants** (2026-05-04): id, product_id, variant_label(NULL=default/sole), base_price, price_currency, sort_order, is_active. 같은 base name 상품의 다른 회차/사이즈/grade를 묶음. 모든 product에 최소 1개 default variant 보장.
 - **product_images**: id, product_id, image_url, is_primary, order
 - **admins**: id, auth_user_id, name, email, **title** (signer 직책), **is_super_admin** (BOOLEAN, 권한 분기), created_at
   - 초대 플로우: invite_token(UNIQUE), invite_secret, invited_at, invite_expires_at (agent와 동일 패턴)
@@ -162,7 +164,7 @@ Agent 수동 개입:
   - signer_snapshot(jsonb), first_opened_at, open_count, created_at, created_by_admin_id, notes
 - **document_groups**: id, document_id, name, member_count, "order", created_at
 - **document_group_members**: id, document_group_id, case_member_id
-- **document_items**: id, document_id, document_group_id, product_id, **product_name_snapshot, product_partner_snapshot**, base_price, final_price, quantity, sort_order
+- **document_items**: id, document_id, document_group_id, product_id, **variant_id**(FK product_variants ON DELETE SET NULL), **product_name_snapshot, product_partner_snapshot, variant_label_snapshot**, base_price, final_price, quantity, sort_order
 - ⚠️ legacy `quotes / quote_groups / quote_group_members / quote_items` 테이블은 backup으로 남아있으나 **read/write 안 함**. Phase 2에서 DROP 예정.
 - **schedules**: id, case_id, quote_id(이름만 남음, FK drop됨, 실제로는 quotation document.id), slug, pdf_url, status, version, created_at, file_name, revision_note, confirmed_at, **first_opened_at, open_count**, UNIQUE(case_id, version)
 - **settlements**: id, settlement_number, agent_id, **case_id**(UNIQUE, 1:1), amount(KRW), paid_at, created_at
@@ -184,18 +186,22 @@ Agent 수동 개입:
 - Admin 페이지: src/app/admin/
 - 온보딩: src/app/onboarding/
 - 고객 URL 페이지: src/app/quote/[slug]/ , src/app/invoice/[slug]/ , src/app/schedule/[slug]/
-- API 라우트: src/app/api/ (service role 필요한 작업용 — agent setup, create-agent 등)
+- API 라우트: src/app/api/ (service role 필요한 작업용)
+  - **계약서 sign API** (2026-05-04): `/api/onboarding/sign-contract` (agent 사인), `/api/admin/sign-contract` (admin counter-sign). 서버사이드 IP/SHA-256 hash/typed_name 본인검증/body token 서버 substitute.
+  - **상품 일괄 업로드** (2026-05-04): `/api/admin/products/upload-excel`. multipart xlsx, UPSERT (cat+partner+name natural key, variant_label로 variant 매칭), `?dryRun=true`로 preview, missing 항목 리포트(자동 삭제 X).
+  - 그 외: agent setup, create-agent, claim-admin-invite, notify-signed, etc.
 - 타입 정의는 src/types/
 
 ### 공용 유틸/컴포넌트
 - `src/lib/clientCompleteness.ts` — Client 필수 필드 체크
-- `src/lib/caseStatus.ts` — case status 단일 소스 (라벨/스타일/오너/CANCELLABLE/ACTIVE/TRAVEL_DONE)
+- `src/lib/caseStatus.ts` — case status 단일 소스 (라벨/스타일/오너/CANCELLABLE/ACTIVE/TRAVEL_DONE). `Awaiting Final Pricing` 라벨.
 - `src/lib/caseTransitions.ts` — 상태 전이 헬퍼 (`isTravelDone` 등)
 - `src/lib/documents.ts` — documents 모델 read/write 헬퍼 (4/30 SOP 5종 invoice)
+- `src/lib/pricing.ts` (2026-05-04) — `appliesMargin(category, subcategory)` 단일 진실 소스. K-Wellness>Spa만 마진, 나머지 Wellness + Subpackage는 원가 통과. `variantPriceUsd/Krw` 헬퍼 — agent home cart, review page, quote 모두 이걸 통해 가격 계산.
 - `src/lib/notifications.ts` — `createNotification`, `notifyAgent`, `notifyAllAdmins`
 - `src/lib/audit.ts` — `logAudit`, `getActor`, `logAsCurrentUser`
 - `src/hooks/useNotifications.ts` — Realtime 구독
-- `src/components/`: NotificationBell, DOBPicker, DateTime24Picker, SignaturePad, ContractStep, AgentOnboardingGuard, ChangePasswordCard, PrintPdfButton, AutoPrint, PrintButton, **QuoteDocument**(고객용 모든 invoice/quotation 공용 렌더, from_party/to_party 기반 분기), **CaseDocumentsSection**(case 페이지 내 documents 리스트), SparklineCard, MobileTopBar, MobileNavContext
+- `src/components/`: NotificationBell, DOBPicker, DateTime24Picker, SignaturePad, ContractStep, AgentOnboardingGuard, ChangePasswordCard, PrintPdfButton, AutoPrint, PrintButton, **QuoteDocument**(고객용 모든 invoice/quotation 공용 렌더, from_party/to_party 기반 분기, variant_label_snapshot 노출), **CaseDocumentsSection**(case 페이지 내 documents 리스트), **SelectedProductsSection**(2026-05-04, admin/agent case 페이지 공용 — quotation + additional_invoice 합쳐 표시, variant_label snapshot, ProductDetailModal), SparklineCard, MobileTopBar, MobileNavContext, AdminCaseContractSection, AgentCaseContractSection, CaseHeroAction(AdminCaseHero/AgentCaseHero — Hero ACTION NEEDED 박스, status별 분기)
 
 ## 언어 규칙
 - **모든 UI 텍스트는 영어만 사용** (버튼, 라벨, 에러 메시지, placeholder 포함)

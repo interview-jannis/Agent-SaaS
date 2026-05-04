@@ -308,6 +308,8 @@ export type AddItemInput = {
   documentId: string
   groupId?: string | null
   productId?: string | null
+  variantId?: string | null
+  variantLabelSnapshot?: string | null
   productNameSnapshot?: string | null
   productPartnerSnapshot?: string | null
   basePrice: number
@@ -323,6 +325,8 @@ export async function addDocumentItem(input: AddItemInput): Promise<DocumentItem
       document_id: input.documentId,
       document_group_id: input.groupId ?? null,
       product_id: input.productId ?? null,
+      variant_id: input.variantId ?? null,
+      variant_label_snapshot: input.variantLabelSnapshot ?? null,
       product_name_snapshot: input.productNameSnapshot ?? null,
       product_partner_snapshot: input.productPartnerSnapshot ?? null,
       base_price: input.basePrice,

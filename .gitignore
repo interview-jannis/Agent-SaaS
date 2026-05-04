@@ -42,3 +42,6 @@ next-env.d.ts
 
 # Excel lock files (open-in-Excel temp files)
 ~$*
+
+# Local-only PDF→PNG conversions (used as OCR helper; not production data)
+data/**/pdf to png/

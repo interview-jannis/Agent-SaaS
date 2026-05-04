@@ -7,6 +7,7 @@ type QuoteItem = {
   id: string
   base_price: number
   final_price: number
+  variant_label_snapshot: string | null
   products: { name: string; description: string | null } | null
 }
 
@@ -74,7 +75,7 @@ export default async function QuoteDocument({
       ),
       document_groups(
         id, name, order, member_count,
-        document_items(id, base_price, final_price, products(name, description))
+        document_items(id, base_price, final_price, variant_label_snapshot, products(name, description))
       )
     `)
     .eq('slug', slug)
@@ -217,10 +218,14 @@ export default async function QuoteDocument({
     for (const item of group.document_items) {
       const amtUSD = item.final_price / exchangeRate
       const unitUSD = amtUSD / memberCount
+      const baseName = item.products?.name ?? 'Service'
+      const desc = item.variant_label_snapshot
+        ? `${baseName} — ${item.variant_label_snapshot}`
+        : baseName
       lineItems.push({
         no: no++,
         group: groupLabel,
-        description: item.products?.name ?? 'Service',
+        description: desc,
         qty: memberCount,
         unitUSD,
         amtUSD,

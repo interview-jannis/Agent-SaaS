@@ -1,11 +1,12 @@
 # Project Progress
 
 ## 현재 상태
-- **Phase**: SOP 풀 구현 + 사용성 라운드. Finalize Pricing 항목 추가/삭제 + multi-currency, agent-admin assignment (notification routing), invoice 디테일 (deposit 차감, 도장 위치), 사전-info amber 게이트
-- **마지막 작업**: 2026-05-03 — Finalize 항목 add/remove, 세그먼트 currency 토글, agent.assigned_admin_id + notifyAssignedAdmin (Phase 1+2), Offline client 서명, Final invoice deposit 차감 표시, invoice 카드 톤 통일
-- **마지막 업데이트**: 2026-05-03 (개발 마감 5/8, 시뮬레이션 5/11~15, 런칭 5/18)
+- **Phase**: 데이터 모델 변경 + 사용성 폴리시. Variants 모델 도입(product_variants 테이블), Excel 일괄 upsert UI(dry-run preview), 카탈로그 K-prefix + subcategory 재정의, 계약서 evidentiary 강화, Selected Products 공용 컴포넌트.
+- **마지막 작업**: 2026-05-04 — variants 모델, agent home 전면 개편(필터 toolbar + subcategory pills + 카드 컴팩트), Excel upload (dry-run preview + UPSERT), Agent 카탈로그 마진 룰 분기(Spa/Wellness 원가, 그 외 마진), 데이터 마스터 v12~v16, contract counter-sign 강화 + signature hash + typed_name
+- **마지막 업데이트**: 2026-05-04 (개발 마감 5/8, 시뮬레이션 5/11~15, 런칭 5/18)
 - **SaaS 브랜드명**: **Tiktak** (UI 전역, 법인명 Interview Co., Ltd)
 
+> 2026-05-04 상세: `notes/26.05.04.md` (Variants 모델 / Excel upload / Selected Products 공용화 / Cases 흐름 정리 / Agent home 개편 / Contract evidentiary 강화 / 데이터 v12~v16)
 > 2026-05-02–03 상세: `notes/26.05.02-03.md` (Day 1: Status v2 + 3자 계약 + 설문 + Stamps + 박스 통합 + E2E / Day 2: Finalize add/remove + multi-currency + agent-admin assignment + invoice 디테일 + UX 정리)
 > 2026-05-01 상세: `notes/26.05.01.md` (데이터 v11 + Documents 풀 구현 + E2E)
 > 2026-04-30 미팅: `notes/meetings/26.04.30-meeting.md` (이사님 SOP 점검)
@@ -49,14 +50,29 @@
 - [ ] KakaoTalk 발송 (admin 대상)
 
 #### 신규 기능 (남은 것)
-- [ ] **엑셀 일괄 업로드** — admin이 엑셀로 상품 일괄 등록
+- [x] **엑셀 일괄 업로드** — admin이 엑셀로 상품 일괄 등록 (5/4: dry-run preview + UPSERT, missing 알림, 자동 삭제 안 함)
 - [ ] **스케줄 엑셀 업로드 → 자동 링크** (현재 PDF 업로드만)
+- [ ] **데이터 마스터 v17** — grade 컬럼 제거, description 줄바꿈 살림, 성별 → variants 통합 (사용자 직접 정리)
+- [ ] **Agent 카탈로그 정렬 정책** — 가격 desc / 인기순 (5건+ 케이스부터) 토글
 - ~~Chrome 한국어 로케일 강제 영어~~ — 드롭
 
 #### Polish
 - [ ] Admin case detail에 survey 응답 read-only 노출 (현재 DB만 저장)
 - [ ] 3자 계약 client 페이지 모바일 점검
 - [ ] Stamp invoice 렌더 위치/크기 시뮬에서 실제 확인
+
+### 5/4 완료 (Variants 모델 + Excel upload + 카탈로그 개편 + 계약 강화)
+- [x] **Product Variants 모델** — `product_variants` 테이블 + `document_items.variant_id/variant_label_snapshot`. 같은 base name 상품의 다른 회차/사이즈/grade를 1 product + N variants로 묶음. document_items 기존 row backfill (default variant 자동 생성).
+- [x] **Pricing 룰 분기** — `lib/pricing.ts`. K-Wellness > Spa만 마진, 나머지 Wellness + Subpackage 전체는 원가 통과. K-Medical/Beauty/Education/Starcation은 마진 적용. agent home cart, review page, quote document 모두 룰 기반.
+- [x] **Excel 일괄 업로드 UI** — `/api/admin/products/upload-excel` (multipart xlsx, UPSERT, 자동 subcategory 생성, 카테고리는 fixed). Admin /products 페이지 "Upload Excel" 버튼. dry-run preview 모달: products/variants 신규/업데이트/그대로 카운트, **Updated 표** (Type/Item/Field/Before/After), **Missing 알림** (DB엔 있는데 엑셀에 없는 항목 — 자동 삭제 안 함), Confirm Save / Cancel.
+- [x] **데이터 마스터 v12 → v16** — Medical/Beauty/Wellness K-prefix 추가, K-Beauty subcategory 클리닉명으로 (DIAR/Dr.Tune's/Nest/Selena/Ruby/Dekabi), DIAR PDF 13페이지 가격표 추출 (159 row), Spa <100만원 19개 추가, Ruby/Dekabi/SOFITEL/World K-POP Special 폴더 데이터 통합. v15에서 variant_label 컬럼 + 정렬, v16에서 Dr.Tune's USD→KRW 환산 + Nest 5개 misnamed row fix. 총 317개 product → 242 product + 317 variants로 import.
+- [x] **Agent home 전면 개편** — 좌측 필터 사이드바 → 상단 toolbar (Search + 카테고리 pills + Muslim Friendly popover). subcategory 필터 row (parent 카테고리 선택 시 등장). 카드 컴팩트화 (image aspect-[16/10], description 제거, 세로 stack). 카드 상단 subcategory chip ("HEALTH CHECK-UP" 등). multi-variant 가격 range 표시 ("$5,836 – $23,342"). detail 모달에 variant 라디오 picker. section view 세로 스크롤 자연 흐름.
+- [x] **Selected Products 공용 컴포넌트** — admin/agent 동일. quotation + additional_invoice 합쳐 표시, document_items.final_price 직접 사용 (margin 재계산 X), variant_label_snapshot 노출, 상품 클릭 시 detail 모달 (description/location/partner/tags). agent USD-only, admin USD+KRW. admin case 페이지 split-pane 해제 → single column으로 agent와 동일 순서.
+- [x] **Cases 흐름 정리** — `Awaiting Pricing` → `Awaiting Final Pricing` 라벨, admin/cases list에 awaiting_contract/awaiting_deposit DisplayGroup 추가 (이전엔 silently dropped), 정렬 swap. Estimated 가격 표시 (finalize 전엔 `Estimated Quote` + 형광펜 안내). Trip Info amber 노이즈는 awaiting_info 단계에만. 3-Party Contract 박스 amber → indigo로 hero와 통일.
+- [x] **Contract counter-sign 강화** — `agent_contracts.signature_hash/signed_typed_name/admin_signature_hash/admin_signed_typed_name` 컬럼. 신규 sign API 2개 (서버사이드 IP 캡처, SHA-256 해시, typed_name 본인 이름 매치 검증, body token 서버 substitute). ContractStep typed name input + identity confirm 체크박스 + Korean Electronic Signatures Act 명시. Approve & Activate 버튼이 모든 contract `admin_signed_at` 채워야 활성화. Contract viewer audit footer에 hash/IP/UA/typed name 노출 (PDF print 시에도). Print 레이아웃 fix (admin/onboarding layout `print:` 오버라이드).
+- [x] **Case 생성 시 contract 자동 생성** — agent/home/review에서 견적 만든 직후 `createCaseContract('three_party')` 자동 호출. 실패해도 case 정상 — fallback 버튼 살아있음.
+- [x] **Agent setup wizard 친절한 에러** — bank schema 키 정렬 (UI는 이미 새 키 보내고 있었는데 API가 옛 키 기다려서 매번 400). 이메일 중복 pre-check (`auth.admin.listUsers`로 명확한 메시지).
+- [x] **Admin/Agent 모바일/half-screen 잔손질** — admin products 표 Partner Name 좁히고 Description 넓힘, line-clamp 적용. agent home 가격 truncate fix.
 
 ### 5/3 완료 (사용성 라운드 — E2E 피드백 일괄 처리)
 - [x] **Finalize Pricing 항목 추가/삭제** — pre-finalize 단계에서 검색 콤보박스로 line item 추가, × 마킹으로 삭제. staged 일괄 반영. 같은 그룹 내 중복 차단.
