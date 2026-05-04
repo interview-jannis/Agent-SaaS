@@ -394,8 +394,8 @@ export default function ProductForm({ productId, productNumber, categories, init
               value={form.description}
               onChange={(e) => set('description', e.target.value)}
               placeholder="Enter product description"
-              rows={4}
-              className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-[#0f4c35] focus:ring-2 focus:ring-[#0f4c35]/10 transition-all resize-none"
+              rows={10}
+              className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-[#0f4c35] focus:ring-2 focus:ring-[#0f4c35]/10 transition-all resize-y"
             />
           </div>
 

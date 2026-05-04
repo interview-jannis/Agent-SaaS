@@ -2,7 +2,7 @@
 
 ## 현재 상태
 - **Phase**: 데이터 모델 변경 + 사용성 폴리시. Variants 모델 도입(product_variants 테이블), Excel 일괄 upsert UI(dry-run preview), 카탈로그 K-prefix + subcategory 재정의, 계약서 evidentiary 강화, Selected Products 공용 컴포넌트.
-- **마지막 작업**: 2026-05-04 — variants 모델, agent home 전면 개편(필터 toolbar + subcategory pills + 카드 컴팩트), Excel upload (dry-run preview + UPSERT), Agent 카탈로그 마진 룰 분기(Spa/Wellness 원가, 그 외 마진), 데이터 마스터 v12~v16, contract counter-sign 강화 + signature hash + typed_name
+- **마지막 작업**: 2026-05-04 — variants 모델, agent home 전면 개편(필터 toolbar + subcategory pills + 카드 컴팩트), Excel upload (dry-run preview + UPSERT), Agent 카탈로그 마진 룰 분기(Spa/Wellness 원가, 그 외 마진), 데이터 마스터 v12~v16, contract counter-sign 강화 + signature hash + typed_name. 저녁 라운드: admin/products half-screen 컬럼 압축 + product 상세 description 입력창 키움, agent home 카드 사이즈 통일(섹션뷰=단일카테고리), agent 카드/상세에 partner_name 복귀, 데이터 v17 1차 빌드(selection grade 괄호 제거 + gender→variant + K-Medical description \n 복구).
 - **마지막 업데이트**: 2026-05-04 (개발 마감 5/8, 시뮬레이션 5/11~15, 런칭 5/18)
 - **SaaS 브랜드명**: **Tiktak** (UI 전역, 법인명 Interview Co., Ltd)
 
