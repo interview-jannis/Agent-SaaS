@@ -3,10 +3,11 @@
 ## 현재 상태
 - **Phase**: 데이터 모델 변경 + 사용성 폴리시. Variants 모델 도입(product_variants 테이블), Excel 일괄 upsert UI(dry-run preview + deleteMissing), 카탈로그 K-prefix + subcategory 재정의, 계약서 evidentiary 강화, Selected Products 공용 컴포넌트, ProductForm 인라인 variants 편집기, 감사 로그 전 surface sweep.
 - **마지막 작업**: 2026-05-04 — variants 모델, agent home 전면 개편(필터 toolbar + subcategory pills + 카드 컴팩트), Excel upload (dry-run preview + UPSERT + deleteMissing), Agent 카탈로그 마진 룰 분기(Spa/Wellness 원가, 그 외 마진), 데이터 마스터 v12~v17, contract counter-sign 강화 + signature hash + typed_name. 저녁 라운드: admin/products half-screen 컬럼 압축, agent home 카드 사이즈 통일, partner_name 복귀, upload-excel deleteMissing 토글, admin /products 가격 컬럼 variant 인지화. 저녁 라운드 2: agent 가격 desc 정렬, **DIAR/Hotel 컨솔리데이션(v18 마스터)**, **Excel upload product_number MAX+1 fix**, **2-level variant 아코디언**, **ProductForm variants 풀 편집기 + 리스트 펼치기**, Status 컬럼 제거 + partner 인라인 + 절반화면 헤더 정리, **감사 로그 7 surface 일괄 + monochrome 아이콘**, **`/admin/surveys` 신규 페이지**(질문 + 응답).
-- **마지막 업데이트**: 2026-05-04 (개발 마감 5/8, 시뮬레이션 5/11~15, 런칭 5/18)
+- **마지막 업데이트**: 2026-05-05 (개발 마감 5/8, 시뮬레이션 5/11~15, 런칭 5/18)
 - **SaaS 브랜드명**: **Tiktak** (UI 전역, 법인명 Interview Co., Ltd)
 
-> 2026-05-04 상세: `notes/26.05.04.md` (Variants 모델 / Excel upload / Selected Products 공용화 / Cases 흐름 정리 / Agent home 개편 / Contract evidentiary 강화 / 데이터 v12~v16)
+> 2026-05-05 짧은 메모: 스케줄 엑셀 업로드 → 자동 링크 설계 논의(JSONB items + 고정 템플릿안) — 작업 자체는 deferred. 카드/리스트 UX 잔손질 + 감사로그 sweep + Surveys 페이지 분리 PR 클로즈 (커밋 ba28e7b).
+> 2026-05-04 상세: `notes/26.05.04.md` (Variants 모델 / Excel upload / Selected Products 공용화 / Cases 흐름 정리 / Agent home 개편 / Contract evidentiary 강화 / 데이터 v12~v18 / variants 풀 편집 UX / 감사 로그 sweep / Surveys 분리)
 > 2026-05-02–03 상세: `notes/26.05.02-03.md` (Day 1: Status v2 + 3자 계약 + 설문 + Stamps + 박스 통합 + E2E / Day 2: Finalize add/remove + multi-currency + agent-admin assignment + invoice 디테일 + UX 정리)
 > 2026-05-01 상세: `notes/26.05.01.md` (데이터 v11 + Documents 풀 구현 + E2E)
 > 2026-04-30 미팅: `notes/meetings/26.04.30-meeting.md` (이사님 SOP 점검)
@@ -51,7 +52,7 @@
 
 #### 신규 기능 (남은 것)
 - [x] **엑셀 일괄 업로드** — admin이 엑셀로 상품 일괄 등록 (5/4: dry-run preview + UPSERT, deleteMissing 토글, product_number MAX+1 fix)
-- [ ] **스케줄 엑셀 업로드 → 자동 링크** (현재 PDF 업로드만)
+- [ ] **스케줄 엑셀 업로드 → 자동 링크** (현재 PDF 업로드만). 5/5 설계 논의: invoice 패턴 따라 `schedules.items` JSONB + `ScheduleDocument.tsx` 고정 템플릿 + Excel 행 → 슬롯 매핑(Day/Date/Time/Title/Location/Notes/Category). PDF 업로드는 backward compat로 유지. 미정 사항(카테고리 색 분류 / 템플릿 다운로드 버튼 위치 등) 답변 후 진행
 - [x] **데이터 마스터 v17 → v18** (5/4 저녁: DIAR 159 rows → 11 base + 159 variants, Hotel 37 rows → 13 base + 37 variants. `[★5 Hotel]` strip + grade paren strip + Hanok inline. 사용자 검수 후 deleteMissing으로 옛 row 정리)
 - [x] **Agent 카탈로그 정렬 정책** — 가격 desc 적용 (5/4 저녁). 인기순(5건+)은 케이스 쌓이면 도입 (backlog)
 - ~~Chrome 한국어 로케일 강제 영어~~ — 드롭
