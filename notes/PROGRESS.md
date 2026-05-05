@@ -54,7 +54,12 @@
 
 #### 신규 기능 (남은 것)
 - [x] **엑셀 일괄 업로드** — admin이 엑셀로 상품 일괄 등록 (5/4: dry-run preview + UPSERT, deleteMissing 토글, product_number MAX+1 fix)
-- [ ] **스케줄 엑셀 업로드 → 자동 링크** (현재 PDF 업로드만). 5/5 결정: **Option A 에디토리얼 템플릿** (serif Day 01/02/03 헤더 + Morning/Afternoon/Evening 블록, 시간 X). PDF 경로 완전 대체. mockup 파일 `schedule-mockup.html` 참고. invoice 패턴 따라 `schedules.items` JSONB + `ScheduleDocument.tsx` 고정 템플릿 + Excel 행 → 슬롯 매핑. 카테고리 색 분류는 Option A엔 미적용
+- [ ] **스케줄 자동 링크** (현재 PDF 업로드만). 5/5 결정:
+  - **입력은 UI 직접 편집** — Excel 방향 접음. 이유: 스케줄은 케이스 1건당 1개라 bulk 이점 0, variant_id UUID는 사람이 못 다룸, 케이스 product 변경 시 Excel 참조 깨짐, 클라이언트 변경 요청마다 round-trip 비용. Finalize Pricing 패널과 같은 결의 인라인 form (Day 카드 + Add Item 행). drag-drop 없이 위/아래 화살표 v1, drag는 시뮬 후.
+  - **출력 템플릿은 Option A 에디토리얼** — serif Day 01/02/03 헤더 + Morning/Afternoon/Evening 블록 + 시간 옵션. mockup `schedule-mockup.html` 참고. PDF 경로 완전 대체.
+  - **데이터 모델**: `schedules.items` JSONB (Day/Time/Block/Product/Title/Location/Notes 슬롯) + `ScheduleDocument.tsx` 고정 렌더. version 관리는 기존 case_id+version UNIQUE 그대로.
+  - **Cover** 자동: case의 lead client + travel_dates + 호텔 (Selected Products 중 Subpackage > Hotel). concierge phone(=agent) + emergency 라인.
+  - **Excel은 추후 export 용도로만** 검토 (지금 안 함).
 - [x] **호텔 가격 × nights** (5/5) — `Subpackage > Hotel` variant는 `unitPrice × nights` (memberCount 무시, 객실당 비용). `lib/pricing.ts` 에 `isHotelItem` + `nightsBetween` 헬퍼 추가. Agent home cart 총액 + review page 표 + 견적 생성(`addDocumentItem`)에서 hotel 라인은 nights 곱해서 base/final 저장 + variant_label_snapshot에 ` · 3 nights` 베이크. QuoteDocument/SelectedProductsSection은 final_price + snapshot 그대로 읽어서 자동 반영. Admin pre-finalize Add line item picker는 variant/nights 미인지 (기존 한계 — 빈도 낮아 backlog)
 - [x] **Variant 모달 가격 desc 정렬** (5/5) — Agent home detail 모달에서 객실/사이즈 옵션이 sort_order(≈알파벳)였는데 USD 가격 내림차순으로. VIP 카탈로그 결: 비싼 옵션이 먼저 노출. tie-break은 sort_order
 - [ ] **호텔 객실 정원 검증 (Phase 2)** — `product_variants`에 `min_occupancy/max_occupancy` 컬럼, ProductForm + Excel upload에 입력, v18 데이터 backfill, 카트에서 group memberCount > max_occupancy 시 경고. 견적 금액엔 영향 없음 (UX 안전장치). 시뮬에서 발견해도 늦지 않음
