@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import DOBPicker from '@/components/DOBPicker'
-import { appliesMargin, variantPriceUsd } from '@/lib/pricing'
+import { appliesMargin, isHotelItem, nightsBetween, variantPriceUsd } from '@/lib/pricing'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -343,6 +343,8 @@ export default function AgentHomePage() {
     return map
   }, [groups])
 
+  const nights = useMemo(() => nightsBetween(dateStart, dateEnd), [dateStart, dateEnd])
+
   const totalUSD = useMemo(() => {
     return groups.reduce((total, g) => {
       return total + g.items.reduce((sum, it) => {
@@ -356,10 +358,15 @@ export default function AgentHomePage() {
           marginMult,
           applyMargin: appliesMargin(p.product_categories?.name, p.product_subcategories?.name),
         })
-        return sum + usd * g.memberCount
+        // Hotels price by room × nights (no memberCount). Everything else
+        // multiplies by group memberCount.
+        const multiplier = isHotelItem(p.product_categories?.name, p.product_subcategories?.name)
+          ? nights
+          : g.memberCount
+        return sum + usd * multiplier
       }, 0)
     }, 0)
-  }, [groups, products, exchangeRate, marginMult])
+  }, [groups, products, exchangeRate, marginMult, nights])
 
   const activeGroupIndex = groups.findIndex((g) => g.id === activeGroupId)
 
@@ -1067,10 +1074,16 @@ export default function AgentHomePage() {
                   group header to expand its options). Single group → flat list
                   (current behavior). Single variant → just the price box. */}
               {(() => {
+                const margin = appliesMargin(detailProduct.product_categories?.name, detailProduct.product_subcategories?.name)
+                const variantUsd = (v: Variant) => variantPriceUsd({
+                  basePrice: v.base_price, priceCurrency: v.price_currency,
+                  exchangeRate, marginMult, applyMargin: margin,
+                })
+                // Sort by price desc (high → low) so VIP-tier rooms / packages
+                // surface first. Ties fall back to original sort_order.
                 const variants = (detailProduct.product_variants ?? [])
                   .filter(v => v.is_active)
-                  .sort((a, b) => a.sort_order - b.sort_order)
-                const margin = appliesMargin(detailProduct.product_categories?.name, detailProduct.product_subcategories?.name)
+                  .sort((a, b) => variantUsd(b) - variantUsd(a) || a.sort_order - b.sort_order)
                 if (variants.length <= 1) {
                   return (
                     <div className="flex items-center gap-4">

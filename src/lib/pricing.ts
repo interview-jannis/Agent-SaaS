@@ -21,6 +21,22 @@ export function appliesMargin(category: string | null | undefined, subcategory: 
   return false
 }
 
+// Hotel items price by room × nights, NOT per-person × memberCount.
+// (A hotel room costs the same regardless of how many guests share it.)
+export function isHotelItem(category: string | null | undefined, subcategory: string | null | undefined): boolean {
+  return category === 'Subpackage' && subcategory === 'Hotel'
+}
+
+// Nights between two ISO dates (YYYY-MM-DD). Returns 1 as a safe minimum
+// if either date is missing or end is not strictly after start.
+export function nightsBetween(dateStart: string | null | undefined, dateEnd: string | null | undefined): number {
+  if (!dateStart || !dateEnd) return 1
+  const start = new Date(dateStart).getTime()
+  const end = new Date(dateEnd).getTime()
+  if (!isFinite(start) || !isFinite(end) || end <= start) return 1
+  return Math.max(1, Math.round((end - start) / 86400000))
+}
+
 // Convert a base price (per single member) to USD applying the margin rule.
 // `marginMult` is `(1 + companyMargin) * (1 + agentMargin)`.
 export function variantPriceUsd({

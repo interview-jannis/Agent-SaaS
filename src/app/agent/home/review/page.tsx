@@ -12,7 +12,7 @@ import {
   addDocumentGroupMember,
 } from '@/lib/documents'
 import { createCaseContract } from '@/lib/caseContracts'
-import { appliesMargin, variantPriceUsd, variantPriceKrw } from '@/lib/pricing'
+import { appliesMargin, isHotelItem, nightsBetween, variantPriceUsd, variantPriceKrw } from '@/lib/pricing'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -170,6 +170,7 @@ export default function QuoteReviewPage() {
   // ── Helpers ────────────────────────────────────────────────────────────────
 
   const marginMult = (1 + companyMargin) * (1 + agentMargin)
+  const nights = nightsBetween(cart?.dateStart, cart?.dateEnd)
 
   function findVariant(productId: string, variantId: string): { product: Product; variant: Variant } | null {
     const p = products.find(x => x.id === productId)
@@ -178,6 +179,13 @@ export default function QuoteReviewPage() {
     return { product: p, variant: v }
   }
 
+  function isHotel(item: CartItem): boolean {
+    const found = findVariant(item.productId, item.variantId)
+    if (!found) return false
+    return isHotelItem(found.product.product_categories?.name, found.product.product_subcategories?.name)
+  }
+
+  // Per-unit USD (per person, or per night for hotels).
   function itemUsd(item: CartItem): number {
     const found = findVariant(item.productId, item.variantId)
     if (!found) return 0
@@ -189,12 +197,17 @@ export default function QuoteReviewPage() {
     })
   }
 
+  // Per-line multiplier — nights for hotels, memberCount otherwise.
+  function itemMultiplier(item: CartItem, group: CartGroup): number {
+    return isHotel(item) ? nights : group.memberCount
+  }
+
   function fmtUSD(n: number): string {
     return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
   }
 
   function groupSubtotalUSD(group: CartGroup): number {
-    return group.items.reduce((sum, it) => sum + itemUsd(it) * group.memberCount, 0)
+    return group.items.reduce((sum, it) => sum + itemUsd(it) * itemMultiplier(it, group), 0)
   }
 
   const totalUSD = cart?.groups.reduce((s, g) => s + groupSubtotalUSD(g), 0) ?? 0
@@ -346,7 +359,10 @@ export default function QuoteReviewPage() {
             exchangeRate, marginMult,
             applyMargin: appliesMargin(found.product.product_categories?.name, found.product.product_subcategories?.name),
           })
-          return gs + krwPer * g.memberCount
+          const mult = isHotelItem(found.product.product_categories?.name, found.product.product_subcategories?.name)
+            ? nights
+            : g.memberCount
+          return gs + krwPer * mult
         }, 0), 0)
 
       const paymentDue = new Date(); paymentDue.setDate(paymentDue.getDate() + 7)
@@ -371,29 +387,40 @@ export default function QuoteReviewPage() {
         const dg = await addDocumentGroup(quotation.id, group.name, i, group.memberCount)
 
         // Items — one per cart variant, with margin per category rule.
+        // Hotels multiply by nights (room × nights); everything else
+        // multiplies by group memberCount (per-person × people).
         for (const it of group.items) {
           const found = findVariant(it.productId, it.variantId)
           if (!found) continue
           const apply = appliesMargin(found.product.product_categories?.name, found.product.product_subcategories?.name)
-          const basePerPersonKrw = found.variant.price_currency === 'USD'
+          const isHotelLine = isHotelItem(found.product.product_categories?.name, found.product.product_subcategories?.name)
+          const multiplier = isHotelLine ? nights : group.memberCount
+          const baseUnitKrw = found.variant.price_currency === 'USD'
             ? Math.round(found.variant.base_price * exchangeRate)
             : found.variant.base_price
-          const baseKRW = basePerPersonKrw * group.memberCount
-          const finalPerPersonKrw = variantPriceKrw({
+          const finalUnitKrw = variantPriceKrw({
             basePrice: found.variant.base_price,
             priceCurrency: found.variant.price_currency,
             exchangeRate, marginMult,
             applyMargin: apply,
           })
+          // Bake "· N nights" into the snapshot label so customer-facing
+          // QuoteDocument and admin SelectedProductsSection render the
+          // multiplier without having to re-derive nights from the case.
+          const labelBase = found.variant.variant_label ?? null
+          const labelWithNights = isHotelLine
+            ? (labelBase ? `${labelBase} · ${nights} ${nights === 1 ? 'night' : 'nights'}` : `${nights} ${nights === 1 ? 'night' : 'nights'}`)
+            : labelBase
           await addDocumentItem({
             documentId: quotation.id,
             groupId: dg.id,
             productId: it.productId,
             productNameSnapshot: found.product.name,
-            basePrice: baseKRW,
-            finalPrice: finalPerPersonKrw * group.memberCount,
+            basePrice: baseUnitKrw * multiplier,
+            finalPrice: finalUnitKrw * multiplier,
+            quantity: multiplier,
             variantId: it.variantId,
-            variantLabelSnapshot: found.variant.variant_label ?? null,
+            variantLabelSnapshot: labelWithNights,
           })
         }
 
@@ -701,8 +728,10 @@ export default function QuoteReviewPage() {
                 {group.items.map((it, itIdx) => {
                   const found = findVariant(it.productId, it.variantId)
                   if (!found) return null
+                  const hotel = isHotel(it)
                   const unitUSD = itemUsd(it)
-                  const totalItemUSD = unitUSD * group.memberCount
+                  const mult = itemMultiplier(it, group)
+                  const totalItemUSD = unitUSD * mult
                   return (
                     <div key={`${it.productId}:${it.variantId}:${itIdx}`} className="grid grid-cols-[1fr_auto_auto_auto] gap-x-4 items-center py-2 px-3 bg-gray-50 rounded-xl">
                       <div className="min-w-0">
@@ -712,7 +741,9 @@ export default function QuoteReviewPage() {
                         )}
                       </div>
                       <span className="text-sm text-gray-600 tabular-nums text-right">{fmtUSD(unitUSD)}</span>
-                      <span className="text-sm text-gray-400 text-center">×{group.memberCount}</span>
+                      <span className="text-xs text-gray-400 text-center whitespace-nowrap">
+                        {hotel ? `× ${mult} ${mult === 1 ? 'night' : 'nights'}` : `×${mult}`}
+                      </span>
                       <span className="text-sm font-semibold text-gray-900 tabular-nums text-right">{fmtUSD(totalItemUSD)}</span>
                     </div>
                   )
