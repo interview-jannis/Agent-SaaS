@@ -77,6 +77,7 @@ type Schedule = {
   id: string
   slug: string | null
   pdf_url: string | null
+  items: unknown[] | null
   status: ScheduleStatus
   version: number
   created_at: string
@@ -229,7 +230,7 @@ export default function CaseDetailPage() {
             document_group_members(id, case_member_id)
           )
         ),
-        schedules(id, slug, pdf_url, status, version, created_at, file_name, revision_note, admin_note, confirmed_at)
+        schedules(id, slug, pdf_url, items, status, version, created_at, file_name, revision_note, admin_note, confirmed_at)
       `)
       .eq('id', id)
       .single()
@@ -1567,7 +1568,7 @@ export default function CaseDetailPage() {
           <section id="schedule" className={sectionClass}>
             <div className="flex items-center justify-between mb-3">
               <h3 className={labelClass}>Schedule</h3>
-              {schedule?.slug && schedule.pdf_url && (
+              {schedule?.slug && (schedule.pdf_url || (schedule.items && schedule.items.length > 0)) && (
                 <div className="flex items-center gap-2">
                   {/* Preview — open schedule page in new tab */}
                   <a

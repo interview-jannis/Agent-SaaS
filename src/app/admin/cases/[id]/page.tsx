@@ -10,7 +10,10 @@ import { AdminCaseHero } from '@/components/CaseHeroAction'
 import CaseDocumentsSection from '@/components/CaseDocumentsSection'
 import AdminCaseContractSection from '@/components/AdminCaseContractSection'
 import SelectedProductsSection from '@/components/SelectedProductsSection'
+import ScheduleEditor from '@/components/admin/ScheduleEditor'
 import type { DocumentRow } from '@/lib/documents'
+import type { ScheduleItem } from '@/types/schedule'
+import { nightsBetween } from '@/lib/pricing'
 
 import type { ClientInfo, FlightInfo } from '@/lib/clientCompleteness'
 import { getMissingClientFields, getMissingCaseFields, CLIENT_INFO_COLUMNS } from '@/lib/clientCompleteness'
@@ -44,6 +47,8 @@ type QuoteItem = {
   id: string
   base_price: number
   final_price: number
+  variant_id: string | null
+  variant_label_snapshot: string | null
   products: { id: string; name: string; description: string | null; partner_name: string | null } | null
 }
 
@@ -98,6 +103,7 @@ type Schedule = {
   id: string
   slug: string
   pdf_url: string | null
+  items: ScheduleItem[] | null
   status: ScheduleStatus
   version: number
   file_name: string | null
@@ -187,21 +193,12 @@ export default function AdminCaseDetailPage() {
   const [pickerGroupId, setPickerGroupId] = useState<string>('')
   const [pickerQuery, setPickerQuery] = useState<string>('')
   const [pickerOpen, setPickerOpen] = useState<boolean>(false)
-  const [stagedFile, setStagedFile] = useState<File | null>(null)
-  const [stagedNote, setStagedNote] = useState('')
-  const [uploadingSchedule, setUploadingSchedule] = useState(false)
   const [deletingScheduleId, setDeletingScheduleId] = useState<string | null>(null)
   const [actionError, setActionError] = useState('')
 
   // Trip Setup collapse — defaults to collapsed when all info is complete.
   const [setupCollapsed, setSetupCollapsed] = useState(false)
   const [setupCollapseInitialized, setSetupCollapseInitialized] = useState(false)
-
-  // Blob URL for staged PDF preview — lifecycle managed below
-  const stagedFileUrl = useMemo(() => stagedFile ? URL.createObjectURL(stagedFile) : null, [stagedFile])
-  useEffect(() => {
-    return () => { if (stagedFileUrl) URL.revokeObjectURL(stagedFileUrl) }
-  }, [stagedFileUrl])
 
   // ── Data fetching ──────────────────────────────────────────────────────────
 
@@ -219,9 +216,9 @@ export default function AdminCaseDetailPage() {
         ),
         documents(
           id, type, document_number, slug, total_price, payment_due_date, payment_received_at, agent_margin_rate, company_margin_rate, finalized_at, from_party, to_party, created_at,
-          document_groups(id, name, order, member_count, document_items(id, base_price, final_price, variant_label_snapshot, products(id, name, description, partner_name, duration_value, duration_unit, has_female_doctor, has_prayer_room, dietary_type, location_address)), document_group_members(id, case_member_id))
+          document_groups(id, name, order, member_count, document_items(id, base_price, final_price, variant_id, variant_label_snapshot, products(id, name, description, partner_name, duration_value, duration_unit, has_female_doctor, has_prayer_room, dietary_type, location_address)), document_group_members(id, case_member_id))
         ),
-        schedules(id, slug, pdf_url, status, version, file_name, revision_note, admin_note, confirmed_at, created_at, first_opened_at)
+        schedules(id, slug, pdf_url, items, status, version, file_name, revision_note, admin_note, confirmed_at, created_at, first_opened_at)
       `)
       .eq('id', id)
       .maybeSingle()
@@ -322,66 +319,6 @@ export default function AdminCaseDetailPage() {
       setPaymentDate(new Date().toISOString().slice(0, 10))
     } catch (e: unknown) { setActionError((e as { message?: string })?.message ?? 'Failed.') }
     finally { setConfirmingPayment(false) }
-  }
-
-  function stageFile(file: File) {
-    if (file.type !== 'application/pdf') { setActionError('Only PDF files are allowed.'); return }
-    setActionError('')
-    setStagedFile(file)
-  }
-
-  function cancelStaged() {
-    setStagedFile(null)
-    setStagedNote('')
-    setActionError('')
-  }
-
-  async function confirmUpload() {
-    if (!caseData || !stagedFile) return
-    setUploadingSchedule(true); setActionError('')
-    try {
-      // Sanitize for Supabase Storage key: ASCII alphanumerics, dot, dash, underscore only.
-      // Non-ASCII (e.g. Korean) and chars like comma/space get stripped/replaced.
-      const safeName = stagedFile.name
-        .normalize('NFKD')
-        .replace(/[^\x20-\x7E]/g, '')        // drop non-ASCII
-        .replace(/[^a-zA-Z0-9._-]+/g, '_')   // replace runs of unsupported chars with _
-        .replace(/^_+|_+$/g, '')              // trim leading/trailing underscores
-        || 'schedule.pdf'
-      const path = `${caseData.id}/${Date.now()}_${safeName}`
-      const { error: uploadError } = await supabase.storage.from('schedules').upload(path, stagedFile, { upsert: false })
-      if (uploadError) throw uploadError
-      const { data: urlData } = supabase.storage.from('schedules').getPublicUrl(path)
-      const pdfUrl = urlData.publicUrl
-
-      const existing = caseData.schedules ?? []
-      const slug = existing[0]?.slug ?? crypto.randomUUID()
-      const version = existing.reduce((m, s) => Math.max(m, s.version), 0) + 1
-
-      const note = stagedNote.trim() || null
-      const { error: insertError } = await supabase.from('schedules').insert({
-        case_id: caseData.id,
-        quote_id: caseData.documents?.find(d => d.type === "quotation")?.id ?? null,
-        slug,
-        pdf_url: pdfUrl,
-        status: 'pending',
-        version,
-        file_name: stagedFile.name,
-        admin_note: note,
-      })
-      if (insertError) throw insertError
-
-      await supabase.from('cases').update({ status: 'reviewing_schedule' }).eq('id', caseData.id)
-      const notifyMsg = note
-        ? `${caseData.case_number} Schedule v${version} uploaded — ${note}`
-        : `${caseData.case_number} Schedule uploaded (v${version})`
-      await notifyAgent(caseData.agent_id, notifyMsg, `/agent/cases/${caseData.id}`)
-      await logAsCurrentUser('schedule.uploaded', { type: 'case', id: caseData.id, label: caseData.case_number }, { version, file_name: stagedFile.name, note })
-      await fetchCase()
-      setStagedFile(null)
-      setStagedNote('')
-    } catch (e: unknown) { setActionError((e as { message?: string })?.message ?? 'Failed.') }
-    finally { setUploadingSchedule(false) }
   }
 
   async function deleteScheduleVersion(scheduleId: string, pdfUrl: string | null, version: number, fileName: string | null) {
@@ -956,7 +893,7 @@ export default function AdminCaseDetailPage() {
                           <span className="text-xs text-gray-700 border-l-2 border-rose-300 pl-2 flex-1 min-w-0 whitespace-pre-line">{s.revision_note}</span>
                         )}
                         <div className="ml-auto flex items-center gap-3">
-                          {s.slug && s.pdf_url && (
+                          {s.slug && (s.pdf_url || (s.items && s.items.length > 0)) && (
                             <a
                               href={`${baseUrl}/schedule/${s.slug}?preview=1&v=${s.version}`}
                               target="_blank" rel="noopener noreferrer"
@@ -1491,79 +1428,66 @@ export default function AdminCaseDetailPage() {
             </section>
           )}
 
-          {canUploadSchedule && (
-            <section id="schedule-upload" className={`scroll-mt-20 border rounded-2xl p-4 space-y-3 ${caseData.status === 'awaiting_schedule' ? 'border-blue-200 bg-blue-50' : 'border-violet-200 bg-violet-50'}`}>
-              <p className={`text-xs font-semibold uppercase tracking-wide ${caseData.status === 'awaiting_schedule' ? 'text-blue-700' : 'text-violet-700'}`}>
-                {sortedSchedules.length === 0 ? 'Upload Schedule' : `Upload New Version (v${(latestSchedule?.version ?? 0) + 1})`}
-              </p>
-              {!stagedFile && sortedSchedules.length === 0 && (
-                <p className="text-xs text-blue-600">Select or drag a PDF. You&apos;ll review it before committing.</p>
-              )}
-
-              {!stagedFile ? (
-                <label
-                  onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                  onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.classList.add('ring-2') }}
-                  onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.classList.remove('ring-2') }}
-                  onDrop={(e) => {
-                    e.preventDefault(); e.stopPropagation()
-                    e.currentTarget.classList.remove('ring-2')
-                    const f = e.dataTransfer.files?.[0]
-                    if (f) stageFile(f)
-                  }}
-                  className={`flex flex-col items-center justify-center gap-1 w-full py-6 text-sm font-medium rounded-xl border-2 border-dashed cursor-pointer ring-offset-1 transition-all ${caseData.status === 'awaiting_schedule' ? 'border-blue-300 text-blue-700 hover:bg-blue-100 ring-blue-300' : 'border-violet-300 text-violet-700 hover:bg-violet-100 ring-violet-300'}`}>
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" /></svg>
-                  <span>Click or drag PDF here</span>
-                  <input type="file" accept="application/pdf" className="hidden"
-                    onChange={(e) => { const f = e.target.files?.[0]; if (f) stageFile(f); e.currentTarget.value = '' }} />
-                </label>
-              ) : (
-                <div className="bg-white border border-gray-200 rounded-xl p-3 space-y-3">
-                  <div className="flex items-start gap-3">
-                    <svg className="w-8 h-8 text-gray-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-                    </svg>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-800 break-all">{stagedFile.name}</p>
-                      <p className="text-xs text-gray-400 mt-0.5">{(stagedFile.size / 1024).toFixed(1)} KB · PDF</p>
-                    </div>
-                    {stagedFileUrl && (
-                      <a href={stagedFileUrl} target="_blank" rel="noopener noreferrer"
-                        className="text-xs font-medium text-[#0f4c35] hover:underline shrink-0">Preview ↗</a>
-                    )}
-                  </div>
-
-                  <p className="text-[11px] text-gray-500">Open the preview to review the PDF, then confirm to publish this version to the agent.</p>
-
-                  {/* Note for agent — only shown on revisions (v2+) since v1 has no prior version to diff against */}
-                  {sortedSchedules.length > 0 && (
-                    <div>
-                      <label className="block text-[11px] text-gray-500 mb-1">
-                        What changed? <span className="text-gray-400">(helps agent see what was updated)</span>
-                      </label>
-                      <textarea
-                        value={stagedNote}
-                        onChange={(e) => setStagedNote(e.target.value)}
-                        placeholder="e.g. Moved hospital appointment to afternoon, swapped day 3 and day 4."
-                        rows={3}
-                        className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-900 focus:outline-none focus:border-[#0f4c35] resize-none" />
-                    </div>
+          {canUploadSchedule && (() => {
+            // Build product picker list from the case's quotation line items.
+            // Each unique variant becomes one option; agent can link a schedule
+            // row to one of these (auto-fills title + location from snapshot).
+            const seen = new Set<string>()
+            const caseProducts: { variantId: string; productName: string; variantLabel: string | null; partnerName: string | null }[] = []
+            for (const grp of latestQuote?.document_groups ?? []) {
+              for (const it of grp.document_items ?? []) {
+                if (!it.variant_id || seen.has(it.variant_id)) continue
+                seen.add(it.variant_id)
+                caseProducts.push({
+                  variantId: it.variant_id,
+                  productName: it.products?.name ?? 'Service',
+                  variantLabel: it.variant_label_snapshot ?? null,
+                  partnerName: it.products?.partner_name ?? null,
+                })
+              }
+            }
+            // Trip nights → default day count (nights + 1).
+            const nights = nightsBetween(caseData.travel_start_date, caseData.travel_end_date)
+            const defaultDays = Math.max(nights + 1, 1)
+            // Carry forward latest version's items if it was revision-requested
+            // (so admin doesn't start from a blank slate after agent feedback).
+            const carryItems: ScheduleItem[] = (latestSchedule?.status === 'revision_requested' && latestSchedule?.items)
+              ? latestSchedule.items
+              : []
+            const nextVersion = (latestSchedule?.version ?? 0) + 1
+            return (
+              <section id="schedule-upload" className={`scroll-mt-20 border rounded-2xl p-4 space-y-3 ${caseData.status === 'awaiting_schedule' ? 'border-blue-200 bg-blue-50' : 'border-violet-200 bg-violet-50'}`}>
+                <div className="flex items-baseline justify-between gap-2">
+                  <p className={`text-xs font-semibold uppercase tracking-wide ${caseData.status === 'awaiting_schedule' ? 'text-blue-700' : 'text-violet-700'}`}>
+                    {sortedSchedules.length === 0 ? 'Build Schedule' : `New Version (v${nextVersion})`}
+                  </p>
+                  {latestSchedule?.slug && (
+                    <a href={`${baseUrl}/schedule/${latestSchedule.slug}?preview=1&v=${latestSchedule.version}`}
+                      target="_blank" rel="noopener noreferrer"
+                      className="text-[11px] text-gray-500 hover:underline">
+                      Preview last version ↗
+                    </a>
                   )}
-
-                  <div className="flex items-center gap-2 justify-end">
-                    <button onClick={cancelStaged} disabled={uploadingSchedule}
-                      className="text-xs font-medium text-gray-500 hover:text-gray-800 px-3 py-1.5 rounded-lg disabled:opacity-40">
-                      Cancel
-                    </button>
-                    <button onClick={confirmUpload} disabled={uploadingSchedule}
-                      className="text-xs font-medium bg-[#0f4c35] text-white hover:bg-[#0a3828] px-3 py-1.5 rounded-lg disabled:opacity-40">
-                      {uploadingSchedule ? 'Uploading...' : 'Confirm Upload'}
-                    </button>
-                  </div>
                 </div>
-              )}
-            </section>
-          )}
+                {sortedSchedules.length === 0 && (
+                  <p className="text-xs text-blue-700">Build day-by-day. Use &quot;Link a product&quot; to autofill titles from selected products.</p>
+                )}
+                <ScheduleEditor
+                  caseId={caseData.id}
+                  caseNumber={caseData.case_number}
+                  agentId={caseData.agent_id ?? null}
+                  travelStartDate={caseData.travel_start_date}
+                  travelEndDate={caseData.travel_end_date}
+                  initialItems={carryItems}
+                  defaultDayCount={defaultDays}
+                  caseProducts={caseProducts}
+                  onSaved={() => fetchCase()}
+                  slug={latestSchedule?.slug ?? null}
+                  nextVersion={nextVersion}
+                />
+              </section>
+            )
+          })()}
 
           {caseData.status === 'awaiting_travel' && (
             <section className="border border-emerald-200 bg-emerald-50 rounded-2xl p-4">

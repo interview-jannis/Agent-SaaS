@@ -187,7 +187,7 @@ export function AgentCaseHero(p: AgentHeroProps) {
           tone="blue"
           eyebrow="In progress"
           headline="Tiktak is preparing your schedule"
-          subline={<span>You&apos;ll be notified once the schedule PDF is ready to review.</span>}
+          subline={<span>You&apos;ll be notified once the schedule is ready to review.</span>}
         />
       )
 
