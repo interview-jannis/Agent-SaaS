@@ -182,17 +182,18 @@ export default function AdminCaseDetailPage() {
   const [pricingError, setPricingError] = useState('')
   const [dueDateEdit, setDueDateEdit] = useState<string>('')
 
-  // Pre-finalize add/remove staging
-  const [removedItemIds, setRemovedItemIds] = useState<Set<string>>(new Set())
+  // Item editor state — used by both Edit Selected Products section (awaiting_schedule)
+  // and Finalize Pricing section (awaiting_pricing). The structural picker only
+  // operates during awaiting_schedule via direct-write helpers (no staging).
   type ItemCurrency = 'KRW' | 'USD'
-  type NewPricingItem = { tempId: string; groupId: string; productId: string; productName: string; partnerName: string | null; basePrice: number; nativeCurrency: ItemCurrency; finalPriceKrw: string; displayCurrency: ItemCurrency }
-  const [newItems, setNewItems] = useState<NewPricingItem[]>([])
   // Per-existing-item display currency (data is always stored in KRW)
   const [pricingCurrencies, setPricingCurrencies] = useState<Record<string, ItemCurrency>>({})
   const [products, setProducts] = useState<Array<{ id: string; name: string; partner_name: string | null; base_price: number; price_currency: ItemCurrency | null }>>([])
   const [pickerGroupId, setPickerGroupId] = useState<string>('')
   const [pickerQuery, setPickerQuery] = useState<string>('')
   const [pickerOpen, setPickerOpen] = useState<boolean>(false)
+  // Transient action ids (one in flight at a time)
+  const [structuralBusy, setStructuralBusy] = useState<string | null>(null)
   const [deletingScheduleId, setDeletingScheduleId] = useState<string | null>(null)
   const [actionError, setActionError] = useState('')
 
@@ -964,21 +965,20 @@ export default function AdminCaseDetailPage() {
                   {latestQuote.finalized_at ? 'Edit Final Pricing' : 'Finalize Pricing'}
                 </p>
                 {latestQuote.finalized_at && (
-                  <button onClick={() => { setEditingPricing(false); setPricingEdits({}); setDueDateEdit(''); setPricingError(''); setRemovedItemIds(new Set()); setNewItems([]); setPricingCurrencies({}) }}
+                  <button onClick={() => { setEditingPricing(false); setPricingEdits({}); setDueDateEdit(''); setPricingError(''); setPricingCurrencies({}) }}
                     className="text-xs text-gray-500 hover:text-gray-800">Cancel</button>
                 )}
               </div>
               <p className="text-[11px] text-gray-600">
                 {latestQuote.finalized_at
                   ? 'Adjust line item prices. To add or remove items after finalize, issue an Additional Invoice.'
-                  : 'Adjust prices, or add/remove line items before issuing the invoice.'}
+                  : 'Adjust line item prices. Items are locked at this stage — to add or remove, request a schedule revision.'}
               </p>
 
               {pricingError && <p className="text-xs text-red-500">{pricingError}</p>}
 
               <div className="bg-white rounded-xl border border-violet-100 divide-y divide-gray-100">
                 {sortedGroups.flatMap(g => g.document_items.map(item => {
-                  const isRemoved = removedItemIds.has(item.id)
                   // pricingEdits stores canonical KRW digits; currency toggle only changes display.
                   const krwDigits = pricingEdits[item.id] ?? String(item.final_price)
                   const krwNum = Number(krwDigits) || 0
@@ -989,9 +989,9 @@ export default function AdminCaseDetailPage() {
                     ? `$${Math.round(item.final_price / exchangeRate).toLocaleString('en-US')}`
                     : fmtKRW(item.final_price)
                   return (
-                    <div key={item.id} className={`flex items-center gap-3 px-3 py-2 ${isRemoved ? 'opacity-40' : ''}`}>
+                    <div key={item.id} className="flex items-center gap-3 px-3 py-2">
                       <div className="flex-1 min-w-0">
-                        <p className={`text-sm text-gray-900 truncate ${isRemoved ? 'line-through' : ''}`}>{item.products?.name ?? 'Item'}</p>
+                        <p className="text-sm text-gray-900 truncate">{item.products?.name ?? 'Item'}</p>
                         <p className="text-[10px] text-gray-400">{g.name}</p>
                       </div>
                       <span className="text-[10px] text-gray-400 tabular-nums shrink-0">orig {origDisplay}</span>
@@ -999,7 +999,6 @@ export default function AdminCaseDetailPage() {
                         type="text"
                         inputMode="numeric"
                         value={displayVal}
-                        disabled={isRemoved}
                         onChange={(e) => {
                           const cleaned = e.target.value.replace(/[^0-9]/g, '')
                           if (cleaned === '') { setPricingEdits(p => ({ ...p, [item.id]: '' })); return }
@@ -1007,192 +1006,33 @@ export default function AdminCaseDetailPage() {
                           const krwVal = currency === 'USD' ? Math.round(userNum * exchangeRate) : userNum
                           setPricingEdits(p => ({ ...p, [item.id]: String(krwVal) }))
                         }}
-                        className="w-32 border border-gray-200 rounded-lg px-2 py-1 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35] tabular-nums text-right disabled:bg-gray-50" />
-                      <div className="flex shrink-0 rounded-md border border-gray-200 overflow-hidden text-[10px] font-medium">
-                        <button
-                          type="button"
-                          disabled={isRemoved}
-                          aria-pressed={currency === 'KRW'}
-                          onClick={() => setPricingCurrencies(p => ({ ...p, [item.id]: 'KRW' }))}
-                          className={`px-1.5 py-0.5 ${currency === 'KRW' ? 'bg-violet-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'} disabled:opacity-40`}>
-                          ₩
-                        </button>
-                        <button
-                          type="button"
-                          disabled={isRemoved}
-                          aria-pressed={currency === 'USD'}
-                          onClick={() => setPricingCurrencies(p => ({ ...p, [item.id]: 'USD' }))}
-                          className={`px-1.5 py-0.5 border-l border-gray-200 ${currency === 'USD' ? 'bg-violet-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'} disabled:opacity-40`}>
-                          $
-                        </button>
-                      </div>
-                      {!latestQuote.finalized_at && (
-                        isRemoved ? (
-                          <button type="button"
-                            onClick={() => setRemovedItemIds(s => { const n = new Set(s); n.delete(item.id); return n })}
-                            className="text-[10px] text-violet-700 hover:underline shrink-0">Undo</button>
-                        ) : (
-                          <button type="button" aria-label="Remove item"
-                            onClick={() => setRemovedItemIds(s => new Set(s).add(item.id))}
-                            className="text-gray-300 hover:text-red-500 shrink-0 w-4 h-4 flex items-center justify-center text-sm leading-none">×</button>
-                        )
-                      )}
-                    </div>
-                  )
-                }))}
-                {newItems.map((n) => {
-                  const krwNum = Number(n.finalPriceKrw) || 0
-                  const displayNum = n.displayCurrency === 'USD' ? Math.round(krwNum / exchangeRate) : krwNum
-                  const displayVal = n.finalPriceKrw === '' ? '' : displayNum.toLocaleString('en-US')
-                  const groupName = sortedGroups.find(g => g.id === n.groupId)?.name ?? ''
-                  // Base label: show in product's native currency
-                  const baseDisplay = n.nativeCurrency === 'USD'
-                    ? `$${n.basePrice.toLocaleString('en-US')}`
-                    : fmtKRW(n.basePrice)
-                  return (
-                    <div key={n.tempId} className="flex items-center gap-3 px-3 py-2 bg-violet-50/50">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-gray-900 truncate">{n.productName}</p>
-                        <p className="text-[10px] text-violet-700">New · {groupName}</p>
-                      </div>
-                      <span className="text-[10px] text-gray-400 tabular-nums shrink-0">base {baseDisplay}</span>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        value={displayVal}
-                        onChange={(e) => {
-                          const cleaned = e.target.value.replace(/[^0-9]/g, '')
-                          if (cleaned === '') {
-                            setNewItems(arr => arr.map(x => x.tempId === n.tempId ? { ...x, finalPriceKrw: '' } : x))
-                            return
-                          }
-                          const userNum = Number(cleaned) || 0
-                          const krwVal = n.displayCurrency === 'USD' ? Math.round(userNum * exchangeRate) : userNum
-                          setNewItems(arr => arr.map(x => x.tempId === n.tempId ? { ...x, finalPriceKrw: String(krwVal) } : x))
-                        }}
                         className="w-32 border border-gray-200 rounded-lg px-2 py-1 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35] tabular-nums text-right" />
                       <div className="flex shrink-0 rounded-md border border-gray-200 overflow-hidden text-[10px] font-medium">
                         <button
                           type="button"
-                          aria-pressed={n.displayCurrency === 'KRW'}
-                          onClick={() => setNewItems(arr => arr.map(x => x.tempId === n.tempId ? { ...x, displayCurrency: 'KRW' } : x))}
-                          className={`px-1.5 py-0.5 ${n.displayCurrency === 'KRW' ? 'bg-violet-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
+                          aria-pressed={currency === 'KRW'}
+                          onClick={() => setPricingCurrencies(p => ({ ...p, [item.id]: 'KRW' }))}
+                          className={`px-1.5 py-0.5 ${currency === 'KRW' ? 'bg-violet-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
                           ₩
                         </button>
                         <button
                           type="button"
-                          aria-pressed={n.displayCurrency === 'USD'}
-                          onClick={() => setNewItems(arr => arr.map(x => x.tempId === n.tempId ? { ...x, displayCurrency: 'USD' } : x))}
-                          className={`px-1.5 py-0.5 border-l border-gray-200 ${n.displayCurrency === 'USD' ? 'bg-violet-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
+                          aria-pressed={currency === 'USD'}
+                          onClick={() => setPricingCurrencies(p => ({ ...p, [item.id]: 'USD' }))}
+                          className={`px-1.5 py-0.5 border-l border-gray-200 ${currency === 'USD' ? 'bg-violet-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
                           $
                         </button>
                       </div>
-                      <button type="button" aria-label="Remove new item"
-                        onClick={() => setNewItems(arr => arr.filter(x => x.tempId !== n.tempId))}
-                        className="text-gray-300 hover:text-red-500 shrink-0 w-4 h-4 flex items-center justify-center text-sm leading-none">×</button>
                     </div>
                   )
-                })}
+                }))}
               </div>
-
-              {/* Add line item — pre-finalize only. Searchable combobox to scale with product count. */}
-              {!latestQuote.finalized_at && sortedGroups.length > 0 && (() => {
-                const q = pickerQuery.trim().toLowerCase()
-                const targetGroupId = pickerGroupId || sortedGroups[0].id
-                // Already in the target group: existing items (not removed) + staged new items.
-                const targetGroup = sortedGroups.find(g => g.id === targetGroupId)
-                const existingProductIds = new Set<string>()
-                targetGroup?.document_items.forEach(it => {
-                  if (!removedItemIds.has(it.id) && it.products?.id) existingProductIds.add(it.products.id)
-                })
-                newItems.forEach(n => { if (n.groupId === targetGroupId) existingProductIds.add(n.productId) })
-                const available = products.filter(p => !existingProductIds.has(p.id))
-                const matches = q === ''
-                  ? available.slice(0, 20)
-                  : available.filter(p =>
-                      p.name.toLowerCase().includes(q) || (p.partner_name?.toLowerCase().includes(q) ?? false)
-                    ).slice(0, 20)
-                const addProduct = (productId: string) => {
-                  const product = products.find(p => p.id === productId)
-                  if (!product) return
-                  const groupId = pickerGroupId || sortedGroups[0].id
-                  const native: ItemCurrency = product.price_currency === 'USD' ? 'USD' : 'KRW'
-                  // Canonical KRW value: convert if product is USD-native.
-                  const krwBase = native === 'USD' ? Math.round(product.base_price * exchangeRate) : product.base_price
-                  setNewItems(arr => [...arr, {
-                    tempId: `new-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-                    groupId,
-                    productId: product.id,
-                    productName: product.name,
-                    partnerName: product.partner_name,
-                    basePrice: product.base_price,
-                    nativeCurrency: native,
-                    finalPriceKrw: String(krwBase),
-                    displayCurrency: native,
-                  }])
-                  setPickerQuery('')
-                  setPickerOpen(false)
-                }
-                return (
-                  <div className="bg-white rounded-xl border border-violet-100 px-3 py-2 flex items-center gap-2 relative">
-                    <span className="text-[10px] text-gray-500 shrink-0">Add to</span>
-                    {sortedGroups.length > 1 && (
-                      <select
-                        value={pickerGroupId || sortedGroups[0].id}
-                        onChange={(e) => setPickerGroupId(e.target.value)}
-                        className="border border-gray-200 rounded-lg px-2 py-1 text-xs text-gray-900 focus:outline-none focus:border-[#0f4c35] bg-white">
-                        {sortedGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-                      </select>
-                    )}
-                    <div className="flex-1 min-w-0 relative">
-                      <input
-                        type="text"
-                        value={pickerQuery}
-                        placeholder={products.length === 0 ? 'No products available' : 'Search products by name or partner…'}
-                        disabled={products.length === 0}
-                        onFocus={() => setPickerOpen(true)}
-                        onBlur={() => setTimeout(() => setPickerOpen(false), 150)}
-                        onChange={(e) => { setPickerQuery(e.target.value); setPickerOpen(true) }}
-                        className="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs text-gray-900 focus:outline-none focus:border-[#0f4c35] bg-white disabled:bg-gray-50" />
-                      {pickerOpen && matches.length > 0 && (
-                        <div className="absolute left-0 right-0 top-full mt-1 z-10 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto divide-y divide-gray-100">
-                          {matches.map(p => (
-                            <button
-                              key={p.id}
-                              type="button"
-                              onMouseDown={(e) => e.preventDefault()}
-                              onClick={() => addProduct(p.id)}
-                              className="w-full text-left px-3 py-1.5 hover:bg-violet-50 text-xs">
-                              <div className="text-gray-900 truncate">{p.name}</div>
-                              <div className="text-[10px] text-gray-400 flex justify-between gap-2">
-                                <span className="truncate">{p.partner_name ?? '—'}</span>
-                                <span className="tabular-nums shrink-0">
-                                  {p.price_currency === 'USD'
-                                    ? `$${p.base_price.toLocaleString('en-US')}`
-                                    : fmtKRW(p.base_price)}
-                                </span>
-                              </div>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                      {pickerOpen && q !== '' && matches.length === 0 && (
-                        <div className="absolute left-0 right-0 top-full mt-1 z-10 bg-white border border-gray-200 rounded-lg shadow-lg px-3 py-2 text-xs text-gray-400">
-                          No products match &ldquo;{pickerQuery}&rdquo;
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )
-              })()}
 
               {(() => {
                 const liveSum = sortedGroups
                   .flatMap(g => g.document_items)
-                  .filter(item => !removedItemIds.has(item.id))
                   .reduce((s, item) => s + (Number(pricingEdits[item.id] ?? item.final_price) || 0), 0)
-                const newSum = newItems.reduce((s, n) => s + (Number(n.finalPriceKrw) || 0), 0)
-                const newTotal = liveSum + newSum
+                const newTotal = liveSum
                 const diff = newTotal - latestQuote.total_price
                 return (
                   <div className="flex items-baseline justify-between bg-white rounded-xl border border-violet-100 px-3 py-2">
@@ -1228,10 +1068,9 @@ export default function AdminCaseDetailPage() {
                     const v = pricingEdits[item.id]
                     return v !== undefined && Number(v) !== item.final_price
                   })
-                const hasStructuralChanges = removedItemIds.size > 0 || newItems.length > 0
                 const dueDateChanged = dueDateValue !== latestQuote.payment_due_date
                 const isFirstFinalize = !latestQuote.finalized_at
-                const buttonDisabled = savingPricing || (!isFirstFinalize && !hasPricingChanges && !hasStructuralChanges && !dueDateChanged)
+                const buttonDisabled = savingPricing || (!isFirstFinalize && !hasPricingChanges && !dueDateChanged)
                 return (
               <button
                 disabled={buttonDisabled}
@@ -1240,32 +1079,12 @@ export default function AdminCaseDetailPage() {
                   setSavingPricing(true); setPricingError('')
                   try {
                     const items = sortedGroups.flatMap(g => g.document_items)
-                    const liveItems = items.filter(item => !removedItemIds.has(item.id))
-                    const liveSum = liveItems.reduce((s, item) => s + (Number(pricingEdits[item.id] ?? item.final_price) || 0), 0)
-                    const newSum = newItems.reduce((s, n) => s + (Number(n.finalPriceKrw) || 0), 0)
-                    const newTotal = liveSum + newSum
+                    const liveSum = items.reduce((s, item) => s + (Number(pricingEdits[item.id] ?? item.final_price) || 0), 0)
+                    const newTotal = liveSum
                     const newDueDate = dueDateValue
 
-                    // Delete items marked for removal (pre-finalize only — gated in UI)
-                    for (const itemId of removedItemIds) {
-                      await removeDocumentItem(itemId)
-                    }
-
-                    // Insert staged new items (final_price is canonical KRW; basePrice stored in product's native currency for traceability)
-                    for (const n of newItems) {
-                      await addDocumentItem({
-                        documentId: latestQuote.id,
-                        groupId: n.groupId,
-                        productId: n.productId,
-                        productNameSnapshot: n.productName,
-                        productPartnerSnapshot: n.partnerName,
-                        basePrice: n.basePrice,
-                        finalPrice: Number(n.finalPriceKrw) || 0,
-                      })
-                    }
-
-                    // Update each quotation item whose final_price changed (skip removed)
-                    for (const item of liveItems) {
+                    // Update each quotation item whose final_price changed
+                    for (const item of items) {
                       const newVal = Number(pricingEdits[item.id] ?? item.final_price) || 0
                       if (newVal !== item.final_price) {
                         await updateDocumentItemPrice(item.id, newVal)
@@ -1365,13 +1184,9 @@ export default function AdminCaseDetailPage() {
                       {
                         total_krw: newTotal,
                         ...(totalChanged && !isFirstFinalize ? { previous_total_krw: latestQuote.total_price } : {}),
-                        ...(removedItemIds.size > 0 ? { items_removed: removedItemIds.size } : {}),
-                        ...(newItems.length > 0 ? { items_added: newItems.length } : {}),
                       })
                     setPricingEdits({})
                     setDueDateEdit('')
-                    setRemovedItemIds(new Set())
-                    setNewItems([])
                     setEditingPricing(false)
                     await fetchCase()
                   } catch (e: unknown) {
@@ -1427,6 +1242,152 @@ export default function AdminCaseDetailPage() {
               </div>
             </section>
           )}
+
+          {/* Edit Selected Products — admin can add/remove items during schedule
+              creation. Save-on-action (no staging). Items lock once admin
+              finalizes pricing in the next stage. */}
+          {caseData.status === 'awaiting_schedule' && latestQuote && !latestQuote.finalized_at && sortedGroups.length > 0 && (() => {
+            const allItems = sortedGroups.flatMap(g => g.document_items.map(it => ({ ...it, groupName: g.name, groupId: g.id })))
+            return (
+              <section className="border border-violet-100 bg-white rounded-2xl p-4 space-y-3">
+                <div className="flex items-baseline justify-between flex-wrap gap-2">
+                  <p className="text-xs font-semibold text-violet-700 uppercase tracking-wide">Edit Selected Products</p>
+                  <p className="text-[10px] text-gray-400">Items lock once you finalize pricing</p>
+                </div>
+
+                <div className="bg-gray-50 rounded-xl border border-gray-100 divide-y divide-gray-100">
+                  {allItems.length === 0 ? (
+                    <p className="text-xs text-gray-400 italic px-3 py-4 text-center">No items yet — add from the picker below.</p>
+                  ) : allItems.map(item => (
+                    <div key={item.id} className="flex items-center gap-3 px-3 py-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-gray-900 truncate">{item.products?.name ?? 'Item'}</p>
+                        <p className="text-[10px] text-gray-400">
+                          {item.groupName}
+                          {item.variant_label_snapshot && <span> · {item.variant_label_snapshot}</span>}
+                        </p>
+                      </div>
+                      <span className="text-xs text-gray-500 tabular-nums shrink-0">{fmtKRW(item.final_price)}</span>
+                      <button
+                        type="button"
+                        aria-label="Remove item"
+                        disabled={structuralBusy === item.id}
+                        onClick={async () => {
+                          if (!confirm(`Remove "${item.products?.name ?? 'this item'}" from the case?`)) return
+                          setStructuralBusy(item.id); setActionError('')
+                          try {
+                            await removeDocumentItem(item.id)
+                            await logAsCurrentUser('quote.item_removed',
+                              { type: 'case', id: caseData.id, label: caseData.case_number },
+                              { product: item.products?.name ?? null, group: item.groupName })
+                            await fetchCase()
+                          } catch (e: unknown) {
+                            setActionError((e as { message?: string })?.message ?? 'Failed to remove.')
+                          } finally { setStructuralBusy(null) }
+                        }}
+                        className="text-gray-300 hover:text-red-500 shrink-0 w-5 h-5 flex items-center justify-center text-base leading-none disabled:opacity-30">
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                {(() => {
+                  const q = pickerQuery.trim().toLowerCase()
+                  const targetGroupId = pickerGroupId || sortedGroups[0].id
+                  const targetGroup = sortedGroups.find(g => g.id === targetGroupId)
+                  const existingProductIds = new Set<string>()
+                  targetGroup?.document_items.forEach(it => { if (it.products?.id) existingProductIds.add(it.products.id) })
+                  const available = products.filter(p => !existingProductIds.has(p.id))
+                  const matches = q === ''
+                    ? available.slice(0, 20)
+                    : available.filter(p =>
+                        p.name.toLowerCase().includes(q) || (p.partner_name?.toLowerCase().includes(q) ?? false)
+                      ).slice(0, 20)
+                  const addProduct = async (productId: string) => {
+                    const product = products.find(p => p.id === productId)
+                    if (!product || !latestQuote) return
+                    const groupId = pickerGroupId || sortedGroups[0].id
+                    const native: ItemCurrency = product.price_currency === 'USD' ? 'USD' : 'KRW'
+                    // Canonical KRW base; final_price starts equal to base — admin
+                    // adjusts during Finalize Pricing.
+                    const krwBase = native === 'USD' ? Math.round(product.base_price * exchangeRate) : product.base_price
+                    setStructuralBusy(`add:${productId}`); setActionError('')
+                    try {
+                      await addDocumentItem({
+                        documentId: latestQuote.id,
+                        groupId,
+                        productId: product.id,
+                        productNameSnapshot: product.name,
+                        productPartnerSnapshot: product.partner_name,
+                        basePrice: product.base_price,
+                        finalPrice: krwBase,
+                      })
+                      await logAsCurrentUser('quote.item_added',
+                        { type: 'case', id: caseData.id, label: caseData.case_number },
+                        { product: product.name, group: targetGroup?.name ?? null })
+                      setPickerQuery('')
+                      setPickerOpen(false)
+                      await fetchCase()
+                    } catch (e: unknown) {
+                      setActionError((e as { message?: string })?.message ?? 'Failed to add.')
+                    } finally { setStructuralBusy(null) }
+                  }
+                  return (
+                    <div className="bg-white rounded-xl border border-violet-100 px-3 py-2 flex items-center gap-2 relative">
+                      <span className="text-[10px] text-gray-500 shrink-0">Add to</span>
+                      {sortedGroups.length > 1 && (
+                        <select
+                          value={pickerGroupId || sortedGroups[0].id}
+                          onChange={(e) => setPickerGroupId(e.target.value)}
+                          className="border border-gray-200 rounded-lg px-2 py-1 text-xs text-gray-900 focus:outline-none focus:border-[#0f4c35] bg-white">
+                          {sortedGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                        </select>
+                      )}
+                      <div className="flex-1 min-w-0 relative">
+                        <input
+                          type="text"
+                          value={pickerQuery}
+                          placeholder={products.length === 0 ? 'No products available' : 'Search products by name or partner…'}
+                          disabled={products.length === 0 || structuralBusy !== null}
+                          onFocus={() => setPickerOpen(true)}
+                          onBlur={() => setTimeout(() => setPickerOpen(false), 150)}
+                          onChange={(e) => { setPickerQuery(e.target.value); setPickerOpen(true) }}
+                          className="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs text-gray-900 focus:outline-none focus:border-[#0f4c35] bg-white disabled:bg-gray-50" />
+                        {pickerOpen && matches.length > 0 && (
+                          <div className="absolute left-0 right-0 top-full mt-1 z-10 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto divide-y divide-gray-100">
+                            {matches.map(p => (
+                              <button
+                                key={p.id}
+                                type="button"
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={() => addProduct(p.id)}
+                                className="w-full text-left px-3 py-1.5 hover:bg-violet-50 text-xs">
+                                <div className="text-gray-900 truncate">{p.name}</div>
+                                <div className="text-[10px] text-gray-400 flex justify-between gap-2">
+                                  <span className="truncate">{p.partner_name ?? '—'}</span>
+                                  <span className="tabular-nums shrink-0">
+                                    {p.price_currency === 'USD'
+                                      ? `$${p.base_price.toLocaleString('en-US')}`
+                                      : fmtKRW(p.base_price)}
+                                  </span>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        {pickerOpen && q !== '' && matches.length === 0 && (
+                          <div className="absolute left-0 right-0 top-full mt-1 z-10 bg-white border border-gray-200 rounded-lg shadow-lg px-3 py-2 text-xs text-gray-400">
+                            No products match &ldquo;{pickerQuery}&rdquo;
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })()}
+              </section>
+            )
+          })()}
 
           {canUploadSchedule && (() => {
             // Build product picker list from the case's quotation line items.

@@ -1555,15 +1555,24 @@ export default function CaseDetailPage() {
             />
           )}
 
-          {/* Schedule — tone matches Hero when this section is the action target */}
+          {/* Schedule — tone matches Hero when this section is the action target.
+              Action targets: reviewing_schedule (confirm/revise) and
+              awaiting_travel (Mark Travel Complete lives in this section). */}
           {(() => {
-            const isActionTarget = caseData.status === 'reviewing_schedule'
-            const sectionClass = isActionTarget
+            const isReviewing = caseData.status === 'reviewing_schedule'
+            const isTravelDone = caseData.status === 'awaiting_travel'
+            const isActionTarget = isReviewing || isTravelDone
+            const sectionClass = isReviewing
               ? 'scroll-mt-20 bg-violet-50 border border-violet-200 rounded-2xl p-5'
-              : 'scroll-mt-20 bg-gray-50 rounded-2xl p-5'
-            const labelClass = isActionTarget
+              : isTravelDone
+                ? 'scroll-mt-20 bg-emerald-50 border border-emerald-200 rounded-2xl p-5'
+                : 'scroll-mt-20 bg-gray-50 rounded-2xl p-5'
+            const labelClass = isReviewing
               ? 'text-xs font-semibold text-violet-700 uppercase tracking-wide'
-              : 'text-xs font-semibold text-gray-400 uppercase tracking-wide'
+              : isTravelDone
+                ? 'text-xs font-semibold text-emerald-700 uppercase tracking-wide'
+                : 'text-xs font-semibold text-gray-400 uppercase tracking-wide'
+            void isActionTarget
             return (
           <section id="schedule" className={sectionClass}>
             <div className="flex items-center justify-between mb-3">
@@ -1726,9 +1735,11 @@ export default function CaseDetailPage() {
             </div>
           )}
 
-          {/* ─── FINANCIALS — Summary + Invoices grouped in one box ─── */}
+          {/* ─── FINANCIALS — Summary + Invoices grouped in one box ───
+              Action target on awaiting_deposit (issue/forward deposit invoice)
+              and awaiting_payment (send balance invoice link). */}
           {quote && (() => {
-            const isActionTarget = caseData.status === 'awaiting_payment'
+            const isActionTarget = caseData.status === 'awaiting_payment' || caseData.status === 'awaiting_deposit'
             const sectionClass = isActionTarget
               ? 'scroll-mt-20 bg-cyan-50 border border-cyan-200 rounded-2xl p-5 space-y-4'
               : 'scroll-mt-20 bg-gray-50 rounded-2xl p-5 space-y-4'

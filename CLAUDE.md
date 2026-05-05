@@ -69,8 +69,10 @@ Invoice 4종 (per 4/30 SOP):
 
 Admin 수동 개입:
 1. Agent 초대 / 승인 (계약 카운터사인 후) / Reject
-2. 스케줄 업로드 (버전 관리, 2단계 프리뷰→Confirm)
-3. 가격 Finalize (document_items.final_price 인라인 편집, document_number 발번)
+2. **스케줄 작업** (awaiting_schedule 단계):
+   - **Edit Selected Products** — quotation line item add/remove (save-on-action, 즉시 DB). 변경사항이 Estimated 가격에 즉시 반영. 5/5 결정: 항목 편집은 schedule 단계에 한정, finalize 단계는 가격만.
+   - **Schedule Editor** — Day 카드 + Add Item form (block / time / product link / title / location / notes), 위/아래 화살표 정렬. Save = 새 schedules row + items JSONB + version bump + cases.status → reviewing_schedule. PDF 업로드 경로는 backward compat로만 (legacy view 가능, 신규 X).
+3. 가격 Finalize (document_items.final_price 인라인 편집, **항목 add/remove 불가** — schedule 단계로 이동, document_number 발번)
 4. 결제 완료 확인 (per-document payment_received_at)
 5. Partner Payouts 송금 처리 (병원/호텔 등)
 6. Agent Settlement 지급 처리 (송금 후 paid_at 입력)
@@ -167,7 +169,7 @@ Agent 수동 개입:
 - **document_group_members**: id, document_group_id, case_member_id
 - **document_items**: id, document_id, document_group_id, product_id, **variant_id**(FK product_variants ON DELETE SET NULL), **product_name_snapshot, product_partner_snapshot, variant_label_snapshot**, base_price, final_price, quantity, sort_order
 - ⚠️ legacy `quotes / quote_groups / quote_group_members / quote_items` 테이블은 backup으로 남아있으나 **read/write 안 함**. Phase 2에서 DROP 예정.
-- **schedules**: id, case_id, quote_id(이름만 남음, FK drop됨, 실제로는 quotation document.id), slug, pdf_url, status, version, created_at, file_name, revision_note, confirmed_at, **first_opened_at, open_count**, UNIQUE(case_id, version)
+- **schedules**: id, case_id, quote_id(이름만 남음, FK drop됨, 실제로는 quotation document.id), slug, pdf_url(legacy/nullable), **items**(JSONB, ScheduleItem[]), status, version, created_at, file_name, revision_note, confirmed_at, **first_opened_at, open_count**, UNIQUE(case_id, version). 신규는 items 사용, pdf_url은 backward compat로만 유지 (legacy 케이스 view).
 - **settlements**: id, settlement_number, agent_id, **case_id**(UNIQUE, 1:1), amount(KRW), paid_at, created_at
 - **partner_payments**: id, case_id, partner_name, amount, paid_at(DATE), paid_by(FK admins SET NULL), note, created_at, UNIQUE(case_id, partner_name) — Partner Payouts cash basis 추적
 - **system_settings**: id, key, value(jsonb). Keys: exchange_rate / company_margin_rate / bank_details / onboarding_ot / **deposit_percentage** / **company_stamp** / **survey_questions**
@@ -202,7 +204,8 @@ Agent 수동 개입:
 - `src/lib/notifications.ts` — `createNotification`, `notifyAgent`, `notifyAllAdmins`
 - `src/lib/audit.ts` — `logAudit`, `getActor`, `logAsCurrentUser`. **5/4 sweep**: products(create/update/delete/bulk_upload), categories/subcategories, system_settings, contract_templates, clients(create/update), admins(invite/delete), documents(issue/item_added/item_removed/paid)도 모두 logged. `/admin/audit` 아이콘 톤 monochrome 통일. 새 액션 추가 시 [`/admin/audit/page.tsx`](src/app/admin/audit/page.tsx)의 `ACTION_VERB` + `ACTION_TONE` + `ActionIcon` paths 3곳 모두 등록 필요 (안 그러면 dot fallback).
 - `src/hooks/useNotifications.ts` — Realtime 구독
-- `src/components/`: NotificationBell, DOBPicker, DateTime24Picker, SignaturePad, ContractStep, AgentOnboardingGuard, ChangePasswordCard, PrintPdfButton, AutoPrint, PrintButton, **QuoteDocument**(고객용 모든 invoice/quotation 공용 렌더, from_party/to_party 기반 분기, variant_label_snapshot 노출), **CaseDocumentsSection**(case 페이지 내 documents 리스트), **SelectedProductsSection**(2026-05-04, admin/agent case 페이지 공용 — quotation + additional_invoice 합쳐 표시, variant_label snapshot, ProductDetailModal), SparklineCard, MobileTopBar, MobileNavContext, AdminCaseContractSection, AgentCaseContractSection, CaseHeroAction(AdminCaseHero/AgentCaseHero — Hero ACTION NEEDED 박스, status별 분기)
+- `src/types/schedule.ts` (2026-05-05) — `ScheduleItem` 타입 + `compareScheduleItems` / `groupItemsByDay` / `groupDayByBlock` / `dateForDay` / `formatDayHeader` / `generateScheduleItemId` 헬퍼. Block은 morning/afternoon/evening 3종.
+- `src/components/`: NotificationBell, DOBPicker, DateTime24Picker, SignaturePad, ContractStep, AgentOnboardingGuard, ChangePasswordCard, PrintPdfButton, AutoPrint, PrintButton, **QuoteDocument**(고객용 모든 invoice/quotation 공용 렌더, from_party/to_party 기반 분기, variant_label_snapshot 노출), **CaseDocumentsSection**(case 페이지 내 documents 리스트), **SelectedProductsSection**(2026-05-04, admin/agent case 페이지 공용 — quotation + additional_invoice 합쳐 표시, variant_label snapshot, ProductDetailModal), **ScheduleDocument**(2026-05-05, /schedule/[slug] 고객용 Option A 에디토리얼 렌더 — serif Day 01/02/03 헤더, Morning/Afternoon/Evening 블록, cover에 lead/dates/hotel 자동), **admin/ScheduleEditor**(2026-05-05, Day 카드 + Add Item form 인라인 편집기, save = 새 schedules row + items JSONB), SparklineCard, MobileTopBar, MobileNavContext, AdminCaseContractSection, AgentCaseContractSection, CaseHeroAction(AdminCaseHero/AgentCaseHero — Hero ACTION NEEDED 박스, status별 분기)
 
 ## 언어 규칙
 - **모든 UI 텍스트는 영어만 사용** (버튼, 라벨, 에러 메시지, placeholder 포함)
