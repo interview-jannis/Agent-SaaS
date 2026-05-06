@@ -24,6 +24,7 @@ export type ScheduleItem = {
   time: string | null              // "HH:MM" 24h, optional — start time
   endTime?: string | null           // "HH:MM" 24h, optional — end time
   title: string                    // free text — the activity itself
+  variantTag?: string | null        // variant label stored separately so renderer can show as chip
   partner?: string | null           // partner brand (e.g. "Gil Hospital") — eyebrow above title
   location: string | null
   notes: string | null              // VIP-facing — rendered on client schedule

@@ -25,11 +25,13 @@ export default async function SchedulePage({
       id, pdf_url, items, version, created_at,
       first_opened_at, open_count,
       cases(id, agent_id, case_number, travel_start_date, travel_end_date,
-        case_members(is_lead, clients(name)),
+        outbound_flight, inbound_flight,
+        case_members(id, is_lead, clients(name)),
         documents(
           type,
           document_groups(
             id, name,
+            document_group_members(id, case_member_id),
             document_items(
               product_name_snapshot,
               variant_label_snapshot,
@@ -48,18 +50,29 @@ export default async function SchedulePage({
   }
   const { data: schedules } = await query.limit(1)
 
+  type FlightData = {
+    departure_airport?: string | null
+    arrival_airport?: string | null
+    departure_datetime?: string | null
+    arrival_datetime?: string | null
+    flight_number?: string | null
+  } | null
+
   type CaseLite = {
     id: string
     agent_id: string | null
     case_number: string | null
     travel_start_date: string | null
     travel_end_date: string | null
-    case_members: { is_lead: boolean; clients: { name: string | null } | null }[] | null
+    outbound_flight: FlightData
+    inbound_flight: FlightData
+    case_members: { id: string; is_lead: boolean; clients: { name: string | null } | null }[] | null
     documents: {
       type: string
       document_groups: {
         id: string
         name: string
+        document_group_members: { id: string; case_member_id: string }[] | null
         document_items: {
           product_name_snapshot: string | null
           variant_label_snapshot: string | null
@@ -165,13 +178,20 @@ export default async function SchedulePage({
       }
     }
 
-    // Build group name lookup so admin's full view can label each item by group.
+    // Build group name lookup + members for the new multi-group layout
     const groupNameById: Record<string, string> = {}
-    for (const doc of caseRef?.documents ?? []) {
-      if (doc.type !== 'quotation') continue
-      for (const g of doc.document_groups ?? []) {
-        if (g?.id && g?.name) groupNameById[g.id] = g.name
-      }
+    const groups: { id: string; name: string; members: string[] }[] = []
+    const quotationDoc = caseRef?.documents?.find(d => d.type === 'quotation')
+    for (const g of quotationDoc?.document_groups ?? []) {
+      if (!g?.id || !g?.name) continue
+      groupNameById[g.id] = g.name
+      const members = (g.document_group_members ?? [])
+        .map(m => {
+          const cm = caseRef?.case_members?.find(cm => cm.id === m.case_member_id)
+          return cm?.clients?.name ?? null
+        })
+        .filter((n): n is string => n !== null)
+      groups.push({ id: g.id, name: g.name, members })
     }
     const filterGroupId = group ? group : null
 
@@ -191,6 +211,9 @@ export default async function SchedulePage({
           showInternalNotes={internal === '1'}
           filterGroupId={filterGroupId}
           groupNameById={groupNameById}
+          outboundFlight={caseRef?.outbound_flight ?? null}
+          inboundFlight={caseRef?.inbound_flight ?? null}
+          groups={groups}
         />
         <AutoPrint enabled={autoprint === '1'} />
       </>

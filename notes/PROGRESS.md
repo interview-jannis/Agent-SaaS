@@ -1,12 +1,13 @@
 # Project Progress
 
 ## 현재 상태
-- **Phase**: 시뮬 직전 정합성 + 운영성. 3자 계약 evidentiary 강화 + 순서 무관 + 실시간 자동 새로고침, Overview 캐시베이시스 회계, Edit Selected Products audit trail (origin + soft delete), ScheduleEditor 대수술 (Free time / partner / block-time 범위 / group / internal note / pending row / coverage gate), agent → admin 메모.
-- **마지막 작업**: 2026-05-06 — Cases 표 admin/agent 통일 + 빈 상태 표 유지, schedules.items 마이그레이션 누락 fix, 3자 계약 순서 무관 + evidentiary 강화 (typed_name + signature_hash + IP/UA, 3 API endpoints), Save PDF (?print=1), Realtime auto-refresh (useCaseRealtime + publication 등록), Partner Payouts 게이트 schedule confirmed 시점, Overview revenue/earnings 캐시베이시스 (deposit settlement + payment_date 기반), Documents origin + soft delete (sweep 16개 파일), Edit Selected Products UI 4-tier audit trail + 그룹 분리 + 가격 2줄 + 카테고리/서브카테고리 필터 + variants 표시 + Original 삭제 confirm, 카테고리 sort_order 정의, Time24Input (locale 무관 24h), agent_notes 필드, ScheduleEditor: Free time 드롭다운 + Add/Remove Day 제거 + endBlock/endTime + partner eyebrow 분리 + internalNotes (admin only) + groupId (단일 schedule + URL 필터) + Pending row 상태 + Coverage gate, ScheduleDocument: partner eyebrow + group 배지 + filter via ?group= + ?internal=1 admin preview, Confirmed schedule internal note 인라인 편집 (in-place, no version bump).
+- **Phase**: 시뮬 직전 정합성 + 운영성. 3자 계약 evidentiary 강화 + 순서 무관 + 실시간 자동 새로고침, Overview 캐시베이시스 회계, Edit Selected Products audit trail (origin + soft delete), ScheduleEditor 대수술 (Free time / partner / block-time 범위 / group / internal note / pending row / coverage gate), agent → admin 메모. ScheduleEditor 2차 (draft save / edit button / group re-pick / cancel restore / delete confirm / multi-day product / ✓ indicator / duration / Shared color), ScheduleDocument 전면 재설계 (cover: flight+groups, day sections: group separation, variantTag chip).
+- **마지막 작업**: 2026-05-06 (2차) — ScheduleEditor: draft auto-save, 커밋된 row Edit 버튼 + 스냅샷 restore, 그룹 재선택 sentinel `__choose__`, 필드 잠금 (!isPending), 삭제 confirm 분기, multi-day 상품 중복 허용 + ✓ indicator, 소요시간 picker 표시, Shared 흰 배경+검정 테두리, variantTag 필드 분리. ScheduleDocument: FlightData/GroupData props, GROUP_PALETTE inline, cover(그룹+항공+여행정보), day 그룹 분리, variantTag chip. schedule/[slug]: outbound_flight/inbound_flight/document_group_members 쿼리 추가, groups 빌드 후 전달.
 - **마지막 업데이트**: 2026-05-06 (개발 마감 5/8, 시뮬레이션 5/11~15, 런칭 5/18)
 - **SaaS 브랜드명**: **Tiktak** (UI 전역, 법인명 Interview Co., Ltd)
 
-> 2026-05-06 상세: `notes/26.05.06.md` (3자 계약 evidentiary + 순서 무관 + Realtime / Cases 표 통일 / 캐시베이시스 회계 / Documents audit trail / ScheduleEditor 대수술 / agent_notes / Time24Input / 카테고리 sort_order)
+> 2026-05-06 상세 (2차): `notes/26.05.06.md` §11–13 (ScheduleEditor 2차 개선 + ScheduleDocument 전면 재설계). **미완료**: 스케줄 시간 정렬 버그, internal notes 스타일 subtle로.
+> 2026-05-06 상세 (1차): `notes/26.05.06.md` §1–10 (3자 계약 evidentiary + 순서 무관 + Realtime / Cases 표 통일 / 캐시베이시스 회계 / Documents audit trail / ScheduleEditor 대수술 / agent_notes / Time24Input / 카테고리 sort_order)
 > 2026-05-05 상세: `notes/26.05.05.md` (호텔 × nights 가격 + variant 모달 가격 desc + 스케줄 템플릿 Option A 결정 + 호텔 객실 정원/저가 객실 cutoff todo)
 > 2026-05-05 짧은 메모: 스케줄 엑셀 업로드 → 자동 링크 설계 논의(JSONB items + 고정 템플릿안) — 작업 자체는 deferred. 카드/리스트 UX 잔손질 + 감사로그 sweep + Surveys 페이지 분리 PR 클로즈 (커밋 ba28e7b).
 > 2026-05-04 상세: `notes/26.05.04.md` (Variants 모델 / Excel upload / Selected Products 공용화 / Cases 흐름 정리 / Agent home 개편 / Contract evidentiary 강화 / 데이터 v12~v18 / variants 풀 편집 UX / 감사 로그 sweep / Surveys 분리)
@@ -29,6 +30,10 @@
 ## 다음 할 일
 
 ### 5/8 마감 전 (🔥 시급)
+
+#### ScheduleDocument 버그 (개발)
+- [ ] **스케줄 시간 정렬 버그** — 렌더된 스케줄에서 시간 순서가 뒤죽박죽 (사용자 스크린샷 + PDF 확인). `DayItems` 컴포넌트 안에서 items가 이미 정렬된 상태로 오는지, block 내 time 기준 정렬이 실제로 적용되는지 확인. `compareScheduleItems` 함수는 맞음 — 렌더 경로에서 정렬 누락 의심.
+- [ ] **Internal notes 스타일** — `showInternalNotes=true` 모드 amber 박스가 VIP 문서에서 너무 시각적으로 강함. 방향: amber 배경 제거, 회색 italic 소형 텍스트 또는 collapsed 토글로 교체.
 
 #### 컨텐츠 (사용자 본인)
 - [ ] **호텔 데이터 정리** — VIP 클라이언트 대상이라 ₩1,000,000/박 미만 객실은 카탈로그에서 제외 (예: SOFITEL `Luxury Lake Room $243.57`, `Prestige Suite $473.61`, `1-Bedroom Premier $338.29` 같은 라인). v19 마스터 빌드 시 cutoff 적용 + deleteMissing으로 정리

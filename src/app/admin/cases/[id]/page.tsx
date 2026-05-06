@@ -53,7 +53,7 @@ type QuoteItem = {
   variant_label_snapshot: string | null
   origin?: 'original' | 'admin_added'
   removed_at?: string | null
-  products: { id: string; name: string; description: string | null; partner_name: string | null; duration_value?: number | null; duration_unit?: string | null; has_female_doctor?: boolean | null; has_prayer_room?: boolean | null; dietary_type?: string | null; location_address?: string | null } | null
+  products: { id: string; name: string; description: string | null; partner_name: string | null; duration_value?: number | null; duration_unit?: string | null; has_female_doctor?: boolean | null; has_prayer_room?: boolean | null; dietary_type?: string | null; location_address?: string | null; product_categories?: { name: string } | null } | null
 }
 
 type PartnerPayment = {
@@ -135,6 +135,7 @@ type Case = {
   inbound_flight: FlightInfo
   cancellation_reason: string | null
   agent_notes: string | null
+  schedule_draft_items: import('@/types/schedule').ScheduleItem[] | null
   agents: Agent | Agent[] | null
   case_members: CaseMember[]
   documents: Quote[]
@@ -252,7 +253,7 @@ export default function AdminCaseDetailPage() {
       .select(`
         id, case_number, status, agent_id, travel_start_date, travel_end_date,
         payment_date, payment_confirmed_at, created_at,
-        concept, outbound_flight, inbound_flight, cancellation_reason, agent_notes,
+        concept, outbound_flight, inbound_flight, cancellation_reason, agent_notes, schedule_draft_items,
         agents!cases_agent_id_fkey(id, agent_number, name),
         case_members(
           id, is_lead,
@@ -260,7 +261,7 @@ export default function AdminCaseDetailPage() {
         ),
         documents(
           id, type, document_number, slug, total_price, payment_due_date, payment_received_at, agent_margin_rate, company_margin_rate, finalized_at, from_party, to_party, created_at,
-          document_groups(id, name, order, member_count, document_items(id, base_price, final_price, variant_id, variant_label_snapshot, origin, removed_at, products(id, name, description, partner_name, duration_value, duration_unit, has_female_doctor, has_prayer_room, dietary_type, location_address)), document_group_members(id, case_member_id))
+          document_groups(id, name, order, member_count, document_items(id, base_price, final_price, variant_id, variant_label_snapshot, origin, removed_at, products(id, name, description, partner_name, duration_value, duration_unit, has_female_doctor, has_prayer_room, dietary_type, location_address, product_categories(name))), document_group_members(id, case_member_id))
         ),
         schedules(id, slug, pdf_url, items, status, version, file_name, revision_note, admin_note, confirmed_at, created_at, first_opened_at)
       `)
@@ -492,7 +493,7 @@ export default function AdminCaseDetailPage() {
     || caseData.status === 'canceled'
   const canUploadSchedule = !scheduleLocked
     && (caseData.status === 'awaiting_schedule' || caseData.status === 'reviewing_schedule')
-    && (latestSchedule === null || latestSchedule.status === 'revision_requested')
+    && (latestSchedule === null || latestSchedule.status === 'pending' || latestSchedule.status === 'revision_requested')
     && scheduleReady
   const sortedGroups = latestQuote?.document_groups ? [...latestQuote.document_groups].sort((a, b) => a.order - b.order) : []
   const baseUrl = typeof window !== 'undefined' ? window.location.origin : ''
@@ -1901,19 +1902,32 @@ export default function AdminCaseDetailPage() {
 
           {canUploadSchedule && (() => {
             // Build product picker list from the case's quotation line items.
-            // Each unique variant becomes one option; agent can link a schedule
-            // row to one of these (auto-fills title + location from snapshot).
-            const seen = new Set<string>()
-            const caseProducts: { variantId: string; productName: string; variantLabel: string | null; partnerName: string | null }[] = []
-            for (const grp of latestQuote?.document_groups ?? []) {
+            // Key is (groupId, variantId) — same variant in two groups = two
+            // separate entries, so the coverage gate can track per-group.
+            // Subpackage items are flagged so coverage is treated as shared.
+            const seen = new Set<string>() // `${groupId}:${variantId}`
+            const caseProducts: {
+              variantId: string; productName: string; variantLabel: string | null
+              partnerName: string | null; groupId: string; groupName: string; isSubpackage: boolean
+              durationValue: number | null; durationUnit: string | null
+            }[] = []
+            for (const grp of sortedGroups) {
               for (const it of (grp.document_items ?? []).filter(x => !x.removed_at)) {
-                if (!it.variant_id || seen.has(it.variant_id)) continue
-                seen.add(it.variant_id)
+                if (!it.variant_id) continue
+                const key = `${grp.id}:${it.variant_id}`
+                if (seen.has(key)) continue
+                seen.add(key)
+                const catName = it.products?.product_categories?.name ?? null
                 caseProducts.push({
                   variantId: it.variant_id,
                   productName: it.products?.name ?? 'Service',
                   variantLabel: it.variant_label_snapshot ?? null,
                   partnerName: it.products?.partner_name ?? null,
+                  groupId: grp.id,
+                  groupName: grp.name,
+                  isSubpackage: catName === 'Subpackage',
+                  durationValue: it.products?.duration_value ?? null,
+                  durationUnit: it.products?.duration_unit ?? null,
                 })
               }
             }
@@ -1922,9 +1936,10 @@ export default function AdminCaseDetailPage() {
             const defaultDays = Math.max(nights + 1, 1)
             // Carry forward latest version's items if it was revision-requested
             // (so admin doesn't start from a blank slate after agent feedback).
-            const carryItems: ScheduleItem[] = (latestSchedule?.status === 'revision_requested' && latestSchedule?.items)
+            // Seed priority: saved schedule (pending/revision) > draft > empty
+            const carryItems: ScheduleItem[] = (latestSchedule?.items && (latestSchedule.status === 'pending' || latestSchedule.status === 'revision_requested'))
               ? latestSchedule.items
-              : []
+              : (caseData.schedule_draft_items ?? [])
             const nextVersion = (latestSchedule?.version ?? 0) + 1
             return (
               <section id="schedule-upload" className={`scroll-mt-20 border rounded-2xl p-4 space-y-3 ${caseData.status === 'awaiting_schedule' ? 'border-blue-200 bg-blue-50' : 'border-violet-200 bg-violet-50'}`}>
@@ -1966,6 +1981,9 @@ export default function AdminCaseDetailPage() {
                     .sort((a, b) => a.order - b.order)
                     .map(g => ({ id: g.id, name: g.name }))}
                   onSaved={() => fetchCase()}
+                  onSaveDraft={async (items) => {
+                    await supabase.from('cases').update({ schedule_draft_items: items }).eq('id', caseData.id)
+                  }}
                   slug={latestSchedule?.slug ?? null}
                   nextVersion={nextVersion}
                 />

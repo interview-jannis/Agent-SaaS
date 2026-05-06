@@ -32,6 +32,11 @@ type CaseProduct = {
   productName: string
   variantLabel: string | null
   partnerName: string | null
+  groupId: string
+  groupName: string
+  isSubpackage: boolean
+  durationValue: number | null
+  durationUnit: string | null
 }
 
 type Props = {
@@ -51,6 +56,8 @@ type Props = {
   caseGroups?: Array<{ id: string; name: string }>
   // Triggered after a successful save so parent can refetch.
   onSaved: () => void
+  // Persists current items as a draft without sending to agent.
+  onSaveDraft: (items: ScheduleItem[]) => Promise<void>
   // Slug for "Preview" link.
   slug: string | null
   // Save creates a new version on top of this.
@@ -62,16 +69,53 @@ export default function ScheduleEditor({
   travelStartDate, travelEndDate,
   initialItems, defaultDayCount, caseProducts,
   caseGroups = [],
-  onSaved, slug, nextVersion,
+  onSaved, onSaveDraft, slug, nextVersion,
 }: Props) {
   const [items, setItems] = useState<ScheduleItem[]>(initialItems)
   const [revisionNote, setRevisionNote] = useState('')
   const [saving, setSaving] = useState(false)
+  const [savingDraft, setSavingDraft] = useState(false)
+  const [draftSaved, setDraftSaved] = useState(false)
   const [error, setError] = useState('')
   // Items added in this session that haven't been "Saved" individually yet.
   // Pending rows show with dashed border + inline Cancel/Save and don't count
   // for the global coverage gate (so admin can stage incomplete drafts).
   const [pendingItemIds, setPendingItemIds] = useState<Set<string>>(new Set())
+  // Items whose group hasn't been explicitly chosen yet (shows "— Choose group —" prompt).
+  // Cleared the moment admin changes the group select.
+  const [unsetGroupItemIds, setUnsetGroupItemIds] = useState<Set<string>>(new Set())
+  // Snapshot of items at the moment Edit was clicked, keyed by item id.
+  // Used to restore original state if admin cancels an edit (vs new items which are removed entirely).
+  const [editSnapshots, setEditSnapshots] = useState<Map<string, ScheduleItem>>(new Map())
+
+  // variantIds of non-Subpackage items shared across 2+ groups.
+  // Used by ItemRow picker: Shared rows show these + Subpackage.
+  const sharedVariantIds = useMemo(() => {
+    const byVariant = new Map<string, Set<string>>() // variantId → Set<groupId>
+    for (const cp of caseProducts) {
+      if (cp.isSubpackage) continue
+      if (!byVariant.has(cp.variantId)) byVariant.set(cp.variantId, new Set())
+      byVariant.get(cp.variantId)!.add(cp.groupId)
+    }
+    const shared = new Set<string>()
+    for (const [vid, groups] of byVariant) {
+      if (groups.size > 1) shared.add(vid)
+    }
+    return shared
+  }, [caseProducts])
+
+  // variantId → Set<groupId|null> of committed rows that already link this variant.
+  // null in the set means a Shared row (covers all groups).
+  // Used by ItemRow to hide already-scheduled products from the picker.
+  const committedVariantContexts = useMemo(() => {
+    const result = new Map<string, Set<string | null>>()
+    for (const it of items) {
+      if (pendingItemIds.has(it.id) || !it.variantId) continue
+      if (!result.has(it.variantId)) result.set(it.variantId, new Set())
+      result.get(it.variantId)!.add(it.groupId ?? null)
+    }
+    return result
+  }, [items, pendingItemIds])
 
   // Days present in the editor — union of (1..defaultDayCount) and any item's day.
   const days = useMemo(() => {
@@ -100,17 +144,50 @@ export default function ScheduleEditor({
       sortOrder: items.filter(i => i.day === day).length,
     }
     setItems(prev => [...prev, newItem])
-    // Mark as pending — admin must Save it (per-row) before it counts toward
-    // the coverage gate or feels "committed".
     setPendingItemIds(prev => { const n = new Set(prev); n.add(id); return n })
+    if (caseGroups.length > 1) setUnsetGroupItemIds(prev => { const n = new Set(prev); n.add(id); return n })
+  }
+
+  async function saveDraft(currentItems: ScheduleItem[]) {
+    setSavingDraft(true)
+    setDraftSaved(false)
+    try {
+      await onSaveDraft(currentItems)
+      setDraftSaved(true)
+      setTimeout(() => setDraftSaved(false), 2500)
+    } finally {
+      setSavingDraft(false)
+    }
   }
 
   function commitPendingItem(id: string) {
     setPendingItemIds(prev => { const n = new Set(prev); n.delete(id); return n })
+    setEditSnapshots(prev => { const n = new Map(prev); n.delete(id); return n })
+    void saveDraft(items)
+  }
+  function editItem(id: string) {
+    const snapshot = items.find(i => i.id === id)
+    if (snapshot) setEditSnapshots(prev => { const n = new Map(prev); n.set(id, { ...snapshot }); return n })
+    setPendingItemIds(prev => { const n = new Set(prev); n.add(id); return n })
   }
   function cancelPendingItem(id: string) {
-    setItems(prev => prev.filter(i => i.id !== id))
+    const snapshot = editSnapshots.get(id)
+    if (snapshot) {
+      // Editing an existing committed item — restore original and exit edit mode
+      setItems(prev => prev.map(i => i.id === id ? snapshot : i))
+      setEditSnapshots(prev => { const n = new Map(prev); n.delete(id); return n })
+    } else {
+      // Brand-new item that was never committed — remove entirely
+      setItems(prev => prev.filter(i => i.id !== id))
+    }
     setPendingItemIds(prev => { const n = new Set(prev); n.delete(id); return n })
+    setUnsetGroupItemIds(prev => { const n = new Set(prev); n.delete(id); return n })
+  }
+  function markGroupChosen(id: string) {
+    setUnsetGroupItemIds(prev => { const n = new Set(prev); n.delete(id); return n })
+  }
+  function resetGroupChoice(id: string) {
+    setUnsetGroupItemIds(prev => { const n = new Set(prev); n.add(id); return n })
   }
 
   // Free-time presets — common enough that admins shouldn't have to type
@@ -187,14 +264,15 @@ export default function ScheduleEditor({
     if (!variantId) {
       const current = items.find(i => i.id === itemId)
       const prev = current?.variantId ? caseProducts.find(p => p.variantId === current.variantId) : null
-      const prevAutoTitle = prev
-        ? [prev.productName, prev.variantLabel].filter(Boolean).join(' · ')
-        : null
-      const titleWasAuto = prevAutoTitle && current?.title === prevAutoTitle
+      // Handle both legacy format (title included variant) and new format (title = productName only)
+      const autoTitleNew = prev?.productName ?? null
+      const autoTitleOld = prev ? [prev.productName, prev.variantLabel].filter(Boolean).join(' · ') : null
+      const titleWasAuto = (autoTitleNew && current?.title === autoTitleNew) || (autoTitleOld && current?.title === autoTitleOld)
       const partnerWasAuto = prev?.partnerName && current?.partner === prev.partnerName
       const locationWasAuto = prev?.partnerName && current?.location === prev.partnerName
       updateItem(itemId, {
         variantId: null,
+        variantTag: null,
         ...(titleWasAuto ? { title: '' } : {}),
         ...(partnerWasAuto ? { partner: null } : {}),
         ...(locationWasAuto ? { location: null } : {}),
@@ -206,12 +284,11 @@ export default function ScheduleEditor({
       updateItem(itemId, { variantId })
       return
     }
-    const titleParts: string[] = [cp.productName]
-    if (cp.variantLabel) titleParts.push(cp.variantLabel)
     updateItem(itemId, {
       variantId,
+      variantTag: cp.variantLabel ?? null,
       partner: cp.partnerName ?? null,
-      title: titleParts.join(' · '),
+      title: cp.productName,
       location: cp.partnerName ?? null,
     })
   }
@@ -271,6 +348,9 @@ export default function ScheduleEditor({
         { version: nextVersion, item_count: normalized.length, source: 'editor', note: revisionNote.trim() || null },
       )
 
+      // Clear draft now that it's been officially published
+      await onSaveDraft([])
+
       onSaved()
     } catch (e: unknown) {
       setError((e as { message?: string })?.message ?? 'Failed to save schedule.')
@@ -315,13 +395,20 @@ export default function ScheduleEditor({
                     item={it}
                     caseProducts={caseProducts}
                     caseGroups={caseGroups}
+                    sharedVariantIds={sharedVariantIds}
+                    committedVariantContexts={committedVariantContexts}
                     isPending={pendingItemIds.has(it.id)}
+                    isEditSession={editSnapshots.has(it.id)}
+                    isGroupUnset={unsetGroupItemIds.has(it.id)}
+                    onGroupChosen={() => markGroupChosen(it.id)}
+                    onResetGroup={() => resetGroupChoice(it.id)}
                     canMoveUp={idx > 0 && dayItems[idx - 1].block === it.block}
                     canMoveDown={idx < dayItems.length - 1 && dayItems[idx + 1].block === it.block}
                     onUpdate={(patch) => updateItem(it.id, patch)}
                     onApplyVariant={(vid) => applyVariantPick(it.id, vid)}
                     onRemove={() => removeItem(it.id)}
                     onMove={(dir) => moveItem(it.id, dir)}
+                    onEdit={() => editItem(it.id)}
                     onCommit={() => commitPendingItem(it.id)}
                     onCancelDraft={() => cancelPendingItem(it.id)}
                   />
@@ -351,31 +438,55 @@ export default function ScheduleEditor({
         <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</p>
       )}
 
-      {/* Coverage gate: every variant in the case's selected products must
-          appear in at least one *committed* schedule row (pending drafts
-          don't count). Free-form rows (no variant) don't help cover. */}
+      {/* Coverage gate:
+          - Non-Subpackage: each (groupId, variantId) pair must be covered by
+            a committed row where variantId matches AND (row.groupId === group OR
+            row.groupId === null/Shared). A Shared row covers ALL groups.
+          - Subpackage: treated as shared — any one row with that variantId
+            satisfies it, regardless of which group the row belongs to.
+          Pending drafts don't count. */}
       {(() => {
-        const requiredVariants = caseProducts
-        const coveredVariantIds = new Set(
-          items
-            .filter(i => !pendingItemIds.has(i.id) && i.variantId)
-            .map(i => i.variantId as string),
-        )
-        const missing = requiredVariants.filter(p => !coveredVariantIds.has(p.variantId))
+        // Build required coverage keys
+        const requiredKeys = new Map<string, CaseProduct>() // key → representative CaseProduct for display
+        for (const cp of caseProducts) {
+          const key = cp.isSubpackage ? `sub:${cp.variantId}` : `${cp.groupId}:${cp.variantId}`
+          if (!requiredKeys.has(key)) requiredKeys.set(key, cp)
+        }
+
+        // Build covered keys from committed items
+        const committedItems = items.filter(i => !pendingItemIds.has(i.id) && i.variantId)
+        const coveredKeys = new Set<string>()
+        for (const it of committedItems) {
+          const v = it.variantId!
+          coveredKeys.add(`sub:${v}`) // covers any Subpackage with this variantId
+          if (it.groupId === null) {
+            // Shared row covers all groups for this variant
+            for (const cp of caseProducts) {
+              if (cp.variantId === v) coveredKeys.add(`${cp.groupId}:${v}`)
+            }
+          } else {
+            coveredKeys.add(`${it.groupId}:${v}`)
+          }
+        }
+
+        const missing = [...requiredKeys.entries()]
+          .filter(([key]) => !coveredKeys.has(key))
+          .map(([, cp]) => cp)
         const hasPending = pendingItemIds.size > 0
         const allCovered = missing.length === 0
         const canSave = !saving && allCovered && !hasPending && items.length > 0
 
         return (
           <div className="space-y-2">
-            {!allCovered && requiredVariants.length > 0 && (
+            {!allCovered && requiredKeys.size > 0 && (
               <div className="text-xs bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 space-y-1">
                 <p className="font-semibold text-amber-700">
                   {missing.length} product{missing.length !== 1 ? 's' : ''} not yet in schedule
                 </p>
                 <ul className="text-amber-900 space-y-0.5 pl-3 list-disc">
                   {missing.map(p => (
-                    <li key={p.variantId}>
+                    <li key={p.isSubpackage ? `sub:${p.variantId}` : `${p.groupId}:${p.variantId}`}>
+                      {!p.isSubpackage && <span className="text-amber-600">{p.groupName} — </span>}
                       {p.partnerName && <span className="text-amber-700">{p.partnerName} · </span>}
                       {p.productName}{p.variantLabel ? ` · ${p.variantLabel}` : ''}
                     </li>
@@ -389,6 +500,13 @@ export default function ScheduleEditor({
               </p>
             )}
             <div className="flex items-center justify-end gap-2">
+              <button
+                onClick={() => void saveDraft(items)}
+                disabled={savingDraft || saving || items.length === 0}
+                className="text-sm font-medium text-gray-600 hover:text-gray-900 border border-gray-200 hover:bg-gray-50 px-4 py-2 rounded-xl disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {savingDraft ? 'Saving…' : draftSaved ? 'Draft saved' : 'Save Draft'}
+              </button>
               <button
                 onClick={handleSave}
                 disabled={!canSave}
@@ -455,37 +573,79 @@ function FreeTimeMenu({
 // Color palette for group accents — repeats if there are more groups.
 // Used as a left border stripe + select chip tint so admin can see at a
 // glance which group each row belongs to.
+// Matches agent home GROUP_PALETTE order (blue / emerald / orange / purple).
 const GROUP_TONES: Array<{ stripe: string; chip: string; chipText: string }> = [
-  { stripe: 'border-l-pink-400',    chip: 'bg-pink-50 border-pink-200',    chipText: 'text-pink-700' },
-  { stripe: 'border-l-sky-400',     chip: 'bg-sky-50 border-sky-200',      chipText: 'text-sky-700' },
-  { stripe: 'border-l-violet-400',  chip: 'bg-violet-50 border-violet-200', chipText: 'text-violet-700' },
-  { stripe: 'border-l-amber-400',   chip: 'bg-amber-50 border-amber-200',   chipText: 'text-amber-700' },
+  { stripe: 'border-l-blue-400',    chip: 'bg-blue-50 border-blue-200',    chipText: 'text-blue-700' },
+  { stripe: 'border-l-emerald-400', chip: 'bg-emerald-50 border-emerald-200', chipText: 'text-emerald-700' },
+  { stripe: 'border-l-orange-400',  chip: 'bg-orange-50 border-orange-200',  chipText: 'text-orange-700' },
+  { stripe: 'border-l-purple-400',  chip: 'bg-purple-50 border-purple-200',  chipText: 'text-purple-700' },
 ]
-const SHARED_TONE = { stripe: 'border-l-gray-300', chip: 'bg-gray-100 border-gray-200', chipText: 'text-gray-600' }
+const SHARED_TONE = { stripe: 'border-l-gray-900', chip: 'bg-white border-gray-800', chipText: 'text-gray-900' }
 
 function ItemRow({
-  item, caseProducts, caseGroups, isPending,
+  item, caseProducts, caseGroups, sharedVariantIds, committedVariantContexts,
+  isPending, isEditSession, isGroupUnset,
   canMoveUp, canMoveDown,
   onUpdate, onApplyVariant, onRemove, onMove,
-  onCommit, onCancelDraft,
+  onEdit, onCommit, onCancelDraft, onGroupChosen, onResetGroup,
 }: {
   item: ScheduleItem
   caseProducts: CaseProduct[]
   caseGroups: Array<{ id: string; name: string }>
+  sharedVariantIds: Set<string>
+  committedVariantContexts: Map<string, Set<string | null>>
   isPending: boolean
+  isEditSession: boolean
+  isGroupUnset: boolean
   canMoveUp: boolean
   canMoveDown: boolean
   onUpdate: (patch: Partial<ScheduleItem>) => void
   onApplyVariant: (variantId: string | null) => void
   onRemove: () => void
   onMove: (dir: -1 | 1) => void
+  onEdit: () => void
   onCommit: () => void
   onCancelDraft: () => void
+  onGroupChosen: () => void
+  onResetGroup: () => void
 }) {
   // Resolve group tone for left stripe + chip background.
   const groupIdx = item.groupId ? caseGroups.findIndex(g => g.id === item.groupId) : -1
   const tone = groupIdx >= 0 ? GROUP_TONES[groupIdx % GROUP_TONES.length] : SHARED_TONE
   const showGroupSelect = caseGroups.length > 1
+
+  // Picker scope: filter caseProducts based on the row's group context, then
+  // exclude variants already committed in an overlapping context (except the
+  // current row's own variant — always shown so admin can see/change it).
+  //   Shared row  → Subpackage + variants that appear in 2+ groups
+  //   Group G row → that group's non-Subpackage + Subpackage (for override)
+  const pickerProducts = useMemo(() => {
+    // No group decided yet — hide all products until admin picks a group.
+    if (isGroupUnset) return []
+    const filtered = caseProducts.filter(cp => {
+      // Scope filter: Shared row shows Subpackage + cross-group variants;
+      // Group row shows that group's products + Subpackage.
+      const inScope = item.groupId === null
+        ? cp.isSubpackage || sharedVariantIds.has(cp.variantId)
+        : cp.groupId === item.groupId || cp.isSubpackage
+      return inScope
+    })
+    const seen = new Set<string>()
+    return filtered.filter(cp => {
+      if (seen.has(cp.variantId)) return false
+      seen.add(cp.variantId)
+      return true
+    })
+  }, [isGroupUnset, caseProducts, item.groupId, sharedVariantIds])
+
+  // For Shared rows with a linked product: show which groups this row covers.
+  const coversGroups = useMemo(() => {
+    if (item.groupId !== null || !item.variantId) return []
+    const names = caseProducts
+      .filter(cp => cp.variantId === item.variantId && !cp.isSubpackage)
+      .map(cp => cp.groupName)
+    return [...new Set(names)]
+  }, [item.groupId, item.variantId, caseProducts])
 
   // Pending rows can't commit until they have at least a title.
   const canCommit = item.title.trim().length > 0
@@ -497,7 +657,8 @@ function ItemRow({
         <select
           value={item.block}
           onChange={(e) => onUpdate({ block: e.target.value as ScheduleItemBlock })}
-          className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-900 focus:outline-none focus:border-[#0f4c35]"
+          disabled={!isPending}
+          className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
           title="Start block"
         >
           {SCHEDULE_BLOCKS.map(b => (
@@ -511,7 +672,8 @@ function ItemRow({
             const v = e.target.value as ScheduleItemBlock | ''
             onUpdate({ endBlock: v ? (v as ScheduleItemBlock) : null })
           }}
-          className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-900 focus:outline-none focus:border-[#0f4c35]"
+          disabled={!isPending}
+          className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
           title="End block (optional — only set if the activity spans into a later block)"
         >
           <option value="">Same</option>
@@ -523,21 +685,35 @@ function ItemRow({
         <Time24Input
           value={item.time ?? null}
           onChange={(v) => onUpdate({ time: v })}
+          disabled={!isPending}
         />
         <span className="text-xs text-gray-400">–</span>
         <Time24Input
           value={item.endTime ?? null}
           onChange={(v) => onUpdate({ endTime: v })}
+          disabled={!isPending}
         />
         {showGroupSelect && (
           <span className="inline-flex items-center gap-1 shrink-0">
             <span className="text-[9px] font-semibold text-gray-400 uppercase tracking-wider">For</span>
             <select
-              value={item.groupId ?? ''}
-              onChange={(e) => onUpdate({ groupId: e.target.value || null })}
-              className={`text-xs font-semibold border rounded-lg px-2 py-1 focus:outline-none focus:border-[#0f4c35] ${tone.chip} ${tone.chipText}`}
+              value={isGroupUnset ? '__choose__' : (item.groupId ?? '')}
+              onChange={(e) => {
+                const v = e.target.value
+                if (v === '__choose__') {
+                  onApplyVariant(null)
+                  onUpdate({ groupId: null })
+                  onResetGroup()
+                  return
+                }
+                onUpdate({ groupId: v || null })
+                onGroupChosen()
+              }}
+              disabled={!isPending}
+              className={`text-xs font-semibold border rounded-lg px-2 py-1 focus:outline-none focus:border-[#0f4c35] disabled:cursor-default disabled:opacity-75 ${tone.chip} ${tone.chipText}`}
               title="Which group sees this item. Shared = visible to everyone (e.g. hotel check-in, meals)."
             >
+              {isPending && <option value="__choose__">— Choose group —</option>}
               <option value="">Shared</option>
               {caseGroups.map(g => (
                 <option key={g.id} value={g.id}>{g.name}</option>
@@ -548,18 +724,27 @@ function ItemRow({
         <select
           value={item.variantId ?? ''}
           onChange={(e) => onApplyVariant(e.target.value || null)}
-          className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-900 focus:outline-none focus:border-[#0f4c35] flex-1 min-w-[180px]"
+          disabled={!isPending}
+          className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-900 focus:outline-none focus:border-[#0f4c35] flex-1 min-w-[180px] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
         >
           <option value="">— Choose a product —</option>
-          {caseProducts.map(cp => (
-            <option key={cp.variantId} value={cp.variantId}>
-              {cp.partnerName ? `${cp.partnerName} · ` : ''}{cp.productName}{cp.variantLabel ? ` · ${cp.variantLabel}` : ''}
-            </option>
-          ))}
+          {pickerProducts.map(cp => {
+            const isCommitted = cp.variantId !== item.variantId && committedVariantContexts.has(cp.variantId)
+            const label = `${cp.partnerName ? `${cp.partnerName} · ` : ''}${cp.productName}${cp.variantLabel ? ` · ${cp.variantLabel}` : ''}`
+            const dur = cp.durationValue && cp.durationUnit ? ` (${cp.durationValue}${cp.durationUnit})` : ''
+            return (
+              <option key={cp.variantId} value={cp.variantId}>
+                {isCommitted ? `✓ ${label}${dur}` : `${label}${dur}`}
+              </option>
+            )
+          })}
         </select>
+        {coversGroups.length > 1 && (
+          <span className="text-[10px] font-medium text-gray-400 bg-gray-100 rounded px-1.5 py-0.5 shrink-0">
+            Covers {coversGroups.join(', ')}
+          </span>
+        )}
         <div className="flex items-center gap-1 ml-auto">
-          {/* Pending rows hide move/delete and show Cancel/Save instead — admin
-              has to commit (or cancel) before manipulating the row's order. */}
           {!isPending && (
             <>
               <button
@@ -579,7 +764,16 @@ function ItemRow({
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
               </button>
               <button
-                onClick={onRemove}
+                onClick={onEdit}
+                className="text-gray-300 hover:text-[#0f4c35] w-6 h-6 flex items-center justify-center"
+                title="Edit row"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536M9 11l6.071-6.071a2 2 0 112.828 2.829L11.828 13.83a2 2 0 01-.707.464l-3.535 1.06 1.06-3.535A2 2 0 019 11z" /></svg>
+              </button>
+              <button
+                onClick={() => {
+                  if (window.confirm('Remove this item from the schedule?')) onRemove()
+                }}
                 className="text-gray-300 hover:text-red-500 w-6 h-6 flex items-center justify-center"
                 title="Remove item"
               >
@@ -598,21 +792,30 @@ function ItemRow({
           {item.partner}
         </p>
       )}
-      <input
-        type="text"
-        value={item.title}
-        onChange={(e) => onUpdate({ title: e.target.value })}
-        placeholder="Title (e.g. VIP Premium · Female)"
-        className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 text-gray-900 focus:outline-none focus:border-[#0f4c35]"
-      />
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
+          value={item.title}
+          onChange={(e) => onUpdate({ title: e.target.value })}
+          disabled={!isPending}
+          placeholder="Title"
+          className="flex-1 text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-600 disabled:cursor-default"
+        />
+        {item.variantTag && (
+          <span className="shrink-0 text-[11px] font-medium text-gray-500 bg-gray-100 border border-gray-200 rounded-full px-2.5 py-1">
+            {item.variantTag}
+          </span>
+        )}
+      </div>
 
       {/* Notes — VIP-facing */}
       <input
         type="text"
         value={item.notes ?? ''}
         onChange={(e) => onUpdate({ notes: e.target.value || null })}
+        disabled={!isPending}
         placeholder="Notes — visible to client (optional)"
-        className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-900 focus:outline-none focus:border-[#0f4c35]"
+        className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
       />
 
       {/* Internal-only fields */}
@@ -621,15 +824,17 @@ function ItemRow({
           type="text"
           value={item.location ?? ''}
           onChange={(e) => onUpdate({ location: e.target.value || null })}
+          disabled={!isPending}
           placeholder="Location — internal (address, building, floor)"
-          className="text-xs border border-dashed border-gray-300 rounded-lg px-2 py-1.5 text-gray-700 bg-gray-50 focus:outline-none focus:border-[#0f4c35] placeholder:text-gray-400"
+          className="text-xs border border-dashed border-gray-300 rounded-lg px-2 py-1.5 text-gray-700 bg-gray-50 focus:outline-none focus:border-[#0f4c35] placeholder:text-gray-400 disabled:cursor-default"
         />
         <input
           type="text"
           value={item.internalNotes ?? ''}
           onChange={(e) => onUpdate({ internalNotes: e.target.value || null })}
+          disabled={!isPending}
           placeholder="Internal note (driver, contact, prep…)"
-          className="text-xs border border-dashed border-gray-300 rounded-lg px-2 py-1.5 text-gray-700 bg-gray-50 focus:outline-none focus:border-[#0f4c35] placeholder:text-gray-400"
+          className="text-xs border border-dashed border-gray-300 rounded-lg px-2 py-1.5 text-gray-700 bg-gray-50 focus:outline-none focus:border-[#0f4c35] placeholder:text-gray-400 disabled:cursor-default"
         />
       </div>
 
@@ -638,7 +843,15 @@ function ItemRow({
           <span className="text-[10px] text-amber-700 mr-auto">Draft — not counted toward schedule coverage until saved</span>
           <button
             type="button"
-            onClick={onCancelDraft}
+            onClick={() => {
+              if (isEditSession) {
+                // Restores original — no data loss, no confirmation needed
+                onCancelDraft()
+                return
+              }
+              const hasData = item.title.trim() || item.variantId || item.notes || item.location || item.internalNotes
+              if (!hasData || window.confirm('Discard this item?')) onCancelDraft()
+            }}
             className="text-xs font-medium text-gray-600 hover:text-gray-900 px-3 py-1 rounded-lg border border-gray-200 hover:bg-white"
           >
             Cancel
