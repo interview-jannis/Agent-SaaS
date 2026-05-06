@@ -21,6 +21,7 @@ import AgentSurveySection from '@/components/AgentSurveySection'
 import type { DocumentRow } from '@/lib/documents'
 import SelectedProductsSection from '@/components/SelectedProductsSection'
 import { AgentCaseHero } from '@/components/CaseHeroAction'
+import { useCaseRealtime } from '@/hooks/useCaseRealtime'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -43,6 +44,7 @@ type CaseMember = {
 type QuoteItem = {
   id: string
   final_price: number
+  removed_at?: string | null
   products: { id: string; name: string; base_price: number; price_currency: string; duration_value: number | null; duration_unit: string | null }
 }
 
@@ -100,6 +102,7 @@ type CaseDetail = {
   outbound_flight: FlightInfo
   inbound_flight: FlightInfo
   cancellation_reason: string | null
+  agent_notes: string | null
   case_members: CaseMember[]
   documents: Quote[]
   schedules: Schedule[]
@@ -155,6 +158,11 @@ export default function CaseDetailPage() {
   const [caseData, setCaseData] = useState<CaseDetail | null>(null)
   const [exchangeRate, setExchangeRate] = useState(1350)
   const [loading, setLoading] = useState(true)
+
+  // Notes for Tiktak admin (edit anytime; saved on cases.agent_notes).
+  const [notesEditing, setNotesEditing] = useState(false)
+  const [notesDraft, setNotesDraft] = useState('')
+  const [savingNotes, setSavingNotes] = useState(false)
 
   // Travel dates edit
   const [editDates, setEditDates] = useState(false)
@@ -217,7 +225,7 @@ export default function CaseDetailPage() {
       .from('cases')
       .select(`
         id, case_number, status, agent_id, travel_start_date, travel_end_date, travel_completed_at, created_at,
-        concept, outbound_flight, inbound_flight, cancellation_reason,
+        concept, outbound_flight, inbound_flight, cancellation_reason, agent_notes,
         case_members(
           id, is_lead,
           clients(client_number, nationality, ${CLIENT_INFO_COLUMNS})
@@ -226,7 +234,7 @@ export default function CaseDetailPage() {
           id, type, document_number, slug, total_price, payment_due_date, payment_received_at, agent_margin_rate, company_margin_rate, finalized_at, from_party, to_party, created_at,
           document_groups(
             id, name, order, member_count,
-            document_items(id, final_price, variant_label_snapshot, products(id, name, description, partner_name, base_price, price_currency, duration_value, duration_unit, has_female_doctor, has_prayer_room, dietary_type, location_address)),
+            document_items(id, final_price, variant_label_snapshot, removed_at, products(id, name, description, partner_name, base_price, price_currency, duration_value, duration_unit, has_female_doctor, has_prayer_room, dietary_type, location_address)),
             document_group_members(id, case_member_id)
           )
         ),
@@ -262,6 +270,10 @@ export default function CaseDetailPage() {
 
     return fresh
   }, [id])
+
+  // Realtime: re-fetch when this case's row or its contracts/documents/schedules
+  // change anywhere (e.g., admin counter-signs, client signs from public link).
+  useCaseRealtime(id, fetchCase)
 
   useEffect(() => {
     async function load() {
@@ -1535,6 +1547,59 @@ export default function CaseDetailPage() {
             )}
           </section>
           {/* ─── /TRIP SETUP ─── */}
+
+          {/* ─── NOTES TO TIKTAK ADMIN ─── */}
+          {/* Free-form memo edited by agent, read by admin while building the
+              schedule. Saved on cases.agent_notes. */}
+          {!isCanceled && (
+            <section className="bg-white rounded-2xl border-2 border-red-300 p-5 space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-semibold text-red-600 uppercase tracking-wide">Notes for Tiktak</h3>
+                {!notesEditing ? (
+                  <button onClick={() => { setNotesDraft(caseData.agent_notes ?? ''); setNotesEditing(true) }}
+                    className="text-xs font-medium text-[#0f4c35] hover:underline">
+                    {caseData.agent_notes ? 'Edit' : '+ Add note'}
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => { setNotesEditing(false); setNotesDraft('') }}
+                      disabled={savingNotes}
+                      className="text-xs font-medium text-gray-500 hover:text-gray-800 px-2 py-1 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-40">
+                      Cancel
+                    </button>
+                    <button onClick={async () => {
+                      setSavingNotes(true)
+                      try {
+                        const next = notesDraft.trim() || null
+                        const { error } = await supabase.from('cases').update({ agent_notes: next }).eq('id', caseData.id)
+                        if (error) throw error
+                        await fetchCase()
+                        setNotesEditing(false)
+                      } catch { /* swallow — fetchCase will re-render */ }
+                      finally { setSavingNotes(false) }
+                    }}
+                      disabled={savingNotes}
+                      className="text-xs font-medium bg-[#0f4c35] text-white hover:bg-[#0a3828] px-3 py-1 rounded-lg disabled:opacity-40">
+                      {savingNotes ? 'Saving…' : 'Save'}
+                    </button>
+                  </div>
+                )}
+              </div>
+              {notesEditing ? (
+                <textarea
+                  value={notesDraft}
+                  onChange={e => setNotesDraft(e.target.value)}
+                  rows={3}
+                  placeholder="e.g. Day 3 free per client request. Prefers afternoon procedures. Needs prayer break around 1pm."
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35] resize-y"
+                />
+              ) : caseData.agent_notes ? (
+                <p className="text-sm text-gray-700 whitespace-pre-wrap">{caseData.agent_notes}</p>
+              ) : (
+                <p className="text-xs text-gray-400 italic">No notes yet. Add anything our concierge team should know when planning the schedule — special requests, blocked days, recovery preferences.</p>
+              )}
+            </section>
+          )}
 
           {/* Selected Products — shared component (matches admin) */}
           {(caseData.documents?.length ?? 0) > 0 && (

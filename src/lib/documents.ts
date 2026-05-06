@@ -92,6 +92,8 @@ export type DocumentItemRow = {
   final_price: number
   quantity: number
   sort_order: number
+  origin?: 'original' | 'admin_added'
+  removed_at?: string | null
 }
 
 export type DocumentGroupRow = {
@@ -175,11 +177,15 @@ export async function getDocumentBySlug(slug: string): Promise<DocumentRow | nul
 }
 
 // All items for a document with embedded group + product references resolved.
+// Returns only active items (filters out soft-deleted via removed_at).
+// For Edit Selected Products which needs to show removed rows too, use a
+// direct supabase query that doesn't filter.
 export async function getDocumentItems(documentId: string): Promise<DocumentItemRow[]> {
   const { data } = await supabase
     .from('document_items')
     .select('*')
     .eq('document_id', documentId)
+    .is('removed_at', null)
     .order('sort_order', { ascending: true })
   return (data ?? []) as DocumentItemRow[]
 }
@@ -316,6 +322,7 @@ export type AddItemInput = {
   finalPrice: number
   quantity?: number
   sortOrder?: number
+  origin?: 'original' | 'admin_added'
 }
 
 export async function addDocumentItem(input: AddItemInput): Promise<DocumentItemRow> {
@@ -333,6 +340,7 @@ export async function addDocumentItem(input: AddItemInput): Promise<DocumentItem
       final_price: input.finalPrice,
       quantity: input.quantity ?? 1,
       sort_order: input.sortOrder ?? 0,
+      origin: input.origin ?? 'original',
     })
     .select('*')
     .single()
@@ -348,8 +356,13 @@ export async function updateDocumentItemPrice(itemId: string, finalPrice: number
   if (error) throw error
 }
 
+// Soft-delete — sets removed_at instead of DELETE so the audit trail in
+// Edit Selected Products survives the operation. Consumers must filter
+// `removed_at IS NULL` for customer-facing rendering and totals.
 export async function removeDocumentItem(itemId: string): Promise<void> {
-  const { error } = await supabase.from('document_items').delete().eq('id', itemId)
+  const { error } = await supabase.from('document_items')
+    .update({ removed_at: new Date().toISOString() })
+    .eq('id', itemId)
   if (error) throw error
 }
 
@@ -656,11 +669,19 @@ export async function issueCommissionInvoice(
 
 // Recalculate document.total_price from current document_items sum (final_price).
 // Use after add/remove/update of items to keep header total in sync.
+// getDocumentItems already filters out soft-deleted rows.
 export async function recalcDocumentTotal(documentId: string): Promise<number> {
   const items = await getDocumentItems(documentId)
   const total = items.reduce((s, it) => s + (it.final_price || 0), 0)
   await supabase.from('documents').update({ total_price: total }).eq('id', documentId)
   return total
+}
+
+// Helper for components — given the document_items array on a fetched
+// document_group, returns only rows that haven't been soft-deleted. Edit
+// Selected Products is the one surface that should NOT call this.
+export function activeItems<T extends { removed_at?: string | null }>(items: T[] | null | undefined): T[] {
+  return (items ?? []).filter(it => !it.removed_at)
 }
 
 // Default party direction by type (per 4/30 SOP).

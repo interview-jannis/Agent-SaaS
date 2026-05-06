@@ -9,6 +9,7 @@ type QuoteItem = {
   final_price: number
   variant_label_snapshot: string | null
   products: { name: string; description: string | null } | null
+  removed_at?: string | null
 }
 
 type QuoteGroup = {
@@ -75,7 +76,7 @@ export default async function QuoteDocument({
       ),
       document_groups(
         id, name, order, member_count,
-        document_items(id, base_price, final_price, variant_label_snapshot, products(name, description))
+        document_items(id, base_price, final_price, variant_label_snapshot, removed_at, products(name, description))
       )
     `)
     .eq('slug', slug)
@@ -199,6 +200,7 @@ export default async function QuoteDocument({
     .select('id, base_price, final_price, product_name_snapshot, document_group_id, products(name, description)')
     .eq('document_id', (quote as { id: string }).id)
     .is('document_group_id', null)
+    .is('removed_at', null)
     .order('sort_order')
   const flatItems = (flatItemsData as unknown as { id: string; base_price: number; final_price: number; product_name_snapshot: string | null; products: { name: string; description: string | null } | null }[] | null) ?? []
 
@@ -215,7 +217,7 @@ export default async function QuoteDocument({
     const groupLabel = !customName || customName === autoName
       ? `${autoName} · ${memberCount} pax`
       : `${autoName}: ${customName} · ${memberCount} pax`
-    for (const item of group.document_items) {
+    for (const item of group.document_items.filter(it => !it.removed_at)) {
       const amtUSD = item.final_price / exchangeRate
       const unitUSD = amtUSD / memberCount
       const baseName = item.products?.name ?? 'Service'
@@ -321,12 +323,7 @@ export default async function QuoteDocument({
                   {(() => {
                     if (isAgentIssued) {
                       // Agent-issued (Deposit/Commission): show agent name as the issuer.
-                      return (
-                        <>
-                          : {agentName}
-                          <span className="block ml-3 font-normal text-gray-600 text-xs mt-0.5">Independent Agent</span>
-                        </>
-                      )
+                      return <>: {agentName}</>
                     }
                     const signer = isInvoice
                       ? (quote as { signer_snapshot?: { name?: string | null; title?: string | null } | null }).signer_snapshot ?? null
@@ -554,10 +551,7 @@ export default async function QuoteDocument({
                 <div className="flex items-end gap-4">
                   <div className="min-w-0">
                     {isAgentIssued ? (
-                      <>
-                        <p className="text-base font-semibold text-gray-900">{agentName}</p>
-                        <p className="text-sm text-gray-600 mb-1">Independent Agent</p>
-                      </>
+                      <p className="text-base font-semibold text-gray-900 mb-1">{agentName}</p>
                     ) : (
                       <>
                         {signer?.name && (

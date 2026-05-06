@@ -17,6 +17,7 @@ type Agent = {
 
 type QuoteItem = {
   base_price: number
+  removed_at?: string | null
   products: { partner_name: string | null } | null
 }
 
@@ -93,7 +94,7 @@ export default function AdminSettlementPage() {
   const fetchData = useCallback(async () => {
     const [casesRes, settlementsRes, rateRes, partnerRes] = await Promise.all([
       supabase.from('cases')
-        .select('id, case_number, travel_start_date, travel_end_date, travel_completed_at, agent_id, agents!cases_agent_id_fkey(id, agent_number, name, email, bank_info), case_members(is_lead, clients(name)), documents(type, total_price, agent_margin_rate, document_groups(document_items(base_price, products(partner_name))))')
+        .select('id, case_number, travel_start_date, travel_end_date, travel_completed_at, agent_id, agents!cases_agent_id_fkey(id, agent_number, name, email, bank_info), case_members(is_lead, clients(name)), documents(type, total_price, agent_margin_rate, document_groups(document_items(base_price, removed_at, products(partner_name))))')
         .in('status', ['awaiting_review', 'completed'])
         .order('travel_end_date', { ascending: false }),
       supabase.from('settlements')
@@ -154,7 +155,7 @@ export default function AdminSettlementPage() {
     const partners = new Set<string>()
     let suggested = 0
     for (const g of c.documents?.find(d => d.type === "quotation")?.document_groups ?? []) {
-      for (const item of g.document_items ?? []) {
+      for (const item of (g.document_items ?? []).filter((it: { removed_at?: string | null }) => !it.removed_at)) {
         const name = item.products?.partner_name?.trim()
         if (!name) continue
         partners.add(name)

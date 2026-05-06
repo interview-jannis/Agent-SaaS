@@ -26,6 +26,7 @@ type Item = {
   products?: ProductSnapshot
   product_name_snapshot?: string | null
   variant_label_snapshot?: string | null
+  removed_at?: string | null
 }
 
 type Group = {
@@ -66,8 +67,12 @@ function itemName(item: Item): string {
   return item.products?.name ?? item.product_name_snapshot ?? '—'
 }
 
+function activeItems(g: Group): Item[] {
+  return (g.document_items ?? []).filter(it => !it.removed_at)
+}
+
 function groupTotal(g: Group): number {
-  return g.document_items.reduce((s, item) => s + (item.final_price ?? 0), 0)
+  return activeItems(g).reduce((s, item) => s + (item.final_price ?? 0), 0)
 }
 
 export default function SelectedProductsSection({
@@ -109,7 +114,7 @@ export default function SelectedProductsSection({
                     <span className="text-[10px] text-gray-400 bg-gray-50 border border-gray-100 rounded-full px-2 py-0.5 shrink-0">
                       {qty} pax
                     </span>
-                    <span className="text-[10px] text-gray-400 shrink-0">· {group.document_items.length} item{group.document_items.length !== 1 ? 's' : ''}</span>
+                    <span className="text-[10px] text-gray-400 shrink-0">· {activeItems(group).length} item{activeItems(group).length !== 1 ? 's' : ''}</span>
                   </div>
                   <div className="text-right shrink-0">
                     <p className="text-sm font-semibold text-gray-900">{fmtUSD(totalUsd)}</p>
@@ -119,7 +124,7 @@ export default function SelectedProductsSection({
 
                 {expanded && (
                   <div className="divide-y divide-gray-100">
-                    {group.document_items.map(item => {
+                    {activeItems(group).map(item => {
                       const amtKRW = item.final_price ?? 0
                       const amtUSD = amtKRW / exchangeRate
                       const unitKRW = amtKRW / qty

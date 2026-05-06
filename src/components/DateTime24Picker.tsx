@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
+import Time24Input from './Time24Input'
 
 type Props = {
   value: string
@@ -10,68 +11,50 @@ type Props = {
   maxDate?: string
 }
 
-function parse(v: string): { date: string; hour: string; minute: string } {
-  if (!v) return { date: '', hour: '', minute: '' }
+function parse(v: string): { date: string; time: string } {
+  if (!v) return { date: '', time: '' }
   const [date = '', time = ''] = v.split('T')
-  const [hour = '', minute = ''] = time.split(':')
-  return { date, hour, minute }
+  const hhmm = time.length >= 5 ? time.slice(0, 5) : time
+  return { date, time: hhmm }
 }
 
-function compose(date: string, hour: string, minute: string): string {
-  if (!date || hour === '' || minute === '') return ''
-  return `${date}T${hour.padStart(2, '0')}:${minute.padStart(2, '0')}`
+function compose(date: string, time: string): string {
+  if (!date || !time) return ''
+  return `${date}T${time}`
 }
 
 export default function DateTime24Picker({ value, onChange, className = '', minDate, maxDate }: Props) {
   const parsed = parse(value)
   const [date, setDate] = useState(parsed.date)
-  const [hour, setHour] = useState(parsed.hour)
-  const [minute, setMinute] = useState(parsed.minute)
+  const [time, setTime] = useState(parsed.time)
 
-  // Re-sync when parent value changes externally (e.g. cancel, refetch)
   useEffect(() => {
     const p = parse(value)
     setDate(p.date)
-    setHour(p.hour)
-    setMinute(p.minute)
+    setTime(p.time)
   }, [value])
 
-  function update(nd: string, nh: string, nm: string) {
-    setDate(nd); setHour(nh); setMinute(nm)
-    onChange(compose(nd, nh, nm))
+  function update(nd: string, nt: string) {
+    setDate(nd); setTime(nt)
+    onChange(compose(nd, nt))
   }
-
-  const hours = useMemo(() => Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0')), [])
-  const minutes = useMemo(() => Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0')), [])
 
   const base = 'border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-[#0f4c35] bg-white text-gray-900'
 
   return (
-    <div className={`flex gap-1 ${className}`}>
+    <div className={`flex items-center gap-1 ${className}`}>
       <input
         type="date"
         value={date}
         min={minDate}
         max={maxDate}
-        onChange={e => update(e.target.value, hour, minute)}
+        onChange={e => update(e.target.value, time)}
         className={`${base} flex-1 min-w-0`}
       />
-      <select
-        value={hour}
-        onChange={e => update(date, e.target.value, minute)}
-        className={`${base} w-14`}
-      >
-        <option value="">HH</option>
-        {hours.map(h => <option key={h} value={h}>{h}</option>)}
-      </select>
-      <select
-        value={minute}
-        onChange={e => update(date, hour, e.target.value)}
-        className={`${base} w-14`}
-      >
-        <option value="">MM</option>
-        {minutes.map(m => <option key={m} value={m}>{m}</option>)}
-      </select>
+      <Time24Input
+        value={time || null}
+        onChange={(v) => update(date, v ?? '')}
+      />
     </div>
   )
 }

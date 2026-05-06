@@ -11,10 +11,10 @@ export default async function SchedulePage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>
-  searchParams: Promise<{ autoprint?: string; preview?: string; v?: string }>
+  searchParams: Promise<{ autoprint?: string; preview?: string; v?: string; internal?: string; group?: string }>
 }) {
   const { slug } = await params
-  const { autoprint, preview, v } = await searchParams
+  const { autoprint, preview, v, internal, group } = await searchParams
   const supabase = createServerClient()
 
   // Default: latest version (client-facing). Admin preview can pin a specific version via ?v=.
@@ -29,9 +29,11 @@ export default async function SchedulePage({
         documents(
           type,
           document_groups(
+            id, name,
             document_items(
               product_name_snapshot,
               variant_label_snapshot,
+              removed_at,
               products(name, product_categories(name), product_subcategories(name))
             )
           )
@@ -56,9 +58,12 @@ export default async function SchedulePage({
     documents: {
       type: string
       document_groups: {
+        id: string
+        name: string
         document_items: {
           product_name_snapshot: string | null
           variant_label_snapshot: string | null
+          removed_at: string | null
           products: {
             name: string | null
             product_categories: { name: string | null } | null
@@ -133,7 +138,7 @@ export default async function SchedulePage({
     const quotation = caseRef?.documents?.find(d => d.type === 'quotation')
     if (quotation) {
       for (const grp of quotation.document_groups ?? []) {
-        for (const it of grp.document_items ?? []) {
+        for (const it of (grp.document_items ?? []).filter(x => !x.removed_at)) {
           const cat = it.products?.product_categories?.name
           const sub = it.products?.product_subcategories?.name
           if (cat === 'Subpackage' && sub === 'Hotel') {
@@ -160,6 +165,16 @@ export default async function SchedulePage({
       }
     }
 
+    // Build group name lookup so admin's full view can label each item by group.
+    const groupNameById: Record<string, string> = {}
+    for (const doc of caseRef?.documents ?? []) {
+      if (doc.type !== 'quotation') continue
+      for (const g of doc.document_groups ?? []) {
+        if (g?.id && g?.name) groupNameById[g.id] = g.name
+      }
+    }
+    const filterGroupId = group ? group : null
+
     return (
       <>
         <ScheduleDocument
@@ -173,6 +188,9 @@ export default async function SchedulePage({
           agentPhone={agentPhone}
           version={schedule.version}
           createdAt={schedule.created_at}
+          showInternalNotes={internal === '1'}
+          filterGroupId={filterGroupId}
+          groupNameById={groupNameById}
         />
         <AutoPrint enabled={autoprint === '1'} />
       </>

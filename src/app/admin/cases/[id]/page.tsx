@@ -7,6 +7,7 @@ import { notifyAgent } from '@/lib/notifications'
 import { logAsCurrentUser } from '@/lib/audit'
 import { type CaseStatus, STATUS_LABELS, STATUS_STYLES } from '@/lib/caseStatus'
 import { AdminCaseHero } from '@/components/CaseHeroAction'
+import { useCaseRealtime } from '@/hooks/useCaseRealtime'
 import CaseDocumentsSection from '@/components/CaseDocumentsSection'
 import AdminCaseContractSection from '@/components/AdminCaseContractSection'
 import SelectedProductsSection from '@/components/SelectedProductsSection'
@@ -23,6 +24,7 @@ import {
   updateDocumentItemPrice,
   addDocumentItem,
   removeDocumentItem,
+  recalcDocumentTotal,
   issueInvoice,
   syncFinalInvoiceFromQuotation,
   getCaseFinalInvoice,
@@ -49,7 +51,9 @@ type QuoteItem = {
   final_price: number
   variant_id: string | null
   variant_label_snapshot: string | null
-  products: { id: string; name: string; description: string | null; partner_name: string | null } | null
+  origin?: 'original' | 'admin_added'
+  removed_at?: string | null
+  products: { id: string; name: string; description: string | null; partner_name: string | null; duration_value?: number | null; duration_unit?: string | null; has_female_doctor?: boolean | null; has_prayer_room?: boolean | null; dietary_type?: string | null; location_address?: string | null } | null
 }
 
 type PartnerPayment = {
@@ -130,6 +134,7 @@ type Case = {
   outbound_flight: FlightInfo
   inbound_flight: FlightInfo
   cancellation_reason: string | null
+  agent_notes: string | null
   agents: Agent | Agent[] | null
   case_members: CaseMember[]
   documents: Quote[]
@@ -188,14 +193,52 @@ export default function AdminCaseDetailPage() {
   type ItemCurrency = 'KRW' | 'USD'
   // Per-existing-item display currency (data is always stored in KRW)
   const [pricingCurrencies, setPricingCurrencies] = useState<Record<string, ItemCurrency>>({})
-  const [products, setProducts] = useState<Array<{ id: string; name: string; partner_name: string | null; base_price: number; price_currency: ItemCurrency | null }>>([])
+  type ProductVariant = { id: string; variant_label: string | null; base_price: number; price_currency: ItemCurrency; is_active: boolean; sort_order: number }
+  type ProductRow = {
+    id: string; name: string; partner_name: string | null;
+    base_price: number; price_currency: ItemCurrency | null;
+    category_name: string | null; subcategory_name: string | null;
+    category_sort: number;
+    variants: ProductVariant[];
+  }
+  const [products, setProducts] = useState<ProductRow[]>([])
+  // Product whose variants are expanded in the picker dropdown — only used
+  // when a product has 2+ active variants (e.g., Beauty brand options, Hotel
+  // room tiers).
+  const [pickerExpandedProduct, setPickerExpandedProduct] = useState<string | null>(null)
+  const [pickerCategoryFilter, setPickerCategoryFilter] = useState<string>('')
+  const [pickerSubcategoryFilter, setPickerSubcategoryFilter] = useState<string>('')
   const [pickerGroupId, setPickerGroupId] = useState<string>('')
   const [pickerQuery, setPickerQuery] = useState<string>('')
   const [pickerOpen, setPickerOpen] = useState<boolean>(false)
   // Transient action ids (one in flight at a time)
   const [structuralBusy, setStructuralBusy] = useState<string | null>(null)
   const [deletingScheduleId, setDeletingScheduleId] = useState<string | null>(null)
+  // Internal-note editing on a confirmed schedule (in-place, no version bump).
+  const [internalEditScheduleId, setInternalEditScheduleId] = useState<string | null>(null)
+  const [internalDraft, setInternalDraft] = useState<ScheduleItem[]>([])
+  const [savingInternal, setSavingInternal] = useState(false)
   const [actionError, setActionError] = useState('')
+
+  // Edit Selected Products — staged add/remove diff. Save commits all changes
+  // in one batch; Cancel discards. Existing items removed are marked (not
+  // deleted) so user can undo before save; staged adds are virtual rows.
+  type StagedAdd = {
+    tempId: string
+    productId: string
+    productName: string
+    partnerName: string | null
+    variantId: string | null
+    variantLabel: string | null
+    basePrice: number
+    finalPrice: number
+    priceCurrency: ItemCurrency
+    groupId: string
+    groupName: string
+  }
+  const [stagedAdds, setStagedAdds] = useState<StagedAdd[]>([])
+  const [stagedRemoves, setStagedRemoves] = useState<Set<string>>(new Set())
+  const [savingItems, setSavingItems] = useState(false)
 
   // Trip Setup collapse — defaults to collapsed when all info is complete.
   const [setupCollapsed, setSetupCollapsed] = useState(false)
@@ -209,7 +252,7 @@ export default function AdminCaseDetailPage() {
       .select(`
         id, case_number, status, agent_id, travel_start_date, travel_end_date,
         payment_date, payment_confirmed_at, created_at,
-        concept, outbound_flight, inbound_flight, cancellation_reason,
+        concept, outbound_flight, inbound_flight, cancellation_reason, agent_notes,
         agents!cases_agent_id_fkey(id, agent_number, name),
         case_members(
           id, is_lead,
@@ -217,7 +260,7 @@ export default function AdminCaseDetailPage() {
         ),
         documents(
           id, type, document_number, slug, total_price, payment_due_date, payment_received_at, agent_margin_rate, company_margin_rate, finalized_at, from_party, to_party, created_at,
-          document_groups(id, name, order, member_count, document_items(id, base_price, final_price, variant_id, variant_label_snapshot, products(id, name, description, partner_name, duration_value, duration_unit, has_female_doctor, has_prayer_room, dietary_type, location_address)), document_group_members(id, case_member_id))
+          document_groups(id, name, order, member_count, document_items(id, base_price, final_price, variant_id, variant_label_snapshot, origin, removed_at, products(id, name, description, partner_name, duration_value, duration_unit, has_female_doctor, has_prayer_room, dietary_type, location_address)), document_group_members(id, case_member_id))
         ),
         schedules(id, slug, pdf_url, items, status, version, file_name, revision_note, admin_note, confirmed_at, created_at, first_opened_at)
       `)
@@ -251,6 +294,10 @@ export default function AdminCaseDetailPage() {
     }
   }, [id])
 
+  // Realtime: re-fetch when this case's row or its contracts/documents/schedules
+  // change anywhere (e.g., agent generates contract, client signs, schedule confirmed).
+  useCaseRealtime(id, fetchCase)
+
   useEffect(() => {
     async function init() {
       const [, rateRes] = await Promise.all([
@@ -264,17 +311,60 @@ export default function AdminCaseDetailPage() {
     init()
   }, [fetchCase])
 
-  // Load active products once for the pre-finalize "Add line item" picker.
+  // Load active products with their variants + category/subcategory names for
+  // the staging picker. Variants matter so admin staging produces document_items
+  // with the correct variant_id + variant_label_snapshot (parity with agent's
+  // home-page cart). Category names drive the picker filter dropdowns.
   useEffect(() => {
     let cancelled = false
     ;(async () => {
       const { data, error } = await supabase.from('products')
-        .select('id, name, partner_name, base_price, price_currency, is_active')
+        .select('id, name, partner_name, base_price, price_currency, is_active, product_categories(name, sort_order), product_subcategories(name), product_variants(id, variant_label, base_price, price_currency, is_active, sort_order)')
         .order('name', { ascending: true })
       if (error) { console.error('[case] products fetch error:', error); return }
       if (cancelled) return
-      const rows = (data ?? []) as Array<{ id: string; name: string; partner_name: string | null; base_price: number; price_currency: 'KRW' | 'USD' | null; is_active: boolean | null }>
-      setProducts(rows.filter(r => r.is_active !== false).map(({ id, name, partner_name, base_price, price_currency }) => ({ id, name, partner_name, base_price, price_currency })))
+      type CategoryRel = { name: string | null; sort_order?: number | null } | { name: string | null; sort_order?: number | null }[] | null
+      type SubRel = { name: string | null } | { name: string | null }[] | null
+      type Raw = {
+        id: string; name: string; partner_name: string | null;
+        base_price: number; price_currency: 'KRW' | 'USD' | null; is_active: boolean | null;
+        product_categories: CategoryRel;
+        product_subcategories: SubRel;
+        product_variants: Array<{ id: string; variant_label: string | null; base_price: number; price_currency: 'KRW' | 'USD' | null; is_active: boolean | null; sort_order: number | null }>
+      }
+      const rows = (data ?? []) as unknown as Raw[]
+      const pickName = <T extends { name: string | null }>(rel: T | T[] | null): string | null => {
+        if (!rel) return null
+        if (Array.isArray(rel)) return rel[0]?.name ?? null
+        return rel.name ?? null
+      }
+      const pickCategorySort = (rel: CategoryRel): number => {
+        if (!rel) return 9999
+        const r = Array.isArray(rel) ? rel[0] : rel
+        return r?.sort_order ?? 9999
+      }
+      const out: ProductRow[] = rows.filter(r => r.is_active !== false).map(r => ({
+        id: r.id,
+        name: r.name,
+        partner_name: r.partner_name,
+        base_price: r.base_price,
+        price_currency: r.price_currency,
+        category_name: pickName(r.product_categories),
+        subcategory_name: pickName(r.product_subcategories),
+        category_sort: pickCategorySort(r.product_categories),
+        variants: (r.product_variants ?? [])
+          .filter(v => v.is_active !== false)
+          .map(v => ({
+            id: v.id,
+            variant_label: v.variant_label,
+            base_price: v.base_price,
+            price_currency: (v.price_currency === 'USD' ? 'USD' : 'KRW') as ItemCurrency,
+            is_active: v.is_active !== false,
+            sort_order: v.sort_order ?? 0,
+          }))
+          .sort((a, b) => b.base_price - a.base_price || a.sort_order - b.sort_order),
+      }))
+      setProducts(out)
     })()
     return () => { cancelled = true }
   }, [])
@@ -714,12 +804,24 @@ export default function AdminCaseDetailPage() {
             </section>
           )}
 
-          {/* Quote / Financials */}
-          {latestQuote && (
-            <section className="bg-gray-50 rounded-2xl p-4 space-y-3">
+          {/* Quote / Financials — cyan when admin has financial action queued
+              (awaiting_deposit: issue deposit settlement after agent issues;
+              awaiting_payment: confirm balance payment receipt). Mirror of the
+              agent-side cyan tone — both sides have parallel actions in these
+              two windows, so both get the action signal. */}
+          {latestQuote && (() => {
+            const isActionTarget = caseData.status === 'awaiting_deposit' || caseData.status === 'awaiting_payment'
+            const sectionClass = isActionTarget
+              ? 'bg-cyan-50 border border-cyan-200 rounded-2xl p-4 space-y-3'
+              : 'bg-gray-50 rounded-2xl p-4 space-y-3'
+            const labelClass = isActionTarget
+              ? 'text-xs font-semibold text-cyan-700 uppercase tracking-wide'
+              : 'text-xs font-semibold text-gray-400 uppercase tracking-wide'
+            return (
+            <section className={sectionClass}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Financials</p>
+                  <p className={labelClass}>Financials</p>
                   {!latestQuote.finalized_at && (
                     <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5 uppercase tracking-wide">
                       Estimated
@@ -848,7 +950,8 @@ export default function AdminCaseDetailPage() {
                 onChanged={fetchCase}
               />
             </section>
-          )}
+            )
+          })()}
 
 
           {/* Schedule History */}
@@ -896,7 +999,7 @@ export default function AdminCaseDetailPage() {
                         <div className="ml-auto flex items-center gap-3">
                           {s.slug && (s.pdf_url || (s.items && s.items.length > 0)) && (
                             <a
-                              href={`${baseUrl}/schedule/${s.slug}?preview=1&v=${s.version}`}
+                              href={`${baseUrl}/schedule/${s.slug}?preview=1&internal=1&v=${s.version}`}
                               target="_blank" rel="noopener noreferrer"
                               className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-[#0f4c35] transition-colors">
                               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -940,6 +1043,91 @@ export default function AdminCaseDetailPage() {
                           </button>
                         </div>
                       )}
+
+                      {/* Confirmed schedules: internal-only inline editor.
+                          Title / time / block / notes are locked once the
+                          agent has signed off, but concierge ops detail
+                          (driver, contact, prep) often updates afterward —
+                          let admin edit it in place without a new version. */}
+                      {isLatest && s.status === 'confirmed' && s.items && s.items.length > 0 && (() => {
+                        const isEditing = internalEditScheduleId === s.id
+                        return (
+                          <div className="pt-2 mt-1 border-t border-gray-100 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Internal Notes (concierge handover)</p>
+                              {!isEditing ? (
+                                <button
+                                  onClick={() => { setInternalDraft(s.items as ScheduleItem[]); setInternalEditScheduleId(s.id) }}
+                                  className="text-[11px] font-medium text-gray-500 hover:text-gray-800 px-2 py-0.5 rounded border border-gray-200 hover:bg-white">
+                                  Edit
+                                </button>
+                              ) : (
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={() => { setInternalEditScheduleId(null); setInternalDraft([]) }}
+                                    disabled={savingInternal}
+                                    className="text-[11px] font-medium text-gray-500 hover:text-gray-800 px-2 py-0.5 rounded border border-gray-200 hover:bg-white disabled:opacity-40">
+                                    Cancel
+                                  </button>
+                                  <button
+                                    onClick={async () => {
+                                      setSavingInternal(true)
+                                      try {
+                                        const { error } = await supabase
+                                          .from('schedules')
+                                          .update({ items: internalDraft })
+                                          .eq('id', s.id)
+                                        if (error) throw error
+                                        await logAsCurrentUser('schedule.internal_notes_updated',
+                                          { type: 'case', id: caseData.id, label: caseData.case_number },
+                                          { schedule_version: s.version })
+                                        setInternalEditScheduleId(null)
+                                        setInternalDraft([])
+                                        await fetchCase()
+                                      } catch (e: unknown) {
+                                        setActionError((e as { message?: string })?.message ?? 'Failed to save internal notes.')
+                                      } finally {
+                                        setSavingInternal(false)
+                                      }
+                                    }}
+                                    disabled={savingInternal}
+                                    className="text-[11px] font-medium bg-[#0f4c35] text-white hover:bg-[#0a3828] px-2.5 py-0.5 rounded disabled:opacity-40">
+                                    {savingInternal ? 'Saving…' : 'Save'}
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                            <div className="bg-gray-50 rounded-lg border border-gray-100 divide-y divide-gray-100">
+                              {(isEditing ? internalDraft : (s.items as ScheduleItem[])).map((it, idx) => (
+                                <div key={it.id} className="px-2.5 py-1.5 flex items-start gap-2">
+                                  <span className="text-[10px] text-gray-400 tabular-nums shrink-0 w-12 pt-0.5">
+                                    D{it.day}{it.time ? ` · ${it.time}` : ''}
+                                  </span>
+                                  <div className="flex-1 min-w-0 space-y-1">
+                                    <p className="text-xs text-gray-800 truncate">{it.title || '—'}</p>
+                                    {isEditing ? (
+                                      <input
+                                        type="text"
+                                        value={it.internalNotes ?? ''}
+                                        onChange={(e) => {
+                                          const v = e.target.value || null
+                                          setInternalDraft(prev => prev.map((x, i) => i === idx ? { ...x, internalNotes: v } : x))
+                                        }}
+                                        placeholder="Internal note (driver, contact, prep…)"
+                                        className="w-full text-[11px] border border-dashed border-gray-300 rounded px-2 py-1 text-gray-700 bg-white focus:outline-none focus:border-[#0f4c35] placeholder:text-gray-400"
+                                      />
+                                    ) : it.internalNotes ? (
+                                      <p className="text-[11px] text-gray-700 whitespace-pre-line">{it.internalNotes}</p>
+                                    ) : (
+                                      <p className="text-[11px] text-gray-300 italic">no internal note</p>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )
+                      })()}
                     </div>
                   )
                 })}
@@ -978,7 +1166,7 @@ export default function AdminCaseDetailPage() {
               {pricingError && <p className="text-xs text-red-500">{pricingError}</p>}
 
               <div className="bg-white rounded-xl border border-violet-100 divide-y divide-gray-100">
-                {sortedGroups.flatMap(g => g.document_items.map(item => {
+                {sortedGroups.flatMap(g => g.document_items.filter(it => !it.removed_at).map(item => {
                   // pricingEdits stores canonical KRW digits; currency toggle only changes display.
                   const krwDigits = pricingEdits[item.id] ?? String(item.final_price)
                   const krwNum = Number(krwDigits) || 0
@@ -1030,7 +1218,7 @@ export default function AdminCaseDetailPage() {
 
               {(() => {
                 const liveSum = sortedGroups
-                  .flatMap(g => g.document_items)
+                  .flatMap(g => g.document_items.filter(it => !it.removed_at))
                   .reduce((s, item) => s + (Number(pricingEdits[item.id] ?? item.final_price) || 0), 0)
                 const newTotal = liveSum
                 const diff = newTotal - latestQuote.total_price
@@ -1063,7 +1251,7 @@ export default function AdminCaseDetailPage() {
 
               {(() => {
                 const hasPricingChanges = sortedGroups
-                  .flatMap(g => g.document_items)
+                  .flatMap(g => g.document_items.filter(it => !it.removed_at))
                   .some(item => {
                     const v = pricingEdits[item.id]
                     return v !== undefined && Number(v) !== item.final_price
@@ -1078,7 +1266,7 @@ export default function AdminCaseDetailPage() {
                   if (!latestQuote) return
                   setSavingPricing(true); setPricingError('')
                   try {
-                    const items = sortedGroups.flatMap(g => g.document_items)
+                    const items = sortedGroups.flatMap(g => g.document_items.filter(it => !it.removed_at))
                     const liveSum = items.reduce((s, item) => s + (Number(pricingEdits[item.id] ?? item.final_price) || 0), 0)
                     const newTotal = liveSum
                     const newDueDate = dueDateValue
@@ -1243,98 +1431,357 @@ export default function AdminCaseDetailPage() {
             </section>
           )}
 
-          {/* Edit Selected Products — admin can add/remove items during schedule
-              creation. Save-on-action (no staging). Items lock once admin
-              finalizes pricing in the next stage. */}
+          {/* Edit Selected Products — staged add/remove with explicit Save/Cancel.
+              Marks for removal/addition build up in local state; Save commits
+              all changes in one batch. Items lock once admin finalizes pricing. */}
           {caseData.status === 'awaiting_schedule' && latestQuote && !latestQuote.finalized_at && sortedGroups.length > 0 && (() => {
+            // Note: this section intentionally does NOT filter removed_at — we
+            // want the removed rows visible as audit trail. All other consumers
+            // filter for active rows so customer-facing surfaces stay clean.
             const allItems = sortedGroups.flatMap(g => g.document_items.map(it => ({ ...it, groupName: g.name, groupId: g.id })))
+            const dirty = stagedAdds.length > 0 || stagedRemoves.size > 0
+            const activeCount = allItems.filter(it => !it.removed_at).length
+
+            const cancelChanges = () => { setStagedAdds([]); setStagedRemoves(new Set()); setActionError('') }
+
+            const saveChanges = async () => {
+              if (!latestQuote) return
+              setSavingItems(true); setActionError('')
+              try {
+                // Removals first (they don't depend on adds; ids stable)
+                for (const itemId of stagedRemoves) {
+                  const removed = allItems.find(it => it.id === itemId)
+                  await removeDocumentItem(itemId)
+                  await logAsCurrentUser('quote.item_removed',
+                    { type: 'case', id: caseData.id, label: caseData.case_number },
+                    { product: removed?.products?.name ?? null, group: removed?.groupName ?? null })
+                }
+                for (const add of stagedAdds) {
+                  await addDocumentItem({
+                    documentId: latestQuote.id,
+                    groupId: add.groupId,
+                    productId: add.productId,
+                    productNameSnapshot: add.productName,
+                    productPartnerSnapshot: add.partnerName,
+                    variantId: add.variantId,
+                    variantLabelSnapshot: add.variantLabel,
+                    basePrice: add.basePrice,
+                    finalPrice: add.finalPrice,
+                    origin: 'admin_added',
+                  })
+                  await logAsCurrentUser('quote.item_added',
+                    { type: 'case', id: caseData.id, label: caseData.case_number },
+                    { product: add.productName, group: add.groupName })
+                }
+                // Keep the document's stored total in sync with the new
+                // active-item sum so Estimated displays elsewhere are correct.
+                await recalcDocumentTotal(latestQuote.id)
+                setStagedAdds([])
+                setStagedRemoves(new Set())
+                await fetchCase()
+              } catch (e: unknown) {
+                setActionError((e as { message?: string })?.message ?? 'Failed to save.')
+              } finally { setSavingItems(false) }
+            }
+
             return (
               <section className="border border-violet-100 bg-white rounded-2xl p-4 space-y-3">
                 <div className="flex items-baseline justify-between flex-wrap gap-2">
                   <p className="text-xs font-semibold text-violet-700 uppercase tracking-wide">Edit Selected Products</p>
-                  <p className="text-[10px] text-gray-400">Items lock once you finalize pricing</p>
+                  <p className="text-[10px] text-gray-400">
+                    {dirty
+                      ? `${stagedAdds.length} to add · ${stagedRemoves.size} to remove — review then save`
+                      : 'Original / Added / Removed are all kept as audit trail. Items lock once you finalize pricing.'}
+                  </p>
                 </div>
 
-                <div className="bg-gray-50 rounded-xl border border-gray-100 divide-y divide-gray-100">
-                  {allItems.length === 0 ? (
+                <div className="bg-gray-50 rounded-xl border border-gray-100 overflow-hidden">
+                  {activeCount === 0 && stagedAdds.length === 0 && allItems.length === 0 ? (
                     <p className="text-xs text-gray-400 italic px-3 py-4 text-center">No items yet — add from the picker below.</p>
-                  ) : allItems.map(item => (
-                    <div key={item.id} className="flex items-center gap-3 px-3 py-2">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-gray-900 truncate">{item.products?.name ?? 'Item'}</p>
-                        <p className="text-[10px] text-gray-400">
-                          {item.groupName}
-                          {item.variant_label_snapshot && <span> · {item.variant_label_snapshot}</span>}
-                        </p>
-                      </div>
-                      <span className="text-xs text-gray-500 tabular-nums shrink-0">{fmtKRW(item.final_price)}</span>
-                      <button
-                        type="button"
-                        aria-label="Remove item"
-                        disabled={structuralBusy === item.id}
-                        onClick={async () => {
-                          if (!confirm(`Remove "${item.products?.name ?? 'this item'}" from the case?`)) return
-                          setStructuralBusy(item.id); setActionError('')
-                          try {
-                            await removeDocumentItem(item.id)
-                            await logAsCurrentUser('quote.item_removed',
-                              { type: 'case', id: caseData.id, label: caseData.case_number },
-                              { product: item.products?.name ?? null, group: item.groupName })
-                            await fetchCase()
-                          } catch (e: unknown) {
-                            setActionError((e as { message?: string })?.message ?? 'Failed to remove.')
-                          } finally { setStructuralBusy(null) }
-                        }}
-                        className="text-gray-300 hover:text-red-500 shrink-0 w-5 h-5 flex items-center justify-center text-base leading-none disabled:opacity-30">
-                        ×
-                      </button>
-                    </div>
-                  ))}
+                  ) : (
+                    sortedGroups.map((g, gi) => {
+                      const groupExisting = allItems.filter(it => it.groupId === g.id)
+                      const groupStaged = stagedAdds.filter(a => a.groupId === g.id)
+                      if (groupExisting.length === 0 && groupStaged.length === 0) return null
+                      const groupActive = groupExisting.filter(it => !it.removed_at).length + groupStaged.length
+                      return (
+                        <div key={g.id} className={gi > 0 ? 'border-t-4 border-gray-200' : ''}>
+                          <div className="px-3 py-1.5 bg-gray-100/60 flex items-baseline gap-2">
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-600">{g.name}</p>
+                            <p className="text-[10px] text-gray-400">{g.member_count} pax · {groupActive} active item{groupActive !== 1 ? 's' : ''}</p>
+                          </div>
+                          <div className="divide-y divide-gray-100">
+                            {/* Sort within group: actives on top (Original then
+                                saved Added). Removed/Removing rows are split
+                                out and rendered at the bottom of the group
+                                (after New staged adds) for clearer hierarchy. */}
+                            {[...groupExisting]
+                              .filter(it => !it.removed_at && !stagedRemoves.has(it.id))
+                              .sort((a, b) => {
+                                const rank = (it: typeof a) => it.origin === 'admin_added' ? 2 : 1
+                                return rank(a) - rank(b)
+                              }).map(item => {
+                              const persistedRemoved = !!item.removed_at
+                              const stagedRemove = stagedRemoves.has(item.id)
+                              const wasAdminAdded = item.origin === 'admin_added'
+
+                              // 4 visual states:
+                              //   persisted active original → gray "Original"
+                              //   persisted active admin-added → emerald "Added"
+                              //   persisted removed (origin original) → red "Removed"
+                              //   persisted removed (origin admin_added) → red "Removed Added"
+                              //   transient (this session) staged remove → red "Removing" + Undo
+                              let badge: string
+                              let badgeClass: string
+                              let rowBg = ''
+                              let strike = false
+                              let muted = false
+                              if (persistedRemoved) {
+                                badge = wasAdminAdded ? 'Removed Added' : 'Removed'
+                                badgeClass = 'bg-red-100 text-red-700'
+                                rowBg = 'bg-red-50/40'
+                                strike = true
+                                muted = true
+                              } else if (stagedRemove) {
+                                badge = 'Removing'
+                                badgeClass = 'bg-red-100 text-red-700'
+                                rowBg = 'bg-red-50/60'
+                                strike = true
+                                muted = true
+                              } else if (wasAdminAdded) {
+                                badge = 'Added'
+                                badgeClass = 'bg-emerald-100 text-emerald-700'
+                              } else {
+                                badge = 'Original'
+                                badgeClass = 'bg-gray-100 text-gray-500'
+                              }
+
+                              return (
+                                <div key={item.id} className={`flex items-center gap-3 px-3 py-2 ${rowBg}`}>
+                                  <span className={`text-[9px] font-semibold uppercase tracking-wide shrink-0 px-1.5 py-0.5 rounded ${badgeClass}`}>
+                                    {badge}
+                                  </span>
+                                  <div className="flex-1 min-w-0">
+                                    <p className={`text-sm truncate ${muted ? 'text-gray-400' : 'text-gray-900'} ${strike ? 'line-through' : ''}`}>{item.products?.name ?? 'Item'}</p>
+                                    {(item.products?.partner_name || item.variant_label_snapshot) && (
+                                      <p className="text-[10px] text-gray-400 truncate">
+                                        {item.products?.partner_name ?? ''}
+                                        {item.products?.partner_name && item.variant_label_snapshot && ' · '}
+                                        {item.variant_label_snapshot ?? ''}
+                                      </p>
+                                    )}
+                                  </div>
+                                  <div className={`text-right shrink-0 ${strike ? 'line-through' : ''}`}>
+                                    <p className={`text-xs tabular-nums ${muted ? 'text-gray-300' : 'text-gray-700'}`}>{fmtKRW(item.final_price)}</p>
+                                    <p className={`text-[10px] tabular-nums ${muted ? 'text-gray-300' : 'text-gray-400'}`}>{fmtUSD(item.final_price / exchangeRate)}</p>
+                                  </div>
+                                  {persistedRemoved ? (
+                                    // Already saved as removed — no inline action; row is read-only history.
+                                    <span className="w-5 shrink-0" />
+                                  ) : stagedRemove ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => setStagedRemoves(prev => { const n = new Set(prev); n.delete(item.id); return n })}
+                                      className="text-[10px] font-medium text-gray-500 hover:text-gray-800 px-2 py-0.5 rounded border border-gray-200 hover:bg-white">
+                                      Undo
+                                    </button>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      aria-label="Mark for removal"
+                                      onClick={() => {
+                                        // Original (in the customer's quote) — confirm before
+                                        // marking for removal. Admin-added items are admin's
+                                        // own additions so no confirm.
+                                        if (item.origin !== 'admin_added') {
+                                          const ok = window.confirm(
+                                            `Remove "${item.products?.name ?? 'this item'}"?\n\n` +
+                                            `This was in the original quotation the client received. ` +
+                                            `Removing it will exclude the line from invoices and totals.`,
+                                          )
+                                          if (!ok) return
+                                        }
+                                        setStagedRemoves(prev => { const n = new Set(prev); n.add(item.id); return n })
+                                      }}
+                                      className="text-gray-300 hover:text-red-500 shrink-0 w-5 h-5 flex items-center justify-center text-base leading-none">
+                                      ×
+                                    </button>
+                                  )}
+                                </div>
+                              )
+                            })}
+                            {groupStaged.map(add => (
+                              <div key={add.tempId} className="flex items-center gap-3 px-3 py-2 bg-emerald-50/60">
+                                <span className="text-[9px] font-semibold uppercase tracking-wide shrink-0 px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">
+                                  New
+                                </span>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm text-emerald-900 truncate">{add.productName}</p>
+                                  {(add.partnerName || add.variantLabel) && (
+                                    <p className="text-[10px] text-emerald-700/70 truncate">
+                                      {add.partnerName ?? ''}
+                                      {add.partnerName && add.variantLabel && ' · '}
+                                      {add.variantLabel ?? ''}
+                                    </p>
+                                  )}
+                                </div>
+                                <div className="text-right shrink-0">
+                                  <p className="text-xs text-emerald-800 tabular-nums">{fmtKRW(add.finalPrice)}</p>
+                                  <p className="text-[10px] text-emerald-700/70 tabular-nums">{fmtUSD(add.finalPrice / exchangeRate)}</p>
+                                </div>
+                                <button
+                                  type="button"
+                                  aria-label="Remove staged item"
+                                  onClick={() => setStagedAdds(prev => prev.filter(a => a.tempId !== add.tempId))}
+                                  className="text-emerald-400 hover:text-red-500 shrink-0 w-5 h-5 flex items-center justify-center text-base leading-none">
+                                  ×
+                                </button>
+                              </div>
+                            ))}
+                            {/* Bottom section: removed audit trail (staged
+                                remove + persisted removed). */}
+                            {groupExisting
+                              .filter(it => it.removed_at || stagedRemoves.has(it.id))
+                              .sort((a, b) => {
+                                // staged-remove first (still revertible),
+                                // persisted-removed after (immutable history).
+                                const rank = (it: typeof a) => it.removed_at ? 2 : 1
+                                return rank(a) - rank(b)
+                              })
+                              .map(item => {
+                                const persistedRemoved = !!item.removed_at
+                                const wasAdminAdded = item.origin === 'admin_added'
+                                const badge = persistedRemoved
+                                  ? (wasAdminAdded ? 'Removed Added' : 'Removed')
+                                  : 'Removing'
+                                const rowBg = persistedRemoved ? 'bg-red-50/40' : 'bg-red-50/60'
+                                return (
+                                  <div key={item.id} className={`flex items-center gap-3 px-3 py-2 ${rowBg}`}>
+                                    <span className="text-[9px] font-semibold uppercase tracking-wide shrink-0 px-1.5 py-0.5 rounded bg-red-100 text-red-700">
+                                      {badge}
+                                    </span>
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-sm truncate text-gray-400 line-through">{item.products?.name ?? 'Item'}</p>
+                                      {(item.products?.partner_name || item.variant_label_snapshot) && (
+                                        <p className="text-[10px] text-gray-400 truncate">
+                                          {item.products?.partner_name ?? ''}
+                                          {item.products?.partner_name && item.variant_label_snapshot && ' · '}
+                                          {item.variant_label_snapshot ?? ''}
+                                        </p>
+                                      )}
+                                    </div>
+                                    <div className="text-right shrink-0 line-through">
+                                      <p className="text-xs tabular-nums text-gray-300">{fmtKRW(item.final_price)}</p>
+                                      <p className="text-[10px] tabular-nums text-gray-300">{fmtUSD(item.final_price / exchangeRate)}</p>
+                                    </div>
+                                    {persistedRemoved ? (
+                                      <span className="w-5 shrink-0" />
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={() => setStagedRemoves(prev => { const n = new Set(prev); n.delete(item.id); return n })}
+                                        className="text-[10px] font-medium text-gray-500 hover:text-gray-800 px-2 py-0.5 rounded border border-gray-200 hover:bg-white">
+                                        Undo
+                                      </button>
+                                    )}
+                                  </div>
+                                )
+                              })}
+                          </div>
+                        </div>
+                      )
+                    })
+                  )}
                 </div>
 
                 {(() => {
                   const q = pickerQuery.trim().toLowerCase()
                   const targetGroupId = pickerGroupId || sortedGroups[0].id
                   const targetGroup = sortedGroups.find(g => g.id === targetGroupId)
-                  const existingProductIds = new Set<string>()
-                  targetGroup?.document_items.forEach(it => { if (it.products?.id) existingProductIds.add(it.products.id) })
-                  const available = products.filter(p => !existingProductIds.has(p.id))
+                  // Hide products already in the target group, including ones
+                  // staged for addition (avoid double-adds before save).
+                  // Multi-variant products stay visible — admins may want to
+                  // add a different variant of the same product.
+                  const existingMonoVariantProductIds = new Set<string>()
+                  targetGroup?.document_items.forEach(it => {
+                    if (it.removed_at) return  // soft-deleted items don't block re-add
+                    if (!it.products?.id) return
+                    const matched = products.find(p => p.id === it.products?.id)
+                    const variantCount = matched?.variants.length ?? 0
+                    if (variantCount <= 1) existingMonoVariantProductIds.add(it.products.id)
+                  })
+                  // Build category / subcategory option lists from active products.
+                  // Categories sorted by product_categories.sort_order so the
+                  // dropdown order matches agent home (K-Medical, K-Beauty,
+                  // K-Wellness, K-Starcation, K-Education, Subpackage).
+                  const categorySort = new Map<string, number>()
+                  for (const p of products) {
+                    if (p.category_name && !categorySort.has(p.category_name)) {
+                      categorySort.set(p.category_name, p.category_sort)
+                    }
+                  }
+                  const categoryOptions = [...categorySort.entries()]
+                    .sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0]))
+                    .map(([name]) => name)
+                  const subcategoryOptions = Array.from(new Set(
+                    products
+                      .filter(p => !pickerCategoryFilter || p.category_name === pickerCategoryFilter)
+                      .map(p => p.subcategory_name)
+                      .filter((x): x is string => !!x),
+                  )).sort()
+
+                  const available = products
+                    .filter(p => !existingMonoVariantProductIds.has(p.id))
+                    .filter(p => !pickerCategoryFilter || p.category_name === pickerCategoryFilter)
+                    .filter(p => !pickerSubcategoryFilter || p.subcategory_name === pickerSubcategoryFilter)
+                    // Within results, list by category sort_order then by name
+                    // so users see groups together rather than scrambled.
+                    .sort((a, b) => a.category_sort - b.category_sort || a.name.localeCompare(b.name))
+                  // No slice cap — dropdown is scrollable; admin should see
+                  // every match. Ordering already by name from fetch.
                   const matches = q === ''
-                    ? available.slice(0, 20)
+                    ? available
                     : available.filter(p =>
                         p.name.toLowerCase().includes(q) || (p.partner_name?.toLowerCase().includes(q) ?? false)
-                      ).slice(0, 20)
-                  const addProduct = async (productId: string) => {
-                    const product = products.find(p => p.id === productId)
-                    if (!product || !latestQuote) return
-                    const groupId = pickerGroupId || sortedGroups[0].id
-                    const native: ItemCurrency = product.price_currency === 'USD' ? 'USD' : 'KRW'
-                    // Canonical KRW base; final_price starts equal to base — admin
-                    // adjusts during Finalize Pricing.
-                    const krwBase = native === 'USD' ? Math.round(product.base_price * exchangeRate) : product.base_price
-                    setStructuralBusy(`add:${productId}`); setActionError('')
-                    try {
-                      await addDocumentItem({
-                        documentId: latestQuote.id,
-                        groupId,
-                        productId: product.id,
-                        productNameSnapshot: product.name,
-                        productPartnerSnapshot: product.partner_name,
-                        basePrice: product.base_price,
-                        finalPrice: krwBase,
-                      })
-                      await logAsCurrentUser('quote.item_added',
-                        { type: 'case', id: caseData.id, label: caseData.case_number },
-                        { product: product.name, group: targetGroup?.name ?? null })
-                      setPickerQuery('')
-                      setPickerOpen(false)
-                      await fetchCase()
-                    } catch (e: unknown) {
-                      setActionError((e as { message?: string })?.message ?? 'Failed to add.')
-                    } finally { setStructuralBusy(null) }
+                      )
+                  const stageVariant = (product: ProductRow, variant: ProductVariant | null) => {
+                    if (!targetGroup) return
+                    const baseKrw = variant
+                      ? (variant.price_currency === 'USD' ? Math.round(variant.base_price * exchangeRate) : variant.base_price)
+                      : (product.price_currency === 'USD' ? Math.round(product.base_price * exchangeRate) : product.base_price)
+                    const tempId = `tmp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
+                    setStagedAdds(prev => [...prev, {
+                      tempId,
+                      productId: product.id,
+                      productName: product.name,
+                      partnerName: product.partner_name,
+                      variantId: variant?.id ?? null,
+                      variantLabel: variant?.variant_label ?? null,
+                      basePrice: variant?.base_price ?? product.base_price,
+                      finalPrice: baseKrw,
+                      priceCurrency: variant?.price_currency ?? (product.price_currency === 'USD' ? 'USD' : 'KRW'),
+                      groupId: targetGroup.id,
+                      groupName: targetGroup.name,
+                    }])
+                    setPickerQuery('')
+                    setPickerOpen(false)
+                    setPickerExpandedProduct(null)
                   }
+                  const onProductClick = (product: ProductRow) => {
+                    if (product.variants.length <= 1) {
+                      // 0 or 1 variant — stage immediately
+                      stageVariant(product, product.variants[0] ?? null)
+                    } else {
+                      // Toggle inline variant picker
+                      setPickerExpandedProduct(prev => prev === product.id ? null : product.id)
+                    }
+                  }
+                  const fmtVariantPrice = (v: ProductVariant) =>
+                    v.price_currency === 'USD'
+                      ? `$${v.base_price.toLocaleString('en-US')}`
+                      : fmtKRW(v.base_price)
                   return (
-                    <div className="bg-white rounded-xl border border-violet-100 px-3 py-2 flex items-center gap-2 relative">
+                    <div className="bg-white rounded-xl border border-violet-100 px-3 py-2 flex flex-wrap items-center gap-2 relative">
                       <span className="text-[10px] text-gray-500 shrink-0">Add to</span>
                       {sortedGroups.length > 1 && (
                         <select
@@ -1344,47 +1791,110 @@ export default function AdminCaseDetailPage() {
                           {sortedGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
                         </select>
                       )}
-                      <div className="flex-1 min-w-0 relative">
+                      <select
+                        value={pickerCategoryFilter}
+                        onChange={(e) => { setPickerCategoryFilter(e.target.value); setPickerSubcategoryFilter('') }}
+                        className="border border-gray-200 rounded-lg px-2 py-1 text-xs text-gray-900 focus:outline-none focus:border-[#0f4c35] bg-white">
+                        <option value="">All categories</option>
+                        {categoryOptions.map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                      <select
+                        value={pickerSubcategoryFilter}
+                        onChange={(e) => setPickerSubcategoryFilter(e.target.value)}
+                        disabled={subcategoryOptions.length === 0}
+                        className="border border-gray-200 rounded-lg px-2 py-1 text-xs text-gray-900 focus:outline-none focus:border-[#0f4c35] bg-white disabled:bg-gray-50">
+                        <option value="">All sub</option>
+                        {subcategoryOptions.map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                      <div className="flex-1 min-w-[12rem] relative">
                         <input
                           type="text"
                           value={pickerQuery}
                           placeholder={products.length === 0 ? 'No products available' : 'Search products by name or partner…'}
-                          disabled={products.length === 0 || structuralBusy !== null}
+                          disabled={products.length === 0 || savingItems}
                           onFocus={() => setPickerOpen(true)}
                           onBlur={() => setTimeout(() => setPickerOpen(false), 150)}
                           onChange={(e) => { setPickerQuery(e.target.value); setPickerOpen(true) }}
                           className="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs text-gray-900 focus:outline-none focus:border-[#0f4c35] bg-white disabled:bg-gray-50" />
                         {pickerOpen && matches.length > 0 && (
-                          <div className="absolute left-0 right-0 top-full mt-1 z-10 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto divide-y divide-gray-100">
-                            {matches.map(p => (
-                              <button
-                                key={p.id}
-                                type="button"
-                                onMouseDown={(e) => e.preventDefault()}
-                                onClick={() => addProduct(p.id)}
-                                className="w-full text-left px-3 py-1.5 hover:bg-violet-50 text-xs">
-                                <div className="text-gray-900 truncate">{p.name}</div>
-                                <div className="text-[10px] text-gray-400 flex justify-between gap-2">
-                                  <span className="truncate">{p.partner_name ?? '—'}</span>
-                                  <span className="tabular-nums shrink-0">
-                                    {p.price_currency === 'USD'
-                                      ? `$${p.base_price.toLocaleString('en-US')}`
-                                      : fmtKRW(p.base_price)}
-                                  </span>
+                          <div className="absolute left-0 right-0 top-full mt-1 z-10 bg-white border border-gray-200 rounded-lg shadow-lg max-h-72 overflow-y-auto divide-y divide-gray-100">
+                            {matches.map(p => {
+                              const expanded = pickerExpandedProduct === p.id
+                              const multi = p.variants.length > 1
+                              const sole = p.variants[0]
+                              return (
+                                <div key={p.id}>
+                                  <button
+                                    type="button"
+                                    onMouseDown={(e) => e.preventDefault()}
+                                    onClick={() => onProductClick(p)}
+                                    className="w-full text-left px-3 py-1.5 hover:bg-violet-50 text-xs">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <span className="text-gray-900 truncate">{p.name}</span>
+                                      {multi && (
+                                        <span className="text-[10px] font-medium text-violet-700 bg-violet-50 border border-violet-100 rounded px-1.5 py-0.5 shrink-0">
+                                          {p.variants.length} variants {expanded ? '▲' : '▼'}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="text-[10px] text-gray-400 flex justify-between gap-2">
+                                      <span className="truncate">{p.partner_name ?? '—'}</span>
+                                      <span className="tabular-nums shrink-0">
+                                        {multi
+                                          ? `${fmtVariantPrice(p.variants[p.variants.length - 1])} – ${fmtVariantPrice(p.variants[0])}`
+                                          : sole ? fmtVariantPrice(sole)
+                                          : (p.price_currency === 'USD' ? `$${p.base_price.toLocaleString('en-US')}` : fmtKRW(p.base_price))}
+                                      </span>
+                                    </div>
+                                  </button>
+                                  {multi && expanded && (
+                                    <div className="bg-violet-50/40 border-t border-violet-100 divide-y divide-violet-100/60">
+                                      {p.variants.map(v => (
+                                        <button
+                                          key={v.id}
+                                          type="button"
+                                          onMouseDown={(e) => e.preventDefault()}
+                                          onClick={() => stageVariant(p, v)}
+                                          className="w-full text-left px-6 py-1.5 hover:bg-violet-100 text-xs flex items-center justify-between gap-2">
+                                          <span className="text-gray-700 truncate">{v.variant_label ?? '— Default —'}</span>
+                                          <span className="tabular-nums text-gray-600 shrink-0">{fmtVariantPrice(v)}</span>
+                                        </button>
+                                      ))}
+                                    </div>
+                                  )}
                                 </div>
-                              </button>
-                            ))}
+                              )
+                            })}
                           </div>
                         )}
-                        {pickerOpen && q !== '' && matches.length === 0 && (
+                        {pickerOpen && matches.length === 0 && (
                           <div className="absolute left-0 right-0 top-full mt-1 z-10 bg-white border border-gray-200 rounded-lg shadow-lg px-3 py-2 text-xs text-gray-400">
-                            No products match &ldquo;{pickerQuery}&rdquo;
+                            {q !== '' ? `No products match "${pickerQuery}"` : 'No products match the current filters.'}
                           </div>
                         )}
                       </div>
                     </div>
                   )
                 })()}
+
+                {actionError && <p className="text-xs text-red-500">{actionError}</p>}
+
+                <div className="flex items-center justify-end gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={cancelChanges}
+                    disabled={!dirty || savingItems}
+                    className="text-xs font-medium text-gray-600 hover:text-gray-900 px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed">
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={saveChanges}
+                    disabled={!dirty || savingItems}
+                    className="text-xs font-medium bg-violet-600 text-white hover:bg-violet-700 px-3 py-1.5 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed">
+                    {savingItems ? 'Saving…' : `Save${dirty ? ` (${stagedAdds.length}+ ${stagedRemoves.size}-)` : ''}`}
+                  </button>
+                </div>
               </section>
             )
           })()}
@@ -1396,7 +1906,7 @@ export default function AdminCaseDetailPage() {
             const seen = new Set<string>()
             const caseProducts: { variantId: string; productName: string; variantLabel: string | null; partnerName: string | null }[] = []
             for (const grp of latestQuote?.document_groups ?? []) {
-              for (const it of grp.document_items ?? []) {
+              for (const it of (grp.document_items ?? []).filter(x => !x.removed_at)) {
                 if (!it.variant_id || seen.has(it.variant_id)) continue
                 seen.add(it.variant_id)
                 caseProducts.push({
@@ -1423,7 +1933,7 @@ export default function AdminCaseDetailPage() {
                     {sortedSchedules.length === 0 ? 'Build Schedule' : `New Version (v${nextVersion})`}
                   </p>
                   {latestSchedule?.slug && (
-                    <a href={`${baseUrl}/schedule/${latestSchedule.slug}?preview=1&v=${latestSchedule.version}`}
+                    <a href={`${baseUrl}/schedule/${latestSchedule.slug}?preview=1&internal=1&v=${latestSchedule.version}`}
                       target="_blank" rel="noopener noreferrer"
                       className="text-[11px] text-gray-500 hover:underline">
                       Preview last version ↗
@@ -1432,6 +1942,15 @@ export default function AdminCaseDetailPage() {
                 </div>
                 {sortedSchedules.length === 0 && (
                   <p className="text-xs text-blue-700">Build day-by-day. Use &quot;Link a product&quot; to autofill titles from selected products.</p>
+                )}
+                {/* Notes from the agent (cases.agent_notes) — render at top of
+                    the editor so admin sees client preferences before laying
+                    out the day. */}
+                {caseData.agent_notes && (
+                  <div className="bg-white border-2 border-red-300 rounded-xl p-3 space-y-1">
+                    <p className="text-[10px] font-semibold text-red-600 uppercase tracking-wide">Notes from agent</p>
+                    <p className="text-xs text-gray-800 whitespace-pre-wrap">{caseData.agent_notes}</p>
+                  </div>
                 )}
                 <ScheduleEditor
                   caseId={caseData.id}
@@ -1442,6 +1961,10 @@ export default function AdminCaseDetailPage() {
                   initialItems={carryItems}
                   defaultDayCount={defaultDays}
                   caseProducts={caseProducts}
+                  caseGroups={(latestQuote?.document_groups ?? [])
+                    .slice()
+                    .sort((a, b) => a.order - b.order)
+                    .map(g => ({ id: g.id, name: g.name }))}
                   onSaved={() => fetchCase()}
                   slug={latestSchedule?.slug ?? null}
                   nextVersion={nextVersion}
@@ -1461,7 +1984,7 @@ export default function AdminCaseDetailPage() {
             type PartnerGroup = { name: string; suggested: number; items: PartnerItem[] }
             const groups = new Map<string, PartnerGroup>()
             for (const g of latestQuote.document_groups ?? []) {
-              for (const item of g.document_items ?? []) {
+              for (const item of (g.document_items ?? []).filter(it => !it.removed_at)) {
                 const pname = item.products?.partner_name?.trim()
                 if (!pname) continue
                 const prev = groups.get(pname) ?? { name: pname, suggested: 0, items: [] }
@@ -1481,10 +2004,10 @@ export default function AdminCaseDetailPage() {
             const totalPaid = partnerPayments.reduce((s, p) => s + (p.amount ?? 0), 0)
             const totalSuggested = partnerList.reduce((s, g) => s + g.suggested, 0)
             const allPaid = partnerList.every(g => partnerPayments.some(p => p.partner_name === g.name))
-            // Partners can only be paid out after we've received client payment
-            const paymentReceived = caseData.status === 'awaiting_travel'
-              || caseData.status === 'awaiting_review'
-              || caseData.status === 'completed'
+            // Partners unlock once the schedule is confirmed — that's when the
+            // line items per partner are locked in, so the suggested payout
+            // amounts here are stable and tied to the confirmed itinerary.
+            const paymentReceived = (caseData.schedules ?? []).some(s => s.status === 'confirmed')
 
             return (
               <section className="bg-gray-50 rounded-2xl p-4 space-y-3">
@@ -1498,7 +2021,7 @@ export default function AdminCaseDetailPage() {
 
                 {!paymentReceived && (
                   <div className="bg-white border border-gray-200 rounded-xl p-3 text-xs text-gray-500">
-                    Partner payouts are unlocked once client payment is confirmed.
+                    Partner payouts unlock once the schedule is confirmed by the agent.
                   </div>
                 )}
 

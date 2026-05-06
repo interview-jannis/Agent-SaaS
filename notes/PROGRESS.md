@@ -1,11 +1,12 @@
 # Project Progress
 
 ## 현재 상태
-- **Phase**: 데이터 모델 변경 + 사용성 폴리시. Variants 모델 도입(product_variants 테이블), Excel 일괄 upsert UI(dry-run preview + deleteMissing), 카탈로그 K-prefix + subcategory 재정의, 계약서 evidentiary 강화, Selected Products 공용 컴포넌트, ProductForm 인라인 variants 편집기, 감사 로그 전 surface sweep.
-- **마지막 작업**: 2026-05-04 — variants 모델, agent home 전면 개편(필터 toolbar + subcategory pills + 카드 컴팩트), Excel upload (dry-run preview + UPSERT + deleteMissing), Agent 카탈로그 마진 룰 분기(Spa/Wellness 원가, 그 외 마진), 데이터 마스터 v12~v17, contract counter-sign 강화 + signature hash + typed_name. 저녁 라운드: admin/products half-screen 컬럼 압축, agent home 카드 사이즈 통일, partner_name 복귀, upload-excel deleteMissing 토글, admin /products 가격 컬럼 variant 인지화. 저녁 라운드 2: agent 가격 desc 정렬, **DIAR/Hotel 컨솔리데이션(v18 마스터)**, **Excel upload product_number MAX+1 fix**, **2-level variant 아코디언**, **ProductForm variants 풀 편집기 + 리스트 펼치기**, Status 컬럼 제거 + partner 인라인 + 절반화면 헤더 정리, **감사 로그 7 surface 일괄 + monochrome 아이콘**, **`/admin/surveys` 신규 페이지**(질문 + 응답).
-- **마지막 업데이트**: 2026-05-05 (개발 마감 5/8, 시뮬레이션 5/11~15, 런칭 5/18)
+- **Phase**: 시뮬 직전 정합성 + 운영성. 3자 계약 evidentiary 강화 + 순서 무관 + 실시간 자동 새로고침, Overview 캐시베이시스 회계, Edit Selected Products audit trail (origin + soft delete), ScheduleEditor 대수술 (Free time / partner / block-time 범위 / group / internal note / pending row / coverage gate), agent → admin 메모.
+- **마지막 작업**: 2026-05-06 — Cases 표 admin/agent 통일 + 빈 상태 표 유지, schedules.items 마이그레이션 누락 fix, 3자 계약 순서 무관 + evidentiary 강화 (typed_name + signature_hash + IP/UA, 3 API endpoints), Save PDF (?print=1), Realtime auto-refresh (useCaseRealtime + publication 등록), Partner Payouts 게이트 schedule confirmed 시점, Overview revenue/earnings 캐시베이시스 (deposit settlement + payment_date 기반), Documents origin + soft delete (sweep 16개 파일), Edit Selected Products UI 4-tier audit trail + 그룹 분리 + 가격 2줄 + 카테고리/서브카테고리 필터 + variants 표시 + Original 삭제 confirm, 카테고리 sort_order 정의, Time24Input (locale 무관 24h), agent_notes 필드, ScheduleEditor: Free time 드롭다운 + Add/Remove Day 제거 + endBlock/endTime + partner eyebrow 분리 + internalNotes (admin only) + groupId (단일 schedule + URL 필터) + Pending row 상태 + Coverage gate, ScheduleDocument: partner eyebrow + group 배지 + filter via ?group= + ?internal=1 admin preview, Confirmed schedule internal note 인라인 편집 (in-place, no version bump).
+- **마지막 업데이트**: 2026-05-06 (개발 마감 5/8, 시뮬레이션 5/11~15, 런칭 5/18)
 - **SaaS 브랜드명**: **Tiktak** (UI 전역, 법인명 Interview Co., Ltd)
 
+> 2026-05-06 상세: `notes/26.05.06.md` (3자 계약 evidentiary + 순서 무관 + Realtime / Cases 표 통일 / 캐시베이시스 회계 / Documents audit trail / ScheduleEditor 대수술 / agent_notes / Time24Input / 카테고리 sort_order)
 > 2026-05-05 상세: `notes/26.05.05.md` (호텔 × nights 가격 + variant 모달 가격 desc + 스케줄 템플릿 Option A 결정 + 호텔 객실 정원/저가 객실 cutoff todo)
 > 2026-05-05 짧은 메모: 스케줄 엑셀 업로드 → 자동 링크 설계 논의(JSONB items + 고정 템플릿안) — 작업 자체는 deferred. 카드/리스트 UX 잔손질 + 감사로그 sweep + Surveys 페이지 분리 PR 클로즈 (커밋 ba28e7b).
 > 2026-05-04 상세: `notes/26.05.04.md` (Variants 모델 / Excel upload / Selected Products 공용화 / Cases 흐름 정리 / Agent home 개편 / Contract evidentiary 강화 / 데이터 v12~v18 / variants 풀 편집 UX / 감사 로그 sweep / Surveys 분리)
@@ -31,6 +32,7 @@
 
 #### 컨텐츠 (사용자 본인)
 - [ ] **호텔 데이터 정리** — VIP 클라이언트 대상이라 ₩1,000,000/박 미만 객실은 카탈로그에서 제외 (예: SOFITEL `Luxury Lake Room $243.57`, `Prestige Suite $473.61`, `1-Bedroom Premier $338.29` 같은 라인). v19 마스터 빌드 시 cutoff 적용 + deleteMissing으로 정리
+- [ ] **잘못 매핑된 variants 정리 (v19)** — variants가 없어야 할 product에 다른 product의 variant 라벨이 박혀 있는 row들. 예: Rarelee `Beauty · Private Consulting` (#P-038)에 `Allergan` variant가 attached (Allergan은 다른 Beauty 시술의 브랜드 variant인데 Rarelee 컨설팅엔 무관). 데이터 검수 후 잘못된 variant_label은 NULL(default sole variant)로 정리하거나 잘못된 row 제거. 케이스에 이미 박힌 `variant_label_snapshot`은 신규 견적부터 깨끗해짐 (스냅샷 모델)
 - [ ] 설문 질문 실제 내용 확정 (이사님 검토 후 admin/contracts에서 갱신 — placeholder 12문항 seed됨)
 - [ ] 계약서 4종 본문 법무 검토 후 admin/contracts에서 갱신
 - [ ] Stamp 정식 이미지 업로드 (현재 Stamp 폴더의 회사 도장 PNG)
@@ -73,6 +75,26 @@
 - [ ] Admin case detail에 survey 응답 read-only 노출 (현재 `/admin/surveys`엔 있으나 case 페이지 안에도 필요)
 - [ ] 3자 계약 client 페이지 모바일 점검
 - [ ] Stamp invoice 렌더 위치/크기 시뮬에서 실제 확인
+
+### 5/6 완료 (3자 계약 evidentiary + Realtime + 캐시베이시스 회계 + ScheduleEditor 대수술)
+- [x] **Cases 표 admin/agent 통일 + 빈 상태 표 유지** — agent 쪽 누락된 awaiting_contract/awaiting_deposit DisplayGroup 추가 (5/4 admin sweep mirror), 헤더 `Total (USD)`/JUMP `Balance` 통일. 케이스 0건이어도 11개 빈 status 섹션 헤더 노출 (흐름 시각화).
+- [x] **schedules.items 마이그레이션 누락 fix** — 5/5 SQL이 실제 Supabase에 미적용 → 즉시 적용.
+- [x] **3자 계약 순서 무관** — admin이 agent/client 사인 전에도 카운터사인 가능. `canAdminSign = !contract.admin_signed_at`. status 전이는 isFullySigned 기준이라 그대로 작동. admin 사인 시 agent에 알림 (full sign 전에도).
+- [x] **3자 계약 evidentiary 강화** — `case_contracts`에 agent/client/admin 각각 `signature_hash/signed_typed_name/ip_address/user_agent` 12 컬럼 (`sql/2026-05-06_case_contracts_evidence.sql`). 신규 API 3개 `/api/case-contracts/sign-{agent,client,admin}` (service role + IP/UA + SHA-256 + typed_name 검증). CaseContractViewer에 typed name 입력 + identity confirm 체크 + KSA 명시 + 모드별 컬러 (agent emerald, client sky, admin indigo) + key prop으로 mode 전환 시 state reset.
+- [x] **Save PDF (3자 계약)** — `/case-contract/[token]?print=1` 모드 (sign UI 감추고 window.print 자동). admin/agent 양쪽 contract 섹션에 `⤓ Save PDF` 버튼. 3열 sig grid `print:grid-cols-3`.
+- [x] **자동 새로고침 (Realtime)** — `useCaseRealtime(caseId, onChange)` 훅: cases / case_contracts / documents / schedules 단일 채널 구독, 250ms 디바운스, unique instance id (page-level + child contract section 채널명 충돌 방지). agent/admin 케이스 detail + 두 contract 섹션에 적용. SQL: `supabase_realtime` publication에 4테이블 추가 (`sql/2026-05-06_realtime_case_tables.sql`).
+- [x] **Partner Payouts 게이트 변경** — `awaiting_travel/review/completed` → `schedules.some(s => s.status === 'confirmed')`. admin이 한참 partner 비용 선결제 부담 해소.
+- [x] **Overview 캐시베이시스 회계** — Revenue events: deposit_settlement(`type=deposit_invoice, to_party=agent`) `payment_received_at` 시점 + cases.payment_date 시점(잔금 proxy). Earnings = Revenue − partner_payments − settlements. 월별 sparkline도 동일 모델. admin Financials 박스 cyan tone 분기 추가 (awaiting_deposit/payment).
+- [x] **Documents `origin` + soft delete** — `document_items.origin` (original/admin_added) + `removed_at` (`sql/2026-05-06_document_items_origin_softdelete.sql`). `removeDocumentItem` → soft delete. 16개 파일 sweep으로 `removed_at IS NULL` 필터 추가 (QuoteDocument, SelectedProductsSection, CaseDocumentsSection, agent/admin case detail, admin/cases list, admin/settlement, schedule/[slug] 등).
+- [x] **Edit Selected Products audit trail UI** — 4-tier badge: Original (gray) / Added (emerald) / Removed (red, line-through, immutable) / Removed Added (red). Staged: Removing + Undo 버튼, New 추가 row. 그룹별 sub-section + `border-t-4` divider, 정렬 (활성→New→Removing/Removed). 가격 2줄(KRW + USD). Original 삭제 시 confirm 다이얼로그. Picker 강화: 모든 상품 노출 + 카테고리/서브카테고리 셀렉트 + 다중 variants inline 펼침. saveChanges에 `recalcDocumentTotal` 호출.
+- [x] **카테고리 sort_order 정의** (`sql/2026-05-06_category_sort_order.sql`) — K-Medical, K-Beauty, K-Wellness, K-Starcation, K-Education, Subpackage 순. agent home + admin picker 양쪽 반영.
+- [x] **Time24Input** — locale-independent 24h. 두 `<input type="number">` (HH 0-23 / MM 0-59) + onBlur clamp/pad. native `<input type="time">`이 OS locale에 따라 12h AM/PM 뜨는 이슈 해결. DateTime24Picker + ScheduleEditor 양쪽 적용.
+- [x] **agent_notes 필드** (`sql/2026-05-06_cases_agent_notes.sql`) — `cases.agent_notes`. agent home review page (Send Quote 직전 textarea) + agent 케이스 detail (Trip Setup 아래 박스, Edit/Save 토글) + admin 케이스 detail (ScheduleEditor 헤더 아래 빨강 테두리 read-only). agent → admin 메모 (Day 3 free, 회복 선호, 기도 시간 등).
+- [x] **ScheduleEditor 대수술** — Free time 드롭다운 (morning/afternoon/evening/full day 프리셋), Add/Remove Day 제거 (travel dates 파생), `endBlock`/`endTime` 추가 (`Morning → Afternoon`, `09:00 – 15:00` 범위), partner 필드 분리 + eyebrow 라벨 ("GIL HOSPITAL" 작은 캡스 + serif 큰 title), `internalNotes` 필드 (admin only, location도 internal로 demote), `groupId` 필드 (단일 schedule + URL 필터 모델: `?group={groupId}` → `groupId === filter || !groupId`만 노출), 그룹별 좌측 색띠 + colored chip 셀렉트 (4 토너 순환), Pending row 상태 (노란 점선 + Cancel/Save row 인라인, Free time 프리셋은 즉시 커밋), Coverage gate (모든 caseProducts.variantId가 committed row에 등장해야 Save 활성화, 누락 amber 박스 노출).
+- [x] **ScheduleDocument 출력 강화** — partner eyebrow + group 배지(filter 미적용 admin 풀 뷰만) + filterGroupId/groupNameById props + showInternalNotes 모드(amber Internal 박스에 location + internalNotes). admin preview 링크에 `?internal=1` 자동 부착.
+- [x] **Confirmed schedule internal note 인라인 편집** — Schedule History의 latest+confirmed 카드에 "Internal Notes (concierge handover)" 섹션. title/time/block 잠금, internalNotes만 in-place UPDATE (새 version 생성 X). audit log `schedule.internal_notes_updated`.
+- [x] **CaseDocumentsSection 폴리시** — Issue Deposit modal 통화 분기 (agent USD only / admin USD(KRW)), 인보이스 카드 가격 통화 분기, deposit_invoice 라인 아이템 비노출 (단일 금액 중복 제거), 하단 액션 버튼 톤 통일.
+- [x] **QuoteDocument** — `Independent Agent` 보조 라벨 제거 (From 라인 agent 이름만).
 
 ### 5/4 완료 (Variants 모델 + Excel upload + 카탈로그 개편 + 계약 강화)
 - [x] **Product Variants 모델** — `product_variants` 테이블 + `document_items.variant_id/variant_label_snapshot`. 같은 base name 상품의 다른 회차/사이즈/grade를 1 product + N variants로 묶음. document_items 기존 row backfill (default variant 자동 생성).

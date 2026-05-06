@@ -157,7 +157,7 @@ Agent 수동 개입:
   - 확장: emergency_contact_name/relation/phone, blood_type, allergies, current_medications, health_conditions, medical_restrictions, height_cm, weight_kg, preferred_language, mobility_limitations, cultural_religious_notes, prior_aesthetic_procedures, recent_health_checkup_notes
   - Lifestyle: pregnancy_status, smoking_status, alcohol_status
   - Muslim prefs: needs_muslim_friendly, dietary_restriction, prayer_frequency, prayer_location, same_gender_doctor, same_gender_therapist, mixed_gender_activities
-- **cases**: id, case_number, agent_id, status, travel_start_date, travel_end_date, payment_date, payment_confirmed_at, created_at, concept, meeting_date(deprecated, UI 미사용), outbound_flight(jsonb), inbound_flight(jsonb), travel_completed_at(Mark Complete 시점), **cancellation_reason, cancelled_at, cancelled_by_actor_type, cancelled_by_actor_id**
+- **cases**: id, case_number, agent_id, status, travel_start_date, travel_end_date, payment_date, payment_confirmed_at, created_at, concept, meeting_date(deprecated, UI 미사용), outbound_flight(jsonb), inbound_flight(jsonb), travel_completed_at(Mark Complete 시점), **cancellation_reason, cancelled_at, cancelled_by_actor_type, cancelled_by_actor_id**, **agent_notes**(TEXT, agent → admin 메모 — 5/6)
 - **case_members**: id, case_id, client_id, is_lead, UNIQUE(case_id, client_id)
 - **documents** (4/30 SOP 5종 invoice 모델, `quotes` 테이블 대체 — Phase 1 완료, code는 documents에서만 read/write):
   - id, case_id, **type**(quotation/deposit_invoice/final_invoice/additional_invoice/commission_invoice), document_number(UNIQUE), slug(UNIQUE)
@@ -167,17 +167,21 @@ Agent 수동 개입:
   - signer_snapshot(jsonb), first_opened_at, open_count, created_at, created_by_admin_id, notes
 - **document_groups**: id, document_id, name, member_count, "order", created_at
 - **document_group_members**: id, document_group_id, case_member_id
-- **document_items**: id, document_id, document_group_id, product_id, **variant_id**(FK product_variants ON DELETE SET NULL), **product_name_snapshot, product_partner_snapshot, variant_label_snapshot**, base_price, final_price, quantity, sort_order
+- **document_items**: id, document_id, document_group_id, product_id, **variant_id**(FK product_variants ON DELETE SET NULL), **product_name_snapshot, product_partner_snapshot, variant_label_snapshot**, base_price, final_price, quantity, sort_order, **origin**('original'|'admin_added' — 5/6, agent quote 단계 vs admin Edit Selected Products 추가), **removed_at**(TIMESTAMPTZ — 5/6 soft delete; consumer는 `removed_at IS NULL` 필터, Edit Selected Products는 의도적 미필터로 audit trail 노출). 부분 인덱스 `(document_id) WHERE removed_at IS NULL`
 - ⚠️ legacy `quotes / quote_groups / quote_group_members / quote_items` 테이블은 backup으로 남아있으나 **read/write 안 함**. Phase 2에서 DROP 예정.
 - **schedules**: id, case_id, quote_id(이름만 남음, FK drop됨, 실제로는 quotation document.id), slug, pdf_url(legacy/nullable), **items**(JSONB, ScheduleItem[]), status, version, created_at, file_name, revision_note, confirmed_at, **first_opened_at, open_count**, UNIQUE(case_id, version). 신규는 items 사용, pdf_url은 backward compat로만 유지 (legacy 케이스 view).
 - **settlements**: id, settlement_number, agent_id, **case_id**(UNIQUE, 1:1), amount(KRW), paid_at, created_at
 - **partner_payments**: id, case_id, partner_name, amount, paid_at(DATE), paid_by(FK admins SET NULL), note, created_at, UNIQUE(case_id, partner_name) — Partner Payouts cash basis 추적
 - **system_settings**: id, key, value(jsonb). Keys: exchange_rate / company_margin_rate / bank_details / onboarding_ot / **deposit_percentage** / **company_stamp** / **survey_questions**
 - **notifications**: id, target_type, target_id, auth_user_id, message, **link_url**, is_read, **created_at**. Realtime publication 등록됨.
+  - **5/6**: Realtime publication에 `cases / case_contracts / documents / schedules`도 등록. 케이스 detail 페이지가 `useCaseRealtime(caseId, fetchCase)` 훅으로 4테이블 단일 채널 구독, 250ms 디바운스. 한쪽 사인/결제/스케줄 컨펌 시 다른 쪽 자동 새로고침.
 - **contract_templates**: id, contract_type(UNIQUE), title, body, updated_at
 - **agent_contracts**: id, agent_id, contract_type, title_snapshot, body_snapshot, ot_acknowledged_at, signature_data_url, signed_at, ip_address, user_agent, approved_at, approved_by(FK admins ON DELETE SET NULL)
   - **Admin counter-sign (2026-05-02)**: admin_signature_data_url, admin_signed_at, admin_signer_id, admin_signer_name, admin_signer_title
   - **무결성/본인확인 강화 (2026-05-04)**: signature_hash(SHA-256), signed_typed_name, admin_signature_hash, admin_signed_typed_name
+- **case_contracts**: 3자 계약 (agent + client + admin). title/body snapshot, client_token(공개 사인 링크), per-side signature_data_url + signed_at + signer_name
+  - **Evidentiary 강화 (2026-05-06)**: agent/client/admin 각각 `signature_hash(SHA-256), signed_typed_name, ip_address, user_agent` 12개 컬럼. 신규 API `/api/case-contracts/sign-{agent,client,admin}`이 service role + IP 캡처 + SHA-256 + typed_name vs DB name 일치 검증. CaseContractViewer는 NDA ContractStep과 동일 UX (typed name 입력 + identity confirm + KSA 명시).
+  - **순서 무관 (2026-05-06)**: admin은 agent/client 사인 전에도 카운터사인 가능. status 전이는 세 사인 모두 모이면 발동.
 - **audit_logs**: id, actor_type, actor_id, actor_label, action, target_type, target_id, target_label, details(jsonb), created_at
 
 ## 코딩 규칙
@@ -204,7 +208,8 @@ Agent 수동 개입:
 - `src/lib/notifications.ts` — `createNotification`, `notifyAgent`, `notifyAllAdmins`
 - `src/lib/audit.ts` — `logAudit`, `getActor`, `logAsCurrentUser`. **5/4 sweep**: products(create/update/delete/bulk_upload), categories/subcategories, system_settings, contract_templates, clients(create/update), admins(invite/delete), documents(issue/item_added/item_removed/paid)도 모두 logged. `/admin/audit` 아이콘 톤 monochrome 통일. 새 액션 추가 시 [`/admin/audit/page.tsx`](src/app/admin/audit/page.tsx)의 `ACTION_VERB` + `ACTION_TONE` + `ActionIcon` paths 3곳 모두 등록 필요 (안 그러면 dot fallback).
 - `src/hooks/useNotifications.ts` — Realtime 구독
-- `src/types/schedule.ts` (2026-05-05) — `ScheduleItem` 타입 + `compareScheduleItems` / `groupItemsByDay` / `groupDayByBlock` / `dateForDay` / `formatDayHeader` / `generateScheduleItemId` 헬퍼. Block은 morning/afternoon/evening 3종.
+- `src/types/schedule.ts` — `ScheduleItem` 타입 + `compareScheduleItems` / `groupItemsByDay` / `groupDayByBlock` / `dateForDay` / `formatDayHeader` / `generateScheduleItemId` 헬퍼. Block은 morning/afternoon/evening 3종.
+  - **5/6 확장**: `endBlock?` (블록 범위 — `Morning → Afternoon`), `endTime?` (`09:00 – 15:00`), `partner?` (eyebrow 라벨, applyVariantPick에서 자동 채움), `internalNotes?` (admin only — VIP 미노출), `groupId?` (document_groups.id; null = Shared 활동, 그룹별 시술/공유 활동 구분). ScheduleDocument는 `filterGroupId` prop으로 그룹별 필터, `showInternalNotes`로 internal 박스 노출. URL: `/schedule/{slug}?group={id}` / `?internal=1`.
 - `src/components/`: NotificationBell, DOBPicker, DateTime24Picker, SignaturePad, ContractStep, AgentOnboardingGuard, ChangePasswordCard, PrintPdfButton, AutoPrint, PrintButton, **QuoteDocument**(고객용 모든 invoice/quotation 공용 렌더, from_party/to_party 기반 분기, variant_label_snapshot 노출), **CaseDocumentsSection**(case 페이지 내 documents 리스트), **SelectedProductsSection**(2026-05-04, admin/agent case 페이지 공용 — quotation + additional_invoice 합쳐 표시, variant_label snapshot, ProductDetailModal), **ScheduleDocument**(2026-05-05, /schedule/[slug] 고객용 Option A 에디토리얼 렌더 — serif Day 01/02/03 헤더, Morning/Afternoon/Evening 블록, cover에 lead/dates/hotel 자동), **admin/ScheduleEditor**(2026-05-05, Day 카드 + Add Item form 인라인 편집기, save = 새 schedules row + items JSONB), SparklineCard, MobileTopBar, MobileNavContext, AdminCaseContractSection, AgentCaseContractSection, CaseHeroAction(AdminCaseHero/AgentCaseHero — Hero ACTION NEEDED 박스, status별 분기)
 
 ## 언어 규칙

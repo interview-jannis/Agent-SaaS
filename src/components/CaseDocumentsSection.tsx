@@ -154,7 +154,7 @@ export default function CaseDocumentsSection({
     async function loadItems() {
       const ids = documents.map(d => d.id)
       if (ids.length === 0) { setItems({}); return }
-      const { data } = await supabase.from('document_items').select('*').in('document_id', ids).order('sort_order')
+      const { data } = await supabase.from('document_items').select('*').in('document_id', ids).is('removed_at', null).order('sort_order')
       const grouped: Record<string, DocumentItemRow[]> = {}
       for (const it of (data as DocumentItemRow[] | null) ?? []) {
         if (!grouped[it.document_id]) grouped[it.document_id] = []
@@ -432,7 +432,11 @@ export default function CaseDocumentsSection({
                   className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
                 <p className="text-[10px] text-gray-400 mt-1">
                   Default {depositPercentDefault}% from settings.{' '}
-                  {quotation?.total_price ? `≈ ${fmtKRW(Math.round(quotation.total_price * (Number(depositPercent) / 100)))}` : ''}
+                  {quotation?.total_price ? (() => {
+                    const krw = Math.round(quotation.total_price * (Number(depositPercent) / 100))
+                    const usd = fmtUSD(krw / exchangeRate)
+                    return `≈ ${usd}${actor === 'admin' ? ` (${fmtKRW(krw)})` : ''}`
+                  })() : ''}
                 </p>
               </div>
             )}
@@ -574,33 +578,41 @@ export default function CaseDocumentsSection({
                 )}
               </div>
               <div className="text-right">
-                <p className="text-sm font-semibold text-gray-900 tabular-nums">{fmtKRW(doc.total_price ?? 0)}</p>
-                <p className="text-[10px] text-gray-400 tabular-nums">{fmtUSD((doc.total_price ?? 0) / exchangeRate)}</p>
+                <p className="text-sm font-semibold text-gray-900 tabular-nums">{fmtUSD((doc.total_price ?? 0) / exchangeRate)}</p>
+                {actor === 'admin' && (
+                  <p className="text-[10px] text-gray-400 tabular-nums">{fmtKRW(doc.total_price ?? 0)}</p>
+                )}
               </div>
             </div>
 
-            {/* Items */}
-            <div className="bg-white rounded-lg border border-gray-100 divide-y divide-gray-50">
-              {docItems.length === 0 ? (
-                <p className="text-[11px] text-gray-400 px-3 py-2">No items.</p>
-              ) : docItems.map(it => (
-                <div key={it.id} className="flex items-center gap-3 px-3 py-1.5">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs text-gray-800 truncate">{it.product_name_snapshot ?? 'Item'}</p>
-                    {it.product_partner_snapshot && <p className="text-[10px] text-gray-400 truncate">{it.product_partner_snapshot}</p>}
+            {/* Items — hidden for deposit_invoice (single flat amount, the line
+                item just repeats the total → noise). */}
+            {doc.type !== 'deposit_invoice' && (
+              <div className="bg-white rounded-lg border border-gray-100 divide-y divide-gray-50">
+                {docItems.length === 0 ? (
+                  <p className="text-[11px] text-gray-400 px-3 py-2">No items.</p>
+                ) : docItems.map(it => (
+                  <div key={it.id} className="flex items-center gap-3 px-3 py-1.5">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-gray-800 truncate">{it.product_name_snapshot ?? 'Item'}</p>
+                      {it.product_partner_snapshot && <p className="text-[10px] text-gray-400 truncate">{it.product_partner_snapshot}</p>}
+                    </div>
+                    <span className="text-xs text-gray-700 tabular-nums shrink-0">
+                      {fmtUSD(it.final_price / exchangeRate)}
+                      {actor === 'admin' && <span className="text-gray-400 ml-1">({fmtKRW(it.final_price)})</span>}
+                    </span>
+                    {!paid && canEdit && (
+                      <button onClick={() => doRemoveItem(it.id, doc.id)} disabled={busy === it.id}
+                        className="text-gray-300 hover:text-red-500 transition-colors disabled:opacity-40" title="Remove item">
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    )}
                   </div>
-                  <span className="text-xs text-gray-700 tabular-nums shrink-0">{fmtKRW(it.final_price)}</span>
-                  {!paid && canEdit && (
-                    <button onClick={() => doRemoveItem(it.id, doc.id)} disabled={busy === it.id}
-                      className="text-gray-300 hover:text-red-500 transition-colors disabled:opacity-40" title="Remove item">
-                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
 
             {/* Add item inline form — deposit invoice/settlement are flat amounts, no line items */}
             {!paid && canEdit && doc.type !== 'deposit_invoice' && (
@@ -642,19 +654,22 @@ export default function CaseDocumentsSection({
               )
             )}
 
-            {/* Bottom row — uniform 3-column layout: links · payment date · action */}
-            <div className="flex items-center justify-between flex-wrap gap-2 pt-1 border-t border-gray-100">
-              <div className="flex items-center gap-3">
+            {/* Bottom row — bordered button row matching the contract section's
+                Save PDF / Expand button style (text links were too quiet). */}
+            <div className="flex items-center justify-between flex-wrap gap-2 pt-2 border-t border-gray-100">
+              <div className="flex items-center gap-2 flex-wrap">
                 <a href={`${baseUrl}/${customerRouteFor(doc.type)}/${doc.slug}?preview=1`} target="_blank" rel="noopener noreferrer"
-                  className="text-[11px] text-gray-500 hover:text-[#0f4c35]">Preview ↗</a>
+                  className="text-[11px] font-medium text-gray-600 hover:text-gray-900 px-2 py-1 rounded-lg border border-gray-200 hover:bg-white">
+                  Preview ↗
+                </a>
                 <button onClick={() => copyLink(doc)}
-                  className="text-[11px] text-gray-500 hover:text-[#0f4c35]">
-                  {copiedId === doc.id ? 'Copied!' : 'Copy link'}
+                  className="text-[11px] font-medium text-gray-600 hover:text-gray-900 px-2 py-1 rounded-lg border border-gray-200 hover:bg-white">
+                  {copiedId === doc.id ? '✓ Copied!' : 'Copy link'}
                 </button>
                 {paid ? (
-                  <span className="text-[10px] text-gray-400">Paid {doc.payment_received_at?.slice(0, 10)}</span>
+                  <span className="text-[10px] text-gray-400 ml-1">Paid {doc.payment_received_at?.slice(0, 10)}</span>
                 ) : doc.payment_due_date ? (
-                  <span className={`text-[10px] ${overdue ? 'text-red-600 font-medium' : 'text-gray-400'}`}>
+                  <span className={`text-[10px] ml-1 ${overdue ? 'text-red-600 font-medium' : 'text-gray-400'}`}>
                     Due {doc.payment_due_date}
                   </span>
                 ) : null}
@@ -666,15 +681,17 @@ export default function CaseDocumentsSection({
                       <input type="date" value={paidAtValue} onChange={e => setPaidAtValue(e.target.value)}
                         className="border border-gray-200 rounded-lg px-2 py-1 text-[11px] text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
                       <button onClick={() => { setPaidAtEditingId(null); setPaidAtValue('') }}
-                        className="text-[11px] text-gray-500 hover:text-gray-800">Cancel</button>
+                        className="text-[11px] font-medium text-gray-600 hover:text-gray-900 px-2 py-1 rounded-lg border border-gray-200 hover:bg-white">Cancel</button>
                       <button onClick={() => doMarkPaid(doc.id)} disabled={busy === doc.id || !paidAtValue}
-                        className="text-[11px] font-medium bg-emerald-600 text-white hover:bg-emerald-700 rounded-lg px-2 py-1 disabled:opacity-40">
+                        className="text-[11px] font-medium bg-emerald-600 text-white hover:bg-emerald-700 rounded-lg px-2.5 py-1 disabled:opacity-40">
                         {busy === doc.id ? 'Saving…' : 'Save'}
                       </button>
                     </div>
                   ) : (
                     <button onClick={() => { setPaidAtEditingId(doc.id); setPaidAtValue(new Date().toISOString().slice(0, 10)) }}
-                      className="text-[11px] font-medium text-emerald-700 hover:text-emerald-800">Mark paid</button>
+                      className="text-[11px] font-medium text-emerald-700 hover:text-white hover:bg-emerald-600 px-2.5 py-1 rounded-lg border border-emerald-200 hover:border-emerald-600 transition-colors">
+                      Mark paid
+                    </button>
                   )
                 )}
               </div>

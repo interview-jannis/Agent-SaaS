@@ -107,7 +107,7 @@ type Quote = {
   total_price: number
   document_groups: {
     member_count: number
-    document_items: { products: { partner_name: string | null } | null }[]
+    document_items: { removed_at?: string | null; products: { partner_name: string | null } | null }[]
   }[]
 }
 
@@ -161,7 +161,7 @@ export default function AdminCasesPage() {
           id, case_number, status, travel_start_date, travel_end_date, created_at,
           agents!cases_agent_id_fkey(id, agent_number, name),
           case_members(id, is_lead, clients(id, client_number, name)),
-          documents(id, type, total_price, document_groups(member_count, document_items(products(partner_name))))
+          documents(id, type, total_price, document_groups(member_count, document_items(removed_at, products(partner_name))))
         `).order('created_at', { ascending: false }),
         supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single(),
         supabase.from('partner_payments').select('case_id, partner_name'),
@@ -189,7 +189,7 @@ export default function AdminCasesPage() {
     const partners = new Set<string>()
     const quotation = c.documents?.find(d => d.type === 'quotation')
     for (const g of quotation?.document_groups ?? []) {
-      for (const item of g.document_items ?? []) {
+      for (const item of (g.document_items ?? []).filter(it => !it.removed_at)) {
         const name = item.products?.partner_name?.trim()
         if (name) partners.add(name)
       }
@@ -286,8 +286,6 @@ export default function AdminCasesPage() {
       <div className="flex-1 overflow-auto">
         {loading ? (
           <p className="text-sm text-gray-400 text-center py-16">Loading...</p>
-        ) : filtered.length === 0 ? (
-          <p className="text-sm text-gray-400 text-center py-24">No cases found.</p>
         ) : (
           <div className="px-4 md:px-12 py-6 md:py-8 space-y-6">
             <div className="bg-white rounded-2xl border border-gray-100 overflow-x-auto">

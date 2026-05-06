@@ -18,16 +18,29 @@ export type CaseContractRow = {
   agent_signed_at: string | null
   agent_signature_data_url: string | null
   agent_signer_name: string | null
+  agent_signature_hash: string | null
+  agent_signed_typed_name: string | null
+  agent_ip_address: string | null
+  agent_user_agent: string | null
   // Client
   client_signed_at: string | null
   client_signature_data_url: string | null
   client_signer_name: string | null
+  client_signature_hash: string | null
+  client_signed_typed_name: string | null
+  client_ip_address: string | null
+  client_user_agent: string | null
   // Admin
   admin_signed_at: string | null
   admin_signature_data_url: string | null
   admin_signer_id: string | null
   admin_signer_name: string | null
   admin_signer_title: string | null
+  admin_signature_hash: string | null
+  admin_signed_typed_name: string | null
+  admin_ip_address: string | null
+  admin_user_agent: string | null
+  // Legacy single ip/ua (unused, kept for backward compat)
   ip_address: string | null
   user_agent: string | null
   created_at: string
@@ -104,39 +117,10 @@ export async function getCaseContractByToken(token: string): Promise<CaseContrac
   return data as CaseContractRow | null
 }
 
-export async function signAsAgent(contractId: string, signatureDataUrl: string, signerName: string): Promise<void> {
-  const { error } = await supabase.from('case_contracts').update({
-    agent_signature_data_url: signatureDataUrl,
-    agent_signed_at: new Date().toISOString(),
-    agent_signer_name: signerName,
-    user_agent: typeof navigator !== 'undefined' ? navigator.userAgent : null,
-  }).eq('id', contractId)
-  if (error) throw error
-}
-
-export async function signAsClient(contractId: string, signatureDataUrl: string, signerName: string): Promise<void> {
-  const { error } = await supabase.from('case_contracts').update({
-    client_signature_data_url: signatureDataUrl,
-    client_signed_at: new Date().toISOString(),
-    client_signer_name: signerName,
-  }).eq('id', contractId)
-  if (error) throw error
-}
-
-export async function signAsAdmin(
-  contractId: string,
-  signatureDataUrl: string,
-  admin: { id: string; name: string; title: string | null },
-): Promise<void> {
-  const { error } = await supabase.from('case_contracts').update({
-    admin_signature_data_url: signatureDataUrl,
-    admin_signed_at: new Date().toISOString(),
-    admin_signer_id: admin.id,
-    admin_signer_name: admin.name,
-    admin_signer_title: admin.title,
-  }).eq('id', contractId)
-  if (error) throw error
-}
+// Direct sign helpers removed — all signing now goes through server APIs
+// (/api/case-contracts/sign-agent | sign-client | sign-admin) which capture
+// IP/UA, hash the signature, and verify the typed name. See ContractStep.tsx
+// for the matching NDA/Partnership pattern.
 
 export function isFullySigned(c: CaseContractRow | null | undefined): boolean {
   if (!c) return false

@@ -16,12 +16,22 @@ export const SCHEDULE_BLOCK_LABEL: Record<ScheduleItemBlock, string> = {
 export type ScheduleItem = {
   id: string                       // client-generated UUID for React key + reorder
   day: number                      // 1-indexed
-  block: ScheduleItemBlock
-  time: string | null              // "HH:MM" 24h, optional
-  title: string                    // free text
+  block: ScheduleItemBlock          // start block
+  endBlock?: ScheduleItemBlock | null  // end block (optional). Different from
+                                       //   `block` means the activity spans
+                                       //   blocks (e.g. Morning → Afternoon).
+                                       //   null/missing = single block.
+  time: string | null              // "HH:MM" 24h, optional — start time
+  endTime?: string | null           // "HH:MM" 24h, optional — end time
+  title: string                    // free text — the activity itself
+  partner?: string | null           // partner brand (e.g. "Gil Hospital") — eyebrow above title
   location: string | null
-  notes: string | null
+  notes: string | null              // VIP-facing — rendered on client schedule
+  internalNotes?: string | null     // admin/concierge only — never rendered to client
   variantId: string | null         // optional ref to product_variants for context
+  groupId?: string | null           // document_groups.id this item belongs to
+                                    //   null = shared activity (visible to all groups)
+                                    //   set  = only that group's lead client sees it
   sortOrder: number                // within (day, block, time) ties
 }
 

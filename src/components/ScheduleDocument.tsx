@@ -26,6 +26,16 @@ type Props = {
   agentPhone: string | null
   version: number
   createdAt: string | null
+  // Admin-only mode: also render internal concierge notes inline. Never set
+  // when the schedule is sent through agent → client surfaces.
+  showInternalNotes?: boolean
+  // Filter to a specific group (lead client receives only their group's
+  // items + Shared items). null/undefined = no filter (admin view shows all
+  // and labels each row by group).
+  filterGroupId?: string | null
+  // For admin/full view: name lookup so the renderer can label each item
+  // with its group when no filter is applied.
+  groupNameById?: Record<string, string>
 }
 
 function formatRange(start: string | null, end: string | null): string {
@@ -49,10 +59,16 @@ function nightsBetween(start: string | null, end: string | null): number {
 export default function ScheduleDocument(props: Props) {
   const {
     items, caseNumber, leadName, travelStartDate, travelEndDate,
-    hotelName, agentName, agentPhone, version, createdAt,
+    hotelName, agentName, agentPhone, version, createdAt, showInternalNotes = false,
+    filterGroupId, groupNameById,
   } = props
 
-  const sorted = [...items].sort(compareScheduleItems)
+  // Per-group filter: keep items tagged for this group + Shared (no groupId).
+  // No filter → show everything (admin view).
+  const filtered = filterGroupId
+    ? items.filter(it => !it.groupId || it.groupId === filterGroupId)
+    : items
+  const sorted = [...filtered].sort(compareScheduleItems)
   const daysWithItems = Array.from(new Set(sorted.map(i => i.day))).sort((a, b) => a - b)
   const nights = nightsBetween(travelStartDate, travelEndDate)
   const tripDays = nights + 1
@@ -156,26 +172,57 @@ export default function ScheduleDocument(props: Props) {
                           key={item.id}
                           className="grid grid-cols-1 sm:grid-cols-[140px_1fr] gap-2 sm:gap-8"
                         >
-                          {/* Block / time label — only on the first item of each block */}
-                          {itemIdx === 0 ? (
-                            <p className="text-[11px] tracking-[0.25em] text-gray-400 uppercase pt-1 sm:pt-2">
-                              {item.time ? `${item.time} · ${SCHEDULE_BLOCK_LABEL[block]}` : SCHEDULE_BLOCK_LABEL[block]}
-                            </p>
-                          ) : item.time ? (
-                            <p className="text-[11px] text-gray-400 pt-1 sm:pt-2 tabular-nums">{item.time}</p>
-                          ) : (
-                            <p className="text-[11px] text-gray-300 pt-1 sm:pt-2">·</p>
-                          )}
+                          {/* Block / time label — only on the first item of each block.
+                              Supports span: if endBlock differs, shows "Morning → Afternoon".
+                              If endTime set, shows "09:00 – 15:00". */}
+                          {(() => {
+                            const timeStr = item.time && item.endTime
+                              ? `${item.time} – ${item.endTime}`
+                              : (item.time ?? null)
+                            const blockStr = item.endBlock && item.endBlock !== block
+                              ? `${SCHEDULE_BLOCK_LABEL[block]} → ${SCHEDULE_BLOCK_LABEL[item.endBlock]}`
+                              : SCHEDULE_BLOCK_LABEL[block]
+                            if (itemIdx === 0) {
+                              return (
+                                <p className="text-[11px] tracking-[0.25em] text-gray-400 uppercase pt-1 sm:pt-2">
+                                  {timeStr ? `${timeStr} · ${blockStr}` : blockStr}
+                                </p>
+                              )
+                            }
+                            if (timeStr) {
+                              return <p className="text-[11px] text-gray-400 pt-1 sm:pt-2 tabular-nums">{timeStr}</p>
+                            }
+                            return <p className="text-[11px] text-gray-300 pt-1 sm:pt-2">·</p>
+                          })()}
                           <div>
+                            {/* Eyebrow line: partner + (in admin view only)
+                                group tag so admin can see which group each
+                                item belongs to. Filtered (per-group) views
+                                hide the group tag — VIP doesn't need it. */}
+                            {(item.partner || (!filterGroupId && item.groupId)) && (
+                              <p className="text-[10px] tracking-[0.2em] text-gray-500 uppercase mb-1 flex items-center gap-2 flex-wrap">
+                                {item.partner && <span>{item.partner}</span>}
+                                {!filterGroupId && item.groupId && groupNameById?.[item.groupId] && (
+                                  <span className="text-[9px] font-semibold bg-gray-100 border border-gray-200 px-1.5 py-0.5 rounded-full text-gray-600 normal-case tracking-normal">
+                                    {groupNameById[item.groupId]}
+                                  </span>
+                                )}
+                              </p>
+                            )}
                             <p className="schedule-serif text-lg sm:text-xl text-gray-900 leading-snug">
                               {item.title || '—'}
                             </p>
-                            {(item.location || item.notes) && (
+                            {item.notes && (
                               <p className="text-sm text-gray-500 mt-1.5 leading-relaxed whitespace-pre-line">
-                                {item.location}
-                                {item.location && item.notes && <br />}
                                 {item.notes}
                               </p>
+                            )}
+                            {showInternalNotes && (item.location || item.internalNotes) && (
+                              <div className="mt-2 px-2.5 py-1.5 bg-amber-50 border border-amber-200 rounded text-[11px] text-amber-900 leading-relaxed whitespace-pre-line">
+                                <span className="font-semibold tracking-wide uppercase text-[9px] text-amber-700 block mb-0.5">Internal</span>
+                                {item.location && <span className="block">{item.location}</span>}
+                                {item.internalNotes && <span className="block mt-0.5">{item.internalNotes}</span>}
+                              </div>
                             )}
                           </div>
                         </div>

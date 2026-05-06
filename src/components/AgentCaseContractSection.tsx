@@ -10,13 +10,12 @@ import CaseContractViewer from './CaseContractViewer'
 import {
   createCaseContract,
   getCaseContract,
-  signAsAgent,
-  signAsClient,
   tryAdvanceContractSigned,
   type CaseContractRow,
 } from '@/lib/caseContracts'
 import { logAsCurrentUser } from '@/lib/audit'
 import { notifyAssignedAdmin } from '@/lib/notifications'
+import { useCaseRealtime } from '@/hooks/useCaseRealtime'
 
 type Props = {
   caseId: string
@@ -44,7 +43,6 @@ export default function AgentCaseContractSection({
   // Offline signing — when client is physically present and the agent collects
   // the signature on this device instead of sending the link.
   const [clientSignMode, setClientSignMode] = useState(false)
-  const [clientSignerName, setClientSignerName] = useState('')
   const [depositPctDefault, setDepositPctDefault] = useState('50')
   // Collapsible — auto-collapse when fully signed (no action needed) so the
   // long contract body doesn't dominate the case detail page.
@@ -55,6 +53,9 @@ export default function AgentCaseContractSection({
     setContract(c)
     setLoading(false)
   }
+
+  // Realtime: keep this section's contract row fresh when admin/client signs.
+  useCaseRealtime(caseId, load)
 
   useEffect(() => {
     load()
@@ -87,14 +88,22 @@ export default function AgentCaseContractSection({
     }
   }
 
-  async function submitAgentSig(sig: string) {
+  async function submitAgentSig({ signatureDataUrl, typedName }: { signatureDataUrl: string; typedName: string }) {
     if (!contract) return
     setSaving(true); setError('')
     try {
-      await signAsAgent(contract.id, sig, agentName)
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) throw new Error('Not signed in.')
+      const res = await fetch('/api/case-contracts/sign-agent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ contract_id: contract.id, signature_data_url: signatureDataUrl, signed_typed_name: typedName }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error((data as { error?: string }).error ?? 'Failed to sign.')
       await logAsCurrentUser('case_contract.signed_agent', { type: 'case', id: caseId, label: caseNumber })
-      // Notify admin (informational — they can prepare to counter-sign once client signs)
-      await notifyAssignedAdmin({ case_id: caseId }, `${caseNumber} agent signed contract — awaiting client signature`, `/admin/cases/${caseId}`)
+      await notifyAssignedAdmin({ case_id: caseId }, `${caseNumber} agent signed contract — counter-sign anytime`, `/admin/cases/${caseId}`)
+      await tryAdvanceContractSigned(caseId)
       setSigning(false)
       await load()
       await onChanged?.()
@@ -105,17 +114,20 @@ export default function AgentCaseContractSection({
     }
   }
 
-  async function submitClientSig(sig: string) {
-    if (!contract) return
-    if (!clientSignerName.trim()) { setError('Please enter the client\'s full legal name.'); return }
+  async function submitClientSig({ signatureDataUrl, typedName }: { signatureDataUrl: string; typedName: string }) {
+    if (!contract?.client_token) return
     setSaving(true); setError('')
     try {
-      await signAsClient(contract.id, sig, clientSignerName.trim())
+      const res = await fetch('/api/case-contracts/sign-client', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ client_token: contract.client_token, signature_data_url: signatureDataUrl, signed_typed_name: typedName }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error((data as { error?: string }).error ?? 'Failed to sign.')
       await logAsCurrentUser('case_contract.signed_client', { type: 'case', id: caseId, label: caseNumber }, { mode: 'on_device' })
-      // Try advance — won't fire (admin still hasn't signed), but harmless.
       await tryAdvanceContractSigned(caseId)
       setClientSignMode(false)
-      setClientSignerName('')
       await load()
       await onChanged?.()
     } catch (e: unknown) {
@@ -156,7 +168,13 @@ export default function AgentCaseContractSection({
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          {contract && contract.agent_signed_at && contract.client_token && !contract.client_signed_at && (
+          {contract && contract.client_token && (
+            <button onClick={() => window.open(`/case-contract/${contract.client_token}?print=1`, '_blank', 'noopener')}
+              className="text-[11px] font-medium text-gray-500 hover:text-gray-800 px-2 py-1 rounded-lg border border-gray-200 hover:bg-gray-50">
+              ⤓ Save PDF
+            </button>
+          )}
+          {contract && contract.client_token && !contract.client_signed_at && (
             <>
               <button onClick={copyClientLink}
                 className="text-xs font-medium px-3 py-1.5 rounded-lg bg-[#0f4c35] text-white hover:bg-[#0a3828]">
@@ -189,20 +207,21 @@ export default function AgentCaseContractSection({
           </button>
         </div>
       ) : isExpanded ? (
-        clientSignMode && contract.agent_signed_at && !contract.client_signed_at ? (
+        clientSignMode && !contract.client_signed_at ? (
           <CaseContractViewer
+            key="sign-client"
             contract={contract}
             signMode="client"
-            clientSignerName={clientSignerName}
-            onClientSignerNameChange={setClientSignerName}
             onSubmit={submitClientSig}
             saving={saving}
             error={error}
           />
         ) : (
           <CaseContractViewer
+            key={!contract.agent_signed_at || signing ? 'sign-agent' : 'view'}
             contract={contract}
             signMode={!contract.agent_signed_at ? 'agent' : (signing ? 'agent' : null)}
+            expectedTypedName={agentName}
             onSubmit={submitAgentSig}
             saving={saving}
             error={error}

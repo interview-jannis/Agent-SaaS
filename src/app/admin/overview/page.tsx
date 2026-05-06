@@ -89,6 +89,7 @@ export default async function AdminOverviewPage() {
     { data: rateRow },
     { data: allPartnerPayments },
     { data: allAgentSettlements },
+    { data: allDepositSettlements },
   ] = await Promise.all([
     // paymentPending — admin needs to confirm payment received from client
     supabase.from('cases').select(CASE_WITH_ALL).eq('status', 'awaiting_payment').order('created_at', { ascending: false }),
@@ -117,47 +118,72 @@ export default async function AdminOverviewPage() {
     supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single(),
     supabase.from('partner_payments').select('id, amount, paid_at'),
     supabase.from('settlements').select('id, amount, paid_at').not('paid_at', 'is', null),
+    // Deposit settlements (admin → agent invoices) marked received — admin
+    // actually has the money. Drives cash-basis revenue recognition.
+    supabase.from('documents')
+      .select('case_id, total_price, payment_received_at')
+      .eq('type', 'deposit_invoice')
+      .eq('to_party', 'agent')
+      .not('payment_received_at', 'is', null),
   ])
 
   const exchangeRate = (rateRow?.value as { usd_krw?: number } | null)?.usd_krw ?? 1350
-
-  // Accrual-basis financial decomposition — recognized at payment_date.
-  // total_price = base × (1+co) × (1+agent)  →  base = total / ((1+co)(1+agent))
-  //   Revenue + Earnings + Partner + Agent = Σ total_price (reconciles)
+  // Cash-basis financials — revenue recognized when admin actually receives
+  // money, earnings = revenue minus cash outflows.
+  //
+  // Revenue events:
+  //   (a) Deposit settlement (admin -> agent invoice) marked received
+  //         -> amount = doc.total_price, at = payment_received_at
+  //   (b) cases.payment_date set (full balance confirmed)
+  //         -> amount = quotation total minus deposit already received
+  //         -> at = payment_date  (proxy for balance receipt; SOP doesn't
+  //           currently issue an explicit balance settlement document)
+  //
+  // Cost events: partner_payments.paid_at, settlements.paid_at (already cash).
+  //
+  // Earnings = Revenue - partner cost - agent cost. Until partner payouts
+  // start, earnings tracks revenue 1:1; each payout shifts the spread.
   type PaidCase = {
     id: string
     payment_date: string | null
     agent_id: string | null
-    case_members: { id: string }[]documents: { type: string; total_price: number; company_margin_rate: number | null; agent_margin_rate: number | null }[]
+    case_members: { id: string }[]
+    documents: { type: string; total_price: number; company_margin_rate: number | null; agent_margin_rate: number | null }[]
   }
   const paidCasesAll = (allPaidCases as unknown as PaidCase[]) ?? []
-
-  function decompose(c: PaidCase) {
-    const q = c.documents?.find(d => d.type === "quotation")
-    if (!q) return { total: 0, base: 0, earn: 0, ag: 0 }
-    const total = q.total_price ?? 0
-    const co = q.company_margin_rate ?? 0
-    const ag = q.agent_margin_rate ?? 0
-    const denom = (1 + co) * (1 + ag)
-    const base = denom > 0 ? total / denom : 0
-    return { total, base, earn: base * co, ag: base * (1 + co) * ag }
-  }
-
-  // All-time totals for Hero
-  // Revenue / Earnings: accrual (recognized when client pays)
-  // Partner / Agent: cash basis (counted only when admin actually sends money out)
   type CashPayment = { id: string; amount: number; paid_at: string }
   const partnerPaymentRows = (allPartnerPayments as unknown as CashPayment[]) ?? []
   const agentSettlementRows = (allAgentSettlements as unknown as CashPayment[]) ?? []
+  type DepositSettlement = { case_id: string; total_price: number; payment_received_at: string }
+  const depositSettlementRows = (allDepositSettlements as unknown as DepositSettlement[]) ?? []
 
-  let revenueTotal = 0, earningsTotal = 0
-  for (const c of paidCasesAll) {
-    const d = decompose(c)
-    revenueTotal += d.total
-    earningsTotal += d.earn
+  // case_id -> deposit settlement amount received, used to net against
+  // the eventual balance recognition so we don't double-count.
+  const depositReceivedByCase = new Map<string, number>()
+  for (const s of depositSettlementRows) {
+    depositReceivedByCase.set(s.case_id, (depositReceivedByCase.get(s.case_id) ?? 0) + (s.total_price ?? 0))
   }
+
+  type RevenueEvent = { caseId: string; amount: number; at: string }
+  const revenueEvents: RevenueEvent[] = []
+  for (const s of depositSettlementRows) {
+    revenueEvents.push({ caseId: s.case_id, amount: s.total_price ?? 0, at: s.payment_received_at })
+  }
+  for (const c of paidCasesAll) {
+    if (!c.payment_date) continue
+    const q = c.documents?.find(d => d.type === 'quotation')
+    const total = q?.total_price ?? 0
+    const dep = depositReceivedByCase.get(c.id) ?? 0
+    const balance = Math.max(0, total - dep)
+    if (balance > 0) revenueEvents.push({ caseId: c.id, amount: balance, at: c.payment_date })
+  }
+
+  // All-time totals for Hero
+  const revenueTotal = revenueEvents.reduce((s, e) => s + e.amount, 0)
+  const revenueCaseCount = new Set(revenueEvents.map(e => e.caseId)).size
   const partnerTotal = partnerPaymentRows.reduce((sum, p) => sum + (p.amount ?? 0), 0)
   const agentTotal = agentSettlementRows.reduce((sum, p) => sum + (p.amount ?? 0), 0)
+  const earningsTotal = revenueTotal - partnerTotal - agentTotal
 
   // Monthly breakdown for sparklines
   const clientRows = (allClients as unknown as { id: string; created_at: string }[]) ?? []
@@ -175,22 +201,21 @@ export default async function AdminOverviewPage() {
   for (let i = 5; i >= 0; i--) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-    const monthCases = paidCasesAll.filter(c => c.payment_date?.startsWith(key))
-    let revenue = 0, earnings = 0
-    const agentSet = new Set<string>()
-    for (const c of monthCases) {
-      const dec = decompose(c)
-      revenue += dec.total
-      earnings += dec.earn
-      if (c.agent_id) agentSet.add(c.agent_id)
-    }
-    // Partner & Agent are cash basis — sum of payouts in this month
+    const revenue = revenueEvents
+      .filter(e => e.at?.startsWith(key))
+      .reduce((s, e) => s + e.amount, 0)
     const partner = partnerPaymentRows
       .filter(p => p.paid_at?.startsWith(key))
       .reduce((s, p) => s + (p.amount ?? 0), 0)
     const agent = agentSettlementRows
       .filter(p => p.paid_at?.startsWith(key))
       .reduce((s, p) => s + (p.amount ?? 0), 0)
+    const earnings = revenue - partner - agent
+    // Patient / active agent counts still anchor on full-payment milestone --
+    // they're flow indicators, not cash indicators.
+    const monthCases = paidCasesAll.filter(c => c.payment_date?.startsWith(key))
+    const agentSet = new Set<string>()
+    for (const c of monthCases) if (c.agent_id) agentSet.add(c.agent_id)
     const patients = monthCases.reduce((s, c) => s + (c.case_members?.length ?? 0), 0)
     const newClientsCount = clientRows.filter(c => c.created_at?.startsWith(key)).length
     monthly.push({
@@ -261,13 +286,13 @@ export default async function AdminOverviewPage() {
               <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-2">Revenue · All Time</p>
               <p className="text-4xl font-bold text-gray-900 tracking-tight leading-none">{fmtUSD(revenueTotal / exchangeRate)}</p>
               <p className="text-xs text-gray-500 mt-2 tabular-nums">{fmtKRW(revenueTotal)}</p>
-              <p className="text-[11px] text-gray-500 mt-1">from {paidCasesAll.length} paid case{paidCasesAll.length !== 1 ? 's' : ''}</p>
+              <p className="text-[11px] text-gray-500 mt-1">from {revenueCaseCount} case{revenueCaseCount !== 1 ? 's' : ''} with cash received</p>
             </div>
             <div className="md:border-l md:border-gray-200 md:pl-6">
               <p className="text-[10px] text-emerald-700 uppercase tracking-wide mb-2">Earnings · All Time</p>
               <p className="text-4xl font-bold text-emerald-700 tracking-tight leading-none">{fmtUSD(earningsTotal / exchangeRate)}</p>
               <p className="text-xs text-emerald-600 mt-2 tabular-nums">{fmtKRW(earningsTotal)}</p>
-              <p className="text-[11px] text-gray-500 mt-1">company margin only (our actual take)</p>
+              <p className="text-[11px] text-gray-500 mt-1">revenue minus partner & agent costs paid</p>
             </div>
           </div>
 

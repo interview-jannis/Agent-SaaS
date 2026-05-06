@@ -113,6 +113,11 @@ export default function QuoteReviewPage() {
   const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
 
+  // Free-form note to admin (e.g. "Client wants Day 3 free", muslim prayer
+  // routine quirks, recovery preferences). Saved on cases.agent_notes; admin
+  // sees it while building the schedule.
+  const [agentNotes, setAgentNotes] = useState('')
+
   // ── Load ───────────────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -331,6 +336,7 @@ export default function QuoteReviewPage() {
           status: 'awaiting_contract',
           travel_start_date: cart.dateStart || null,
           travel_end_date: cart.dateEnd || null,
+          agent_notes: agentNotes.trim() || null,
         })
         .select('id').single()
       if (caseErr) throw caseErr
@@ -762,6 +768,26 @@ export default function QuoteReviewPage() {
             <span className="text-lg font-bold text-gray-900 tabular-nums">{fmtUSD(totalUSD)}</span>
           </div>
           <p className="text-xs text-gray-400">Payment due within 7 days of quote creation.</p>
+        </section>
+
+        {/* Notes for Tiktak admin — anything that should shape the schedule but
+            isn't a line item: special requests, recovery preferences, blocked
+            days, prayer routine quirks. Saved on the case; admin sees it
+            while building the day-by-day itinerary. */}
+        <section className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-2">
+          <h2 className="text-sm font-semibold text-gray-900">Notes for Tiktak <span className="text-xs font-normal text-gray-400">(optional)</span></h2>
+          <p className="text-xs text-gray-500">
+            Anything our concierge team should know when planning the schedule —
+            e.g. &quot;Day 3 free per client request&quot;, &quot;prefers afternoon procedures&quot;,
+            &quot;needs prayer break around 1pm&quot;. Not shown to the client.
+          </p>
+          <textarea
+            value={agentNotes}
+            onChange={e => setAgentNotes(e.target.value)}
+            rows={3}
+            placeholder="Free-form notes for our admin team…"
+            className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35] resize-y"
+          />
         </section>
 
         {error && <p className="text-sm text-red-500 bg-red-50 border border-red-100 rounded-xl px-4 py-3">{error}</p>}

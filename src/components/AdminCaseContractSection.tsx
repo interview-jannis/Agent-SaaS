@@ -10,11 +10,12 @@ import { supabase } from '@/lib/supabase'
 import CaseContractViewer from './CaseContractViewer'
 import {
   getCaseContract,
-  signAsAdmin,
   tryAdvanceContractSigned,
   type CaseContractRow,
 } from '@/lib/caseContracts'
 import { logAsCurrentUser } from '@/lib/audit'
+import { notifyAgent } from '@/lib/notifications'
+import { useCaseRealtime } from '@/hooks/useCaseRealtime'
 
 type Props = {
   caseId: string
@@ -48,12 +49,30 @@ export default function AdminCaseContractSection({ caseId, caseNumber, caseStatu
 
   useEffect(() => { load() }, [caseId])
 
-  async function submitSig(sig: string) {
+  // Realtime: keep this section's contract row fresh when agent/client signs.
+  useCaseRealtime(caseId, load)
+
+  async function submitSig({ signatureDataUrl, typedName }: { signatureDataUrl: string; typedName: string }) {
     if (!contract || !adminProfile) return
     setSaving(true); setError('')
     try {
-      await signAsAdmin(contract.id, sig, adminProfile)
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) throw new Error('Not signed in.')
+      const res = await fetch('/api/case-contracts/sign-admin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ contract_id: contract.id, signature_data_url: signatureDataUrl, signed_typed_name: typedName }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error((data as { error?: string }).error ?? 'Failed to sign.')
       await logAsCurrentUser('case_contract.signed_admin', { type: 'case', id: caseId, label: caseNumber })
+      // Notify the agent. tryAdvanceContractSigned only notifies on full sign;
+      // when admin signs early (order-independent) the agent should still know.
+      const { data: caseRow } = await supabase.from('cases').select('agent_id').eq('id', caseId).maybeSingle()
+      const aid = (caseRow as { agent_id: string | null } | null)?.agent_id
+      if (aid) {
+        await notifyAgent(aid, `${caseNumber} Interview Co. counter-signed the 3-party contract`, `/agent/cases/${caseId}`)
+      }
       const { advanced } = await tryAdvanceContractSigned(caseId)
       setSigning(false)
       await load()
@@ -75,9 +94,12 @@ export default function AdminCaseContractSection({ caseId, caseNumber, caseStatu
     )
   }
 
-  const canAdminSign = !!contract.agent_signed_at && !!contract.client_signed_at && !contract.admin_signed_at
+  // Order-independent: admin can counter-sign at any time. Status only advances
+  // once all three sigs are collected (handled by case status checker), so the
+  // signing order doesn't affect downstream flow.
+  const canAdminSign = !contract.admin_signed_at
   const showSignMode = canAdminSign && (signing || !contract.admin_signed_at) ? 'admin' : null
-  const fullySigned = !!contract.admin_signed_at
+  const fullySigned = !!contract.admin_signed_at && !!contract.agent_signed_at && !!contract.client_signed_at
   // Auto-collapse when fully signed; stay expanded when admin needs to sign.
   const isExpanded = expanded ?? !fullySigned
 
@@ -87,17 +109,25 @@ export default function AdminCaseContractSection({ caseId, caseNumber, caseStatu
         <div className="flex-1 min-w-0">
           <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">3-Party Contract</h3>
           <p className="text-xs text-gray-500 mt-0.5">
-            {contract.admin_signed_at
+            {fullySigned
               ? 'Fully signed.'
-              : canAdminSign
-                ? 'Agent + Client signed — counter-sign below to advance to deposit phase.'
-                : `Awaiting ${!contract.agent_signed_at ? 'agent' : 'client'} signature.`}
+              : contract.admin_signed_at
+                ? `Awaiting ${!contract.agent_signed_at ? 'agent' : 'client'} signature.`
+                : 'Counter-sign below — remaining parties can sign in any order.'}
           </p>
         </div>
-        <button onClick={() => setExpanded(!isExpanded)}
-          className="text-[11px] font-medium text-gray-500 hover:text-gray-800 px-2 py-1 rounded-lg border border-gray-200 hover:bg-gray-50 shrink-0">
-          {isExpanded ? '▲ Collapse' : '▼ Expand'}
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          {contract.client_token && (
+            <button onClick={() => window.open(`/case-contract/${contract.client_token}?print=1`, '_blank', 'noopener')}
+              className="text-[11px] font-medium text-gray-500 hover:text-gray-800 px-2 py-1 rounded-lg border border-gray-200 hover:bg-gray-50">
+              ⤓ Save PDF
+            </button>
+          )}
+          <button onClick={() => setExpanded(!isExpanded)}
+            className="text-[11px] font-medium text-gray-500 hover:text-gray-800 px-2 py-1 rounded-lg border border-gray-200 hover:bg-gray-50">
+            {isExpanded ? '▲ Collapse' : '▼ Expand'}
+          </button>
+        </div>
       </div>
 
       {error && <p className="text-xs text-red-500 bg-red-50 px-3 py-2 rounded-lg">{error}</p>}
@@ -106,6 +136,7 @@ export default function AdminCaseContractSection({ caseId, caseNumber, caseStatu
         <CaseContractViewer
           contract={contract}
           signMode={showSignMode}
+          expectedTypedName={adminProfile?.name ?? null}
           onSubmit={submitSig}
           saving={saving}
           error={error}
