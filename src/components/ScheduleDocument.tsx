@@ -180,7 +180,9 @@ export default function ScheduleDocument({
       {/* ── Group tab filter (screen only) ── */}
       {showTabs && (
         <div className="sch-tabs sch-no-print" style={{
-          maxWidth: '720px', margin: '0 auto', padding: '24px 24px 0',
+          position: 'sticky', top: 0, zIndex: 10,
+          background: '#e8e4de',
+          padding: '12px 24px',
           display: 'flex', gap: '8px', flexWrap: 'wrap',
         }}>
           <button
