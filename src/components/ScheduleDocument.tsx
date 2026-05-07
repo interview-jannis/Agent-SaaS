@@ -278,8 +278,8 @@ export default function ScheduleDocument({
                       {outboundFlight.departure_airport} → {outboundFlight.arrival_airport ?? '—'}
                       {outboundFlight.flight_number && <span style={{ fontSize: '12px', color: '#bbb', marginLeft: '8px' }}>{outboundFlight.flight_number}</span>}
                     </p>
-                    {outDep && <p className="sch-sans" className="sch-flight-detail" style={{ fontSize: '12px', color: '#999', lineHeight: 1.9 }}><b style={{ color: '#666', fontWeight: 500 }}>Dep</b>&nbsp;&nbsp;{outDep.date} · {outDep.time}</p>}
-                    {outArr && <p className="sch-sans" className="sch-flight-detail" style={{ fontSize: '12px', color: '#999', lineHeight: 1.9 }}><b style={{ color: '#666', fontWeight: 500 }}>Arr</b>&nbsp;&nbsp;&nbsp;{outArr.date} · {outArr.time}</p>}
+                    {outDep && <p className="sch-sans sch-flight-detail" style={{ fontSize: '12px', color: '#999', lineHeight: 1.9 }}><b style={{ color: '#666', fontWeight: 500 }}>Dep</b>&nbsp;&nbsp;{outDep.date} · {outDep.time}</p>}
+                    {outArr && <p className="sch-sans sch-flight-detail" style={{ fontSize: '12px', color: '#999', lineHeight: 1.9 }}><b style={{ color: '#666', fontWeight: 500 }}>Arr</b>&nbsp;&nbsp;&nbsp;{outArr.date} · {outArr.time}</p>}
                   </div>
                 )}
                 {inboundFlight?.departure_airport && (
@@ -289,8 +289,8 @@ export default function ScheduleDocument({
                       {inboundFlight.departure_airport} → {inboundFlight.arrival_airport ?? '—'}
                       {inboundFlight.flight_number && <span style={{ fontSize: '12px', color: '#bbb', marginLeft: '8px' }}>{inboundFlight.flight_number}</span>}
                     </p>
-                    {inDep && <p className="sch-sans" className="sch-flight-detail" style={{ fontSize: '12px', color: '#999', lineHeight: 1.9 }}><b style={{ color: '#666', fontWeight: 500 }}>Dep</b>&nbsp;&nbsp;{inDep.date} · {inDep.time}</p>}
-                    {inArr && <p className="sch-sans" className="sch-flight-detail" style={{ fontSize: '12px', color: '#999', lineHeight: 1.9 }}><b style={{ color: '#666', fontWeight: 500 }}>Arr</b>&nbsp;&nbsp;&nbsp;{inArr.date} · {inArr.time}</p>}
+                    {inDep && <p className="sch-sans sch-flight-detail" style={{ fontSize: '12px', color: '#999', lineHeight: 1.9 }}><b style={{ color: '#666', fontWeight: 500 }}>Dep</b>&nbsp;&nbsp;{inDep.date} · {inDep.time}</p>}
+                    {inArr && <p className="sch-sans sch-flight-detail" style={{ fontSize: '12px', color: '#999', lineHeight: 1.9 }}><b style={{ color: '#666', fontWeight: 500 }}>Arr</b>&nbsp;&nbsp;&nbsp;{inArr.date} · {inArr.time}</p>}
                   </div>
                 )}
               </div>
