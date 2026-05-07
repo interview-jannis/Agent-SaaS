@@ -225,6 +225,14 @@ Agent 수동 개입:
 - Date input 색상은 CSS로 gray-900 강제
 - 모바일 대응 완료 (4/30): Admin/Agent 모두 모바일 사이드바 → 햄버거 + MobileTopBar. `MobileNavContext` + `MobileTopBar` 사용. 페이지 상단 액션 버튼은 모바일에서 다음 줄로 내리고 `flex-1`로 가로폭 분할.
 
+### 색상 시스템 (5/7 확정 — 3톤)
+- **Brand primary**: `#0f4c35` (dark forest green) — 버튼, 체크, 강조 텍스트 전용
+- **Green tint** (`bg-green-50 text-green-800 border-green-200`) — 내 차례 / 액션 필요
+- **Amber** (`bg-amber-50 text-amber-700`) — 연체/긴급 상황에만 (드물게)
+- **Gray** (`bg-gray-50 text-gray-500 border-gray-200`) — 대기 중 / 완료 / 정보성
+- **Rose** (`bg-rose-50 text-rose-700 border-rose-200`) — 취소 / 오류 등 부정적 상태
+- 새 UI 작성 시 violet/emerald/blue/cyan/yellow accent 사용 금지 — 위 톤 중 하나로 매핑할 것
+
 ## 진행 현황 참조
 - 최신 진행 상황: `notes/PROGRESS.md`
 - 일일 연구노트: `notes/26.04.YY.md` (최신순)

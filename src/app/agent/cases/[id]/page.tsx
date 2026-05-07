@@ -1436,7 +1436,7 @@ export default function CaseDetailPage() {
                           )}
                           {p.clientNumber && <span className="text-[10px] font-mono text-gray-400">{p.clientNumber}</span>}
                           {p.isLead && !p.isRemoved && <span className="text-[9px] font-medium text-white bg-[#0f4c35] px-1.5 py-0.5 rounded">LEAD</span>}
-                          {p.needsMuslim && !p.isRemoved && <span className="text-[10px] text-emerald-600">Muslim</span>}
+                          {p.needsMuslim && !p.isRemoved && <span className="text-[10px] text-[#0f4c35]">Muslim</span>}
                           {p.isNew && <span className="text-[9px] font-medium text-green-700 bg-green-100 px-1.5 py-0.5 rounded">NEW</span>}
                           {p.isRemoved && <span className="text-[9px] font-medium text-red-700 bg-red-100 px-1.5 py-0.5 rounded">REMOVED</span>}
                           <button onClick={() => stageToggleRemove(p.id)}

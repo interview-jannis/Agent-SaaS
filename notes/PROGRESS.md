@@ -6,7 +6,7 @@
 - **마지막 업데이트**: 2026-05-07 (개발 마감 5/8, 시뮬레이션 5/11~15, 런칭 5/18)
 - **SaaS 브랜드명**: **Tiktak** (UI 전역, 법인명 Interview Co., Ltd)
 
-> 2026-05-07 상세: `notes/26.05.07.md` (§1–18: 모바일 대응 ScheduleDocument + invoice 표 + schedule 시각 계층 + Quotation admin 이름 + 빌드 오류 수정 + Subpackage 가격 로직 + awaiting_settlement 신규 상태 + commission invoice Mark Paid 통합 + Client Review 섹션 + pre-confirmation origin 필터 정합성. §19: Guide 페이지 구현. §20: 데이터 마스터 v20 — K-Wellness/K-Starcation 재구축 + 전수 감사).
+> 2026-05-07 상세: `notes/26.05.07.md` (§1–18: 모바일 대응 ScheduleDocument + invoice 표 + schedule 시각 계층 + Quotation admin 이름 + 빌드 오류 수정 + Subpackage 가격 로직 + awaiting_settlement 신규 상태 + commission invoice Mark Paid 통합 + Client Review 섹션 + pre-confirmation origin 필터 정합성. §19: Guide 페이지 구현. §20: 데이터 마스터 v20 — K-Wellness/K-Starcation 재구축 + 전수 감사. §21: UI 색상 3톤 통일 — Agent/Admin 전면 정리).
 > 2026-05-06 상세 (2차): `notes/26.05.06.md` §11–13 (ScheduleEditor 2차 개선 + ScheduleDocument 전면 재설계).
 > 2026-05-06 상세 (1차): `notes/26.05.06.md` §1–10 (3자 계약 evidentiary + 순서 무관 + Realtime / Cases 표 통일 / 캐시베이시스 회계 / Documents audit trail / ScheduleEditor 대수술 / agent_notes / Time24Input / 카테고리 sort_order)
 > 2026-05-05 상세: `notes/26.05.05.md` (호텔 × nights 가격 + variant 모달 가격 desc + 스케줄 템플릿 Option A 결정 + 호텔 객실 정원/저가 객실 cutoff todo)
@@ -84,7 +84,7 @@
 - [x] 3자 계약 client 페이지 모바일 점검 — 5/7 확인 완료
 - [x] **Guide 페이지 (사내 OT 문서)** — Admin/Agent/Client 3탭, 역할별 화면 설명 + Cases 흐름, 한국어, case status 영문. Admin/Agent 사이드바 메뉴 추가. (5/7)
 - [x] **데이터 마스터 v18 → v20** (5/7) — 8개 소스 파일 전수 감사. K-Wellness 비-Spa 63행 재구축(Internal_Price 3-1~3-4 기준 56행, Shopping/K-Content/Tour/Leisure). K-Starcation 재구축(3행, 팬텀 행 제거 + K-Beauty 오염 해결). Concierge variant label 공백. Sofitel Presidential Suite ₩0+문의 안내. 총 351행 → `products_master_v20.xlsx`.
-- [ ] **Agent 화면 UI 색상 정리** — GROUP_PALETTE (4색 → brand green 단일), STATUS_STYLES (10색 → 3색: 에이전트 차례=green tint, 대기=gray, 취소=rose), 기타 accent 정리 (`agent/home`, `lib/caseStatus.ts`)
+- [x] **UI 색상 정리 (Agent + Admin)** (5/7) — GROUP_PALETTE (4색 → brand green 단일), STATUS_STYLES (10색 → 3색: 에이전트 차례=green, 대기=gray, 취소=rose), CaseHeroAction TONE (9→3), CaseDocumentsSection accent, agent/admin cases detail 전면: violet/emerald/blue/amber/yellow → brand green/gray 3톤 통일
 - [ ] Guide 페이지 화면 캡처 추가 (UI 정리 완료 후)
 - [ ] Stamp invoice 렌더 위치/크기 시뮬에서 실제 확인 (5/3 flex inline 수정 완료, 시각 확인만)
 

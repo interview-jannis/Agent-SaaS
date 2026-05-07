@@ -1039,7 +1039,7 @@ export default function AdminCaseDetailPage() {
                                   New
                                 </span>
                                 <div className="flex-1 min-w-0">
-                                  <p className="text-sm text-emerald-900 truncate">{add.productName}</p>
+                                  <p className="text-sm text-gray-900 truncate">{add.productName}</p>
                                   {(add.partnerName || add.variantLabel) && (
                                     <p className="text-[10px] text-gray-400 truncate">
                                       {add.partnerName ?? ''}
@@ -1056,7 +1056,7 @@ export default function AdminCaseDetailPage() {
                                   type="button"
                                   aria-label="Remove staged item"
                                   onClick={() => setStagedAdds(prev => prev.filter(a => a.tempId !== add.tempId))}
-                                  className="text-emerald-400 hover:text-red-500 shrink-0 w-5 h-5 flex items-center justify-center text-base leading-none">
+                                  className="text-gray-400 hover:text-red-500 shrink-0 w-5 h-5 flex items-center justify-center text-base leading-none">
                                   ×
                                 </button>
                               </div>
@@ -1278,7 +1278,7 @@ export default function AdminCaseDetailPage() {
                                           type="button"
                                           onMouseDown={(e) => e.preventDefault()}
                                           onClick={() => stageVariant(p, v)}
-                                          className="w-full text-left px-6 py-1.5 hover:bg-violet-100 text-xs flex items-center justify-between gap-2">
+                                          className="w-full text-left px-6 py-1.5 hover:bg-gray-50 text-xs flex items-center justify-between gap-2">
                                           <span className="text-gray-700 truncate">{v.variant_label ?? '— Default —'}</span>
                                           <span className="tabular-nums text-gray-600 shrink-0">{fmtVariantPrice(v)}</span>
                                         </button>
@@ -1314,7 +1314,7 @@ export default function AdminCaseDetailPage() {
                     type="button"
                     onClick={saveChanges}
                     disabled={!dirty || savingItems}
-                    className="text-xs font-medium bg-violet-600 text-white hover:bg-violet-700 px-3 py-1.5 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed">
+                    className="text-xs font-medium bg-[#0f4c35] text-white hover:bg-[#0a3828] px-3 py-1.5 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed">
                     {savingItems ? 'Saving…' : `Save${dirty ? ` (${stagedAdds.length}+ ${stagedRemoves.size}-)` : ''}`}
                   </button>
                 </div>
@@ -1664,14 +1664,14 @@ export default function AdminCaseDetailPage() {
                           type="button"
                           aria-pressed={currency === 'KRW'}
                           onClick={() => setPricingCurrencies(p => ({ ...p, [item.id]: 'KRW' }))}
-                          className={`px-1.5 py-0.5 ${currency === 'KRW' ? 'bg-violet-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
+                          className={`px-1.5 py-0.5 ${currency === 'KRW' ? 'bg-[#0f4c35] text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
                           ₩
                         </button>
                         <button
                           type="button"
                           aria-pressed={currency === 'USD'}
                           onClick={() => setPricingCurrencies(p => ({ ...p, [item.id]: 'USD' }))}
-                          className={`px-1.5 py-0.5 border-l border-gray-200 ${currency === 'USD' ? 'bg-violet-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
+                          className={`px-1.5 py-0.5 border-l border-gray-200 ${currency === 'USD' ? 'bg-[#0f4c35] text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
                           $
                         </button>
                       </div>
@@ -1845,7 +1845,7 @@ export default function AdminCaseDetailPage() {
                     setPricingError((e as { message?: string })?.message ?? 'Failed.')
                   } finally { setSavingPricing(false) }
                 }}
-                className="w-full py-2.5 text-sm font-medium bg-violet-600 text-white rounded-xl hover:bg-violet-700 disabled:opacity-40 transition-colors">
+                className="w-full py-2.5 text-sm font-medium bg-[#0f4c35] text-white rounded-xl hover:bg-[#0a3828] disabled:opacity-40 transition-colors">
                 {savingPricing ? 'Saving...' : latestQuote.finalized_at ? 'Save Pricing Changes' : 'Finalize Pricing & Issue Invoice'}
               </button>
                 )
