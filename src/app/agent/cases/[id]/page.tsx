@@ -1564,9 +1564,9 @@ export default function CaseDetailPage() {
           {/* Free-form memo edited by agent, read by admin while building the
               schedule. Saved on cases.agent_notes. */}
           {!isCanceled && (
-            <section className="bg-white rounded-2xl border-2 border-red-300 p-5 space-y-3">
+            <section className={`rounded-2xl p-5 space-y-3 ${caseData.status === 'completed' ? 'bg-gray-50 border border-gray-200' : 'bg-white border-2 border-red-300'}`}>
               <div className="flex items-center justify-between">
-                <h3 className="text-xs font-semibold text-red-600 uppercase tracking-wide">Notes for Tiktak</h3>
+                <h3 className={`text-xs font-semibold uppercase tracking-wide ${caseData.status === 'completed' ? 'text-gray-500' : 'text-red-600'}`}>Notes for Tiktak</h3>
                 {!notesEditing ? (
                   <button onClick={() => { setNotesDraft(caseData.agent_notes ?? ''); setNotesEditing(true) }}
                     className="text-xs font-medium text-[#0f4c35] hover:underline">
