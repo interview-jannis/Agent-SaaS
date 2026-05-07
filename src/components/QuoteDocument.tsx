@@ -68,7 +68,8 @@ export default async function QuoteDocument({
       id, type, document_number, total_price, payment_due_date,
       company_margin_rate, agent_margin_rate, finalized_at, signer_snapshot,
       from_party, to_party,
-      first_opened_at, open_count, case_id,
+      first_opened_at, open_count, case_id, created_by_admin_id,
+      admins!documents_created_by_admin_id_fkey(name, title),
       cases(
         id, agent_id, status, created_at,
         agents!cases_agent_id_fkey(name, email, phone, bank_info, stamp_url),
@@ -157,10 +158,11 @@ export default async function QuoteDocument({
     }
   }
 
-  const [rateRes, bankRes, stampRes] = await Promise.all([
+  const [rateRes, bankRes, stampRes, superAdminRes] = await Promise.all([
     supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single(),
     supabase.from('system_settings').select('value').eq('key', 'bank_details').single(),
     supabase.from('system_settings').select('value').eq('key', 'company_stamp').maybeSingle(),
+    supabase.from('admins').select('name, title').eq('is_super_admin', true).limit(1).maybeSingle(),
   ])
 
   const exchangeRate = (rateRes.data?.value as { usd_krw?: number } | null)?.usd_krw ?? 1350
@@ -178,6 +180,9 @@ export default async function QuoteDocument({
   // signer; admin-issued use system settings + signer_snapshot.
   const fromParty = (quote as { from_party?: 'admin' | 'agent' | null }).from_party ?? 'admin'
   const isAgentIssued = fromParty === 'agent'
+  const creatorAdmin = (quote as { admins?: { name: string; title: string | null } | null }).admins
+    ?? (superAdminRes.data as { name: string; title: string | null } | null)
+    ?? null
   const bank: BankDetails = isAgentIssued
     ? (caseData?.agents?.bank_info ?? {})
     : adminBank
@@ -328,10 +333,12 @@ export default async function QuoteDocument({
                     const signer = isInvoice
                       ? (quote as { signer_snapshot?: { name?: string | null; title?: string | null } | null }).signer_snapshot ?? null
                       : null
-                    if (signer?.name) {
+                    const adminName = signer?.name ?? creatorAdmin?.name ?? null
+                    const adminTitle = signer?.title ?? creatorAdmin?.title ?? null
+                    if (adminName) {
                       return (
                         <>
-                          : {signer.name}{signer.title && <span className="font-normal text-gray-600"> ({signer.title})</span>}
+                          : {adminName}{adminTitle && <span className="font-normal text-gray-600"> ({adminTitle})</span>}
                           <span className="block ml-3 font-normal text-gray-600 text-xs mt-0.5">Interview Co., Ltd</span>
                         </>
                       )
@@ -544,6 +551,8 @@ export default async function QuoteDocument({
             const signer = isInvoice
               ? (quote as { signer_snapshot?: { name?: string | null; title?: string | null } | null }).signer_snapshot ?? null
               : null
+            const signerName = signer?.name ?? creatorAdmin?.name ?? null
+            const signerTitle = signer?.title ?? creatorAdmin?.title ?? null
             const issuerName = isAgentIssued ? agentName : 'Interview Co.,Ltd.'
             return (
               <div className="mb-12">
@@ -554,10 +563,10 @@ export default async function QuoteDocument({
                       <p className="text-base font-semibold text-gray-900 mb-1">{agentName}</p>
                     ) : (
                       <>
-                        {signer?.name && (
+                        {signerName && (
                           <>
-                            <p className="text-base font-semibold text-gray-900">{signer.name}</p>
-                            {signer.title && <p className="text-sm text-gray-600 mb-1">{signer.title}</p>}
+                            <p className="text-base font-semibold text-gray-900">{signerName}</p>
+                            {signerTitle && <p className="text-sm text-gray-600 mb-1">{signerTitle}</p>}
                           </>
                         )}
                         <p className="text-base font-bold text-gray-900">Interview Co.,Ltd.</p>

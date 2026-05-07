@@ -425,11 +425,12 @@ function DayBlocks({
       {sortedKeys.map(key => {
         const sectionItems = sectionMap.get(key)!
         return (
-          <div key={key} style={{ marginBottom: '28px' }}>
+          <div key={key} style={{ marginBottom: '32px' }}>
             <p className="sch-sans" style={{
               fontSize: '10px', fontWeight: 600, letterSpacing: '0.22em',
-              textTransform: 'uppercase', color: '#b0a898',
-              paddingBottom: '8px', borderBottom: '1px solid #ede9e3',
+              textTransform: 'uppercase', color: '#9a9088',
+              paddingBottom: '9px', marginBottom: '2px',
+              borderBottom: '2px solid #d8d2ca',
             }}>
               {sectionLabel(key)}
             </p>
@@ -477,7 +478,7 @@ function ScheduleRow({
       gap: '0 20px',
       padding: '11px 0',
       paddingLeft: showStripe ? '12px' : '0',
-      borderBottom: isLast ? 'none' : '1px solid #f5f2ee',
+      borderBottom: 'none',
       borderLeft: showStripe ? `2px solid ${groupCol!.accent}` : 'none',
       alignItems: 'start',
     }}>
