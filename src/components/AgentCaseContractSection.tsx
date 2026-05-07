@@ -160,35 +160,35 @@ export default function AgentCaseContractSection({
 
   return (
     <section id="case-contract" className="scroll-mt-20 bg-gray-50 rounded-2xl p-5 space-y-4">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
         <div className="flex-1 min-w-0">
           <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">3-Party Contract</h3>
           <p className="text-xs text-gray-500 mt-0.5">
             {fullySigned ? 'Fully signed.' : 'All 3 signatures unlock the deposit phase.'}
           </p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 flex-wrap">
           {fullySigned && contract && contract.client_token && (
             <button onClick={() => window.open(`/case-contract/${contract.client_token}?print=1`, '_blank', 'noopener')}
-              className="text-[11px] font-medium text-gray-500 hover:text-gray-800 px-2 py-1 rounded-lg border border-gray-200 hover:bg-gray-50">
+              className="flex-1 sm:flex-none text-[11px] font-medium text-gray-500 hover:text-gray-800 px-2 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50">
               ⤓ Save PDF
             </button>
           )}
           {contract && contract.client_token && !contract.client_signed_at && (
             <>
               <button onClick={copyClientLink}
-                className="text-xs font-medium px-3 py-1.5 rounded-lg bg-[#0f4c35] text-white hover:bg-[#0a3828]">
+                className="flex-1 sm:flex-none text-xs font-medium px-3 py-1.5 rounded-lg bg-[#0f4c35] text-white hover:bg-[#0a3828]">
                 {copied ? '✓ Copied!' : 'Copy Client Link'}
               </button>
               <button onClick={() => { setClientSignMode(v => !v); setError('') }}
-                className="text-xs font-medium px-3 py-1.5 rounded-lg border border-[#0f4c35] text-[#0f4c35] hover:bg-[#0f4c35]/5">
+                className="flex-1 sm:flex-none text-xs font-medium px-3 py-1.5 rounded-lg border border-[#0f4c35] text-[#0f4c35] hover:bg-[#0f4c35]/5">
                 {clientSignMode ? 'Cancel' : 'Sign on this device'}
               </button>
             </>
           )}
           {contract && (
             <button onClick={() => setExpanded(!isExpanded)}
-              className="text-[11px] font-medium text-gray-500 hover:text-gray-800 px-2 py-1 rounded-lg border border-gray-200 hover:bg-gray-50">
+              className="flex-1 sm:flex-none text-[11px] font-medium text-gray-500 hover:text-gray-800 px-2 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50">
               {isExpanded ? '▲ Collapse' : '▼ Expand'}
             </button>
           )}
