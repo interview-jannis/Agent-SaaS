@@ -2165,7 +2165,7 @@ export default function AdminCaseDetailPage() {
                               className="text-[10px] text-gray-400 hover:text-gray-700">Edit</button>
                             <button
                               onClick={async () => {
-                                if (!confirm(`Delete partner payment for ${g.name}?`)) return
+                                if (!confirm(`Delete payment record for ${g.name}?\n\nAmount: ${fmtKRW(existing.amount)} · Paid: ${existing.paid_at}\n\nThis will mark the partner as unpaid. This cannot be undone.`)) return
                                 setSavingPartner(g.name); setPartnerError('')
                                 try {
                                   const { error } = await supabase.from('partner_payments').delete().eq('id', existing.id)

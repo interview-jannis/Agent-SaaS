@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Schedule Mockup v4</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: #e8e4de;
+  font-family: 'Inter', sans-serif;
+  color: #1a1a1a;
+  padding: 48px 24px 80px;
+}
+
+.serif { font-family: 'Cormorant Garamond', Georgia, serif; }
+
+/* ─── Page card ─── */
+.page {
+  background: #fff;
+  max-width: 720px;
+  margin: 0 auto 32px;
+}
+
+/* ─── Cover ─── */
+.cover { padding: 64px 64px 52px; }
+
+.cover-eyebrow {
+  font-size: 10px;
+  letter-spacing: 0.32em;
+  color: #b0a898;
+  text-transform: uppercase;
+  margin-bottom: 22px;
+}
+.cover-name {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 58px;
+  font-weight: 400;
+  line-height: 1.05;
+  color: #1a1a1a;
+}
+.cover-case { font-size: 11px; color: #c0b8ae; margin-top: 6px; letter-spacing: 0.06em; }
+.cover-dates {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 22px;
+  color: #9a9088;
+  margin-top: 10px;
+  font-style: italic;
+}
+.cover-dates span { font-style: normal; font-size: 13px; color: #c0b8ae; margin-left: 10px; vertical-align: middle; }
+
+/* divider row */
+.cover-row {
+  margin-top: 32px;
+  padding-top: 28px;
+  border-top: 1px solid #f0ece6;
+}
+
+/* Groups */
+.groups-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.group-card { padding-left: 12px; }
+.group-label { font-size: 10px; letter-spacing: 0.24em; text-transform: uppercase; font-weight: 600; margin-bottom: 7px; }
+.group-member { font-size: 13px; color: #666; line-height: 1.75; }
+
+/* Flights */
+.flights-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
+.flight-eyebrow { font-size: 10px; letter-spacing: 0.24em; color: #c0b8ae; text-transform: uppercase; margin-bottom: 7px; }
+.flight-route { font-size: 15px; font-weight: 500; color: #1a1a1a; margin-bottom: 5px; }
+.flight-line { font-size: 12px; color: #999; line-height: 1.9; }
+.flight-line b { color: #666; font-weight: 500; }
+
+/* Stay */
+.stay-row { display: flex; gap: 40px; flex-wrap: wrap; }
+.stay-label { font-size: 10px; letter-spacing: 0.24em; color: #c0b8ae; text-transform: uppercase; margin-bottom: 5px; }
+.stay-value { font-size: 13px; color: #1a1a1a; }
+
+/* ─── Day page ─── */
+.day-page { padding: 52px 64px 48px; }
+.day-page + .day-page { border-top: 1px solid #f0ece6; }
+
+.day-header { display: flex; align-items: baseline; gap: 18px; margin-bottom: 38px; }
+.day-num {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 72px;
+  font-weight: 400;
+  line-height: 1;
+  color: #1a1a1a;
+  min-width: 82px;
+}
+.day-date { font-family: 'Cormorant Garamond', serif; font-size: 26px; color: #6a6058; }
+
+/* ─── Block section ─── */
+.block-section { margin-bottom: 32px; }
+.block-section:last-child { margin-bottom: 0; }
+
+.block-header {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: #b0a898;
+  padding-bottom: 9px;
+  border-bottom: 1px solid #ede9e3;
+  margin-bottom: 0;
+}
+
+/* ─── Schedule row ─── */
+.sched-row {
+  display: grid;
+  grid-template-columns: 118px 1fr;
+  gap: 0 20px;
+  padding: 12px 0;
+  border-bottom: 1px solid #f5f2ee;
+  align-items: start;
+}
+.sched-row:last-child { border-bottom: none; }
+
+.time-col {
+  font-size: 11.5px;
+  color: #b0a898;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  padding-top: 4px;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+.time-col.no-time { color: #ddd; }
+
+.content-col { padding-top: 1px; }
+
+.row-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 3px;
+  flex-wrap: wrap;
+}
+.partner-label {
+  font-size: 9.5px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #c0b8ae;
+}
+
+/* Group chip — inline on item */
+.group-chip {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 20px;
+  border-width: 1px;
+  border-style: solid;
+}
+
+.row-title {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 19px;
+  font-weight: 400;
+  color: #1a1a1a;
+  line-height: 1.3;
+}
+.variant-chip {
+  display: inline-block;
+  font-family: 'Inter', sans-serif;
+  font-size: 10px;
+  color: #999;
+  background: #f5f2ee;
+  border: 1px solid #ede9e3;
+  border-radius: 20px;
+  padding: 1px 8px;
+  margin-left: 7px;
+  vertical-align: middle;
+  font-style: normal;
+}
+.row-notes { font-size: 12px; color: #999; margin-top: 3px; line-height: 1.6; }
+
+/* Prayer row */
+.sched-row.prayer .time-col { color: #c07830; }
+.sched-row.prayer .row-title { color: #c07830; font-style: italic; }
+
+/* Free / At leisure */
+.sched-row.free .row-title { color: #bbb; font-style: italic; }
+
+/* ─── Footer ─── */
+.doc-footer {
+  padding: 20px 64px;
+  background: #faf8f5;
+  border-top: 1px solid #ede9e3;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+}
+.footer-label { font-size: 9.5px; letter-spacing: 0.24em; color: #c0b8ae; text-transform: uppercase; margin-bottom: 4px; }
+.footer-name { font-size: 13px; color: #555; }
+.footer-phone { font-size: 11px; color: #bbb; margin-top: 2px; }
+.footer-version { font-size: 10px; color: #c8c0b8; }
+
+/* Separator label */
+.section-label {
+  max-width: 720px;
+  margin: 0 auto 10px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #a09080;
+}
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════ -->
+<!--  CASE 1 — Single group (filtered view) -->
+<!-- ══════════════════════════════════════ -->
+
+<p class="section-label">Case 1 — Client view (single group or filtered)</p>
+
+<!-- Cover -->
+<div class="page">
+  <div class="cover">
+    <p class="cover-eyebrow">Tiktak · Personal Itinerary</p>
+    <h1 class="cover-name serif">Fatima Al-Mansouri</h1>
+    <p class="cover-case">#C-002</p>
+    <p class="cover-dates serif">May 25 – May 30, 2026 <span>· 5 nights</span></p>
+
+    <div class="cover-row flights-grid">
+      <div>
+        <p class="flight-eyebrow">Outbound Flight</p>
+        <p class="flight-route">Dubai → Incheon</p>
+        <p class="flight-line"><b>Dep</b>&nbsp;&nbsp;Sun, May 24 · 22:40</p>
+        <p class="flight-line"><b>Arr</b>&nbsp;&nbsp;&nbsp;Mon, May 25 · 08:21</p>
+      </div>
+      <div>
+        <p class="flight-eyebrow">Return Flight</p>
+        <p class="flight-route">Incheon → Dubai</p>
+        <p class="flight-line"><b>Dep</b>&nbsp;&nbsp;Sat, May 30 · 23:30</p>
+        <p class="flight-line"><b>Arr</b>&nbsp;&nbsp;&nbsp;Sun, May 31 · 09:14</p>
+      </div>
+    </div>
+
+    <div class="cover-row stay-row">
+      <div>
+        <p class="stay-label">Arrival</p>
+        <p class="stay-value">Monday, May 25</p>
+      </div>
+      <div>
+        <p class="stay-label">Departure</p>
+        <p class="stay-value">Saturday, May 30</p>
+      </div>
+      <div>
+        <p class="stay-label">Accommodation</p>
+        <p class="stay-value">The Shilla Seoul</p>
+      </div>
+    </div>
+  </div>
+  <div class="doc-footer">
+    <div>
+      <p class="footer-label">Concierge</p>
+      <p class="footer-name">Ahmed Al-Rashidi</p>
+      <p class="footer-phone">+82 10-0000-0000</p>
+    </div>
+    <p class="footer-version">v1 · prepared May 7, 2026</p>
+  </div>
+</div>
+
+<!-- Day 01 (단일 그룹 / 필터뷰 — 항목 적음) -->
+<div class="page">
+  <div class="day-page">
+    <div class="day-header">
+      <div class="day-num serif">01</div>
+      <div class="day-date serif">Monday, May 25</div>
+    </div>
+
+    <!-- AFTERNOON (가장 이른 블록 먼저) -->
+    <div class="block-section">
+      <p class="block-header">Afternoon</p>
+      <div class="sched-row">
+        <div class="time-col">13:00 – 18:00</div>
+        <div class="content-col">
+          <div class="row-eyebrow"><span class="partner-label">Gil Hospital International Healthcare Center</span></div>
+          <p class="row-title">VIP Premium · Female</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- EVENING -->
+    <div class="block-section">
+      <p class="block-header">Evening</p>
+      <div class="sched-row">
+        <div class="time-col no-time">—</div>
+        <div class="content-col">
+          <div class="row-eyebrow"><span class="partner-label">The Shilla Seoul</span></div>
+          <p class="row-title">Shilla Suite <span class="variant-chip">5 nights</span></p>
+        </div>
+      </div>
+      <div class="sched-row free">
+        <div class="time-col no-time">—</div>
+        <div class="content-col">
+          <p class="row-title">Free time</p>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="doc-footer">
+    <div>
+      <p class="footer-label">Concierge</p>
+      <p class="footer-name">Ahmed Al-Rashidi</p>
+      <p class="footer-phone">+82 10-0000-0000</p>
+    </div>
+    <p class="footer-version">v1 · prepared May 7, 2026</p>
+  </div>
+</div>
+
+<!-- Day 02 (풀 일정 — 기도시간 포함) -->
+<div class="page">
+  <div class="day-page">
+    <div class="day-header">
+      <div class="day-num serif">02</div>
+      <div class="day-date serif">Tuesday, May 26</div>
+    </div>
+
+    <!-- MORNING -->
+    <div class="block-section">
+      <p class="block-header">Morning</p>
+      <div class="sched-row prayer">
+        <div class="time-col">06:00 – 06:15</div>
+        <div class="content-col"><p class="row-title">Fajr Prayer (Hotel)</p></div>
+      </div>
+      <div class="sched-row">
+        <div class="time-col">08:00 – 09:00</div>
+        <div class="content-col">
+          <p class="row-title">Transfer to Clinic</p>
+          <p class="row-notes">Hotel → DIAR Clinic (approx. 20 min)</p>
+        </div>
+      </div>
+      <div class="sched-row">
+        <div class="time-col">09:00 – 12:00</div>
+        <div class="content-col">
+          <div class="row-eyebrow"><span class="partner-label">DIAR Clinic</span></div>
+          <p class="row-title">Lifting & Filler Consultation</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- AFTERNOON -->
+    <div class="block-section">
+      <p class="block-header">Afternoon</p>
+      <div class="sched-row prayer">
+        <div class="time-col">12:30 – 12:45</div>
+        <div class="content-col"><p class="row-title">Dhuhr Prayer (Clinic)</p></div>
+      </div>
+      <div class="sched-row">
+        <div class="time-col">13:00 – 14:30</div>
+        <div class="content-col"><p class="row-title">Lunch — Hotel Restaurant</p></div>
+      </div>
+      <div class="sched-row prayer">
+        <div class="time-col">15:30 – 15:45</div>
+        <div class="content-col"><p class="row-title">Asr Prayer (Hotel)</p></div>
+      </div>
+      <div class="sched-row">
+        <div class="time-col">16:00 – 18:00</div>
+        <div class="content-col">
+          <div class="row-eyebrow"><span class="partner-label">The Shilla Seoul</span></div>
+          <p class="row-title">Spa & Wellness</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- EVENING -->
+    <div class="block-section">
+      <p class="block-header">Evening</p>
+      <div class="sched-row prayer">
+        <div class="time-col">18:15 – 18:30</div>
+        <div class="content-col"><p class="row-title">Maghrib Prayer (Hotel)</p></div>
+      </div>
+      <div class="sched-row">
+        <div class="time-col">19:00 – 20:30</div>
+        <div class="content-col"><p class="row-title">Dinner — Private Dining</p></div>
+      </div>
+      <div class="sched-row prayer">
+        <div class="time-col">20:45 – 21:00</div>
+        <div class="content-col"><p class="row-title">Isha Prayer (Hotel)</p></div>
+      </div>
+      <div class="sched-row free">
+        <div class="time-col">21:00 –</div>
+        <div class="content-col"><p class="row-title">Evening rest</p></div>
+      </div>
+    </div>
+  </div>
+  <div class="doc-footer">
+    <div>
+      <p class="footer-label">Concierge</p>
+      <p class="footer-name">Ahmed Al-Rashidi</p>
+      <p class="footer-phone">+82 10-0000-0000</p>
+    </div>
+    <p class="footer-version">v1 · prepared May 7, 2026</p>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════════════ -->
+<!--  CASE 2 — Multi-group (admin full view) -->
+<!-- ══════════════════════════════════════ -->
+
+<p class="section-label" style="margin-top:48px;">Case 2 — Admin full view (multi-group, group chips inline)</p>
+
+<!-- Cover with groups -->
+<div class="page">
+  <div class="cover">
+    <p class="cover-eyebrow">Tiktak · Personal Itinerary</p>
+    <h1 class="cover-name serif">Fatima Al-Mansouri</h1>
+    <p class="cover-case">#C-002</p>
+    <p class="cover-dates serif">May 25 – May 30, 2026 <span>· 5 nights</span></p>
+
+    <!-- Groups (only shown in multi-group) -->
+    <div class="cover-row groups-grid">
+      <div class="group-card" style="border-left:3px solid #60a5fa;">
+        <p class="group-label" style="color:#1d4ed8;">Female</p>
+        <p class="group-member">· Fatima Al-Mansouri</p>
+      </div>
+      <div class="group-card" style="border-left:3px solid #34d399;">
+        <p class="group-label" style="color:#065f46;">Male</p>
+        <p class="group-member">· Khalid Al-Mansouri</p>
+      </div>
+    </div>
+
+    <div class="cover-row flights-grid">
+      <div>
+        <p class="flight-eyebrow">Outbound Flight</p>
+        <p class="flight-route">Dubai → Incheon</p>
+        <p class="flight-line"><b>Dep</b>&nbsp;&nbsp;Sun, May 24 · 22:40</p>
+        <p class="flight-line"><b>Arr</b>&nbsp;&nbsp;&nbsp;Mon, May 25 · 08:21</p>
+      </div>
+      <div>
+        <p class="flight-eyebrow">Return Flight</p>
+        <p class="flight-route">Incheon → Dubai</p>
+        <p class="flight-line"><b>Dep</b>&nbsp;&nbsp;Sat, May 30 · 23:30</p>
+        <p class="flight-line"><b>Arr</b>&nbsp;&nbsp;&nbsp;Sun, May 31 · 09:14</p>
+      </div>
+    </div>
+
+    <div class="cover-row stay-row">
+      <div><p class="stay-label">Arrival</p><p class="stay-value">Monday, May 25</p></div>
+      <div><p class="stay-label">Departure</p><p class="stay-value">Saturday, May 30</p></div>
+      <div><p class="stay-label">Accommodation</p><p class="stay-value">The Shilla Seoul</p></div>
+    </div>
+  </div>
+  <div class="doc-footer">
+    <div>
+      <p class="footer-label">Concierge</p>
+      <p class="footer-name">Ahmed Al-Rashidi</p>
+      <p class="footer-phone">+82 10-0000-0000</p>
+    </div>
+    <p class="footer-version">v1 · prepared May 7, 2026</p>
+  </div>
+</div>
+
+<!-- Day 01 — multi-group: 시간순 정렬, 그룹 chip inline -->
+<div class="page">
+  <div class="day-page">
+    <div class="day-header">
+      <div class="day-num serif">01</div>
+      <div class="day-date serif">Monday, May 25</div>
+    </div>
+
+    <!-- AFTERNOON (13:00 두 아이템 — Female & Male) -->
+    <div class="block-section">
+      <p class="block-header">Afternoon</p>
+
+      <!-- Female item 먼저 (sort_order 기준, 여기선 Female=0) -->
+      <div class="sched-row">
+        <div class="time-col">13:00 – 18:00</div>
+        <div class="content-col">
+          <div class="row-eyebrow">
+            <span class="partner-label">Gil Hospital International Healthcare Center</span>
+            <span class="group-chip" style="color:#1d4ed8;background:#eff6ff;border-color:#bfdbfe;">Female</span>
+          </div>
+          <p class="row-title">VIP Premium · Female</p>
+        </div>
+      </div>
+
+      <div class="sched-row">
+        <div class="time-col">13:00 – 17:00</div>
+        <div class="content-col">
+          <div class="row-eyebrow">
+            <span class="partner-label">Gil Hospital International Healthcare Center</span>
+            <span class="group-chip" style="color:#065f46;background:#ecfdf5;border-color:#a7f3d0;">Male</span>
+          </div>
+          <p class="row-title">VIP Premium · Male</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- EVENING (Shared — no group chip) -->
+    <div class="block-section">
+      <p class="block-header">Evening</p>
+      <div class="sched-row">
+        <div class="time-col no-time">—</div>
+        <div class="content-col">
+          <div class="row-eyebrow"><span class="partner-label">The Shilla Seoul</span></div>
+          <p class="row-title">Shilla Suite <span class="variant-chip">5 nights</span></p>
+        </div>
+      </div>
+      <div class="sched-row free">
+        <div class="time-col no-time">—</div>
+        <div class="content-col"><p class="row-title">Free time</p></div>
+      </div>
+    </div>
+  </div>
+  <div class="doc-footer">
+    <div>
+      <p class="footer-label">Concierge</p>
+      <p class="footer-name">Ahmed Al-Rashidi</p>
+      <p class="footer-phone">+82 10-0000-0000</p>
+    </div>
+    <p class="footer-version">v1 · prepared May 7, 2026</p>
+  </div>
+</div>
+
+<!-- Day 02 — multi-group: 일부 항목 그룹별 다름 -->
+<div class="page">
+  <div class="day-page">
+    <div class="day-header">
+      <div class="day-num serif">02</div>
+      <div class="day-date serif">Tuesday, May 26</div>
+    </div>
+
+    <div class="block-section">
+      <p class="block-header">Morning</p>
+      <div class="sched-row prayer">
+        <div class="time-col">06:00 – 06:15</div>
+        <div class="content-col"><p class="row-title">Fajr Prayer (Hotel)</p></div>
+      </div>
+      <div class="sched-row">
+        <div class="time-col">09:00 – 12:00</div>
+        <div class="content-col">
+          <div class="row-eyebrow">
+            <span class="partner-label">DIAR Clinic</span>
+            <span class="group-chip" style="color:#1d4ed8;background:#eff6ff;border-color:#bfdbfe;">Female</span>
+          </div>
+          <p class="row-title">Lifting & Filler Consultation</p>
+        </div>
+      </div>
+      <div class="sched-row">
+        <div class="time-col">09:00 – 11:00</div>
+        <div class="content-col">
+          <div class="row-eyebrow">
+            <span class="partner-label">Gil Hospital</span>
+            <span class="group-chip" style="color:#065f46;background:#ecfdf5;border-color:#a7f3d0;">Male</span>
+          </div>
+          <p class="row-title">Health Check-up</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="block-section">
+      <p class="block-header">Afternoon</p>
+      <div class="sched-row prayer">
+        <div class="time-col">12:30 – 12:45</div>
+        <div class="content-col"><p class="row-title">Dhuhr Prayer (Clinic)</p></div>
+      </div>
+      <div class="sched-row">
+        <div class="time-col">13:00 – 14:30</div>
+        <div class="content-col"><p class="row-title">Lunch — Hotel Restaurant</p></div>
+      </div>
+      <div class="sched-row prayer">
+        <div class="time-col">15:30 – 15:45</div>
+        <div class="content-col"><p class="row-title">Asr Prayer (Hotel)</p></div>
+      </div>
+    </div>
+
+    <div class="block-section">
+      <p class="block-header">Evening</p>
+      <div class="sched-row prayer">
+        <div class="time-col">18:15 – 18:30</div>
+        <div class="content-col"><p class="row-title">Maghrib Prayer (Hotel)</p></div>
+      </div>
+      <div class="sched-row">
+        <div class="time-col">19:00 – 20:30</div>
+        <div class="content-col"><p class="row-title">Dinner — Private Dining</p></div>
+      </div>
+      <div class="sched-row prayer">
+        <div class="time-col">20:45 – 21:00</div>
+        <div class="content-col"><p class="row-title">Isha Prayer (Hotel)</p></div>
+      </div>
+    </div>
+  </div>
+  <div class="doc-footer">
+    <div>
+      <p class="footer-label">Concierge</p>
+      <p class="footer-name">Ahmed Al-Rashidi</p>
+      <p class="footer-phone">+82 10-0000-0000</p>
+    </div>
+    <p class="footer-version">v1 · prepared May 7, 2026</p>
+  </div>
+</div>
+
+<div style="max-width:720px;margin:0 auto;font-size:11px;color:#aaa;padding:8px 0 0;">
+  확정되면 <code>src/components/ScheduleDocument.tsx</code> 반영. 기도시간 토글·콘시어지 입력은 별도 코드 작업.
+</div>
+
+</body>
+</html>

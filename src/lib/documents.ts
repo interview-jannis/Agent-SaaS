@@ -578,6 +578,8 @@ export async function issueDepositSettlement(
 // admin can also enter custom items (no FK to products).
 export type AdditionalItemDraft = {
   productId?: string | null
+  variantId?: string | null
+  variantLabelSnapshot?: string | null
   productNameSnapshot: string
   productPartnerSnapshot?: string | null
   basePrice: number
@@ -618,6 +620,8 @@ export async function issueAdditionalInvoice(
     await addDocumentItem({
       documentId: doc.id,
       productId: it.productId ?? null,
+      variantId: it.variantId ?? null,
+      variantLabelSnapshot: it.variantLabelSnapshot ?? null,
       productNameSnapshot: it.productNameSnapshot,
       productPartnerSnapshot: it.productPartnerSnapshot ?? null,
       basePrice: it.basePrice,

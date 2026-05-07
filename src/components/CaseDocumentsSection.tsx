@@ -35,7 +35,8 @@ const INTENT_LABEL: Record<IssueIntent, string> = {
   commission: 'Commission Invoice (to Admin)',
 }
 
-type Product = { id: string; name: string; partner_name: string | null; base_price: number; price_currency: string }
+type ProductVariant = { id: string; variant_label: string | null; base_price: number; price_currency: string; sort_order: number }
+type Product = { id: string; name: string; partner_name: string | null; base_price: number; price_currency: string; product_variants: ProductVariant[] }
 
 type Props = {
   caseId: string
@@ -122,8 +123,12 @@ export default function CaseDocumentsSection({
   // Item editing per-doc
   const [addingItemTo, setAddingItemTo] = useState<string | null>(null)
   const [newItemProductId, setNewItemProductId] = useState('')
+  const [newItemVariantId, setNewItemVariantId] = useState('')
   const [newItemPriceRaw, setNewItemPriceRaw] = useState('')
   const [newItemNameOverride, setNewItemNameOverride] = useState('')
+
+  // Draft item variant (issue modal)
+  const [draftVariantId, setDraftVariantId] = useState('')
 
   // Paid-at editing per-doc
   const [paidAtEditingId, setPaidAtEditingId] = useState<string | null>(null)
@@ -131,9 +136,10 @@ export default function CaseDocumentsSection({
 
   // Load products once
   useEffect(() => {
-    supabase.from('products').select('id, name, partner_name, base_price, price_currency')
+    supabase.from('products')
+      .select('id, name, partner_name, base_price, price_currency, product_variants(id, variant_label, base_price, price_currency, sort_order)')
       .eq('is_active', true).order('name')
-      .then(({ data }) => setProducts((data as Product[]) ?? []))
+      .then(({ data }) => setProducts((data as unknown as Product[]) ?? []))
   }, [])
 
   // Load deposit % default from system settings
@@ -235,19 +241,36 @@ export default function CaseDocumentsSection({
     } finally { setBusy(null) }
   }
 
+  // Resolve KRW price from a product/variant's base_price + currency
+  function resolveKrwPrice(basePriceVal: number, currency: string): number {
+    return currency === 'USD' ? Math.round(basePriceVal * exchangeRate) : basePriceVal
+  }
+
+  function autofillPrice(productId: string, variantId: string, setter: (v: string) => void) {
+    const product = products.find(p => p.id === productId)
+    if (!product) return
+    const variants = (product.product_variants ?? []).filter(v => v.sort_order !== undefined)
+    const variant = variantId ? variants.find(v => v.id === variantId) : null
+    const src = variant ?? (variants.length === 1 ? variants[0] : null) ?? product
+    setter(String(resolveKrwPrice(src.base_price, src.price_currency)))
+  }
+
   function addDraftItem() {
     const price = Number(draftPriceRaw.replace(/[^0-9]/g, '')) || 0
     if (price <= 0) { setError('Enter a non-zero price.'); return }
     const product = products.find(p => p.id === draftProductId)
+    const variant = product?.product_variants?.find(v => v.id === draftVariantId) ?? null
     const name = draftNameOverride.trim() || product?.name || 'Custom item'
     setDraftItems(prev => [...prev, {
       productId: product?.id ?? null,
+      variantId: variant?.id ?? null,
+      variantLabelSnapshot: variant?.variant_label ?? null,
       productNameSnapshot: name,
       productPartnerSnapshot: product?.partner_name ?? null,
       basePrice: price,
       finalPrice: price,
     }])
-    setDraftProductId(''); setDraftPriceRaw(''); setDraftNameOverride('')
+    setDraftProductId(''); setDraftVariantId(''); setDraftPriceRaw(''); setDraftNameOverride('')
     setError('')
   }
 
@@ -278,10 +301,13 @@ export default function CaseDocumentsSection({
     setBusy(docId); setError('')
     try {
       const product = products.find(p => p.id === newItemProductId)
+      const variant = product?.product_variants?.find(v => v.id === newItemVariantId) ?? null
       const name = newItemNameOverride.trim() || product?.name || 'Custom item'
       await addDocumentItem({
         documentId: docId,
         productId: product?.id ?? null,
+        variantId: variant?.id ?? null,
+        variantLabelSnapshot: variant?.variant_label ?? null,
         productNameSnapshot: name,
         productPartnerSnapshot: product?.partner_name ?? null,
         basePrice: priceVal,
@@ -296,6 +322,7 @@ export default function CaseDocumentsSection({
       )
       setAddingItemTo(null)
       setNewItemProductId('')
+      setNewItemVariantId('')
       setNewItemPriceRaw('')
       setNewItemNameOverride('')
       await onChanged()
@@ -405,7 +432,7 @@ export default function CaseDocumentsSection({
               + Deposit Settlement
             </button>
           )}
-          {actor === 'admin' && (
+          {actor === 'admin' && caseStatus !== 'completed' && (
             <button onClick={() => setIssuing('additional')} disabled={!canIssue || !finalInvoice}
               className="text-xs font-medium px-2.5 py-1.5 rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-40"
               title={finalInvoice ? 'Admin → Client (mid-trip add-ons)' : 'Available after Balance Invoice is issued (Finalize Pricing)'}>
@@ -504,8 +531,12 @@ export default function CaseDocumentsSection({
                 {/* Add item form */}
                 <div className="bg-gray-50 rounded-lg border border-gray-100 p-2 space-y-1.5">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                    <select value={draftProductId} onChange={e => setDraftProductId(e.target.value)}
-                      className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-900 focus:outline-none focus:border-[#0f4c35] bg-white">
+                    <select value={draftProductId} onChange={e => {
+                      const pid = e.target.value
+                      setDraftProductId(pid); setDraftVariantId('')
+                      if (pid) autofillPrice(pid, '', setDraftPriceRaw)
+                      else setDraftPriceRaw('')
+                    }} className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-900 focus:outline-none focus:border-[#0f4c35] bg-white">
                       <option value="">— Custom (enter name) —</option>
                       {products.map(p => (
                         <option key={p.id} value={p.id}>
@@ -517,6 +548,21 @@ export default function CaseDocumentsSection({
                       value={draftNameOverride} onChange={e => setDraftNameOverride(e.target.value)}
                       className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-900 focus:outline-none focus:border-[#0f4c35] bg-white" />
                   </div>
+                  {(() => {
+                    const variants = draftProductId ? (products.find(p => p.id === draftProductId)?.product_variants ?? []).filter(v => v.variant_label) : []
+                    return variants.length > 1 ? (
+                      <select value={draftVariantId} onChange={e => {
+                        const vid = e.target.value
+                        setDraftVariantId(vid)
+                        autofillPrice(draftProductId, vid, setDraftPriceRaw)
+                      }} className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-900 focus:outline-none focus:border-[#0f4c35] bg-white">
+                        <option value="">— Select variant —</option>
+                        {variants.map(v => (
+                          <option key={v.id} value={v.id}>{v.variant_label}</option>
+                        ))}
+                      </select>
+                    ) : null
+                  })()}
                   <div className="flex items-center gap-1.5">
                     <input type="text" inputMode="numeric" placeholder="Price (KRW)"
                       value={draftPriceRaw === '' ? '' : Number(draftPriceRaw).toLocaleString('en-US')}
@@ -635,8 +681,12 @@ export default function CaseDocumentsSection({
               addingItemTo === doc.id ? (
                 <div className="bg-white rounded-lg border border-gray-200 p-2.5 space-y-2">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                    <select value={newItemProductId} onChange={e => setNewItemProductId(e.target.value)}
-                      className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-900 focus:outline-none focus:border-[#0f4c35]">
+                    <select value={newItemProductId} onChange={e => {
+                      const pid = e.target.value
+                      setNewItemProductId(pid); setNewItemVariantId('')
+                      if (pid) autofillPrice(pid, '', setNewItemPriceRaw)
+                      else setNewItemPriceRaw('')
+                    }} className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-900 focus:outline-none focus:border-[#0f4c35]">
                       <option value="">— Custom (enter name) —</option>
                       {products.map(p => (
                         <option key={p.id} value={p.id}>
@@ -648,12 +698,27 @@ export default function CaseDocumentsSection({
                       value={newItemNameOverride} onChange={e => setNewItemNameOverride(e.target.value)}
                       className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
                   </div>
+                  {(() => {
+                    const variants = newItemProductId ? (products.find(p => p.id === newItemProductId)?.product_variants ?? []).filter(v => v.variant_label) : []
+                    return variants.length > 1 ? (
+                      <select value={newItemVariantId} onChange={e => {
+                        const vid = e.target.value
+                        setNewItemVariantId(vid)
+                        autofillPrice(newItemProductId, vid, setNewItemPriceRaw)
+                      }} className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-900 focus:outline-none focus:border-[#0f4c35]">
+                        <option value="">— Select variant —</option>
+                        {variants.map(v => (
+                          <option key={v.id} value={v.id}>{v.variant_label}</option>
+                        ))}
+                      </select>
+                    ) : null
+                  })()}
                   <div className="flex items-center gap-2">
                     <input type="text" inputMode="numeric" placeholder="Price (KRW)"
                       value={newItemPriceRaw === '' ? '' : Number(newItemPriceRaw).toLocaleString('en-US')}
                       onChange={e => setNewItemPriceRaw(e.target.value.replace(/[^0-9]/g, ''))}
                       className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-900 focus:outline-none focus:border-[#0f4c35] tabular-nums text-right" />
-                    <button onClick={() => { setAddingItemTo(null); setNewItemProductId(''); setNewItemPriceRaw(''); setNewItemNameOverride('') }}
+                    <button onClick={() => { setAddingItemTo(null); setNewItemProductId(''); setNewItemVariantId(''); setNewItemPriceRaw(''); setNewItemNameOverride('') }}
                       disabled={busy === doc.id}
                       className="text-[11px] text-gray-500 hover:text-gray-800 px-2 py-1 disabled:opacity-40">Cancel</button>
                     <button onClick={() => doAddItem(doc.id)} disabled={busy === doc.id || !newItemPriceRaw}
