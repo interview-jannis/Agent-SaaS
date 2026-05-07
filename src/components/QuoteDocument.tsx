@@ -180,7 +180,7 @@ export default async function QuoteDocument({
   // signer; admin-issued use system settings + signer_snapshot.
   const fromParty = (quote as { from_party?: 'admin' | 'agent' | null }).from_party ?? 'admin'
   const isAgentIssued = fromParty === 'agent'
-  const creatorAdmin = (quote as { admins?: { name: string; title: string | null } | null }).admins
+  const creatorAdmin = (quote as unknown as { admins?: { name: string; title: string | null } | null }).admins
     ?? (superAdminRes.data as { name: string; title: string | null } | null)
     ?? null
   const bank: BankDetails = isAgentIssued
