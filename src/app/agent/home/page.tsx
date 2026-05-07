@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import DOBPicker from '@/components/DOBPicker'
-import { appliesMargin, isHotelItem, nightsBetween, variantPriceUsd } from '@/lib/pricing'
+import { appliesMargin, isHotelItem, nightsBetween, variantPriceUsd, subpackageMult, type SubpackageMarginConfig } from '@/lib/pricing'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -117,6 +117,7 @@ export default function AgentHomePage() {
   const [exchangeRate, setExchangeRate] = useState(1350)
   const [companyMargin, setCompanyMargin] = useState(0.5)
   const [agentMargin, setAgentMargin] = useState(0.15)
+  const [subpkgConfig, setSubpkgConfig] = useState<SubpackageMarginConfig | null>(null)
 
   // DB data
   const [products, setProducts] = useState<Product[]>([])
@@ -208,7 +209,7 @@ export default function AgentHomePage() {
       const userId = session?.user?.id
       if (!userId) return
 
-      const [agentRes, rateRes, companyRateRes, productsRes, catsRes] = await Promise.all([
+      const [agentRes, rateRes, companyRateRes, productsRes, catsRes, subpkgRes] = await Promise.all([
         supabase.from('agents').select('id, margin_rate').eq('auth_user_id', userId).single(),
         supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single(),
         supabase.from('system_settings').select('value').eq('key', 'company_margin_rate').single(),
@@ -217,6 +218,7 @@ export default function AgentHomePage() {
           .select('id, name, description, base_price, price_currency, duration_value, duration_unit, partner_name, has_female_doctor, has_prayer_room, dietary_type, category_id, subcategory_id, product_categories(name), product_subcategories(name), product_images(image_url, is_primary), product_variants(id, variant_label, base_price, price_currency, sort_order, is_active)')
           .eq('is_active', true),
         supabase.from('product_categories').select('id, name').order('sort_order').order('name'),
+        supabase.from('system_settings').select('value').eq('key', 'subpackage_margin').maybeSingle(),
       ])
 
       const aid = agentRes.data?.id ?? ''
@@ -233,6 +235,9 @@ export default function AgentHomePage() {
 
       setProducts((productsRes.data as unknown as Product[]) ?? [])
       setCategories(catsRes.data ?? [])
+
+      const sp = subpkgRes.data?.value as { enabled?: boolean; rate?: number } | null
+      if (sp != null) setSubpkgConfig({ enabled: !!sp.enabled, rate: sp.rate ?? 0.5 })
 
       if (aid) {
         const { data: clientsData } = await supabase
@@ -268,13 +273,17 @@ export default function AgentHomePage() {
   function priceSortKey(p: Product): number {
     const variants = (p.product_variants ?? []).filter(v => v.is_active)
     if (variants.length === 0) return -1
-    const apply = appliesMargin(p.product_categories?.name, p.product_subcategories?.name)
+    const cat = p.product_categories?.name
+    const sub = p.product_subcategories?.name
+    const isSubpkg = cat === 'Subpackage' && !isHotelItem(cat, sub)
     let max = 0
     for (const v of variants) {
       const usd = variantPriceUsd({
         basePrice: v.base_price,
         priceCurrency: v.price_currency,
-        exchangeRate, marginMult, applyMargin: apply,
+        exchangeRate,
+        marginMult: isSubpkg ? subpackageMult(subpkgConfig) : marginMult,
+        applyMargin: isSubpkg ? true : appliesMargin(cat, sub),
       })
       if (usd > max) max = usd
     }
@@ -351,22 +360,23 @@ export default function AgentHomePage() {
         const p = products.find((x) => x.id === it.productId)
         const v = p?.product_variants?.find((x) => x.id === it.variantId)
         if (!p || !v) return sum
+        const cat = p.product_categories?.name
+        const sub = p.product_subcategories?.name
+        const isSubpkg = cat === 'Subpackage' && !isHotelItem(cat, sub)
         const usd = variantPriceUsd({
           basePrice: v.base_price,
           priceCurrency: v.price_currency,
           exchangeRate,
-          marginMult,
-          applyMargin: appliesMargin(p.product_categories?.name, p.product_subcategories?.name),
+          marginMult: isSubpkg ? subpackageMult(subpkgConfig) : marginMult,
+          applyMargin: isSubpkg ? true : appliesMargin(cat, sub),
         })
         // Hotels price by room × nights (no memberCount). Everything else
         // multiplies by group memberCount.
-        const multiplier = isHotelItem(p.product_categories?.name, p.product_subcategories?.name)
-          ? nights
-          : g.memberCount
+        const multiplier = isHotelItem(cat, sub) ? nights : g.memberCount
         return sum + usd * multiplier
       }, 0)
     }, 0)
-  }, [groups, products, exchangeRate, marginMult, nights])
+  }, [groups, products, exchangeRate, marginMult, subpkgConfig, nights])
 
   const activeGroupIndex = groups.findIndex((g) => g.id === activeGroupId)
 
@@ -521,11 +531,15 @@ export default function AgentHomePage() {
   function priceLabel(p: Product): string {
     const variants = (p.product_variants ?? []).filter(v => v.is_active)
     if (variants.length === 0) return '—'
-    const apply = appliesMargin(p.product_categories?.name, p.product_subcategories?.name)
+    const cat = p.product_categories?.name
+    const sub = p.product_subcategories?.name
+    const isSubpkg = cat === 'Subpackage' && !isHotelItem(cat, sub)
     const prices = variants.map(v => variantPriceUsd({
       basePrice: v.base_price,
       priceCurrency: v.price_currency,
-      exchangeRate, marginMult, applyMargin: apply,
+      exchangeRate,
+      marginMult: isSubpkg ? subpackageMult(subpkgConfig) : marginMult,
+      applyMargin: isSubpkg ? true : appliesMargin(cat, sub),
     }))
     const min = Math.min(...prices)
     const max = Math.max(...prices)
@@ -832,9 +846,8 @@ export default function AgentHomePage() {
           </div>
         </div>
 
-        {/* Subcategory pill row — only shown when a parent category is selected
-            and that category has more than one subcategory worth filtering on. */}
-        {selectedCategoryId && availableSubcategories.length > 1 && (
+        {/* Subcategory pill row — shown when a parent category is selected and has subcategories. */}
+        {selectedCategoryId && availableSubcategories.length > 0 && (
           <div className="shrink-0 bg-white border-b border-gray-100 px-4 md:px-6 py-2 flex items-center gap-1.5 overflow-x-auto">
             <button
               onClick={() => setSelectedSubcategoryName('')}
@@ -1074,10 +1087,14 @@ export default function AgentHomePage() {
                   group header to expand its options). Single group → flat list
                   (current behavior). Single variant → just the price box. */}
               {(() => {
-                const margin = appliesMargin(detailProduct.product_categories?.name, detailProduct.product_subcategories?.name)
+                const detailCat = detailProduct.product_categories?.name
+                const detailSub = detailProduct.product_subcategories?.name
+                const detailIsSubpkg = detailCat === 'Subpackage' && !isHotelItem(detailCat, detailSub)
                 const variantUsd = (v: Variant) => variantPriceUsd({
                   basePrice: v.base_price, priceCurrency: v.price_currency,
-                  exchangeRate, marginMult, applyMargin: margin,
+                  exchangeRate,
+                  marginMult: detailIsSubpkg ? subpackageMult(subpkgConfig) : marginMult,
+                  applyMargin: detailIsSubpkg ? true : appliesMargin(detailCat, detailSub),
                 })
                 // Sort by price desc (high → low) so VIP-tier rooms / packages
                 // surface first. Ties fall back to original sort_order.
@@ -1101,7 +1118,9 @@ export default function AgentHomePage() {
                 const activeGroup = groups[activeGroupIndex]
                 const usdFor = (v: typeof variants[number]) => variantPriceUsd({
                   basePrice: v.base_price, priceCurrency: v.price_currency,
-                  exchangeRate, marginMult, applyMargin: margin,
+                  exchangeRate,
+                  marginMult: detailIsSubpkg ? subpackageMult(subpkgConfig) : marginMult,
+                  applyMargin: detailIsSubpkg ? true : appliesMargin(detailCat, detailSub),
                 })
 
                 // Group by prefix (everything before the LAST " · "). Variants

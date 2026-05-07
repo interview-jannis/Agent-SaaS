@@ -1,14 +1,14 @@
 // Single source of truth for cart/quote pricing.
 //
-// Margin rule (per 5/4 product taxonomy decision):
-//   Margin applied to: K-Medical, K-Beauty, K-Wellness > Spa,
+// Margin rule (per 4/30 + 5/4 decisions):
+//   Margin applied to: K-Medical, K-Beauty, K-Wellness > Spa, K-Wellness > Henna,
 //                      K-Starcation, K-Education
-//   Cost-only (no margin): K-Wellness > Tour/Leisure/Shopping/K-Content,
-//                          Subpackage (Hotel/Vehicle/Interpreter/etc)
+//   Cost-only (no margin): K-Wellness > everything else (Tour/Leisure/Shopping/K-Content),
+//                          Subpackage — see subpackageMult() below
 //
-// Subpackage and non-Spa Wellness pass through at base_price so the agent
-// sees the partner's actual cost during builder, helping them make
-// honest selections.
+// Subpackage margin is configurable by super admin (system_settings.subpackage_margin).
+// When enabled, a flat rate is applied (separate from the compound company×agent margin).
+// When disabled, Subpackage items pass through at cost.
 
 export function appliesMargin(category: string | null | undefined, subcategory: string | null | undefined): boolean {
   if (!category) return false
@@ -16,9 +16,20 @@ export function appliesMargin(category: string | null | undefined, subcategory: 
   if (category === 'K-Beauty') return true
   if (category === 'K-Education') return true
   if (category === 'K-Starcation') return true
-  if (category === 'K-Wellness') return subcategory === 'Spa'
-  // Subpackage and anything else: cost-only
+  if (category === 'K-Wellness') return subcategory === 'Spa' || subcategory === 'Henna'
+  // Subpackage: handled separately via subpackageMult(). Cost-only by default.
   return false
+}
+
+// Subpackage margin config — stored in system_settings.subpackage_margin
+export type SubpackageMarginConfig = { enabled: boolean; rate: number }
+
+// Returns the price multiplier for Subpackage items.
+// When disabled (or config null): 0 (free — 무상 제공).
+// When enabled: 1 + rate (flat markup, e.g. 0.5 → ×1.5 = 50% above cost).
+export function subpackageMult(config: SubpackageMarginConfig | null | undefined): number {
+  if (!config?.enabled) return 0
+  return 1 + (config.rate ?? 0)
 }
 
 // Hotel items price by room × nights, NOT per-person × memberCount.

@@ -12,7 +12,7 @@ import {
   addDocumentGroupMember,
 } from '@/lib/documents'
 import { createCaseContract } from '@/lib/caseContracts'
-import { appliesMargin, isHotelItem, nightsBetween, variantPriceUsd, variantPriceKrw } from '@/lib/pricing'
+import { appliesMargin, isHotelItem, nightsBetween, variantPriceUsd, variantPriceKrw, subpackageMult, type SubpackageMarginConfig } from '@/lib/pricing'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -96,6 +96,7 @@ export default function QuoteReviewPage() {
   const [exchangeRate, setExchangeRate] = useState(1350)
   const [companyMargin, setCompanyMargin] = useState(0.5)
   const [agentMargin, setAgentMargin] = useState(0.15)
+  const [subpkgConfig, setSubpkgConfig] = useState<SubpackageMarginConfig | null>(null)
   const [loading, setLoading] = useState(true)
 
   // Companions
@@ -133,7 +134,7 @@ export default function QuoteReviewPage() {
       const userId = session?.user?.id
       if (!userId) return
 
-      const [leadRes, productsRes, rateRes, companyRateRes, agentRes] = await Promise.all([
+      const [leadRes, productsRes, rateRes, companyRateRes, agentRes, subpkgRes] = await Promise.all([
         supabase.from('clients').select('id, client_number, name, nationality, gender, needs_muslim_friendly, dietary_restriction').eq('id', draft.clientId).single(),
         allProductIds.length
           ? supabase.from('products').select('id, name, product_categories(name), product_subcategories(name), product_variants(id, variant_label, base_price, price_currency, sort_order)').in('id', allProductIds)
@@ -141,6 +142,7 @@ export default function QuoteReviewPage() {
         supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single(),
         supabase.from('system_settings').select('value').eq('key', 'company_margin_rate').single(),
         supabase.from('agents').select('id, margin_rate').eq('auth_user_id', userId).single(),
+        supabase.from('system_settings').select('value').eq('key', 'subpackage_margin').maybeSingle(),
       ])
 
       setLead(leadRes.data)
@@ -153,6 +155,9 @@ export default function QuoteReviewPage() {
 
       const am = (agentRes.data as { margin_rate?: number } | null)?.margin_rate
       if (typeof am === 'number') setAgentMargin(am)
+
+      const sp = subpkgRes.data?.value as { enabled?: boolean; rate?: number } | null
+      if (sp != null) setSubpkgConfig({ enabled: !!sp.enabled, rate: sp.rate ?? 0.5 })
 
       const aid = agentRes.data?.id ?? ''
       setAgentId(aid)
@@ -194,11 +199,15 @@ export default function QuoteReviewPage() {
   function itemUsd(item: CartItem): number {
     const found = findVariant(item.productId, item.variantId)
     if (!found) return 0
+    const cat = found.product.product_categories?.name
+    const sub = found.product.product_subcategories?.name
+    const isSubpkg = cat === 'Subpackage' && !isHotelItem(cat, sub)
     return variantPriceUsd({
       basePrice: found.variant.base_price,
       priceCurrency: found.variant.price_currency,
-      exchangeRate, marginMult,
-      applyMargin: appliesMargin(found.product.product_categories?.name, found.product.product_subcategories?.name),
+      exchangeRate,
+      marginMult: isSubpkg ? subpackageMult(subpkgConfig) : marginMult,
+      applyMargin: isSubpkg ? true : appliesMargin(cat, sub),
     })
   }
 
@@ -354,20 +363,22 @@ export default function QuoteReviewPage() {
       caseMembersData?.forEach((m) => { memberIdMap[m.client_id] = m.id })
 
       // Create quote — totalKRW respects per-category margin rule (Subpackage
-      // and non-Spa Wellness pass through at cost; everything else gets margin).
+      // and non-Spa/Henna Wellness pass through at cost unless subpkgConfig enabled).
       const totalKRW = cart.groups.reduce((sum, g) =>
         sum + g.items.reduce((gs, it) => {
           const found = findVariant(it.productId, it.variantId)
           if (!found) return gs
+          const cat = found.product.product_categories?.name
+          const sub = found.product.product_subcategories?.name
+          const isSubpkg = cat === 'Subpackage' && !isHotelItem(cat, sub)
           const krwPer = variantPriceKrw({
             basePrice: found.variant.base_price,
             priceCurrency: found.variant.price_currency,
-            exchangeRate, marginMult,
-            applyMargin: appliesMargin(found.product.product_categories?.name, found.product.product_subcategories?.name),
+            exchangeRate,
+            marginMult: isSubpkg ? subpackageMult(subpkgConfig) : marginMult,
+            applyMargin: isSubpkg ? true : appliesMargin(cat, sub),
           })
-          const mult = isHotelItem(found.product.product_categories?.name, found.product.product_subcategories?.name)
-            ? nights
-            : g.memberCount
+          const mult = isHotelItem(cat, sub) ? nights : g.memberCount
           return gs + krwPer * mult
         }, 0), 0)
 
@@ -398,8 +409,12 @@ export default function QuoteReviewPage() {
         for (const it of group.items) {
           const found = findVariant(it.productId, it.variantId)
           if (!found) continue
-          const apply = appliesMargin(found.product.product_categories?.name, found.product.product_subcategories?.name)
-          const isHotelLine = isHotelItem(found.product.product_categories?.name, found.product.product_subcategories?.name)
+          const cat = found.product.product_categories?.name
+          const sub = found.product.product_subcategories?.name
+          const isHotelLine = isHotelItem(cat, sub)
+          const isSubpkg = cat === 'Subpackage' && !isHotelLine
+          const apply = isSubpkg ? !!subpkgConfig?.enabled : appliesMargin(cat, sub)
+          const effectiveMult = isSubpkg ? subpackageMult(subpkgConfig) : marginMult
           const multiplier = isHotelLine ? nights : group.memberCount
           const baseUnitKrw = found.variant.price_currency === 'USD'
             ? Math.round(found.variant.base_price * exchangeRate)
@@ -407,7 +422,7 @@ export default function QuoteReviewPage() {
           const finalUnitKrw = variantPriceKrw({
             basePrice: found.variant.base_price,
             priceCurrency: found.variant.price_currency,
-            exchangeRate, marginMult,
+            exchangeRate, marginMult: effectiveMult,
             applyMargin: apply,
           })
           // Bake "· N nights" into the snapshot label so customer-facing

@@ -3,6 +3,7 @@
 import { Fragment, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { isHotelItem, subpackageMult } from '@/lib/pricing'
 
 type Category = {
   id: string
@@ -44,9 +45,11 @@ export default function AdminProductsPage() {
   const [loading, setLoading] = useState(true)
   const [companyMargin, setCompanyMargin] = useState(0.5)
   const [exchangeRate, setExchangeRate] = useState(1350)
+  const [subpkgConfig, setSubpkgConfig] = useState<{ enabled: boolean; rate: number } | null>(null)
 
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('')
+  const [subcategoryFilter, setSubcategoryFilter] = useState('')
   const [partnerFilter, setPartnerFilter] = useState('')
   const [activeFilter, setActiveFilter] = useState('')
   const [imageIndexes, setImageIndexes] = useState<Record<string, number>>({})
@@ -72,7 +75,7 @@ export default function AdminProductsPage() {
   const [deleteMissing, setDeleteMissing] = useState(false)
 
   async function loadAll() {
-    const [{ data: cats }, { data: prods }, { data: cmSetting }, { data: rateSetting }] = await Promise.all([
+    const [{ data: cats }, { data: prods }, { data: cmSetting }, { data: rateSetting }, { data: spSetting }] = await Promise.all([
       supabase.from('product_categories').select('id, name').order('sort_order').order('name'),
       supabase
         .from('products')
@@ -80,6 +83,7 @@ export default function AdminProductsPage() {
         .order('product_number', { ascending: false }),
       supabase.from('system_settings').select('value').eq('key', 'company_margin_rate').single(),
       supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single(),
+      supabase.from('system_settings').select('value').eq('key', 'subpackage_margin').maybeSingle(),
     ])
     setCategories(cats ?? [])
     setProducts((prods as unknown as Product[]) ?? [])
@@ -87,6 +91,8 @@ export default function AdminProductsPage() {
     if (typeof cm === 'number') setCompanyMargin(cm)
     const rate = (rateSetting?.value as { usd_krw?: number } | null)?.usd_krw
     if (typeof rate === 'number') setExchangeRate(rate)
+    const sp = spSetting?.value as { enabled?: boolean; rate?: number } | null
+    if (sp != null) setSubpkgConfig({ enabled: !!sp.enabled, rate: sp.rate ?? 0 })
     setLoading(false)
   }
 
@@ -109,11 +115,24 @@ export default function AdminProductsPage() {
     return currency === 'USD' ? amount : amount / exchangeRate
   }
 
-  // Partners available in the current category scope
+
+
+  // Subcategories available within the selected category
+  const availableSubcategories = Array.from(
+    new Set(
+      products
+        .filter((p) => categoryFilter === '' || p.category_id === categoryFilter)
+        .map((p) => p.product_subcategories?.name)
+        .filter((n): n is string => !!n)
+    )
+  ).sort()
+
+  // Partners available in the current category+subcategory scope
   const availablePartners = Array.from(
     new Set(
       products
         .filter((p) => categoryFilter === '' || p.category_id === categoryFilter)
+        .filter((p) => subcategoryFilter === '' || p.product_subcategories?.name === subcategoryFilter)
         .map((p) => p.partner_name)
         .filter((n): n is string => !!n)
     )
@@ -125,20 +144,27 @@ export default function AdminProductsPage() {
       p.name.toLowerCase().includes(search.toLowerCase()) ||
       p.product_number.toLowerCase().includes(search.toLowerCase())
     const matchCategory = categoryFilter === '' || p.category_id === categoryFilter
+    const matchSubcategory = subcategoryFilter === '' || p.product_subcategories?.name === subcategoryFilter
     const matchPartner = partnerFilter === '' || p.partner_name === partnerFilter
     const matchActive =
       activeFilter === '' ||
       (activeFilter === 'active' && p.is_active) ||
       (activeFilter === 'inactive' && !p.is_active)
-    return matchSearch && matchCategory && matchPartner && matchActive
+    return matchSearch && matchCategory && matchSubcategory && matchPartner && matchActive
   })
 
-  // Reset partner filter if current selection is no longer in scope
+  // Reset subcategory/partner filter if current selection is no longer in scope
+  useEffect(() => {
+    if (subcategoryFilter && !availableSubcategories.includes(subcategoryFilter)) {
+      setSubcategoryFilter('')
+    }
+  }, [categoryFilter, subcategoryFilter, availableSubcategories])
+
   useEffect(() => {
     if (partnerFilter && !availablePartners.includes(partnerFilter)) {
       setPartnerFilter('')
     }
-  }, [categoryFilter, partnerFilter, availablePartners])
+  }, [categoryFilter, subcategoryFilter, partnerFilter, availablePartners])
 
   // Group filtered products by category (in category sort_order)
   const groupedByCategory = new Map<string, Product[]>()
@@ -658,7 +684,7 @@ export default function AdminProductsPage() {
           {/* Category filter */}
           <select
             value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
+            onChange={(e) => { setCategoryFilter(e.target.value); setSubcategoryFilter('') }}
             className="px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#0f4c35] bg-white text-gray-700"
           >
             <option value="">All Categories</option>
@@ -666,6 +692,20 @@ export default function AdminProductsPage() {
               <option key={c.id} value={c.id}>{c.name}</option>
             ))}
           </select>
+
+          {/* Subcategory filter — only when a category is selected and has subcategories */}
+          {categoryFilter !== '' && availableSubcategories.length > 0 && (
+            <select
+              value={subcategoryFilter}
+              onChange={(e) => setSubcategoryFilter(e.target.value)}
+              className="px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#0f4c35] bg-white text-gray-700"
+            >
+              <option value="">All Sub-categories</option>
+              {availableSubcategories.map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+          )}
 
           {/* Partner filter */}
           <select
@@ -742,17 +782,23 @@ export default function AdminProductsPage() {
                               {(() => {
                                 const vs = (p.product_variants ?? []).filter(v => v.is_active)
                                 if (vs.length > 1) {
+                                  const allKrw = vs.every(v => v.price_currency !== 'USD')
                                   const usds = vs.map(v => toUSD(v.base_price, v.price_currency))
-                                  const lo = Math.min(...usds), hi = Math.max(...usds)
-                                  const krwFmt = (n: number) => `₩${Math.round(n * exchangeRate).toLocaleString('ko-KR')}`
+                                  const loUsd = Math.min(...usds), hiUsd = Math.max(...usds)
+                                  const krws = vs.map(v => v.price_currency === 'KRW' ? v.base_price : Math.round(v.base_price * exchangeRate))
+                                  const loKrw = Math.min(...krws), hiKrw = Math.max(...krws)
+                                  const fmtKrwRange = loKrw !== hiKrw
+                                    ? `₩${loKrw.toLocaleString('ko-KR')} – ₩${hiKrw.toLocaleString('ko-KR')}`
+                                    : `₩${loKrw.toLocaleString('ko-KR')}`
+                                  const fmtUsdRange = loUsd !== hiUsd
+                                    ? `${fmtUSD(loUsd)} – ${fmtUSD(hiUsd)}`
+                                    : fmtUSD(loUsd)
                                   return (
                                     <>
                                       <div className="flex items-center gap-2">
-                                        {lo !== hi ? (
-                                          <span className="text-sm font-semibold text-gray-900">{fmtUSD(lo)} – {fmtUSD(hi)}</span>
-                                        ) : (
-                                          <span className="text-sm font-semibold text-gray-900">{fmtUSD(lo)}</span>
-                                        )}
+                                        <span className="text-sm font-semibold text-gray-900">
+                                          {allKrw ? fmtKrwRange : fmtUsdRange}
+                                        </span>
                                         <button
                                           type="button"
                                           onClick={(e) => {
@@ -772,7 +818,7 @@ export default function AdminProductsPage() {
                                         </button>
                                       </div>
                                       <div className="text-[11px] text-gray-400">
-                                        {lo !== hi ? `≈ ${krwFmt(lo)} – ${krwFmt(hi)}` : `≈ ${krwFmt(lo)}`}
+                                        ≈ {allKrw ? fmtUsdRange : fmtKrwRange}
                                       </div>
                                     </>
                                   )
@@ -801,7 +847,7 @@ export default function AdminProductsPage() {
                                         {v.variant_label ?? '—'}
                                       </span>
                                       <span className="font-semibold text-gray-900 tabular-nums shrink-0">
-                                        {fmtUSD(toUSD(v.base_price, v.price_currency))}
+                                        {fmtPrice(v.base_price, v.price_currency)}
                                       </span>
                                     </div>
                                   ))}
@@ -954,21 +1000,41 @@ export default function AdminProductsPage() {
                         const isRange = sorted.length > 1 && minUsd !== maxUsd
                         const primary = sorted[0] ?? null
                         const krw = (vUsd: number) => vUsd * exchangeRate
+                        const isSubpkg = p.product_categories?.name === 'Subpackage' && !isHotelItem(p.product_categories?.name, p.product_subcategories?.name)
+                        const primaryKrwBase = primary
+                          ? (primary.price_currency === 'KRW' ? primary.base_price : Math.round(primary.base_price * exchangeRate))
+                          : (p.price_currency === 'KRW' ? p.base_price : Math.round(p.base_price * exchangeRate))
                         return (
                           <div className="flex items-center">
                             <div className="w-[110px] xl:w-[180px] flex-none text-right pr-2 xl:pr-4">
                               <div className="text-xs xl:text-base font-semibold text-gray-900">
                                 {isRange
-                                  ? `${fmtUSD(minUsd)} – ${fmtUSD(maxUsd)}`
+                                  ? (() => {
+                                      const allKrwRange = sorted.every(v => v.price_currency !== 'USD')
+                                      if (allKrwRange) {
+                                        const krwVals = sorted.map(v => v.base_price)
+                                        const loK = Math.min(...krwVals), hiK = Math.max(...krwVals)
+                                        return loK !== hiK ? `₩${loK.toLocaleString('ko-KR')} – ₩${hiK.toLocaleString('ko-KR')}` : `₩${loK.toLocaleString('ko-KR')}`
+                                      }
+                                      return `${fmtUSD(minUsd)} – ${fmtUSD(maxUsd)}`
+                                    })()
                                   : fmtPrice(primary?.base_price ?? p.base_price, primary?.price_currency ?? p.price_currency)}
                               </div>
                               {(() => {
                                 // Show the other currency under in small grey for orientation.
                                 if (isRange) {
-                                  const krw = (n: number) => `₩${Math.round(n * exchangeRate).toLocaleString('ko-KR')}`
+                                  const allKrwRange = sorted.every(v => v.price_currency !== 'USD')
+                                  if (allKrwRange) {
+                                    return (
+                                      <div className="text-[10px] xl:text-[11px] text-gray-400 mt-0.5">
+                                        ≈ {fmtUSD(minUsd)} – {fmtUSD(maxUsd)}
+                                      </div>
+                                    )
+                                  }
+                                  const krwConv = (n: number) => `₩${Math.round(n * exchangeRate).toLocaleString('ko-KR')}`
                                   return (
                                     <div className="text-[10px] xl:text-[11px] text-gray-400 mt-0.5">
-                                      ≈ {krw(minUsd)} – {krw(maxUsd)}
+                                      ≈ {krwConv(minUsd)} – {krwConv(maxUsd)}
                                     </div>
                                   )
                                 }
@@ -1008,7 +1074,24 @@ export default function AdminProductsPage() {
                               )}
                             </div>
                             <div className="hidden xl:block flex-none w-[260px] text-left pl-4 border-l border-gray-100 space-y-0.5">
-                              {sorted.length > 1 ? (
+                              {isSubpkg ? (
+                                subpkgConfig?.enabled ? (
+                                  AGENT_TIERS.map((tier) => {
+                                    const finalKrw = Math.round(primaryKrwBase * (1 + (subpkgConfig.rate ?? 0)) * (1 + tier))
+                                    return (
+                                      <div key={tier} className="text-xs text-gray-500">
+                                        <span className="text-gray-400">Co{Math.round((subpkgConfig.rate ?? 0) * 100)}%+Ag{Math.round(tier * 100)}%</span>
+                                        <span className="ml-2 font-medium text-gray-700">₩{finalKrw.toLocaleString('ko-KR')}</span>
+                                      </div>
+                                    )
+                                  })
+                                ) : (
+                                  <div className="text-xs text-gray-500">
+                                    <span className="text-gray-400">Client</span>
+                                    <span className="ml-2 font-medium text-emerald-700">Free</span>
+                                  </div>
+                                )
+                              ) : sorted.length > 1 ? (
                                 <div className="space-y-0.5 max-h-24 overflow-y-auto">
                                   {sorted.map(v => {
                                     const vUsd = toUSD(v.base_price, v.price_currency)
@@ -1029,7 +1112,7 @@ export default function AdminProductsPage() {
                                   const finalUSD = baseUsd * (1 + companyMargin) * (1 + tier)
                                   return (
                                     <div key={tier} className="text-xs text-gray-500">
-                                      <span className="text-gray-400">{Math.round(tier * 100)}%</span>
+                                      <span className="text-gray-400">Co{Math.round(companyMargin * 100)}%+Ag{Math.round(tier * 100)}%</span>
                                       <span className="ml-2 font-medium text-gray-700">{fmtUSD(finalUSD)}</span>
                                     </div>
                                   )

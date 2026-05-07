@@ -23,7 +23,7 @@ export default function AdminSettingsPage() {
   const [loading, setLoading] = useState(true)
 
   // Inline edit state — only one section editable at a time
-  type EditTarget = 'profile' | 'rate' | 'margin' | 'bank' | 'deposit' | 'stamp' | null
+  type EditTarget = 'profile' | 'rate' | 'margin' | 'bank' | 'deposit' | 'stamp' | 'subpackage' | null
   const [editing, setEditing] = useState<EditTarget>(null)
 
   // My Display Info (per-admin, used as signer on invoices I finalize)
@@ -65,6 +65,15 @@ export default function AdminSettingsPage() {
   const [depositSaved, setDepositSaved] = useState(false)
   const [depositError, setDepositError] = useState('')
 
+  // Subpackage margin (super admin only)
+  const [subpkgEnabled, setSubpkgEnabled] = useState(false)
+  const [subpkgRate, setSubpkgRate] = useState('50')
+  const [subpkgEnabledOriginal, setSubpkgEnabledOriginal] = useState(false)
+  const [subpkgRateOriginal, setSubpkgRateOriginal] = useState('50')
+  const [savingSubpkg, setSavingSubpkg] = useState(false)
+  const [subpkgSaved, setSubpkgSaved] = useState(false)
+  const [subpkgError, setSubpkgError] = useState('')
+
   // Company stamp
   const [stampUrl, setStampUrl] = useState<string | null>(null)
   const [stampUrlOriginal, setStampUrlOriginal] = useState<string | null>(null)
@@ -76,13 +85,14 @@ export default function AdminSettingsPage() {
     async function load() {
       const { data: { session } } = await supabase.auth.getSession()
       const uid = session?.user?.id ?? null
-      const [rateRes, marginRes, bankRes, depositRes, stampRes, adminRes] = await Promise.all([
+      const [rateRes, marginRes, bankRes, depositRes, stampRes, adminRes, subpkgRes] = await Promise.all([
         supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single(),
         supabase.from('system_settings').select('value').eq('key', 'company_margin_rate').single(),
         supabase.from('system_settings').select('value').eq('key', 'bank_details').single(),
         supabase.from('system_settings').select('value').eq('key', 'deposit_percentage').maybeSingle(),
         supabase.from('system_settings').select('value').eq('key', 'company_stamp').maybeSingle(),
         uid ? supabase.from('admins').select('id, name, title, is_super_admin').eq('auth_user_id', uid).maybeSingle() : Promise.resolve({ data: null }),
+        supabase.from('system_settings').select('value').eq('key', 'subpackage_margin').maybeSingle(),
       ])
 
       const admin = adminRes.data as { id: string; name: string | null; title: string | null; is_super_admin: boolean | null } | null
@@ -118,6 +128,12 @@ export default function AdminSettingsPage() {
 
       const s = (stampRes.data?.value as { url?: string | null } | null)?.url ?? null
       setStampUrl(s); setStampUrlOriginal(s)
+
+      const sp = subpkgRes.data?.value as { enabled?: boolean; rate?: number } | null
+      const spEnabled = sp?.enabled ?? false
+      const spRate = String(Math.round((sp?.rate ?? 0.5) * 100))
+      setSubpkgEnabled(spEnabled); setSubpkgEnabledOriginal(spEnabled)
+      setSubpkgRate(spRate); setSubpkgRateOriginal(spRate)
 
       setLoading(false)
     }
@@ -269,8 +285,27 @@ export default function AdminSettingsPage() {
     setSavingProfile(false)
   }
 
+  async function saveSubpackageMargin() {
+    const rateNum = Number(subpkgRate)
+    if (isNaN(rateNum) || rateNum < 0 || rateNum > 200) {
+      setSubpkgError('Enter a rate between 0 and 200.')
+      return
+    }
+    setSavingSubpkg(true); setSubpkgError('')
+    const { error } = await supabase.from('system_settings')
+      .upsert({ key: 'subpackage_margin', value: { enabled: subpkgEnabled, rate: rateNum / 100 } }, { onConflict: 'key' })
+    if (error) { setSubpkgError(error.message) }
+    else {
+      await logAsCurrentUser('settings.updated', { type: 'system_setting', label: 'subpackage_margin' }, { enabled: subpkgEnabled, rate: rateNum })
+      setSubpkgEnabledOriginal(subpkgEnabled); setSubpkgRateOriginal(subpkgRate)
+      setEditing(null)
+      setSubpkgSaved(true); setTimeout(() => setSubpkgSaved(false), 3000)
+    }
+    setSavingSubpkg(false)
+  }
+
   function startEdit(target: Exclude<EditTarget, null>) {
-    setRateError(''); setMarginError(''); setBankError(''); setProfileError(''); setDepositError(''); setStampError('')
+    setRateError(''); setMarginError(''); setBankError(''); setProfileError(''); setDepositError(''); setStampError(''); setSubpkgError('')
     setEditing(target)
   }
   function cancelEdit() {
@@ -280,7 +315,8 @@ export default function AdminSettingsPage() {
     setProfileName(profileNameOriginal)
     setProfileTitle(profileTitleOriginal)
     setDepositPct(depositPctOriginal)
-    setRateError(''); setMarginError(''); setBankError(''); setProfileError(''); setDepositError(''); setStampError('')
+    setSubpkgEnabled(subpkgEnabledOriginal); setSubpkgRate(subpkgRateOriginal)
+    setRateError(''); setMarginError(''); setBankError(''); setProfileError(''); setDepositError(''); setStampError(''); setSubpkgError('')
     setEditing(null)
   }
 
@@ -567,6 +603,63 @@ export default function AdminSettingsPage() {
               </div>
             )}
           </div>
+
+          {/* Subpackage Margin row — super admin only */}
+          {isSuperAdmin && (
+          <div className="px-6 py-5">
+            {editing !== 'subpackage' ? (
+              <div className="flex items-start gap-4">
+                <div className="flex-1 min-w-0">
+                  <h2 className="text-sm font-semibold text-gray-900">Subpackage Margin</h2>
+                  <p className="text-xs text-gray-500 mt-0.5">Markup applied to Subpackage items (vehicle, interpreter, concierge, etc.). Hotel pricing is unaffected.</p>
+                  <div className="mt-2 text-sm text-gray-800">
+                    {subpkgEnabledOriginal
+                      ? <span className="text-emerald-700 font-medium">{subpkgRateOriginal}% markup</span>
+                      : <span className="text-gray-400">Off — Free</span>}
+                  </div>
+                  {subpkgSaved && <p className="text-xs text-[#0f4c35] mt-1">Saved.</p>}
+                </div>
+                <button onClick={() => startEdit('subpackage')}
+                  className="shrink-0 text-xs font-medium text-[#0f4c35] hover:underline">Edit</button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div>
+                  <h2 className="text-sm font-semibold text-gray-900">Subpackage Margin</h2>
+                  <p className="text-xs text-gray-500 mt-0.5">Off = Subpackage items are free. On = flat markup applied (vehicle, interpreter, concierge, etc.). Hotel is always free.</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button onClick={() => setSubpkgEnabled(v => !v)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${subpkgEnabled ? 'bg-[#0f4c35]' : 'bg-gray-300'}`}>
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${subpkgEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+                  </button>
+                  <span className="text-sm text-gray-700">{subpkgEnabled ? 'Enabled' : 'Disabled (Free)'}</span>
+                </div>
+                {subpkgEnabled && (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1.5">Markup rate (%)</label>
+                    <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden focus-within:border-[#0f4c35] transition-all w-32">
+                      <input autoFocus type="number" value={subpkgRate} onChange={e => setSubpkgRate(e.target.value)}
+                        placeholder="50" min={0} max={200}
+                        className="flex-1 w-full px-3 py-2 text-sm text-gray-900 focus:outline-none bg-white" />
+                      <span className="px-3 py-2 text-sm text-gray-600 bg-gray-50 border-l border-gray-200">%</span>
+                    </div>
+                    <p className="text-[11px] text-gray-400 mt-1">e.g. 50 → client pays 1.5× the base cost</p>
+                  </div>
+                )}
+                {subpkgError && <p className="text-xs text-red-500">{subpkgError}</p>}
+                <div className="flex items-center gap-2">
+                  <button onClick={saveSubpackageMargin} disabled={savingSubpkg}
+                    className="px-4 py-1.5 text-xs font-medium bg-[#0f4c35] text-white rounded-lg hover:bg-[#0a3828] disabled:opacity-40 transition-colors">
+                    {savingSubpkg ? 'Saving...' : 'Save'}
+                  </button>
+                  <button onClick={cancelEdit} disabled={savingSubpkg}
+                    className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-800 disabled:opacity-40">Cancel</button>
+                </div>
+              </div>
+            )}
+          </div>
+          )}
 
           {/* Company Stamp row */}
           <div className="px-6 py-5">
