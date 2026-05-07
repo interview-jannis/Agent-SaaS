@@ -382,53 +382,53 @@ export default async function QuoteDocument({
               <span className="text-xs text-gray-500 italic">Currency: United States Dollars</span>
             </div>
             <div className="overflow-x-auto print:overflow-visible -mx-4 md:mx-0 px-4 md:px-0">
-            <table className="w-full text-sm border-collapse border border-gray-300 whitespace-nowrap tracking-tight">
+            <table className="w-full text-xs md:text-sm border-collapse border border-gray-300 tracking-tight">
               <thead>
                 <tr style={{ backgroundColor: '#1a3a6b' }} className="text-white">
-                  <th className="py-2.5 px-2 md:px-3 text-center font-semibold w-8 border border-[#1a3a6b]">No</th>
-                  <th className="py-2.5 px-2 md:px-3 text-left font-semibold border border-[#1a3a6b]">Descriptions</th>
-                  <th className="py-2.5 px-2 md:px-3 text-center font-semibold w-10 md:w-12 border border-[#1a3a6b] hidden md:table-cell">Q&apos;ty</th>
-                  <th className="py-2.5 px-2 md:px-3 text-right font-semibold md:w-32 border border-[#1a3a6b] hidden md:table-cell">Unit Price</th>
-                  <th className="py-2.5 px-2 md:px-3 text-right font-semibold md:w-32 border border-[#1a3a6b]">Amount</th>
-                  <th className="py-2.5 px-2 md:px-3 text-center font-semibold md:w-20 border border-[#1a3a6b] hidden md:table-cell">Remarks</th>
+                  <th className="py-2 md:py-2.5 px-2 md:px-3 text-center font-semibold w-8 border border-[#1a3a6b]">No</th>
+                  <th className="py-2 md:py-2.5 px-2 md:px-3 text-left font-semibold border border-[#1a3a6b]">Descriptions</th>
+                  <th className="py-2 md:py-2.5 px-2 md:px-3 text-center font-semibold w-10 md:w-12 border border-[#1a3a6b] hidden md:table-cell">Q&apos;ty</th>
+                  <th className="py-2 md:py-2.5 px-2 md:px-3 text-right font-semibold md:w-32 border border-[#1a3a6b] hidden md:table-cell">Unit Price</th>
+                  <th className="py-2 md:py-2.5 px-2 md:px-3 text-right font-semibold md:w-32 border border-[#1a3a6b]">Amount</th>
+                  <th className="py-2 md:py-2.5 px-2 md:px-3 text-center font-semibold md:w-20 border border-[#1a3a6b] hidden md:table-cell">Remarks</th>
                 </tr>
               </thead>
               <tbody>
                 {/* Deposit row at top — only on final_invoice (Balance Invoice) */}
                 {depositInfo && (
                   <tr className="bg-emerald-50">
-                    <td className="py-3 px-2 md:px-3 text-center text-emerald-700 border border-gray-300">—</td>
-                    <td className="py-3 px-2 md:px-3 border border-gray-300">
+                    <td className="py-2 md:py-3 px-2 md:px-3 text-center text-emerald-700 border border-gray-300">—</td>
+                    <td className="py-2 md:py-3 px-2 md:px-3 border border-gray-300">
                       <p className="font-medium text-emerald-800">Deposit (paid)</p>
                       <p className="text-xs text-emerald-700/70 mt-0.5">
                         {depositInfo.documentNumber}
                         {depositInfo.paidAt ? ` · ${fmtDate(depositInfo.paidAt)}` : ''}
                       </p>
                     </td>
-                    <td className="py-3 px-2 md:px-3 text-center text-emerald-700 border border-gray-300 hidden md:table-cell">—</td>
-                    <td className="py-3 px-2 md:px-3 text-right text-emerald-700 font-mono border border-gray-300 hidden md:table-cell">—</td>
-                    <td className="py-3 px-2 md:px-3 text-right border border-gray-300">
+                    <td className="py-2 md:py-3 px-2 md:px-3 text-center text-emerald-700 border border-gray-300 hidden md:table-cell">—</td>
+                    <td className="py-2 md:py-3 px-2 md:px-3 text-right text-emerald-700 font-mono border border-gray-300 hidden md:table-cell">—</td>
+                    <td className="py-2 md:py-3 px-2 md:px-3 text-right whitespace-nowrap border border-gray-300">
                       <p className="font-semibold text-emerald-700 font-mono">−$ {fmtUSD(depositUSD)}</p>
                     </td>
-                    <td className="py-3 px-2 md:px-3 border border-gray-300 hidden md:table-cell" />
+                    <td className="py-2 md:py-3 px-2 md:px-3 border border-gray-300 hidden md:table-cell" />
                   </tr>
                 )}
                 {lineItems.map((row, idx) => (
                   <tr key={row.no} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                    <td className="py-3 px-2 md:px-3 text-center text-gray-600 border border-gray-300">{row.no}</td>
-                    <td className="py-3 px-2 md:px-3 border border-gray-300">
+                    <td className="py-2 md:py-3 px-2 md:px-3 text-center text-gray-600 border border-gray-300">{row.no}</td>
+                    <td className="py-2 md:py-3 px-2 md:px-3 border border-gray-300">
                       <p className="font-medium text-gray-800">{row.description}</p>
                       <p className="text-xs text-gray-400 mt-0.5">{row.group}</p>
                     </td>
-                    <td className="py-3 px-2 md:px-3 text-center text-gray-700 border border-gray-300 hidden md:table-cell">{row.qty}</td>
-                    <td className="py-3 px-2 md:px-3 text-right text-gray-800 font-mono border border-gray-300 hidden md:table-cell">
+                    <td className="py-2 md:py-3 px-2 md:px-3 text-center text-gray-700 border border-gray-300 hidden md:table-cell">{row.qty}</td>
+                    <td className="py-2 md:py-3 px-2 md:px-3 text-right text-gray-800 font-mono border border-gray-300 hidden md:table-cell">
                       $ {fmtUSD(row.unitUSD)}
                     </td>
-                    <td className="py-3 px-2 md:px-3 text-right border border-gray-300">
+                    <td className="py-2 md:py-3 px-2 md:px-3 text-right whitespace-nowrap border border-gray-300">
                       <p className="font-semibold text-gray-900 font-mono">$ {fmtUSD(row.amtUSD)}</p>
                       <p className="md:hidden text-[10px] text-gray-400 font-mono mt-0.5">{row.qty} × $ {fmtUSD(row.unitUSD)}</p>
                     </td>
-                    <td className="py-3 px-2 md:px-3 border border-gray-300 hidden md:table-cell" />
+                    <td className="py-2 md:py-3 px-2 md:px-3 border border-gray-300 hidden md:table-cell" />
                   </tr>
                 ))}
                 {lineItems.length === 0 && (
@@ -457,18 +457,18 @@ export default async function QuoteDocument({
                   </tr>
                 )}
                 <tr className="bg-gray-100">
-                  <td className="py-3 px-2 md:px-3 border border-gray-300" />
-                  <td className="py-3 px-2 md:px-3 text-right md:text-left font-bold text-gray-900 border border-gray-300">
+                  <td className="py-2 md:py-3 px-2 md:px-3 border border-gray-300" />
+                  <td className="py-2 md:py-3 px-2 md:px-3 text-right md:text-left font-bold text-gray-900 border border-gray-300">
                     <span className="md:hidden">{depositInfo ? 'Balance Due (USD)' : isInvoice ? 'Total Amount (USD)' : 'Estimated Total (USD)'}</span>
                   </td>
-                  <td className="py-3 px-2 md:px-3 border border-gray-300 hidden md:table-cell" />
-                  <td className="py-3 px-2 md:px-3 text-right font-bold text-gray-900 border border-gray-300 hidden md:table-cell">
+                  <td className="py-2 md:py-3 px-2 md:px-3 border border-gray-300 hidden md:table-cell" />
+                  <td className="py-2 md:py-3 px-2 md:px-3 text-right font-bold text-gray-900 border border-gray-300 hidden md:table-cell">
                     {depositInfo ? 'Balance Due (USD)' : isInvoice ? 'Total Amount (USD)' : 'Estimated Total (USD)'}
                   </td>
-                  <td className="py-3 px-2 md:px-3 text-right font-bold text-gray-900 font-mono border border-gray-300 text-base whitespace-nowrap tracking-tight">
+                  <td className="py-2 md:py-3 px-2 md:px-3 text-right font-bold text-gray-900 font-mono border border-gray-300 text-sm md:text-base whitespace-nowrap tracking-tight">
                     $ {fmtUSD(totalUSD)}
                   </td>
-                  <td className="py-3 px-2 md:px-3 border border-gray-300 hidden md:table-cell" />
+                  <td className="py-2 md:py-3 px-2 md:px-3 border border-gray-300 hidden md:table-cell" />
                 </tr>
               </tfoot>
             </table>
