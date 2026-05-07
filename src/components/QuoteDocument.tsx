@@ -10,6 +10,7 @@ type QuoteItem = {
   variant_label_snapshot: string | null
   products: { name: string; description: string | null } | null
   removed_at?: string | null
+  origin?: string | null
 }
 
 type QuoteGroup = {
@@ -67,17 +68,18 @@ export default async function QuoteDocument({
     .select(`
       id, type, document_number, total_price, payment_due_date,
       company_margin_rate, agent_margin_rate, finalized_at, signer_snapshot,
-      from_party, to_party,
+      from_party, to_party, created_at,
       first_opened_at, open_count, case_id, created_by_admin_id,
       admins!documents_created_by_admin_id_fkey(name, title),
       cases(
         id, agent_id, status, created_at,
+        schedules(status),
         agents!cases_agent_id_fkey(name, email, phone, bank_info, stamp_url),
         case_members(is_lead, clients(name, nationality, needs_muslim_friendly))
       ),
       document_groups(
         id, name, order, member_count,
-        document_items(id, base_price, final_price, variant_label_snapshot, removed_at, products(name, description))
+        document_items(id, base_price, final_price, variant_label_snapshot, removed_at, origin, products(name, description))
       )
     `)
     .eq('slug', slug)
@@ -172,9 +174,15 @@ export default async function QuoteDocument({
   const caseData = quote.cases as unknown as {
     status: string | null
     created_at: string | null
+    schedules: { status: string }[] | null
     agents: { name: string; email: string | null; phone: string | null; bank_info: BankDetails | null; stamp_url: string | null } | null
     case_members: { is_lead: boolean; clients: { name: string; nationality: string | null; needs_muslim_friendly: boolean | null } | null }[]
   } | null
+
+  // Before schedule is confirmed, the quotation must show only the original
+  // items the agent added — admin may have staged additions for the confirmed
+  // schedule that the client should not see until then.
+  const scheduleConfirmed = (caseData?.schedules ?? []).some(s => s.status === 'confirmed')
 
   // Issuer-aware rendering: agent-issued documents show agent's bank + name as
   // signer; admin-issued use system settings + signer_snapshot.
@@ -222,7 +230,10 @@ export default async function QuoteDocument({
     const groupLabel = !customName || customName === autoName
       ? `${autoName} · ${memberCount} pax`
       : `${autoName}: ${customName} · ${memberCount} pax`
-    for (const item of group.document_items.filter(it => !it.removed_at)) {
+    for (const item of group.document_items.filter(it => {
+      if (scheduleConfirmed || isInvoice) return !it.removed_at
+      return it.origin === 'original' || it.origin == null
+    })) {
       const amtUSD = item.final_price / exchangeRate
       const unitUSD = amtUSD / memberCount
       const baseName = item.products?.name ?? 'Service'
@@ -256,9 +267,10 @@ export default async function QuoteDocument({
   const depositUSD = depositInfo ? depositInfo.amount / exchangeRate : 0
   const totalUSD = itemsTotalUSD - depositUSD
 
-  // Dates: use case's created_at as issue date.
-  // Due date comes from document.payment_due_date which is pre-computed as issue + 7 days.
-  const issuedAt = caseData?.created_at ?? new Date().toISOString()
+  // Issue date = document's own created_at, not the case creation date.
+  // This never changes even if items are edited, so the client has no signal
+  // that the document was modified after it was first generated.
+  const issuedAt = (quote as { created_at?: string | null }).created_at ?? caseData?.created_at ?? new Date().toISOString()
 
   // Each document carries its own number. For invoice mode the cross-ref to
   // the parent quotation's number is fetched separately (quotationRef above).

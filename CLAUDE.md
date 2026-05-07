@@ -48,7 +48,7 @@
 ### 케이스 진행 (흐름 — 4/30 SOP 기준)
 견적(Quotation) → 3자 계약 → 디파짓(50%) → 스케줄 업로드/컨펌 → 가격 Finalize → 잔금(50%) → 여행 → 후기 → 커미션 invoice → 정산
 
-상태 전이 (실제 DB는 11단계 — 단일 진실 소스: `src/lib/caseStatus.ts`):
+상태 전이 (실제 DB는 12단계 — 단일 진실 소스: `src/lib/caseStatus.ts`):
 1. `awaiting_info` — (legacy initial) Trip Info / Client Info 미완성
 2. `awaiting_contract` — 견적 발송 후 3자 계약 사인 대기
 3. `awaiting_deposit` — 계약 사인 후 디파짓 + info 동시 진행
@@ -58,8 +58,9 @@
 7. `awaiting_payment` — finalize 완료, **잔금** invoice 발행 후 결제 대기
 8. `awaiting_travel` — 잔금 확정
 9. `awaiting_review` — Mark Travel Complete 후 후기/설문 대기
-10. `completed` — 후기 제출 (또는 legacy travel-done)
-11. `canceled` — 잔금 전(1~7) 단계에서만 cancel 가능
+10. `awaiting_settlement` — 후기 제출 후, agent commission invoice 발행 + admin Mark Paid 대기. commission invoice Mark Paid → settlement row 자동 생성 → `completed` 전이
+11. `completed` — commission invoice 결제 확인 완료
+12. `canceled` — 잔금 전(1~7) 단계에서만 cancel 가능
 
 Invoice 4종 (per 4/30 SOP):
 - Deposit invoice (agent → client) — 계약 후 디파짓 50%
@@ -121,7 +122,7 @@ Agent 수동 개입:
 - Storage 버킷: `schedules`, `product-images` (Public, 버킷별 RLS 정책 있음).
 
 ### CHECK 제약 값
-- cases.status: awaiting_info / awaiting_contract / awaiting_deposit / awaiting_schedule / reviewing_schedule / awaiting_pricing / awaiting_payment / awaiting_travel / awaiting_review / completed / canceled
+- cases.status: awaiting_info / awaiting_contract / awaiting_deposit / awaiting_schedule / reviewing_schedule / awaiting_pricing / awaiting_payment / awaiting_travel / awaiting_review / awaiting_settlement / completed / canceled
   - 단일 진실 소스: `src/lib/caseStatus.ts` (라벨/스타일/오너/CANCELLABLE/ACTIVE/TRAVEL_DONE 모두 여기서 export)
 - documents.type: quotation / deposit_invoice / final_invoice / additional_invoice / commission_invoice
 - documents.from_party: admin / agent
@@ -210,7 +211,7 @@ Agent 수동 개입:
 - `src/hooks/useNotifications.ts` — Realtime 구독
 - `src/types/schedule.ts` — `ScheduleItem` 타입 + `compareScheduleItems` / `groupItemsByDay` / `groupDayByBlock` / `dateForDay` / `formatDayHeader` / `generateScheduleItemId` 헬퍼. Block은 morning/afternoon/evening 3종.
   - **5/6 확장**: `endBlock?` (블록 범위 — `Morning → Afternoon`), `endTime?` (`09:00 – 15:00`), `partner?` (eyebrow 라벨, applyVariantPick에서 자동 채움), `internalNotes?` (admin only — VIP 미노출), `groupId?` (document_groups.id; null = Shared 활동, 그룹별 시술/공유 활동 구분). ScheduleDocument는 `filterGroupId` prop으로 그룹별 필터, `showInternalNotes`로 internal 박스 노출. URL: `/schedule/{slug}?group={id}` / `?internal=1`.
-- `src/components/`: NotificationBell, DOBPicker, DateTime24Picker, SignaturePad, ContractStep, AgentOnboardingGuard, ChangePasswordCard, PrintPdfButton, AutoPrint, PrintButton, **QuoteDocument**(고객용 모든 invoice/quotation 공용 렌더, from_party/to_party 기반 분기, variant_label_snapshot 노출), **CaseDocumentsSection**(case 페이지 내 documents 리스트), **SelectedProductsSection**(2026-05-04, admin/agent case 페이지 공용 — quotation + additional_invoice 합쳐 표시, variant_label snapshot, ProductDetailModal), **ScheduleDocument**(2026-05-05, /schedule/[slug] 고객용 Option A 에디토리얼 렌더 — serif Day 01/02/03 헤더, Morning/Afternoon/Evening 블록, cover에 lead/dates/hotel 자동), **admin/ScheduleEditor**(2026-05-05, Day 카드 + Add Item form 인라인 편집기, save = 새 schedules row + items JSONB), SparklineCard, MobileTopBar, MobileNavContext, AdminCaseContractSection, AgentCaseContractSection, CaseHeroAction(AdminCaseHero/AgentCaseHero — Hero ACTION NEEDED 박스, status별 분기)
+- `src/components/`: NotificationBell, DOBPicker, DateTime24Picker, SignaturePad, ContractStep, AgentOnboardingGuard, ChangePasswordCard, PrintPdfButton, AutoPrint, PrintButton, **QuoteDocument**(고객용 모든 invoice/quotation 공용 렌더, from_party/to_party 기반 분기, variant_label_snapshot 노출. signer 이름/직책은 signer_snapshot → admins FK join → super admin fallback 우선순위로 표시 — 5/7), **CaseDocumentsSection**(case 페이지 내 documents 리스트), **SelectedProductsSection**(2026-05-04, admin/agent case 페이지 공용 — quotation + additional_invoice 합쳐 표시, variant_label snapshot, ProductDetailModal), **ScheduleDocument**(2026-05-05, /schedule/[slug] 고객용 Option A 에디토리얼 렌더 — serif Day 01/02/03 헤더, Morning/Afternoon/Evening 블록, cover에 lead/dates/hotel 자동. 5/7: CSS class 시스템 + `@media (max-width:600px)` 인라인 `<style>` 미디어 쿼리로 모바일 대응, 그룹 탭 `position:sticky`, 블록 헤더 2px border, 항목 구분선 제거), **admin/ScheduleEditor**(2026-05-05, Day 카드 + Add Item form 인라인 편집기, save = 새 schedules row + items JSONB. confirmed 스케줄 운영 필드는 **ScheduleInternalEditor** 컴포넌트로 — address/partnerContact/driverInfo/internalNotes, in-place UPDATE 새 version 생성 X), SparklineCard, MobileTopBar, MobileNavContext, AdminCaseContractSection, AgentCaseContractSection, CaseHeroAction(AdminCaseHero/AgentCaseHero — Hero ACTION NEEDED 박스, status별 분기)
 
 ## 언어 규칙
 - **모든 UI 텍스트는 영어만 사용** (버튼, 라벨, 에러 메시지, placeholder 포함)

@@ -168,7 +168,7 @@ export default function AgentCaseContractSection({
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          {contract && contract.client_token && (
+          {fullySigned && contract && contract.client_token && (
             <button onClick={() => window.open(`/case-contract/${contract.client_token}?print=1`, '_blank', 'noopener')}
               className="text-[11px] font-medium text-gray-500 hover:text-gray-800 px-2 py-1 rounded-lg border border-gray-200 hover:bg-gray-50">
               ⤓ Save PDF

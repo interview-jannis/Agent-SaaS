@@ -27,6 +27,7 @@ type Item = {
   product_name_snapshot?: string | null
   variant_label_snapshot?: string | null
   removed_at?: string | null
+  origin?: string | null
 }
 
 type Group = {
@@ -50,10 +51,11 @@ type Props = {
   documents: SelectedProductsDoc[]
   exchangeRate: number
   defaultExpanded?: boolean
-  // Show KRW alongside USD. Admin needs both (partner payouts / cost tracking
-  // happen in KRW). Agent operates entirely in USD — pass false to keep the
-  // numbers consistent with the rest of the agent app.
   showKRW?: boolean
+  // When true, only show origin='original' items (hide admin_added until schedule confirmed)
+  showOriginalOnly?: boolean
+  // When provided, shows an Edit button in the header
+  onEditClick?: () => void
 }
 
 function fmtUSD(n: number) {
@@ -67,16 +69,23 @@ function itemName(item: Item): string {
   return item.products?.name ?? item.product_name_snapshot ?? '—'
 }
 
-function activeItems(g: Group): Item[] {
+function activeItems(g: Group, showOriginalOnly = false): Item[] {
+  if (showOriginalOnly) {
+    // Pre-confirmation agent view: removals are not confirmed yet — show all original items
+    return (g.document_items ?? []).filter(it =>
+      it.origin === 'original' || it.origin == null
+    )
+  }
   return (g.document_items ?? []).filter(it => !it.removed_at)
 }
 
-function groupTotal(g: Group): number {
-  return activeItems(g).reduce((s, item) => s + (item.final_price ?? 0), 0)
+function groupTotal(g: Group, showOriginalOnly = false): number {
+  return activeItems(g, showOriginalOnly).reduce((s, item) => s + (item.final_price ?? 0), 0)
 }
 
 export default function SelectedProductsSection({
   documents, exchangeRate, defaultExpanded = false, showKRW = true,
+  showOriginalOnly = false, onEditClick,
 }: Props) {
   const [expanded, setExpanded] = useState(defaultExpanded)
   const [detailItem, setDetailItem] = useState<Item | null>(null)
@@ -84,9 +93,11 @@ export default function SelectedProductsSection({
   const quotation = documents.find(d => d.type === 'quotation') ?? null
   const additions = documents.filter(d => d.type === 'additional_invoice')
 
-  const grandTotal =
-    (quotation?.total_price ?? 0) +
-    additions.reduce((s, d) => s + (d.total_price ?? 0), 0)
+  // When showOriginalOnly, recompute grand total from filtered items
+  const grandTotal = showOriginalOnly
+    ? [...(quotation?.document_groups ?? []), ...additions.flatMap(d => d.document_groups)]
+        .reduce((s, g) => s + groupTotal(g, true), 0)
+    : (quotation?.total_price ?? 0) + additions.reduce((s, d) => s + (d.total_price ?? 0), 0)
 
   const renderDoc = (doc: SelectedProductsDoc, label: string) => {
     const sortedGroups = [...doc.document_groups].sort((a, b) => a.order - b.order)
@@ -104,8 +115,18 @@ export default function SelectedProductsSection({
         ) : (
           sortedGroups.map(group => {
             const qty = Math.max(group.member_count ?? 1, 1)
-            const total = groupTotal(group)
+            const total = groupTotal(group, showOriginalOnly)
             const totalUsd = total / exchangeRate
+            const items = activeItems(group, showOriginalOnly)
+            // When not filtering (admin / agent post-confirm): show all items
+            // including removed ones for full audit trail. Sort: active-original
+            // → active-added → removed.
+            const displayItems = showOriginalOnly
+              ? items
+              : [...(group.document_items ?? [])].sort((a, b) => {
+                  const rank = (it: Item) => it.removed_at ? 3 : (it.origin === 'admin_added' ? 2 : 1)
+                  return rank(a) - rank(b)
+                })
             return (
               <div key={group.id} className="bg-white rounded-xl border border-gray-100 overflow-hidden">
                 <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100">
@@ -114,7 +135,7 @@ export default function SelectedProductsSection({
                     <span className="text-[10px] text-gray-400 bg-gray-50 border border-gray-100 rounded-full px-2 py-0.5 shrink-0">
                       {qty} pax
                     </span>
-                    <span className="text-[10px] text-gray-400 shrink-0">· {activeItems(group).length} item{activeItems(group).length !== 1 ? 's' : ''}</span>
+                    <span className="text-[10px] text-gray-400 shrink-0">· {items.length} item{items.length !== 1 ? 's' : ''}</span>
                   </div>
                   <div className="text-right shrink-0">
                     <p className="text-sm font-semibold text-gray-900">{fmtUSD(totalUsd)}</p>
@@ -124,7 +145,9 @@ export default function SelectedProductsSection({
 
                 {expanded && (
                   <div className="divide-y divide-gray-100">
-                    {activeItems(group).map(item => {
+                    {displayItems.map(item => {
+                      const isRemoved = !!item.removed_at
+                      const isAdminAdded = item.origin === 'admin_added'
                       const amtKRW = item.final_price ?? 0
                       const amtUSD = amtKRW / exchangeRate
                       const unitKRW = amtKRW / qty
@@ -134,21 +157,42 @@ export default function SelectedProductsSection({
                         metaBits.push(`${item.products.duration_value} ${item.products.duration_unit ?? ''}`.trim())
                       }
                       metaBits.push(`${fmtUSD(unitUSD)} × ${qty}`)
+
+                      let badge: string | null = null
+                      let badgeClass = ''
+                      if (!showOriginalOnly) {
+                        if (isRemoved && isAdminAdded) {
+                          badge = 'Removed Added'; badgeClass = 'bg-red-100 text-red-700'
+                        } else if (isRemoved) {
+                          badge = 'Removed'; badgeClass = 'bg-red-100 text-red-700'
+                        } else if (isAdminAdded) {
+                          badge = 'Added'; badgeClass = 'bg-emerald-100 text-emerald-700'
+                        } else {
+                          badge = 'Original'; badgeClass = 'bg-gray-100 text-gray-500'
+                        }
+                      }
+
                       return (
-                        <button key={item.id} onClick={() => setDetailItem(item)}
-                          className="w-full flex items-center gap-3 px-4 py-2 text-left hover:bg-gray-50 transition-colors">
+                        <button key={item.id}
+                          onClick={() => !isRemoved ? setDetailItem(item) : undefined}
+                          className={`w-full flex items-center gap-3 px-4 py-2 text-left transition-colors ${isRemoved ? 'cursor-default' : 'hover:bg-gray-50'}`}>
+                          {badge && (
+                            <span className={`text-[9px] font-semibold uppercase tracking-wide shrink-0 px-1.5 py-0.5 rounded ${badgeClass}`}>
+                              {badge}
+                            </span>
+                          )}
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm text-gray-800 truncate">
+                            <p className={`text-sm truncate ${isRemoved ? 'text-gray-400 line-through' : 'text-gray-800'}`}>
                               {itemName(item)}
                               {item.variant_label_snapshot && (
-                                <span className="text-gray-500 font-normal"> · {item.variant_label_snapshot}</span>
+                                <span className={`font-normal ${isRemoved ? 'text-gray-400' : 'text-gray-500'}`}> · {item.variant_label_snapshot}</span>
                               )}
                             </p>
-                            <p className="text-[10px] text-gray-400 truncate">{metaBits.join(' · ')}</p>
+                            <p className={`text-[10px] truncate ${isRemoved ? 'text-gray-300' : 'text-gray-400'}`}>{metaBits.join(' · ')}</p>
                           </div>
-                          <div className="text-right shrink-0">
-                            <p className="text-sm font-semibold text-gray-800 leading-tight">{fmtUSD(amtUSD)}</p>
-                            {showKRW && <p className="text-[10px] text-gray-400 leading-tight">{fmtKRW(amtKRW)}</p>}
+                          <div className={`text-right shrink-0 ${isRemoved ? 'line-through' : ''}`}>
+                            <p className={`text-sm font-semibold leading-tight ${isRemoved ? 'text-gray-300' : 'text-gray-800'}`}>{fmtUSD(amtUSD)}</p>
+                            {showKRW && <p className={`text-[10px] leading-tight ${isRemoved ? 'text-gray-300' : 'text-gray-400'}`}>{fmtKRW(amtKRW)}</p>}
                           </div>
                         </button>
                       )
@@ -171,6 +215,12 @@ export default function SelectedProductsSection({
           <span className="text-[10px] font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">
             +{additions.length} additional
           </span>
+        )}
+        {onEditClick && (
+          <button onClick={onEditClick}
+            className="text-[11px] font-medium text-gray-500 hover:text-gray-800 px-2 py-1 rounded-lg border border-gray-200 hover:bg-gray-100">
+            Edit
+          </button>
         )}
         <button onClick={() => setExpanded(v => !v)}
           className="ml-auto text-[11px] font-medium text-gray-500 hover:text-gray-800 px-2 py-1 rounded-lg border border-gray-200 hover:bg-gray-100">

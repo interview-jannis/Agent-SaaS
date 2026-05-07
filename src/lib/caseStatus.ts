@@ -12,7 +12,8 @@ export type CaseStatus =
   | 'awaiting_payment'      // balance invoice pending payment (deposit already paid)
   | 'awaiting_travel'       // balance paid, travel pending
   | 'awaiting_review'       // travel done, review/survey pending
-  | 'completed'             // review submitted (or legacy travel-done cases)
+  | 'awaiting_settlement'   // review submitted, agent commission settlement pending
+  | 'completed'             // settlement paid — case fully closed
   | 'canceled'
 
 export const ALL_STATUSES: CaseStatus[] = [
@@ -25,6 +26,7 @@ export const ALL_STATUSES: CaseStatus[] = [
   'awaiting_payment',
   'awaiting_travel',
   'awaiting_review',
+  'awaiting_settlement',
   'completed',
   'canceled',
 ]
@@ -40,6 +42,7 @@ export const PIPELINE_ORDER: CaseStatus[] = [
   'awaiting_payment',
   'awaiting_travel',
   'awaiting_review',
+  'awaiting_settlement',
   'completed',
 ]
 
@@ -53,6 +56,7 @@ export const STATUS_LABELS: Record<CaseStatus, string> = {
   awaiting_payment: 'Awaiting Balance Payment',
   awaiting_travel: 'Awaiting Travel',
   awaiting_review: 'Awaiting Review',
+  awaiting_settlement: 'Awaiting Settlement',
   completed: 'Completed',
   canceled: 'Canceled',
 }
@@ -67,6 +71,7 @@ export const STATUS_STYLES: Record<CaseStatus, string> = {
   awaiting_payment: 'bg-cyan-50 text-cyan-700 border-cyan-200',
   awaiting_travel: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   awaiting_review: 'bg-teal-50 text-teal-700 border-teal-200',
+  awaiting_settlement: 'bg-violet-50 text-violet-700 border-violet-200',
   completed: 'bg-gray-50 text-gray-500 border-gray-200',
   canceled: 'bg-rose-50 text-rose-700 border-rose-200',
 }
@@ -82,7 +87,8 @@ export const STATUS_OWNER: Record<CaseStatus, 'agent' | 'admin' | 'customer' | '
   awaiting_payment: 'agent',      // agent sends balance invoice / admin confirms
   awaiting_travel: 'none',
   awaiting_review: 'agent',       // agent submits review/survey on behalf of client
-  completed: 'admin',             // settlement / commission payout
+  awaiting_settlement: 'admin',   // admin pays commission settlement → completed
+  completed: 'none',
   canceled: 'none',
 }
 
@@ -111,14 +117,12 @@ export const ACTIVE_STATUSES: CaseStatus[] = [
   'awaiting_payment',
   'awaiting_travel',
   'awaiting_review',
+  'awaiting_settlement',
 ]
 
 // Statuses where the trip has physically ended (Mark Travel Complete pressed).
-// Use this anywhere code currently uses `status === 'completed'` with
-// "travel-done" semantics — it must include `awaiting_review` so cases in
-// review-pending stage still show up in settlement queues, payouts, etc.
-export const TRAVEL_DONE_STATUSES: CaseStatus[] = ['awaiting_review', 'completed']
+export const TRAVEL_DONE_STATUSES: CaseStatus[] = ['awaiting_review', 'awaiting_settlement', 'completed']
 
 export function isTravelDone(status: string): boolean {
-  return status === 'awaiting_review' || status === 'completed'
+  return status === 'awaiting_review' || status === 'awaiting_settlement' || status === 'completed'
 }

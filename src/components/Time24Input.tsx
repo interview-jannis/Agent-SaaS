@@ -30,6 +30,7 @@ export default function Time24Input({
   const [hRaw, setHRaw] = useState<string>(initial[0] ?? '')
   const [mRaw, setMRaw] = useState<string>(initial[1] ?? '')
   const hRef = useRef<HTMLInputElement | null>(null)
+  const mRef = useRef<HTMLInputElement | null>(null)
 
   // Re-sync when parent value changes externally.
   useEffect(() => {
@@ -57,8 +58,19 @@ export default function Time24Input({
     const max = field === 'h' ? 23 : 59
     const clamped = Math.max(0, Math.min(max, Math.trunc(n)))
     const padded = pad2(clamped)
-    if (field === 'h') { setHRaw(padded); emit(padded, mRaw || '00') }
-    else { setMRaw(padded); emit(hRaw || '00', padded) }
+    if (field === 'h') {
+      setHRaw(padded)
+      if (mRaw !== '') {
+        emit(padded, mRaw)
+      } else {
+        // MM is still empty — advance focus so user fills it naturally
+        mRef.current?.focus()
+        mRef.current?.select()
+      }
+    } else {
+      setMRaw(padded)
+      emit(hRaw || '00', padded)
+    }
   }
 
   const base = 'border border-gray-200 rounded-lg text-xs bg-white text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 tabular-nums text-center'
@@ -87,6 +99,7 @@ export default function Time24Input({
       />
       <span className="text-xs text-gray-400">:</span>
       <input
+        ref={mRef}
         type="number"
         inputMode="numeric"
         min={0}

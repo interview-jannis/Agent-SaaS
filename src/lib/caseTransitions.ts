@@ -201,13 +201,13 @@ export async function markReviewSubmitted(caseId: string): Promise<void> {
   if (c.status !== 'awaiting_review') return
   const { error } = await supabase
     .from('cases')
-    .update({ status: 'completed' })
+    .update({ status: 'awaiting_settlement' })
     .eq('id', caseId)
     .eq('status', 'awaiting_review')
   if (error) return
   await notifyAssignedAdmin(
     { case_id: caseId },
-    `${c.case_number} client review submitted — case completed`,
+    `${c.case_number} client review submitted — awaiting agent settlement`,
     `/admin/cases/${caseId}`,
   )
 }

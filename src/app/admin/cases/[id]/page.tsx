@@ -16,6 +16,7 @@ import { SCHEDULE_BLOCK_LABEL, compareScheduleItems } from '@/types/schedule'
 import type { DocumentRow } from '@/lib/documents'
 import type { ScheduleItem } from '@/types/schedule'
 import { nightsBetween } from '@/lib/pricing'
+import type { SurveyRow } from '@/lib/surveys'
 
 import type { ClientInfo, FlightInfo } from '@/lib/clientCompleteness'
 import { getMissingClientFields, getMissingCaseFields, CLIENT_INFO_COLUMNS } from '@/lib/clientCompleteness'
@@ -176,9 +177,7 @@ export default function AdminCaseDetailPage() {
 
   // Agent settlement — single row per case
   const [agentSettlement, setAgentSettlement] = useState<AgentSettlement | null>(null)
-  const [agentSettlePaidAt, setAgentSettlePaidAt] = useState(new Date().toISOString().slice(0, 10))
-  const [savingAgentSettle, setSavingAgentSettle] = useState(false)
-  const [agentSettleError, setAgentSettleError] = useState('')
+  const [caseSurvey, setCaseSurvey] = useState<SurveyRow | null>(null)
 
   // Action states
   const [confirmingPayment, setConfirmingPayment] = useState(false)
@@ -240,6 +239,7 @@ export default function AdminCaseDetailPage() {
   const [stagedAdds, setStagedAdds] = useState<StagedAdd[]>([])
   const [stagedRemoves, setStagedRemoves] = useState<Set<string>>(new Set())
   const [savingItems, setSavingItems] = useState(false)
+  const [editingProducts, setEditingProducts] = useState(false)
 
   // Trip Setup collapse — defaults to collapsed when all info is complete.
   const [setupCollapsed, setSetupCollapsed] = useState(false)
@@ -272,7 +272,7 @@ export default function AdminCaseDetailPage() {
     if (!data) { setNotFound(true); return }
     setCaseData(data as unknown as Case)
 
-    const [{ data: pp }, { data: ss }] = await Promise.all([
+    const [{ data: pp }, { data: ss }, { data: sv }] = await Promise.all([
       supabase.from('partner_payments')
         .select('id, case_id, partner_name, amount, paid_at, note, created_at')
         .eq('case_id', id),
@@ -280,9 +280,14 @@ export default function AdminCaseDetailPage() {
         .select('id, settlement_number, agent_id, case_id, amount, paid_at, created_at')
         .eq('case_id', id)
         .maybeSingle(),
+      supabase.from('surveys')
+        .select('id, case_id, responses, submitted_by_actor_type, submitted_by_actor_id, submitted_at, created_at')
+        .eq('case_id', id)
+        .maybeSingle(),
     ])
     setPartnerPayments((pp as PartnerPayment[]) ?? [])
     setAgentSettlement((ss as AgentSettlement | null) ?? null)
+    setCaseSurvey((sv as SurveyRow | null) ?? null)
 
     // Self-heal: opportunistically advance status if both deposit legs are
     // paid / info is complete. Cheap no-op when already advanced or not eligible.
@@ -498,12 +503,6 @@ export default function AdminCaseDetailPage() {
       // Revision: agent requested changes — allow a new version
       || (caseData.status === 'reviewing_schedule' && latestSchedule?.status === 'revision_requested')
     )
-  // After confirm: items are locked but admin can still patch operational details
-  const canEditInternalOnly =
-    !!latestSchedule
-    && latestSchedule.status === 'confirmed'
-    && !!latestSchedule.items
-    && latestSchedule.items.length > 0
   const sortedGroups = latestQuote?.document_groups ? [...latestQuote.document_groups].sort((a, b) => a.order - b.order) : []
   const baseUrl = typeof window !== 'undefined' ? window.location.origin : ''
 
@@ -568,16 +567,6 @@ export default function AdminCaseDetailPage() {
               <span className="text-sm font-medium text-gray-900">{getAgent(caseData)?.name ?? '—'}</span>
             </div>
           </section>
-
-          {/* 3-Party Contract */}
-          {caseData.status !== 'canceled' && caseData.status !== 'awaiting_info' && (
-            <AdminCaseContractSection
-              caseId={caseData.id}
-              caseNumber={caseData.case_number}
-              caseStatus={caseData.status}
-              onChanged={async () => { await fetchCase() }}
-            />
-          )}
 
           {/* ─── TRIP SETUP — Travel + Trip Info + Lead Client + Members all-in-one ─── */}
           <section className="bg-gray-50 rounded-2xl p-4 space-y-4">
@@ -779,637 +768,87 @@ export default function AdminCaseDetailPage() {
           </section>
           {/* ─── /TRIP SETUP ─── */}
 
-          {/* Selected Products — placed right after Trip Setup to match agent layout */}
-          {(caseData.documents?.length ?? 0) > 0 && (
-            <SelectedProductsSection
-              documents={(caseData.documents ?? [])
-                .filter(d => d.type === 'quotation' || d.type === 'additional_invoice')
-                .map(d => ({
-                  id: d.id,
-                  type: d.type as 'quotation' | 'additional_invoice',
-                  document_number: d.document_number ?? null,
-                  total_price: d.total_price ?? null,
-                  finalized_at: d.finalized_at ?? null,
-                  document_groups: d.document_groups,
-                }))}
-              exchangeRate={exchangeRate}
-              defaultExpanded={true}
+          {/* Agent notes — red highlight only while active; muted once case is at review/settlement/completed */}
+          {caseData.agent_notes && (() => {
+            const isDone = caseData.status === 'awaiting_review' || caseData.status === 'awaiting_settlement' || caseData.status === 'completed'
+            return (
+              <div className={`rounded-xl p-3 space-y-1 ${isDone ? 'bg-gray-50 border border-gray-200' : 'bg-white border-2 border-red-300'}`}>
+                <p className={`text-[10px] font-semibold uppercase tracking-wide ${isDone ? 'text-gray-400' : 'text-red-600'}`}>Notes from agent</p>
+                <p className="text-xs text-gray-800 whitespace-pre-wrap">{caseData.agent_notes}</p>
+              </div>
+            )
+          })()}
+
+          {/* Client Review — shown once survey is submitted */}
+          {caseSurvey && (() => {
+            const isHighlight = caseData.status === 'awaiting_settlement' || caseData.status === 'completed'
+            return (
+              <div className={`rounded-xl p-4 space-y-3 ${isHighlight ? 'bg-teal-50 border-2 border-teal-300' : 'bg-gray-50 border border-gray-200'}`}>
+                <div className="flex items-center justify-between">
+                  <p className={`text-[10px] font-semibold uppercase tracking-wide ${isHighlight ? 'text-teal-700' : 'text-gray-400'}`}>Client Review</p>
+                  <span className="text-[10px] text-gray-400">Submitted {new Date(caseSurvey.submitted_at).toLocaleString()}</span>
+                </div>
+                <div className="space-y-2">
+                  {(caseSurvey.responses ?? []).map(r => (
+                    <div key={r.question_id} className="bg-white rounded-lg p-3 border border-gray-100">
+                      <p className="text-xs text-gray-500 mb-1">{r.prompt}</p>
+                      {r.type === 'rating' ? (
+                        <p className="text-sm text-gray-900">{'⭐'.repeat(r.rating ?? 0)}<span className="text-gray-400 ml-2 text-xs">{r.rating}/5</span></p>
+                      ) : (
+                        <p className="text-sm text-gray-800 whitespace-pre-wrap">{r.text || <span className="text-gray-300">(no comment)</span>}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
+          })()}
+
+          {/* 3-Party Contract */}
+          {caseData.status !== 'canceled' && caseData.status !== 'awaiting_info' && (
+            <AdminCaseContractSection
+              caseId={caseData.id}
+              caseNumber={caseData.case_number}
+              caseStatus={caseData.status}
+              onChanged={async () => { await fetchCase() }}
             />
           )}
 
-          {/* Schedule placeholder — telegraphs that the Schedule slot lives here.
-              Real upload UI / history sit lower in the page; once a schedule
-              exists, this placeholder hides and the full UI takes over below. */}
-          {sortedSchedules.length === 0 && (
-            <section className="bg-gray-50 rounded-2xl p-5">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Schedule</h3>
-                <span className="text-[10px] text-gray-400">not yet uploaded</span>
-              </div>
-              <p className="text-xs text-gray-500">
-                {scheduleReady
-                  ? 'Ready to upload — see the Upload Schedule section below.'
-                  : 'Will be uploaded once Trip Info, every client’s info, and group assignments are complete.'}
-              </p>
-            </section>
-          )}
-
-          {/* Quote / Financials — cyan when admin has financial action queued
-              (awaiting_deposit: issue deposit settlement after agent issues;
-              awaiting_payment: confirm balance payment receipt). Mirror of the
-              agent-side cyan tone — both sides have parallel actions in these
-              two windows, so both get the action signal. */}
-          {latestQuote && (() => {
-            const isActionTarget = caseData.status === 'awaiting_deposit' || caseData.status === 'awaiting_payment'
-            const sectionClass = isActionTarget
-              ? 'bg-cyan-50 border border-cyan-200 rounded-2xl p-4 space-y-3'
-              : 'bg-gray-50 rounded-2xl p-4 space-y-3'
-            const labelClass = isActionTarget
-              ? 'text-xs font-semibold text-cyan-700 uppercase tracking-wide'
-              : 'text-xs font-semibold text-gray-400 uppercase tracking-wide'
-            return (
-            <section className={sectionClass}>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <p className={labelClass}>Financials</p>
-                  {!latestQuote.finalized_at && (
-                    <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5 uppercase tracking-wide">
-                      Estimated
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-[10px] font-mono text-gray-400">
-                    {latestQuote.document_number}
-                    {finalInvoice?.document_number && <span className="ml-1.5 text-gray-300">·</span>}
-                    {finalInvoice?.document_number && <span className="ml-1.5 text-[#0f4c35]">{finalInvoice.document_number}</span>}
-                  </span>
-                  {latestQuote.finalized_at ? (
-                    <>
-                      <a href={`${baseUrl}/quote/${latestQuote.slug}?preview=1`} target="_blank" rel="noopener noreferrer"
-                        className="text-xs text-gray-400 hover:text-[#0f4c35] transition-colors">Quotation ↗</a>
-                      {finalInvoice && (
-                        <a href={`${baseUrl}/invoice/${finalInvoice.slug}?preview=1`} target="_blank" rel="noopener noreferrer"
-                          className="text-xs text-gray-400 hover:text-[#0f4c35] transition-colors">Invoice ↗</a>
-                      )}
-                    </>
-                  ) : (
-                    <a href={`${baseUrl}/quote/${latestQuote.slug}?preview=1`} target="_blank" rel="noopener noreferrer"
-                      className="text-xs text-gray-400 hover:text-[#0f4c35] transition-colors">Preview ↗</a>
-                  )}
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div>
-                  <p className="text-[10px] text-gray-400 mb-0.5">
-                    {latestQuote.finalized_at ? 'Total (KRW)' : 'Estimated (KRW)'}
-                  </p>
-                  <p className="font-semibold text-gray-900">{fmtKRW(latestQuote.total_price)}</p>
-                  {!latestQuote.finalized_at && (
-                    <p className="mt-1">
-                      <span className="text-[10px] font-medium text-amber-900 bg-yellow-200 px-1.5 py-0.5 rounded">
-                        May change after you finalize
-                      </span>
-                    </p>
-                  )}
-                </div>
-                <div>
-                  <p className="text-[10px] text-gray-400 mb-0.5">
-                    {latestQuote.finalized_at ? 'Total (USD)' : 'Estimated (USD)'}
-                  </p>
-                  <p className="font-semibold text-gray-900">{fmtUSD(latestQuote.total_price / exchangeRate)}</p>
-                  {!latestQuote.finalized_at && (
-                    <p className="mt-1">
-                      <span className="text-[10px] font-medium text-amber-900 bg-yellow-200 px-1.5 py-0.5 rounded">
-                        May change after you finalize
-                      </span>
-                    </p>
-                  )}
-                </div>
-                <div>
-                  <p className="text-[10px] text-gray-400 mb-0.5">Payment Due</p>
-                  {latestQuote.finalized_at && latestQuote.payment_due_date ? (
-                    <p className={`font-medium text-sm ${caseData.status === 'awaiting_payment' && new Date(latestQuote.payment_due_date) < new Date() ? 'text-red-500' : 'text-gray-800'}`}>
-                      {latestQuote.payment_due_date}
-                    </p>
-                  ) : (
-                    <p className="text-xs text-gray-400">Set on finalize</p>
-                  )}
-                </div>
-                <div><p className="text-[10px] text-gray-400 mb-0.5">Margins</p><p className="text-gray-700 text-xs">Co. {(latestQuote.company_margin_rate * 100).toFixed(0)}% / Agent {(latestQuote.agent_margin_rate * 100).toFixed(0)}%</p></div>
-              </div>
-
-              {/* Revenue breakdown */}
-              {(() => {
-                const total = latestQuote.total_price ?? 0
-                const co = latestQuote.company_margin_rate ?? 0
-                const ag = latestQuote.agent_margin_rate ?? 0
-                const denom = (1 + co) * (1 + ag)
-                const base = denom > 0 ? total / denom : 0
-                const companyShare = base * co
-                const agentShare = base * (1 + co) * ag
-                return (
-                  <div className="pt-3 border-t border-gray-100 space-y-2">
-                    <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Revenue Breakdown</p>
-                    <div className="space-y-1.5">
-                      <div className="flex items-baseline justify-between">
-                        <span className="text-xs text-gray-600">Partner Cost</span>
-                        <span className="text-right tabular-nums">
-                          <span className="text-sm font-medium text-gray-800">{fmtUSD(base / exchangeRate)}</span>
-                          <span className="text-[10px] text-gray-400 ml-2">{fmtKRW(base)}</span>
-                        </span>
-                      </div>
-                      <div className="flex items-baseline justify-between">
-                        <span className="text-xs text-gray-600">Company Revenue ({(co * 100).toFixed(0)}%)</span>
-                        <span className="text-right tabular-nums">
-                          <span className="text-sm font-medium text-[#0f4c35]">{fmtUSD(companyShare / exchangeRate)}</span>
-                          <span className="text-[10px] text-gray-400 ml-2">{fmtKRW(companyShare)}</span>
-                        </span>
-                      </div>
-                      <div className="flex items-baseline justify-between">
-                        <span className="text-xs text-gray-600">Agent Payout ({(ag * 100).toFixed(0)}%)</span>
-                        <span className="text-right tabular-nums">
-                          <span className="text-sm font-medium text-amber-700">{fmtUSD(agentShare / exchangeRate)}</span>
-                          <span className="text-[10px] text-gray-400 ml-2">{fmtKRW(agentShare)}</span>
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                )
-              })()}
-
-              {caseData.payment_date && (
-                <div className="pt-2 border-t border-gray-100">
-                  <p className="text-[10px] text-gray-400 mb-0.5">Payment Received</p>
-                  <p className="text-sm font-medium text-gray-800">{caseData.payment_date}</p>
-                </div>
-              )}
-
-              {/* Invoices (deposit / additional / commission) — embedded inside Financials */}
-              <CaseDocumentsSection
-                caseId={caseData.id}
-                caseNumber={caseData.case_number}
-                agentId={caseData.agent_id}
-                actor="admin"
-                caseStatus={caseData.status}
-                embedded
-                quotation={latestQuote as unknown as DocumentRow}
-                finalInvoice={(finalInvoice ?? null) as unknown as DocumentRow | null}
-                documents={(caseData.documents ?? []) as unknown as DocumentRow[]}
-                exchangeRate={exchangeRate}
-                onChanged={fetchCase}
-              />
-            </section>
-            )
+          {/* Selected Products — unified view/edit section */}
+          {(caseData.documents?.length ?? 0) > 0 && (() => {
+            const canEditProducts =
+              caseData.status === 'awaiting_schedule'
+              && !!latestQuote && !latestQuote.finalized_at
+              && sortedGroups.length > 0
+            const docList = (caseData.documents ?? [])
+              .filter(d => d.type === 'quotation' || d.type === 'additional_invoice')
+              .map(d => ({
+                id: d.id,
+                type: d.type as 'quotation' | 'additional_invoice',
+                document_number: d.document_number ?? null,
+                total_price: d.total_price ?? null,
+                finalized_at: d.finalized_at ?? null,
+                document_groups: d.document_groups,
+              }))
+            if (!editingProducts || !canEditProducts) {
+              return (
+                <SelectedProductsSection
+                  documents={docList}
+                  exchangeRate={exchangeRate}
+                  defaultExpanded={true}
+                  onEditClick={canEditProducts ? () => setEditingProducts(true) : undefined}
+                />
+              )
+            }
+            return null  // edit mode rendered below at original position
           })()}
-
-
-          {/* Schedule History */}
-          {sortedSchedules.length > 0 && (
-            <section className="bg-gray-50 rounded-2xl p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Schedule History</p>
-                <span className="text-[10px] text-gray-400">{sortedSchedules.length} version{sortedSchedules.length > 1 ? 's' : ''}</span>
-              </div>
-
-              {scheduleLocked && (
-                <div className="flex items-center gap-2 border border-emerald-200 bg-emerald-50 rounded-xl px-3 py-2">
-                  <svg className="w-3.5 h-3.5 text-emerald-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-                  </svg>
-                  <p className="text-xs text-emerald-800">
-                    {(caseData.status === 'completed' || caseData.status === 'awaiting_review')
-                      ? 'Travel complete — schedule is locked.'
-                      : 'Agent has confirmed the schedule — no further edits allowed.'}
-                  </p>
-                </div>
-              )}
-
-              <div className="space-y-2">
-                {sortedSchedules.map((s) => {
-                  const isLatest = s.id === latestSchedule?.id
-                  const statusStyle =
-                    s.status === 'confirmed' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                    s.status === 'revision_requested' ? 'bg-rose-50 text-rose-700 border-rose-200' :
-                    'bg-blue-50 text-blue-700 border-blue-200'
-                  const statusLabel =
-                    s.status === 'confirmed' ? 'Confirmed' :
-                    s.status === 'revision_requested' ? 'Revision Requested' :
-                    'Pending Review'
-                  const canDelete = !scheduleLocked && isLatest && s.status === 'pending' && !s.first_opened_at
-                  return (
-                    <div key={s.id} className={`bg-white rounded-xl border ${isLatest ? 'border-gray-300' : 'border-gray-100'}`}>
-                      {/* Card header row — always visible */}
-                      <div className="flex items-center gap-2 flex-wrap p-3">
-                        <span className="text-xs font-semibold text-gray-700">v{s.version}</span>
-                        {isLatest && <span className="text-[9px] font-medium text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">LATEST</span>}
-                        <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${statusStyle}`}>{statusLabel}</span>
-                        {s.status === 'revision_requested' && s.revision_note && (
-                          <span className="text-xs text-gray-700 border-l-2 border-rose-300 pl-2 flex-1 min-w-0 whitespace-pre-line">{s.revision_note}</span>
-                        )}
-                        <div className="ml-auto flex items-center gap-3">
-                          {s.items && s.items.length > 0 && (
-                            <button
-                              onClick={() => setExpandedScheduleId(prev => prev === s.id ? null : s.id)}
-                              className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-800 transition-colors"
-                            >
-                              <svg className={`w-3.5 h-3.5 transition-transform ${expandedScheduleId === s.id ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                              </svg>
-                              {expandedScheduleId === s.id ? 'Collapse' : `View (${s.items.length})`}
-                            </button>
-                          )}
-                          {s.slug && (s.pdf_url || (s.items && s.items.length > 0)) && (
-                            <a
-                              href={`${baseUrl}/schedule/${s.slug}?preview=1&internal=1&v=${s.version}`}
-                              target="_blank" rel="noopener noreferrer"
-                              className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-[#0f4c35] transition-colors">
-                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                              </svg>
-                              Preview
-                            </a>
-                          )}
-                          <span className="text-[10px] text-gray-400">{s.created_at.slice(0, 10)}</span>
-                        </div>
-                      </div>
-
-                      {/* Expanded items view */}
-                      {expandedScheduleId === s.id && s.items && s.items.length > 0 && (() => {
-                        const days = Array.from(new Set(s.items.map((it: ScheduleItem) => it.day))).sort((a, b) => a - b)
-                        return (
-                          <div className="border-t border-gray-100 divide-y divide-gray-100">
-                            {days.map((day: number) => {
-                              const dayItems = (s.items as ScheduleItem[]).filter(it => it.day === day).sort(compareScheduleItems)
-                              return (
-                                <div key={day}>
-                                  <p className="px-3 py-1.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide bg-gray-50">Day {day}</p>
-                                  {dayItems.map(it => (
-                                    <div key={it.id} className="px-3 py-2 flex items-start gap-3 border-t border-gray-50">
-                                      <div className="w-20 shrink-0">
-                                        <p className="text-[10px] text-gray-400 uppercase tracking-wide">{SCHEDULE_BLOCK_LABEL[it.block]}{it.endBlock && it.endBlock !== it.block ? ` →` : ''}</p>
-                                        {it.endBlock && it.endBlock !== it.block && (
-                                          <p className="text-[10px] text-gray-400 uppercase tracking-wide">{SCHEDULE_BLOCK_LABEL[it.endBlock]}</p>
-                                        )}
-                                        {it.time && <p className="text-[10px] text-gray-400 tabular-nums mt-0.5">{it.time}{it.endTime ? ` – ${it.endTime}` : ''}</p>}
-                                      </div>
-                                      <div className="flex-1 min-w-0">
-                                        {it.partner && <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">{it.partner}</p>}
-                                        <p className="text-xs text-gray-800">{it.title}{it.variantTag ? ` · ${it.variantTag}` : ''}</p>
-                                        {it.location && <p className="text-[11px] text-gray-400 mt-0.5">{it.location}</p>}
-                                        {it.notes && <p className="text-[11px] text-gray-500 mt-0.5 italic">{it.notes}</p>}
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              )
-                            })}
-                          </div>
-                        )
-                      })()}
-
-                      <div className="px-3 pb-3 space-y-1.5">
-                      {s.file_name && <p className="text-xs text-gray-500 break-all">{s.file_name}</p>}
-                      {s.admin_note && (() => {
-                        // Pending: blue (still actionable). Confirmed/older: muted gray (historical).
-                        const isPending = s.status === 'pending'
-                        const wrapClass = isPending
-                          ? 'border-l-2 border-blue-300 bg-blue-50 px-2 py-1 rounded-r'
-                          : 'border-l-2 border-gray-300 bg-gray-100 px-2 py-1 rounded-r'
-                        const labelClass = isPending
-                          ? 'text-[10px] font-semibold text-blue-700 uppercase tracking-wide mb-0.5'
-                          : 'text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5'
-                        const textClass = isPending
-                          ? 'text-xs text-blue-900 whitespace-pre-line'
-                          : 'text-xs text-gray-700 whitespace-pre-line'
-                        return (
-                          <div className={wrapClass}>
-                            <p className={labelClass}>Admin note</p>
-                            <p className={textClass}>{s.admin_note}</p>
-                          </div>
-                        )
-                      })()}
-                      {canDelete && (
-                        <div className="flex items-center pt-1">
-                          <button
-                            onClick={() => deleteScheduleVersion(s.id, s.pdf_url, s.version, s.file_name)}
-                            disabled={deletingScheduleId === s.id}
-                            className="text-xs text-gray-400 hover:text-red-500 transition-colors ml-auto disabled:opacity-40"
-                            title="Undo: only the latest upload can be deleted, before the agent reviews it or the client opens it.">
-                            {deletingScheduleId === s.id ? 'Deleting...' : 'Delete'}
-                          </button>
-                        </div>
-                      )}
-
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </section>
-          )}
-
-          {/* Admin Actions */}
-          {actionError && <p className="text-xs text-red-500 px-1">{actionError}</p>}
-
-          {/* Finalize Pricing — admin adjusts final prices after agent confirms schedule */}
-          {((caseData.status === 'awaiting_pricing') || (caseData.status === 'awaiting_payment' && editingPricing)) && latestQuote && (() => {
-            // Default due date: existing value, else today + 7 days
-            const today = new Date().toISOString().slice(0, 10)
-            const defaultDue = latestQuote.payment_due_date ?? (() => {
-              const d = new Date(); d.setDate(d.getDate() + 7); return d.toISOString().slice(0, 10)
-            })()
-            const dueDateValue = dueDateEdit || defaultDue
-            return (
-            <section id="pricing" className="scroll-mt-20 border border-violet-200 bg-violet-50 rounded-2xl p-4 space-y-3">
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <p className="text-xs font-semibold text-violet-700 uppercase tracking-wide">
-                  {latestQuote.finalized_at ? 'Edit Final Pricing' : 'Finalize Pricing'}
-                </p>
-                {latestQuote.finalized_at && (
-                  <button onClick={() => { setEditingPricing(false); setPricingEdits({}); setDueDateEdit(''); setPricingError(''); setPricingCurrencies({}) }}
-                    className="text-xs text-gray-500 hover:text-gray-800">Cancel</button>
-                )}
-              </div>
-              <p className="text-[11px] text-gray-600">
-                {latestQuote.finalized_at
-                  ? 'Adjust line item prices. To add or remove items after finalize, issue an Additional Invoice.'
-                  : 'Adjust line item prices. Items are locked at this stage — to add or remove, request a schedule revision.'}
-              </p>
-
-              {pricingError && <p className="text-xs text-red-500">{pricingError}</p>}
-
-              <div className="bg-white rounded-xl border border-violet-100 divide-y divide-gray-100">
-                {sortedGroups.flatMap(g => g.document_items.filter(it => !it.removed_at).map(item => {
-                  // pricingEdits stores canonical KRW digits; currency toggle only changes display.
-                  const krwDigits = pricingEdits[item.id] ?? String(item.final_price)
-                  const krwNum = Number(krwDigits) || 0
-                  const currency: ItemCurrency = pricingCurrencies[item.id] ?? 'KRW'
-                  const displayNum = currency === 'USD' ? Math.round(krwNum / exchangeRate) : krwNum
-                  const displayVal = krwDigits === '' ? '' : displayNum.toLocaleString('en-US')
-                  const origDisplay = currency === 'USD'
-                    ? `$${Math.round(item.final_price / exchangeRate).toLocaleString('en-US')}`
-                    : fmtKRW(item.final_price)
-                  return (
-                    <div key={item.id} className="flex items-center gap-3 px-3 py-2">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-gray-900 truncate">{item.products?.name ?? 'Item'}</p>
-                        <p className="text-[10px] text-gray-400">{g.name}</p>
-                      </div>
-                      <span className="text-[10px] text-gray-400 tabular-nums shrink-0">orig {origDisplay}</span>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        value={displayVal}
-                        onChange={(e) => {
-                          const cleaned = e.target.value.replace(/[^0-9]/g, '')
-                          if (cleaned === '') { setPricingEdits(p => ({ ...p, [item.id]: '' })); return }
-                          const userNum = Number(cleaned) || 0
-                          const krwVal = currency === 'USD' ? Math.round(userNum * exchangeRate) : userNum
-                          setPricingEdits(p => ({ ...p, [item.id]: String(krwVal) }))
-                        }}
-                        className="w-32 border border-gray-200 rounded-lg px-2 py-1 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35] tabular-nums text-right" />
-                      <div className="flex shrink-0 rounded-md border border-gray-200 overflow-hidden text-[10px] font-medium">
-                        <button
-                          type="button"
-                          aria-pressed={currency === 'KRW'}
-                          onClick={() => setPricingCurrencies(p => ({ ...p, [item.id]: 'KRW' }))}
-                          className={`px-1.5 py-0.5 ${currency === 'KRW' ? 'bg-violet-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
-                          ₩
-                        </button>
-                        <button
-                          type="button"
-                          aria-pressed={currency === 'USD'}
-                          onClick={() => setPricingCurrencies(p => ({ ...p, [item.id]: 'USD' }))}
-                          className={`px-1.5 py-0.5 border-l border-gray-200 ${currency === 'USD' ? 'bg-violet-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
-                          $
-                        </button>
-                      </div>
-                    </div>
-                  )
-                }))}
-              </div>
-
-              {(() => {
-                const liveSum = sortedGroups
-                  .flatMap(g => g.document_items.filter(it => !it.removed_at))
-                  .reduce((s, item) => s + (Number(pricingEdits[item.id] ?? item.final_price) || 0), 0)
-                const newTotal = liveSum
-                const diff = newTotal - latestQuote.total_price
-                return (
-                  <div className="flex items-baseline justify-between bg-white rounded-xl border border-violet-100 px-3 py-2">
-                    <span className="text-xs text-gray-500">New Total</span>
-                    <div className="flex items-baseline gap-3">
-                      <span className="text-sm font-bold text-gray-900 tabular-nums">{fmtUSD(newTotal / exchangeRate)}</span>
-                      <span className="text-[11px] text-gray-400 tabular-nums">{fmtKRW(newTotal)}</span>
-                      {diff !== 0 && (
-                        <span className={`text-[10px] font-medium tabular-nums ${diff > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                          {diff > 0 ? '+' : ''}{fmtKRW(diff)}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                )
-              })()}
-
-              {/* Payment Due Date — defaults to today + 7d, admin can override */}
-              <div className="bg-white rounded-xl border border-violet-100 px-3 py-2 flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-xs text-gray-700 font-medium">Payment Due Date</p>
-                  <p className="text-[10px] text-gray-400">Default is 7 days from today. Adjust if the client needs more or less time.</p>
-                </div>
-                <input type="date" value={dueDateValue} min={today}
-                  onChange={(e) => setDueDateEdit(e.target.value)}
-                  className="border border-gray-200 rounded-lg px-2 py-1 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35] bg-white" />
-              </div>
-
-              {(() => {
-                const hasPricingChanges = sortedGroups
-                  .flatMap(g => g.document_items.filter(it => !it.removed_at))
-                  .some(item => {
-                    const v = pricingEdits[item.id]
-                    return v !== undefined && Number(v) !== item.final_price
-                  })
-                const dueDateChanged = dueDateValue !== latestQuote.payment_due_date
-                const isFirstFinalize = !latestQuote.finalized_at
-                const buttonDisabled = savingPricing || (!isFirstFinalize && !hasPricingChanges && !dueDateChanged)
-                return (
-              <button
-                disabled={buttonDisabled}
-                onClick={async () => {
-                  if (!latestQuote) return
-                  setSavingPricing(true); setPricingError('')
-                  try {
-                    const items = sortedGroups.flatMap(g => g.document_items.filter(it => !it.removed_at))
-                    const liveSum = items.reduce((s, item) => s + (Number(pricingEdits[item.id] ?? item.final_price) || 0), 0)
-                    const newTotal = liveSum
-                    const newDueDate = dueDateValue
-
-                    // Update each quotation item whose final_price changed
-                    for (const item of items) {
-                      const newVal = Number(pricingEdits[item.id] ?? item.final_price) || 0
-                      if (newVal !== item.final_price) {
-                        await updateDocumentItemPrice(item.id, newVal)
-                      }
-                    }
-
-                    const isFirstFinalize = !latestQuote.finalized_at
-                    const totalChanged = newTotal !== latestQuote.total_price
-
-                    // Capture current admin as signer snapshot
-                    let signerSnapshot: { name: string | null; title: string | null } | null = null
-                    {
-                      const { data: { session } } = await supabase.auth.getSession()
-                      const uid = session?.user?.id
-                      if (uid) {
-                        const { data: adminRow } = await supabase.from('admins')
-                          .select('name, title').eq('auth_user_id', uid).maybeSingle()
-                        if (adminRow) {
-                          signerSnapshot = {
-                            name: (adminRow as { name: string | null }).name ?? null,
-                            title: (adminRow as { title: string | null }).title ?? null,
-                          }
-                        }
-                      }
-                    }
-
-                    // Update quotation: lock pricing, record signer
-                    if (isFirstFinalize) {
-                      await finalizeDocument({
-                        documentId: latestQuote.id,
-                        totalPrice: newTotal,
-                        paymentDueDate: newDueDate,
-                        signerSnapshot,
-                      })
-                    } else {
-                      await repriceDocument(latestQuote.id, newTotal, newDueDate)
-                      if (signerSnapshot) {
-                        await supabase.from('documents')
-                          .update({ signer_snapshot: signerSnapshot })
-                          .eq('id', latestQuote.id)
-                      }
-                    }
-
-                    // First finalize: issue final_invoice mirroring quotation.
-                    // Subsequent: sync existing final_invoice from quotation.
-                    let invoiceNumber: string
-                    if (isFirstFinalize) {
-                      const inv = await issueInvoice({
-                        caseId: caseData.id,
-                        type: 'final_invoice',
-                        copyItemsFromQuotation: true,
-                        paymentDueDate: newDueDate,
-                        signerSnapshot,
-                      })
-                      invoiceNumber = inv.document_number
-                    } else {
-                      await syncFinalInvoiceFromQuotation(caseData.id)
-                      const inv = await getCaseFinalInvoice(caseData.id)
-                      invoiceNumber = inv?.document_number ?? caseData.case_number
-                      // Reprice with real change → re-arm "invoice opened" notification
-                      if (totalChanged && inv) {
-                        await supabase.from('documents')
-                          .update({ first_opened_at: null, signer_snapshot: signerSnapshot ?? inv.signer_snapshot })
-                          .eq('id', inv.id)
-                      }
-                    }
-
-                    // First finalize → bump case to awaiting_payment so confirm-payment block opens.
-                    if (isFirstFinalize) {
-                      await supabase.from('cases').update({ status: 'awaiting_payment' }).eq('id', caseData.id)
-                    }
-
-                    const ref = invoiceNumber ?? caseData.case_number
-                    let notifyMessage: string
-                    if (isFirstFinalize) {
-                      notifyMessage = `${ref} Pricing finalized — invoice ready to send`
-                    } else {
-                      // Reprice — build diff summary
-                      const changedItems = items.filter(item => {
-                        const newVal = Number(pricingEdits[item.id] ?? item.final_price) || 0
-                        return newVal !== item.final_price
-                      }).length
-                      const dueChanged = newDueDate !== latestQuote.payment_due_date
-                      const fmtKRWshort = (n: number) => `₩${n.toLocaleString('en-US')}`
-                      const parts: string[] = []
-                      if (totalChanged) parts.push(`Total ${fmtKRWshort(latestQuote.total_price)} → ${fmtKRWshort(newTotal)}`)
-                      if (changedItems > 0) parts.push(`${changedItems} item${changedItems > 1 ? 's' : ''} repriced`)
-                      if (dueChanged) parts.push(`Due ${latestQuote.payment_due_date ?? '—'} → ${newDueDate}`)
-                      const header = `${ref} Invoice updated`
-                      notifyMessage = parts.length === 0
-                        ? header
-                        : `${header}\n\n• ${parts.join('\n• ')}${totalChanged ? '\n\nPlease review before resending.' : ''}`
-                    }
-                    await notifyAgent(caseData.agent_id, notifyMessage, `/agent/cases/${caseData.id}`)
-                    await logAsCurrentUser(isFirstFinalize ? 'quote.finalized' : 'quote.repriced',
-                      { type: 'case', id: caseData.id, label: caseData.case_number },
-                      {
-                        total_krw: newTotal,
-                        ...(totalChanged && !isFirstFinalize ? { previous_total_krw: latestQuote.total_price } : {}),
-                      })
-                    setPricingEdits({})
-                    setDueDateEdit('')
-                    setEditingPricing(false)
-                    await fetchCase()
-                  } catch (e: unknown) {
-                    setPricingError((e as { message?: string })?.message ?? 'Failed.')
-                  } finally { setSavingPricing(false) }
-                }}
-                className="w-full py-2.5 text-sm font-medium bg-violet-600 text-white rounded-xl hover:bg-violet-700 disabled:opacity-40 transition-colors">
-                {savingPricing ? 'Saving...' : latestQuote.finalized_at ? 'Save Pricing Changes' : 'Finalize Pricing & Issue Invoice'}
-              </button>
-                )
-              })()}
-            </section>
-            )
-          })()}
-
-          {/* Confirm Payment — only after pricing finalized */}
-          {caseData.status === 'awaiting_payment' && !editingPricing && (
-            <section id="confirm-payment" className="scroll-mt-20 border border-amber-200 bg-amber-50 rounded-2xl p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide">Confirm Payment</p>
-                <button onClick={() => { setEditingPricing(true); setPricingEdits({}); setPricingError('') }}
-                  className="text-[10px] text-violet-700 hover:underline">Edit pricing</button>
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">Payment Date <span className="text-amber-700">*</span></label>
-                <input type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)}
-                  min={caseData.created_at.slice(0, 10)}
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-[#0f4c35] bg-white" />
-              </div>
-              <button onClick={confirmPayment} disabled={confirmingPayment || !paymentDate}
-                className="w-full py-2.5 text-sm font-medium bg-[#0f4c35] text-white rounded-xl hover:bg-[#0a3828] disabled:opacity-40 transition-colors">
-                {confirmingPayment ? 'Confirming...' : 'Confirm Payment'}
-              </button>
-            </section>
-          )}
-
-          {/* Blocked upload placeholder when schedule isn't ready */}
-          {!scheduleReady
-            && (caseData.status === 'awaiting_info' || caseData.status === 'awaiting_schedule' || caseData.status === 'reviewing_schedule')
-            && (latestSchedule === null || latestSchedule.status === 'revision_requested') && (
-            <section className="border border-gray-200 bg-gray-50 rounded-2xl p-4 space-y-2 opacity-80">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Upload Schedule</p>
-              <p className="text-xs text-gray-500">
-                {[
-                  !caseInfoComplete && 'Trip info incomplete',
-                  !allClientsComplete && 'Client info incomplete',
-                  !groupsComplete && 'Groups not fully assigned',
-                ].filter(Boolean).join(' · ')}. Upload is disabled until the agent resolves this.
-              </p>
-              <div className="flex flex-col items-center justify-center gap-1 w-full py-6 text-sm font-medium rounded-xl border-2 border-dashed border-gray-300 text-gray-400 cursor-not-allowed">
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" /></svg>
-                <span>Waiting for agent</span>
-              </div>
-            </section>
-          )}
 
           {/* Edit Selected Products — staged add/remove with explicit Save/Cancel.
               Marks for removal/addition build up in local state; Save commits
-              all changes in one batch. Items lock once admin finalizes pricing. */}
-          {caseData.status === 'awaiting_schedule' && latestQuote && !latestQuote.finalized_at && sortedGroups.length > 0 && (() => {
+              all changes in one batch. Items lock once admin finalizes pricing.
+              Rendered only when editingProducts=true (toggled by the Edit button
+              in SelectedProductsSection header above). */}
+          {editingProducts && latestQuote && !latestQuote.finalized_at && sortedGroups.length > 0 && (() => {
             // Note: this section intentionally does NOT filter removed_at — we
             // want the removed rows visible as audit trail. All other consumers
             // filter for active rows so customer-facing surfaces stay clean.
@@ -1461,13 +900,22 @@ export default function AdminCaseDetailPage() {
 
             return (
               <section className="border border-violet-100 bg-white rounded-2xl p-4 space-y-3">
-                <div className="flex items-baseline justify-between flex-wrap gap-2">
-                  <p className="text-xs font-semibold text-violet-700 uppercase tracking-wide">Edit Selected Products</p>
-                  <p className="text-[10px] text-gray-400">
-                    {dirty
-                      ? `${stagedAdds.length} to add · ${stagedRemoves.size} to remove — review then save`
-                      : 'Original / Added / Removed are all kept as audit trail. Items lock once you finalize pricing.'}
-                  </p>
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-baseline gap-3 min-w-0">
+                    <p className="text-xs font-semibold text-violet-700 uppercase tracking-wide">Edit Selected Products</p>
+                    <p className="text-[10px] text-gray-400">
+                      {dirty
+                        ? `${stagedAdds.length} to add · ${stagedRemoves.size} to remove — review then save`
+                        : 'Original / Added / Removed are all kept as audit trail.'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { cancelChanges(); setEditingProducts(false) }}
+                    disabled={savingItems}
+                    className="text-[11px] font-medium text-gray-500 hover:text-gray-800 px-2 py-1 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-40 shrink-0">
+                    ← Done
+                  </button>
                 </div>
 
                 <div className="bg-gray-50 rounded-xl border border-gray-100 overflow-hidden">
@@ -1874,6 +1322,199 @@ export default function AdminCaseDetailPage() {
             )
           })()}
 
+          {/* Schedule History */}
+          {sortedSchedules.length > 0 && (
+            <section className="bg-gray-50 rounded-2xl p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Schedule History</p>
+                <span className="text-[10px] text-gray-400">{sortedSchedules.length} version{sortedSchedules.length > 1 ? 's' : ''}</span>
+              </div>
+
+              {scheduleLocked && (
+                <div className="flex items-center gap-2 border border-emerald-200 bg-emerald-50 rounded-xl px-3 py-2">
+                  <svg className="w-3.5 h-3.5 text-emerald-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                  </svg>
+                  <p className="text-xs text-emerald-800">
+                    {(caseData.status === 'completed' || caseData.status === 'awaiting_review')
+                      ? 'Travel complete — schedule is locked.'
+                      : 'Agent has confirmed the schedule — no further edits allowed.'}
+                  </p>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                {sortedSchedules.map((s) => {
+                  const isLatest = s.id === latestSchedule?.id
+                  const statusStyle =
+                    s.status === 'confirmed' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                    s.status === 'revision_requested' ? 'bg-rose-50 text-rose-700 border-rose-200' :
+                    'bg-blue-50 text-blue-700 border-blue-200'
+                  const statusLabel =
+                    s.status === 'confirmed' ? 'Confirmed' :
+                    s.status === 'revision_requested' ? 'Revision Requested' :
+                    'Pending Review'
+                  const canDelete = !scheduleLocked && isLatest && s.status === 'pending' && !s.first_opened_at
+                  return (
+                    <div key={s.id} className={`bg-white rounded-xl border ${isLatest ? 'border-gray-300' : 'border-gray-100'}`}>
+                      {/* Card header row — always visible */}
+                      <div className="flex items-center gap-2 flex-wrap p-3">
+                        <span className="text-xs font-semibold text-gray-700">v{s.version}</span>
+                        {isLatest && <span className="text-[9px] font-medium text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">LATEST</span>}
+                        <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${statusStyle}`}>{statusLabel}</span>
+                        {s.status === 'revision_requested' && s.revision_note && (
+                          <span className="text-xs text-gray-700 border-l-2 border-rose-300 pl-2 flex-1 min-w-0 whitespace-pre-line">{s.revision_note}</span>
+                        )}
+                        <div className="ml-auto flex items-center gap-3">
+                          {s.items && s.items.length > 0 && (
+                            <button
+                              onClick={() => setExpandedScheduleId(prev => prev === s.id ? null : s.id)}
+                              className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-800 transition-colors"
+                            >
+                              <svg className={`w-3.5 h-3.5 transition-transform ${expandedScheduleId === s.id ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                              </svg>
+                              {expandedScheduleId === s.id ? 'Collapse' : `View (${s.items.length})`}
+                            </button>
+                          )}
+                          {s.slug && (s.pdf_url || (s.items && s.items.length > 0)) && (
+                            <a
+                              href={`${baseUrl}/schedule/${s.slug}?preview=1&internal=1&v=${s.version}`}
+                              target="_blank" rel="noopener noreferrer"
+                              className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-[#0f4c35] transition-colors">
+                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                              </svg>
+                              Preview
+                            </a>
+                          )}
+                          <span className="text-[10px] text-gray-400">{s.created_at.slice(0, 10)}</span>
+                        </div>
+                      </div>
+
+                      {/* Expanded items view */}
+                      {expandedScheduleId === s.id && s.items && s.items.length > 0 && (
+                        isLatest && s.status === 'confirmed'
+                          ? (
+                            <div className="border-t border-gray-100">
+                              <ScheduleInternalEditor schedule={s} onSaved={() => fetchCase()} />
+                            </div>
+                          )
+                          : (() => {
+                            const days = Array.from(new Set(s.items.map((it: ScheduleItem) => it.day))).sort((a, b) => a - b)
+                            return (
+                              <div className="border-t border-gray-100 divide-y divide-gray-100">
+                                {days.map((day: number) => {
+                                  const dayItems = (s.items as ScheduleItem[]).filter(it => it.day === day).sort(compareScheduleItems)
+                                  return (
+                                    <div key={day}>
+                                      <p className="px-3 py-1.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide bg-gray-50">Day {day}</p>
+                                      {dayItems.map(it => (
+                                        <div key={it.id} className="px-3 py-2 flex items-start gap-3 border-t border-gray-50">
+                                          <div className="w-20 shrink-0">
+                                            <p className="text-[10px] text-gray-400 uppercase tracking-wide">{SCHEDULE_BLOCK_LABEL[it.block]}{it.endBlock && it.endBlock !== it.block ? ` →` : ''}</p>
+                                            {it.endBlock && it.endBlock !== it.block && (
+                                              <p className="text-[10px] text-gray-400 uppercase tracking-wide">{SCHEDULE_BLOCK_LABEL[it.endBlock]}</p>
+                                            )}
+                                            {it.time && <p className="text-[10px] text-gray-400 tabular-nums mt-0.5">{it.time}{it.endTime ? ` – ${it.endTime}` : ''}</p>}
+                                          </div>
+                                          <div className="flex-1 min-w-0">
+                                            {it.partner && <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">{it.partner}</p>}
+                                            <p className="text-xs text-gray-800">{it.title}{it.variantTag ? ` · ${it.variantTag}` : ''}</p>
+                                            {it.location && <p className="text-[11px] text-gray-400 mt-0.5">{it.location}</p>}
+                                            {it.notes && <p className="text-[11px] text-gray-500 mt-0.5 italic">{it.notes}</p>}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            )
+                          })()
+                      )}
+
+                      <div className="px-3 pb-3 space-y-1.5">
+                      {s.file_name && <p className="text-xs text-gray-500 break-all">{s.file_name}</p>}
+                      {s.admin_note && (() => {
+                        // Pending: blue (still actionable). Confirmed/older: muted gray (historical).
+                        const isPending = s.status === 'pending'
+                        const wrapClass = isPending
+                          ? 'border-l-2 border-blue-300 bg-blue-50 px-2 py-1 rounded-r'
+                          : 'border-l-2 border-gray-300 bg-gray-100 px-2 py-1 rounded-r'
+                        const labelClass = isPending
+                          ? 'text-[10px] font-semibold text-blue-700 uppercase tracking-wide mb-0.5'
+                          : 'text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-0.5'
+                        const textClass = isPending
+                          ? 'text-xs text-blue-900 whitespace-pre-line'
+                          : 'text-xs text-gray-700 whitespace-pre-line'
+                        return (
+                          <div className={wrapClass}>
+                            <p className={labelClass}>Admin note</p>
+                            <p className={textClass}>{s.admin_note}</p>
+                          </div>
+                        )
+                      })()}
+                      {canDelete && (
+                        <div className="flex items-center pt-1">
+                          <button
+                            onClick={() => deleteScheduleVersion(s.id, s.pdf_url, s.version, s.file_name)}
+                            disabled={deletingScheduleId === s.id}
+                            className="text-xs text-gray-400 hover:text-red-500 transition-colors ml-auto disabled:opacity-40"
+                            title="Undo: only the latest upload can be deleted, before the agent reviews it or the client opens it.">
+                            {deletingScheduleId === s.id ? 'Deleting...' : 'Delete'}
+                          </button>
+                        </div>
+                      )}
+
+                      </div>
+
+
+                    </div>
+                  )
+                })}
+              </div>
+            </section>
+          )}
+
+          {/* Schedule placeholder — telegraphs that the Schedule slot lives here.
+              Real upload UI / history sit lower in the page; once a schedule
+              exists, this placeholder hides and the full UI takes over below. */}
+          {sortedSchedules.length === 0 && (
+            <section className="bg-gray-50 rounded-2xl p-5">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Schedule</h3>
+                <span className="text-[10px] text-gray-400">not yet uploaded</span>
+              </div>
+              <p className="text-xs text-gray-500">
+                {scheduleReady
+                  ? 'Ready to upload — see the Upload Schedule section below.'
+                  : 'Will be uploaded once Trip Info, every client\'s info, and group assignments are complete.'}
+              </p>
+            </section>
+          )}
+
+          {/* Blocked upload placeholder when schedule isn't ready */}
+          {!scheduleReady
+            && (caseData.status === 'awaiting_info' || caseData.status === 'awaiting_schedule' || caseData.status === 'reviewing_schedule')
+            && (latestSchedule === null || latestSchedule.status === 'revision_requested') && (
+            <section className="border border-gray-200 bg-gray-50 rounded-2xl p-4 space-y-2 opacity-80">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Upload Schedule</p>
+              <p className="text-xs text-gray-500">
+                {[
+                  !caseInfoComplete && 'Trip info incomplete',
+                  !allClientsComplete && 'Client info incomplete',
+                  !groupsComplete && 'Groups not fully assigned',
+                ].filter(Boolean).join(' · ')}. Upload is disabled until the agent resolves this.
+              </p>
+              <div className="flex flex-col items-center justify-center gap-1 w-full py-6 text-sm font-medium rounded-xl border-2 border-dashed border-gray-300 text-gray-400 cursor-not-allowed">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" /></svg>
+                <span>Waiting for agent</span>
+              </div>
+            </section>
+          )}
+
           {canUploadSchedule && (() => {
             // Build product picker list from the case's quotation line items.
             // Key is (groupId, variantId) — same variant in two groups = two
@@ -1932,15 +1573,6 @@ export default function AdminCaseDetailPage() {
                 {sortedSchedules.length === 0 && (
                   <p className="text-xs text-blue-700">Build day-by-day. Use &quot;Link a product&quot; to autofill titles from selected products.</p>
                 )}
-                {/* Notes from the agent (cases.agent_notes) — render at top of
-                    the editor so admin sees client preferences before laying
-                    out the day. */}
-                {caseData.agent_notes && (
-                  <div className="bg-white border-2 border-red-300 rounded-xl p-3 space-y-1">
-                    <p className="text-[10px] font-semibold text-red-600 uppercase tracking-wide">Notes from agent</p>
-                    <p className="text-xs text-gray-800 whitespace-pre-wrap">{caseData.agent_notes}</p>
-                  </div>
-                )}
                 <ScheduleEditor
                   caseId={caseData.id}
                   caseNumber={caseData.case_number}
@@ -1967,12 +1599,466 @@ export default function AdminCaseDetailPage() {
             )
           })()}
 
-          {/* Confirmed schedule — admin can still update internal/operational details */}
-          {canEditInternalOnly && (
-            <ScheduleInternalEditor
-              schedule={latestSchedule!}
-              onSaved={() => fetchCase()}
-            />
+          {/* Admin Actions */}
+          {actionError && <p className="text-xs text-red-500 px-1">{actionError}</p>}
+
+          {/* Finalize Pricing — admin adjusts final prices after agent confirms schedule */}
+          {((caseData.status === 'awaiting_pricing') || (caseData.status === 'awaiting_payment' && editingPricing)) && latestQuote && (() => {
+            // Default due date: existing value, else today + 7 days
+            const today = new Date().toISOString().slice(0, 10)
+            const defaultDue = latestQuote.payment_due_date ?? (() => {
+              const d = new Date(); d.setDate(d.getDate() + 7); return d.toISOString().slice(0, 10)
+            })()
+            const dueDateValue = dueDateEdit || defaultDue
+            return (
+            <section id="pricing" className="scroll-mt-20 border border-violet-200 bg-violet-50 rounded-2xl p-4 space-y-3">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <p className="text-xs font-semibold text-violet-700 uppercase tracking-wide">
+                  {latestQuote.finalized_at ? 'Edit Final Pricing' : 'Finalize Pricing'}
+                </p>
+                {latestQuote.finalized_at && (
+                  <button onClick={() => { setEditingPricing(false); setPricingEdits({}); setDueDateEdit(''); setPricingError(''); setPricingCurrencies({}) }}
+                    className="text-xs text-gray-500 hover:text-gray-800">Cancel</button>
+                )}
+              </div>
+              <p className="text-[11px] text-gray-600">
+                {latestQuote.finalized_at
+                  ? 'Adjust line item prices. To add or remove items after finalize, issue an Additional Invoice.'
+                  : 'Adjust line item prices. Items are locked at this stage — to add or remove, request a schedule revision.'}
+              </p>
+
+              {pricingError && <p className="text-xs text-red-500">{pricingError}</p>}
+
+              <div className="bg-white rounded-xl border border-violet-100 divide-y divide-gray-100">
+                {sortedGroups.flatMap(g => g.document_items.filter(it => !it.removed_at).map(item => {
+                  // pricingEdits stores canonical KRW digits; currency toggle only changes display.
+                  const krwDigits = pricingEdits[item.id] ?? String(item.final_price)
+                  const krwNum = Number(krwDigits) || 0
+                  const currency: ItemCurrency = pricingCurrencies[item.id] ?? 'KRW'
+                  const displayNum = currency === 'USD' ? Math.round(krwNum / exchangeRate) : krwNum
+                  const displayVal = krwDigits === '' ? '' : displayNum.toLocaleString('en-US')
+                  const origDisplay = currency === 'USD'
+                    ? `$${Math.round(item.final_price / exchangeRate).toLocaleString('en-US')}`
+                    : fmtKRW(item.final_price)
+                  return (
+                    <div key={item.id} className="flex items-center gap-3 px-3 py-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-gray-900 truncate">{item.products?.name ?? 'Item'}</p>
+                        <p className="text-[10px] text-gray-400">{g.name}</p>
+                      </div>
+                      <span className="text-[10px] text-gray-400 tabular-nums shrink-0">orig {origDisplay}</span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={displayVal}
+                        onChange={(e) => {
+                          const cleaned = e.target.value.replace(/[^0-9]/g, '')
+                          if (cleaned === '') { setPricingEdits(p => ({ ...p, [item.id]: '' })); return }
+                          const userNum = Number(cleaned) || 0
+                          const krwVal = currency === 'USD' ? Math.round(userNum * exchangeRate) : userNum
+                          setPricingEdits(p => ({ ...p, [item.id]: String(krwVal) }))
+                        }}
+                        className="w-32 border border-gray-200 rounded-lg px-2 py-1 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35] tabular-nums text-right" />
+                      <div className="flex shrink-0 rounded-md border border-gray-200 overflow-hidden text-[10px] font-medium">
+                        <button
+                          type="button"
+                          aria-pressed={currency === 'KRW'}
+                          onClick={() => setPricingCurrencies(p => ({ ...p, [item.id]: 'KRW' }))}
+                          className={`px-1.5 py-0.5 ${currency === 'KRW' ? 'bg-violet-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
+                          ₩
+                        </button>
+                        <button
+                          type="button"
+                          aria-pressed={currency === 'USD'}
+                          onClick={() => setPricingCurrencies(p => ({ ...p, [item.id]: 'USD' }))}
+                          className={`px-1.5 py-0.5 border-l border-gray-200 ${currency === 'USD' ? 'bg-violet-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
+                          $
+                        </button>
+                      </div>
+                    </div>
+                  )
+                }))}
+              </div>
+
+              {(() => {
+                const liveSum = sortedGroups
+                  .flatMap(g => g.document_items.filter(it => !it.removed_at))
+                  .reduce((s, item) => s + (Number(pricingEdits[item.id] ?? item.final_price) || 0), 0)
+                const newTotal = liveSum
+                const diff = newTotal - latestQuote.total_price
+                return (
+                  <div className="flex items-baseline justify-between bg-white rounded-xl border border-violet-100 px-3 py-2">
+                    <span className="text-xs text-gray-500">New Total</span>
+                    <div className="flex items-baseline gap-3">
+                      <span className="text-sm font-bold text-gray-900 tabular-nums">{fmtUSD(newTotal / exchangeRate)}</span>
+                      <span className="text-[11px] text-gray-400 tabular-nums">{fmtKRW(newTotal)}</span>
+                      {diff !== 0 && (
+                        <span className={`text-[10px] font-medium tabular-nums ${diff > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                          {diff > 0 ? '+' : ''}{fmtKRW(diff)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )
+              })()}
+
+              {/* Payment Due Date — defaults to today + 7d, admin can override */}
+              <div className="bg-white rounded-xl border border-violet-100 px-3 py-2 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs text-gray-700 font-medium">Payment Due Date</p>
+                  <p className="text-[10px] text-gray-400">Default is 7 days from today. Adjust if the client needs more or less time.</p>
+                </div>
+                <input type="date" value={dueDateValue} min={today}
+                  onChange={(e) => setDueDateEdit(e.target.value)}
+                  className="border border-gray-200 rounded-lg px-2 py-1 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35] bg-white" />
+              </div>
+
+              {(() => {
+                const hasPricingChanges = sortedGroups
+                  .flatMap(g => g.document_items.filter(it => !it.removed_at))
+                  .some(item => {
+                    const v = pricingEdits[item.id]
+                    return v !== undefined && Number(v) !== item.final_price
+                  })
+                const dueDateChanged = dueDateValue !== latestQuote.payment_due_date
+                const isFirstFinalize = !latestQuote.finalized_at
+                const buttonDisabled = savingPricing || (!isFirstFinalize && !hasPricingChanges && !dueDateChanged)
+                return (
+              <button
+                disabled={buttonDisabled}
+                onClick={async () => {
+                  if (!latestQuote) return
+                  setSavingPricing(true); setPricingError('')
+                  try {
+                    const items = sortedGroups.flatMap(g => g.document_items.filter(it => !it.removed_at))
+                    const liveSum = items.reduce((s, item) => s + (Number(pricingEdits[item.id] ?? item.final_price) || 0), 0)
+                    const newTotal = liveSum
+                    const newDueDate = dueDateValue
+
+                    // Update each quotation item whose final_price changed
+                    for (const item of items) {
+                      const newVal = Number(pricingEdits[item.id] ?? item.final_price) || 0
+                      if (newVal !== item.final_price) {
+                        await updateDocumentItemPrice(item.id, newVal)
+                      }
+                    }
+
+                    const isFirstFinalize = !latestQuote.finalized_at
+                    const totalChanged = newTotal !== latestQuote.total_price
+
+                    // Capture current admin as signer snapshot
+                    let signerSnapshot: { name: string | null; title: string | null } | null = null
+                    {
+                      const { data: { session } } = await supabase.auth.getSession()
+                      const uid = session?.user?.id
+                      if (uid) {
+                        const { data: adminRow } = await supabase.from('admins')
+                          .select('name, title').eq('auth_user_id', uid).maybeSingle()
+                        if (adminRow) {
+                          signerSnapshot = {
+                            name: (adminRow as { name: string | null }).name ?? null,
+                            title: (adminRow as { title: string | null }).title ?? null,
+                          }
+                        }
+                      }
+                    }
+
+                    // Update quotation: lock pricing, record signer
+                    if (isFirstFinalize) {
+                      await finalizeDocument({
+                        documentId: latestQuote.id,
+                        totalPrice: newTotal,
+                        paymentDueDate: newDueDate,
+                        signerSnapshot,
+                      })
+                    } else {
+                      await repriceDocument(latestQuote.id, newTotal, newDueDate)
+                      if (signerSnapshot) {
+                        await supabase.from('documents')
+                          .update({ signer_snapshot: signerSnapshot })
+                          .eq('id', latestQuote.id)
+                      }
+                    }
+
+                    // First finalize: issue final_invoice mirroring quotation.
+                    // Subsequent: sync existing final_invoice from quotation.
+                    let invoiceNumber: string
+                    if (isFirstFinalize) {
+                      const inv = await issueInvoice({
+                        caseId: caseData.id,
+                        type: 'final_invoice',
+                        copyItemsFromQuotation: true,
+                        paymentDueDate: newDueDate,
+                        signerSnapshot,
+                      })
+                      invoiceNumber = inv.document_number
+                    } else {
+                      await syncFinalInvoiceFromQuotation(caseData.id)
+                      const inv = await getCaseFinalInvoice(caseData.id)
+                      invoiceNumber = inv?.document_number ?? caseData.case_number
+                      // Reprice with real change → re-arm "invoice opened" notification
+                      if (totalChanged && inv) {
+                        await supabase.from('documents')
+                          .update({ first_opened_at: null, signer_snapshot: signerSnapshot ?? inv.signer_snapshot })
+                          .eq('id', inv.id)
+                      }
+                    }
+
+                    // First finalize → bump case to awaiting_payment so confirm-payment block opens.
+                    if (isFirstFinalize) {
+                      await supabase.from('cases').update({ status: 'awaiting_payment' }).eq('id', caseData.id)
+                    }
+
+                    const ref = invoiceNumber ?? caseData.case_number
+                    let notifyMessage: string
+                    if (isFirstFinalize) {
+                      notifyMessage = `${ref} Pricing finalized — invoice ready to send`
+                    } else {
+                      // Reprice — build diff summary
+                      const changedItems = items.filter(item => {
+                        const newVal = Number(pricingEdits[item.id] ?? item.final_price) || 0
+                        return newVal !== item.final_price
+                      }).length
+                      const dueChanged = newDueDate !== latestQuote.payment_due_date
+                      const fmtKRWshort = (n: number) => `₩${n.toLocaleString('en-US')}`
+                      const parts: string[] = []
+                      if (totalChanged) parts.push(`Total ${fmtKRWshort(latestQuote.total_price)} → ${fmtKRWshort(newTotal)}`)
+                      if (changedItems > 0) parts.push(`${changedItems} item${changedItems > 1 ? 's' : ''} repriced`)
+                      if (dueChanged) parts.push(`Due ${latestQuote.payment_due_date ?? '—'} → ${newDueDate}`)
+                      const header = `${ref} Invoice updated`
+                      notifyMessage = parts.length === 0
+                        ? header
+                        : `${header}\n\n• ${parts.join('\n• ')}${totalChanged ? '\n\nPlease review before resending.' : ''}`
+                    }
+                    await notifyAgent(caseData.agent_id, notifyMessage, `/agent/cases/${caseData.id}`)
+                    await logAsCurrentUser(isFirstFinalize ? 'quote.finalized' : 'quote.repriced',
+                      { type: 'case', id: caseData.id, label: caseData.case_number },
+                      {
+                        total_krw: newTotal,
+                        ...(totalChanged && !isFirstFinalize ? { previous_total_krw: latestQuote.total_price } : {}),
+                      })
+                    setPricingEdits({})
+                    setDueDateEdit('')
+                    setEditingPricing(false)
+                    await fetchCase()
+                  } catch (e: unknown) {
+                    setPricingError((e as { message?: string })?.message ?? 'Failed.')
+                  } finally { setSavingPricing(false) }
+                }}
+                className="w-full py-2.5 text-sm font-medium bg-violet-600 text-white rounded-xl hover:bg-violet-700 disabled:opacity-40 transition-colors">
+                {savingPricing ? 'Saving...' : latestQuote.finalized_at ? 'Save Pricing Changes' : 'Finalize Pricing & Issue Invoice'}
+              </button>
+                )
+              })()}
+            </section>
+            )
+          })()}
+
+          {/* Quote / Financials — cyan when admin has financial action queued
+              (awaiting_deposit: issue deposit settlement after agent issues;
+              awaiting_payment: confirm balance payment receipt). Mirror of the
+              agent-side cyan tone — both sides have parallel actions in these
+              two windows, so both get the action signal. */}
+          {latestQuote && (() => {
+            const isActionTarget = caseData.status === 'awaiting_deposit' || caseData.status === 'awaiting_payment'
+            const sectionClass = isActionTarget
+              ? 'bg-cyan-50 border border-cyan-200 rounded-2xl p-4 space-y-3'
+              : 'bg-gray-50 rounded-2xl p-4 space-y-3'
+            const labelClass = isActionTarget
+              ? 'text-xs font-semibold text-cyan-700 uppercase tracking-wide'
+              : 'text-xs font-semibold text-gray-400 uppercase tracking-wide'
+            return (
+            <section className={sectionClass}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <p className={labelClass}>Financials</p>
+                  {!latestQuote.finalized_at && (
+                    <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5 uppercase tracking-wide">
+                      Estimated
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-[10px] font-mono text-gray-400">
+                    {latestQuote.document_number}
+                    {finalInvoice?.document_number && <span className="ml-1.5 text-gray-300">·</span>}
+                    {finalInvoice?.document_number && <span className="ml-1.5 text-[#0f4c35]">{finalInvoice.document_number}</span>}
+                  </span>
+                  {latestQuote.finalized_at ? (
+                    <>
+                      <a href={`${baseUrl}/quote/${latestQuote.slug}?preview=1`} target="_blank" rel="noopener noreferrer"
+                        className="text-xs text-gray-400 hover:text-[#0f4c35] transition-colors">Quotation ↗</a>
+                      {finalInvoice && (
+                        <a href={`${baseUrl}/invoice/${finalInvoice.slug}?preview=1`} target="_blank" rel="noopener noreferrer"
+                          className="text-xs text-gray-400 hover:text-[#0f4c35] transition-colors">Invoice ↗</a>
+                      )}
+                    </>
+                  ) : (
+                    <a href={`${baseUrl}/quote/${latestQuote.slug}?preview=1`} target="_blank" rel="noopener noreferrer"
+                      className="text-xs text-gray-400 hover:text-[#0f4c35] transition-colors">Preview ↗</a>
+                  )}
+                </div>
+              </div>
+              {(() => {
+                const schedConfirmed = (caseData.schedules ?? []).some(s => s.status === 'confirmed')
+                const allItems = (latestQuote.document_groups ?? []).flatMap((g: { document_items: QuoteItem[] }) => g.document_items ?? [])
+                const originalTotal = allItems
+                  .filter((it: QuoteItem) => it.origin === 'original' || it.origin == null)
+                  .reduce((s: number, it: QuoteItem) => s + (it.final_price ?? 0), 0)
+                const pendingRemovals = allItems
+                  .filter((it: QuoteItem) => it.removed_at && (it.origin === 'original' || it.origin == null))
+                  .reduce((s: number, it: QuoteItem) => s + (it.final_price ?? 0), 0)
+                const pendingAdditions = allItems
+                  .filter((it: QuoteItem) => !it.removed_at && it.origin === 'admin_added')
+                  .reduce((s: number, it: QuoteItem) => s + (it.final_price ?? 0), 0)
+                const showPending = !latestQuote.finalized_at && !schedConfirmed && (pendingRemovals > 0 || pendingAdditions > 0)
+                const displayTotal = (latestQuote.finalized_at || schedConfirmed) ? latestQuote.total_price : originalTotal
+                return (
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <p className="text-[10px] text-gray-400 mb-0.5">
+                    {latestQuote.finalized_at ? 'Total (KRW)' : 'Estimated (KRW)'}
+                  </p>
+                  <p className="font-semibold text-gray-900">{fmtKRW(displayTotal)}</p>
+                  {showPending && (
+                    <div className="mt-1 space-y-0.5">
+                      {pendingRemovals > 0 && (
+                        <p className="text-[10px] text-red-500">− {fmtKRW(pendingRemovals)} pending removal</p>
+                      )}
+                      {pendingAdditions > 0 && (
+                        <p className="text-[10px] text-emerald-600">+ {fmtKRW(pendingAdditions)} pending addition</p>
+                      )}
+                    </div>
+                  )}
+                  {!latestQuote.finalized_at && !schedConfirmed && (
+                    <p className="mt-1">
+                      <span className="text-[10px] font-medium text-amber-900 bg-yellow-200 px-1.5 py-0.5 rounded">
+                        May change after you finalize
+                      </span>
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <p className="text-[10px] text-gray-400 mb-0.5">
+                    {latestQuote.finalized_at ? 'Total (USD)' : 'Estimated (USD)'}
+                  </p>
+                  <p className="font-semibold text-gray-900">{fmtUSD(displayTotal / exchangeRate)}</p>
+                  {showPending && (
+                    <div className="mt-1 space-y-0.5">
+                      {pendingRemovals > 0 && (
+                        <p className="text-[10px] text-red-500">− {fmtUSD(pendingRemovals / exchangeRate)} pending removal</p>
+                      )}
+                      {pendingAdditions > 0 && (
+                        <p className="text-[10px] text-emerald-600">+ {fmtUSD(pendingAdditions / exchangeRate)} pending addition</p>
+                      )}
+                    </div>
+                  )}
+                  {!latestQuote.finalized_at && !schedConfirmed && (
+                    <p className="mt-1">
+                      <span className="text-[10px] font-medium text-amber-900 bg-yellow-200 px-1.5 py-0.5 rounded">
+                        May change after you finalize
+                      </span>
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <p className="text-[10px] text-gray-400 mb-0.5">Payment Due</p>
+                  {latestQuote.finalized_at && latestQuote.payment_due_date ? (
+                    <p className={`font-medium text-sm ${caseData.status === 'awaiting_payment' && new Date(latestQuote.payment_due_date) < new Date() ? 'text-red-500' : 'text-gray-800'}`}>
+                      {latestQuote.payment_due_date}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-gray-400">Set on finalize</p>
+                  )}
+                </div>
+                <div><p className="text-[10px] text-gray-400 mb-0.5">Margins</p><p className="text-gray-700 text-xs">Co. {(latestQuote.company_margin_rate * 100).toFixed(0)}% / Agent {(latestQuote.agent_margin_rate * 100).toFixed(0)}%</p></div>
+              </div>
+                )
+              })()}
+
+              {/* Revenue breakdown */}
+              {(() => {
+                const total = latestQuote.total_price ?? 0
+                const co = latestQuote.company_margin_rate ?? 0
+                const ag = latestQuote.agent_margin_rate ?? 0
+                const denom = (1 + co) * (1 + ag)
+                const base = denom > 0 ? total / denom : 0
+                const companyShare = base * co
+                const agentShare = base * (1 + co) * ag
+                return (
+                  <div className="pt-3 border-t border-gray-100 space-y-2">
+                    <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Revenue Breakdown</p>
+                    <div className="space-y-1.5">
+                      <div className="flex items-baseline justify-between">
+                        <span className="text-xs text-gray-600">Partner Cost</span>
+                        <span className="text-right tabular-nums">
+                          <span className="text-sm font-medium text-gray-800">{fmtUSD(base / exchangeRate)}</span>
+                          <span className="text-[10px] text-gray-400 ml-2">{fmtKRW(base)}</span>
+                        </span>
+                      </div>
+                      <div className="flex items-baseline justify-between">
+                        <span className="text-xs text-gray-600">Company Revenue ({(co * 100).toFixed(0)}%)</span>
+                        <span className="text-right tabular-nums">
+                          <span className="text-sm font-medium text-[#0f4c35]">{fmtUSD(companyShare / exchangeRate)}</span>
+                          <span className="text-[10px] text-gray-400 ml-2">{fmtKRW(companyShare)}</span>
+                        </span>
+                      </div>
+                      <div className="flex items-baseline justify-between">
+                        <span className="text-xs text-gray-600">Agent Payout ({(ag * 100).toFixed(0)}%)</span>
+                        <span className="text-right tabular-nums">
+                          <span className="text-sm font-medium text-amber-700">{fmtUSD(agentShare / exchangeRate)}</span>
+                          <span className="text-[10px] text-gray-400 ml-2">{fmtKRW(agentShare)}</span>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()}
+
+              {caseData.payment_date && (
+                <div className="pt-2 border-t border-gray-100">
+                  <p className="text-[10px] text-gray-400 mb-0.5">Payment Received</p>
+                  <p className="text-sm font-medium text-gray-800">{caseData.payment_date}</p>
+                </div>
+              )}
+
+              {/* Invoices (deposit / additional / commission) — embedded inside Financials */}
+              <CaseDocumentsSection
+                caseId={caseData.id}
+                caseNumber={caseData.case_number}
+                agentId={caseData.agent_id}
+                actor="admin"
+                caseStatus={caseData.status}
+                embedded
+                quotation={latestQuote as unknown as DocumentRow}
+                finalInvoice={(finalInvoice ?? null) as unknown as DocumentRow | null}
+                documents={(caseData.documents ?? []) as unknown as DocumentRow[]}
+                exchangeRate={exchangeRate}
+                onChanged={fetchCase}
+              />
+            </section>
+            )
+          })()}
+
+          {/* Confirm Payment — only after pricing finalized */}
+          {caseData.status === 'awaiting_payment' && !editingPricing && (
+            <section id="confirm-payment" className="scroll-mt-20 border border-amber-200 bg-amber-50 rounded-2xl p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide">Confirm Payment</p>
+                <button onClick={() => { setEditingPricing(true); setPricingEdits({}); setPricingError('') }}
+                  className="text-[10px] text-violet-700 hover:underline">Edit pricing</button>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Payment Date <span className="text-amber-700">*</span></label>
+                <input type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)}
+                  min={caseData.created_at.slice(0, 10)}
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-[#0f4c35] bg-white" />
+              </div>
+              <button onClick={confirmPayment} disabled={confirmingPayment || !paymentDate}
+                className="w-full py-2.5 text-sm font-medium bg-[#0f4c35] text-white rounded-xl hover:bg-[#0a3828] disabled:opacity-40 transition-colors">
+                {confirmingPayment ? 'Confirming...' : 'Confirm Payment'}
+              </button>
+            </section>
           )}
 
           {caseData.status === 'awaiting_travel' && (
@@ -2187,113 +2273,6 @@ export default function AdminCaseDetailPage() {
             )
           })()}
 
-          {/* Agent Settlement — commission paid to the agent (1 per case) */}
-          {latestQuote && (() => {
-            const total = latestQuote.total_price ?? 0
-            const ag = latestQuote.agent_margin_rate ?? 0
-            const commissionAmount = ag > 0 ? Math.round(total * ag / (1 + ag)) : 0
-            // Settlement queue eligible once travel is done — review pending OR completed.
-            const isCompleted = caseData.status === 'completed' || caseData.status === 'awaiting_review'
-            const paid = !!agentSettlement?.paid_at
-
-            const agent = getAgent(caseData)
-
-            return (
-              <section className="bg-gray-50 rounded-2xl p-4 space-y-3">
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Agent Settlement</p>
-                  {paid ? (
-                    <span className="text-[10px] text-emerald-700 font-medium">Settled ✓</span>
-                  ) : !isCompleted ? (
-                    <span className="text-[10px] text-gray-400">Available after travel completion</span>
-                  ) : (
-                    <span className="text-[10px] text-amber-700 font-medium">Pending</span>
-                  )}
-                </div>
-
-                {agentSettleError && <p className="text-xs text-red-500">{agentSettleError}</p>}
-
-                {paid && agentSettlement ? (
-                  <div className="bg-white rounded-xl border border-emerald-200 p-3 flex items-center gap-3 flex-wrap">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900">{agent?.name ?? '—'}</p>
-                      <p className="text-[10px] text-gray-500">
-                        {agentSettlement.settlement_number ?? ''} · paid {agentSettlement.paid_at}
-                      </p>
-                    </div>
-                    <span className="text-right tabular-nums">
-                      <span className="text-sm font-semibold text-emerald-700">{fmtUSD(agentSettlement.amount / exchangeRate)}</span>
-                      <span className="text-[10px] text-gray-400 ml-2">{fmtKRW(agentSettlement.amount)}</span>
-                    </span>
-                  </div>
-                ) : isCompleted ? (
-                  <div className="bg-white rounded-xl border border-gray-200 p-3 space-y-2">
-                    <div className="flex items-center gap-3 flex-wrap">
-                      <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900">{agent?.name ?? '—'}</p>
-                        <p className="text-[10px] text-gray-500">commission @ {(ag * 100).toFixed(0)}% margin</p>
-                      </div>
-                      <span className="text-right tabular-nums">
-                        <span className="text-sm font-semibold text-gray-900">{fmtUSD(commissionAmount / exchangeRate)}</span>
-                        <span className="text-[10px] text-gray-400 ml-2">{fmtKRW(commissionAmount)}</span>
-                      </span>
-                    </div>
-                    <div className="flex items-end gap-2">
-                      <div className="flex-1">
-                        <label className="block text-[10px] text-gray-500 mb-1">Paid On</label>
-                        <input value={agentSettlePaidAt} onChange={e => setAgentSettlePaidAt(e.target.value)} type="date"
-                          className="w-full border border-gray-200 rounded-lg px-2 py-1 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
-                      </div>
-                      <button
-                        disabled={savingAgentSettle || !agentSettlePaidAt || commissionAmount <= 0}
-                        onClick={async () => {
-                          if (!caseData) return
-                          setSavingAgentSettle(true); setAgentSettleError('')
-                          try {
-                            const { count } = await supabase.from('settlements').select('*', { count: 'exact', head: true })
-                            const next = (count ?? 0) + 1
-                            const settlementNumber = `#S-${String(next).padStart(3, '0')}`
-                            const { error } = await supabase.from('settlements').insert({
-                              settlement_number: settlementNumber,
-                              agent_id: caseData.agent_id,
-                              case_id: caseData.id,
-                              amount: commissionAmount,
-                              paid_at: agentSettlePaidAt,
-                            })
-                            if (error) throw error
-                            await notifyAgent(caseData.agent_id,
-                              `${caseData.case_number} Settlement paid — ${fmtUSD(commissionAmount / exchangeRate)}`,
-                              '/agent/payouts')
-                            await logAsCurrentUser('settlement.paid',
-                              { type: 'case', id: caseData.id, label: caseData.case_number },
-                              { amount_krw: commissionAmount, paid_at: agentSettlePaidAt, settlement_number: settlementNumber })
-                            await fetchCase()
-                          } catch (e: unknown) {
-                            setAgentSettleError((e as { message?: string })?.message ?? 'Failed.')
-                          } finally { setSavingAgentSettle(false) }
-                        }}
-                        className="px-3 py-1.5 text-xs font-medium bg-[#0f4c35] text-white rounded-lg hover:bg-[#0a3828] disabled:opacity-40 shrink-0">
-                        {savingAgentSettle ? 'Saving...' : 'Mark Paid'}
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="bg-white rounded-xl border border-gray-100 p-3 flex items-center gap-3 opacity-60">
-                    <span className="w-2 h-2 rounded-full bg-gray-300 shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-gray-500">{agent?.name ?? '—'} · {(ag * 100).toFixed(0)}% margin</p>
-                      <p className="text-[10px] text-gray-400">Mark Travel Complete first to settle</p>
-                    </div>
-                    <span className="text-right tabular-nums">
-                      <span className="text-sm text-gray-500">{fmtUSD(commissionAmount / exchangeRate)}</span>
-                    </span>
-                  </div>
-                )}
-              </section>
-            )
-          })()}
 
         </div>
       </div>
@@ -2305,6 +2284,8 @@ export default function AdminCaseDetailPage() {
 // Items (title/time/block) are read-only. Only address/partnerContact/driverInfo/
 // internalNotes can be changed — saves directly to schedules.items (no new version).
 
+type OpsDraft = { address: string; partnerContact: string; driverInfo: string; internalNotes: string }
+
 function ScheduleInternalEditor({
   schedule,
   onSaved,
@@ -2313,23 +2294,41 @@ function ScheduleInternalEditor({
   onSaved: () => void
 }) {
   const [items, setItems] = useState(() => schedule.items ?? [])
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [draft, setDraft] = useState<OpsDraft>({ address: '', partnerContact: '', driverInfo: '', internalNotes: '' })
   const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
 
-  function patch(id: string, field: string, value: string) {
-    setItems(prev => prev.map(it => it.id === id ? { ...it, [field]: value || null } : it))
-    setSaved(false)
+  function startEdit(it: import('@/types/schedule').ScheduleItem) {
+    setEditingId(it.id)
+    setDraft({
+      address: it.address ?? '',
+      partnerContact: it.partnerContact ?? '',
+      driverInfo: it.driverInfo ?? '',
+      internalNotes: it.internalNotes ?? '',
+    })
+    setError('')
   }
 
-  async function handleSave() {
+  function cancelEdit() {
+    setEditingId(null)
+    setDraft({ address: '', partnerContact: '', driverInfo: '', internalNotes: '' })
+  }
+
+  async function saveItem() {
+    if (!editingId) return
     setSaving(true)
     setError('')
+    const updated = items.map(it =>
+      it.id === editingId
+        ? { ...it, address: draft.address || null, partnerContact: draft.partnerContact || null, driverInfo: draft.driverInfo || null, internalNotes: draft.internalNotes || null }
+        : it
+    )
     try {
-      const { error: err } = await supabase.from('schedules').update({ items }).eq('id', schedule.id)
+      const { error: err } = await supabase.from('schedules').update({ items: updated }).eq('id', schedule.id)
       if (err) throw err
-      setSaved(true)
-      setTimeout(() => setSaved(false), 2500)
+      setItems(updated)
+      setEditingId(null)
       onSaved()
     } catch (e: unknown) {
       setError((e as { message?: string })?.message ?? 'Failed to save.')
@@ -2341,61 +2340,77 @@ function ScheduleInternalEditor({
   const days = Array.from(new Set(items.map(i => i.day))).sort((a, b) => a - b)
 
   return (
-    <section className="border border-gray-200 bg-white rounded-2xl p-4 space-y-3">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Schedule v{schedule.version} — Operational Details</p>
-          <p className="text-[11px] text-gray-400 mt-0.5">Schedule is confirmed. You can still update internal operational info (not visible to client).</p>
-        </div>
-      </div>
-
+    <div className="divide-y divide-gray-100 bg-white">
       {days.map(day => {
-        const dayItems = items.filter(i => i.day === day)
+        const dayItems = items.filter(i => i.day === day).sort(compareScheduleItems)
         return (
-          <div key={day} className="border border-gray-100 rounded-xl overflow-hidden">
-            <div className="bg-gray-50 px-3 py-2 border-b border-gray-100">
-              <p className="text-xs font-semibold text-gray-600">Day {day}</p>
-            </div>
-            <div className="divide-y divide-gray-100">
-              {dayItems.map(it => (
-                <div key={it.id} className="px-3 py-2.5 space-y-2">
-                  {/* Read-only header */}
-                  <div className="flex items-baseline gap-2 flex-wrap">
-                    <span className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">
-                      {SCHEDULE_BLOCK_LABEL[it.block]}{it.endBlock && it.endBlock !== it.block ? ` → ${SCHEDULE_BLOCK_LABEL[it.endBlock]}` : ''}
-                    </span>
-                    {it.time && <span className="text-[10px] text-gray-400">{it.time}{it.endTime ? ` – ${it.endTime}` : ''}</span>}
-                    <span className="text-xs font-medium text-gray-800">{it.title}</span>
+          <div key={day}>
+            <p className="px-3 py-1.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide bg-gray-50">Day {day}</p>
+            {dayItems.map(it => {
+              const isEditing = editingId === it.id
+              const hasOpsData = it.address || it.partnerContact || it.driverInfo || it.internalNotes
+              return (
+                <div key={it.id} className={`px-3 py-2.5 border-t border-gray-50 ${isEditing ? 'bg-gray-50' : ''}`}>
+                  {/* Read-only header row */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex items-baseline gap-1.5 flex-1 min-w-0 flex-wrap">
+                      <span className="text-[10px] text-gray-400 uppercase tracking-wide shrink-0">
+                        {SCHEDULE_BLOCK_LABEL[it.block]}{it.endBlock && it.endBlock !== it.block ? ` → ${SCHEDULE_BLOCK_LABEL[it.endBlock]}` : ''}
+                      </span>
+                      {it.time && <span className="text-[10px] text-gray-400 tabular-nums shrink-0">{it.time}{it.endTime ? ` – ${it.endTime}` : ''}</span>}
+                      <span className="text-xs font-medium text-gray-800 truncate">{it.title}</span>
+                    </div>
+                    {!isEditing && (
+                      <button onClick={() => startEdit(it)}
+                        className="text-[10px] font-medium text-gray-400 hover:text-[#0f4c35] shrink-0 transition-colors">
+                        {hasOpsData ? 'Edit' : '+ Ops'}
+                      </button>
+                    )}
                   </div>
-                  {/* Editable internal fields */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5">
-                    <input type="text" value={it.address ?? ''} onChange={e => patch(it.id, 'address', e.target.value)}
-                      placeholder="Address"
-                      className="text-xs border border-dashed border-gray-300 rounded-lg px-2 py-1.5 text-gray-700 bg-gray-50 focus:outline-none focus:border-[#0f4c35] placeholder:text-gray-400" />
-                    <input type="text" value={it.partnerContact ?? ''} onChange={e => patch(it.id, 'partnerContact', e.target.value)}
-                      placeholder="Partner contact (name + phone)"
-                      className="text-xs border border-dashed border-gray-300 rounded-lg px-2 py-1.5 text-gray-700 bg-gray-50 focus:outline-none focus:border-[#0f4c35] placeholder:text-gray-400" />
-                    <input type="text" value={it.driverInfo ?? ''} onChange={e => patch(it.id, 'driverInfo', e.target.value)}
-                      placeholder="Driver info (name + phone + pickup)"
-                      className="text-xs border border-dashed border-gray-300 rounded-lg px-2 py-1.5 text-gray-700 bg-gray-50 focus:outline-none focus:border-[#0f4c35] placeholder:text-gray-400" />
-                    <input type="text" value={it.internalNotes ?? ''} onChange={e => patch(it.id, 'internalNotes', e.target.value)}
-                      placeholder="Internal note"
-                      className="text-xs border border-dashed border-gray-300 rounded-lg px-2 py-1.5 text-gray-700 bg-gray-50 focus:outline-none focus:border-[#0f4c35] placeholder:text-gray-400" />
-                  </div>
+
+                  {/* Existing ops data preview (read mode) */}
+                  {!isEditing && hasOpsData && (
+                    <div className="mt-1.5 grid grid-cols-1 md:grid-cols-2 gap-0.5">
+                      {it.address && <p className="text-[11px] text-gray-500 truncate"><span className="text-[10px] text-gray-400 uppercase tracking-wide mr-1">Addr</span>{it.address}</p>}
+                      {it.partnerContact && <p className="text-[11px] text-gray-500 truncate"><span className="text-[10px] text-gray-400 uppercase tracking-wide mr-1">Contact</span>{it.partnerContact}</p>}
+                      {it.driverInfo && <p className="text-[11px] text-gray-500 truncate"><span className="text-[10px] text-gray-400 uppercase tracking-wide mr-1">Driver</span>{it.driverInfo}</p>}
+                      {it.internalNotes && <p className="text-[11px] text-gray-500 italic truncate md:col-span-2"><span className="text-[10px] text-gray-400 uppercase tracking-wide not-italic mr-1">Note</span>{it.internalNotes}</p>}
+                    </div>
+                  )}
+
+                  {/* Edit mode */}
+                  {isEditing && (
+                    <div className="mt-2 space-y-1.5">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5">
+                        <input type="text" value={draft.address} onChange={e => setDraft(d => ({ ...d, address: e.target.value }))}
+                          placeholder="Address"
+                          className="text-xs border border-dashed border-gray-300 rounded-lg px-2 py-1.5 text-gray-700 bg-white focus:outline-none focus:border-[#0f4c35] placeholder:text-gray-400" />
+                        <input type="text" value={draft.partnerContact} onChange={e => setDraft(d => ({ ...d, partnerContact: e.target.value }))}
+                          placeholder="Partner contact (name + phone)"
+                          className="text-xs border border-dashed border-gray-300 rounded-lg px-2 py-1.5 text-gray-700 bg-white focus:outline-none focus:border-[#0f4c35] placeholder:text-gray-400" />
+                        <input type="text" value={draft.driverInfo} onChange={e => setDraft(d => ({ ...d, driverInfo: e.target.value }))}
+                          placeholder="Driver info (name + phone + pickup)"
+                          className="text-xs border border-dashed border-gray-300 rounded-lg px-2 py-1.5 text-gray-700 bg-white focus:outline-none focus:border-[#0f4c35] placeholder:text-gray-400" />
+                        <input type="text" value={draft.internalNotes} onChange={e => setDraft(d => ({ ...d, internalNotes: e.target.value }))}
+                          placeholder="Internal note"
+                          className="text-xs border border-dashed border-gray-300 rounded-lg px-2 py-1.5 text-gray-700 bg-white focus:outline-none focus:border-[#0f4c35] placeholder:text-gray-400" />
+                      </div>
+                      {error && <p className="text-xs text-red-600">{error}</p>}
+                      <div className="flex items-center justify-end gap-2">
+                        <button onClick={cancelEdit} className="text-xs text-gray-400 hover:text-gray-700">Cancel</button>
+                        <button onClick={saveItem} disabled={saving}
+                          className="text-xs font-medium bg-[#0f4c35] text-white hover:bg-[#0a3828] px-3 py-1 rounded-lg disabled:opacity-40">
+                          {saving ? 'Saving…' : 'Save'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              ))}
-            </div>
+              )
+            })}
           </div>
         )
       })}
-
-      {error && <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</p>}
-      <div className="flex justify-end">
-        <button onClick={handleSave} disabled={saving}
-          className="text-sm font-medium bg-[#0f4c35] text-white hover:bg-[#0a3828] px-4 py-2 rounded-xl disabled:opacity-40">
-          {saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save operational details'}
-        </button>
-      </div>
-    </section>
+    </div>
   )
 }

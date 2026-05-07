@@ -72,7 +72,7 @@ export async function submitSurvey(
   return data as SurveyRow
 }
 
-// Try to advance status awaiting_review → completed when survey is submitted.
+// Try to advance status awaiting_review → awaiting_settlement when survey is submitted.
 // Idempotent — safe to call after submitSurvey.
 export async function tryAdvanceReviewSubmitted(caseId: string): Promise<{ advanced: boolean }> {
   const survey = await getCaseSurvey(caseId)
@@ -84,8 +84,8 @@ export async function tryAdvanceReviewSubmitted(caseId: string): Promise<{ advan
   if (!cr || cr.status !== 'awaiting_review') return { advanced: false }
 
   const { error } = await supabase
-    .from('cases').update({ status: 'completed' }).eq('id', caseId).eq('status', 'awaiting_review')
+    .from('cases').update({ status: 'awaiting_settlement' }).eq('id', caseId).eq('status', 'awaiting_review')
   if (error) return { advanced: false }
-  await notifyAssignedAdmin({ case_id: cr.id }, `${cr.case_number} client review submitted — case completed`, `/admin/cases/${cr.id}`)
+  await notifyAssignedAdmin({ case_id: cr.id }, `${cr.case_number} client review submitted — awaiting agent settlement`, `/admin/cases/${cr.id}`)
   return { advanced: true }
 }

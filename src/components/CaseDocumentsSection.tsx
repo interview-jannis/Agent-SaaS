@@ -332,8 +332,23 @@ export default function CaseDocumentsSection({
           // Admin received balance from client (payment confirmation) → notify agent
           if (agentId) await notifyAgent(agentId, `${caseNumber} Balance payment confirmed (${docNumber})`, `/agent/cases/${caseId}`)
         } else if (doc.type === 'commission_invoice') {
-          // Admin paid agent commission → notify agent
-          if (agentId) await notifyAgent(agentId, `${caseNumber} Commission paid (${docNumber})`, `/agent/cases/${caseId}`)
+          // Admin marked commission invoice paid → create settlement + close case
+          const amount = doc.total_price ?? 0
+          const { count } = await supabase.from('settlements').select('*', { count: 'exact', head: true })
+          const next = (count ?? 0) + 1
+          const settlementNumber = `#S-${String(next).padStart(3, '0')}`
+          await supabase.from('settlements').insert({
+            settlement_number: settlementNumber,
+            agent_id: agentId,
+            case_id: caseId,
+            amount,
+            paid_at: paidAtValue,
+          })
+          await supabase.from('cases')
+            .update({ status: 'completed' })
+            .eq('id', caseId)
+            .eq('status', 'awaiting_settlement')
+          if (agentId) await notifyAgent(agentId, `${caseNumber} Commission paid (${docNumber}) — ${fmtUSD(amount / exchangeRate)}`, `/agent/cases/${caseId}`)
         }
       }
 
@@ -447,8 +462,9 @@ export default function CaseDocumentsSection({
                   {(() => {
                     const tp = quotation.total_price ?? 0
                     const am = quotation.agent_margin_rate ?? 0
-                    if (!am || am <= 0) return '₩0'
-                    return fmtKRW(Math.round(tp * am / (1 + am)))
+                    if (!am || am <= 0) return '$0.00'
+                    const krw = Math.round(tp * am / (1 + am))
+                    return fmtUSD(krw / exchangeRate)
                   })()}
                 </span>
               </p>
@@ -540,9 +556,9 @@ export default function CaseDocumentsSection({
         const paid = !!doc.payment_received_at
         const overdue = !paid && doc.payment_due_date && new Date(doc.payment_due_date) < new Date()
         const baseUrl = typeof window !== 'undefined' ? window.location.origin : ''
-        // The actor can edit / mark paid only on documents they themselves issue
-        // (issuer == receiver of the money, so they confirm payment).
-        const canEdit = actor === doc.from_party
+        // Commission invoice (agent → admin): admin marks paid when they disburse.
+        // All other invoices: issuer (from_party) confirms receipt.
+        const canEdit = doc.type === 'commission_invoice' ? actor === 'admin' : actor === doc.from_party
         // Direction-specific label, since both deposit_invoice and final_invoice
         // can be admin → client; commission/deposit_invoice differ by from_party.
         const label = doc.type === 'deposit_invoice' && doc.to_party === 'agent'
@@ -614,8 +630,8 @@ export default function CaseDocumentsSection({
               </div>
             )}
 
-            {/* Add item inline form — deposit invoice/settlement are flat amounts, no line items */}
-            {!paid && canEdit && doc.type !== 'deposit_invoice' && (
+            {/* Add item inline form — deposit/commission invoices are flat amounts, no line items */}
+            {!paid && canEdit && doc.type !== 'deposit_invoice' && doc.type !== 'commission_invoice' && (
               addingItemTo === doc.id ? (
                 <div className="bg-white rounded-lg border border-gray-200 p-2.5 space-y-2">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2">

@@ -45,6 +45,7 @@ type QuoteItem = {
   id: string
   final_price: number
   removed_at?: string | null
+  origin?: string | null
   products: { id: string; name: string; base_price: number; price_currency: string; duration_value: number | null; duration_unit: string | null }
 }
 
@@ -70,6 +71,7 @@ type Quote = {
   agent_margin_rate: number
   company_margin_rate: number
   finalized_at: string | null
+  created_at: string | null
   document_groups: QuoteGroup[]
 }
 
@@ -234,7 +236,7 @@ export default function CaseDetailPage() {
           id, type, document_number, slug, total_price, payment_due_date, payment_received_at, agent_margin_rate, company_margin_rate, finalized_at, from_party, to_party, created_at,
           document_groups(
             id, name, order, member_count,
-            document_items(id, final_price, variant_label_snapshot, removed_at, products(id, name, description, partner_name, base_price, price_currency, duration_value, duration_unit, has_female_doctor, has_prayer_room, dietary_type, location_address)),
+            document_items(id, final_price, variant_label_snapshot, removed_at, origin, products(id, name, description, partner_name, base_price, price_currency, duration_value, duration_unit, has_female_doctor, has_prayer_room, dietary_type, location_address)),
             document_group_members(id, case_member_id)
           )
         ),
@@ -323,7 +325,7 @@ export default function CaseDetailPage() {
 
   async function saveDates() {
     if (!caseData) return
-    if (['canceled', 'awaiting_contract', 'awaiting_pricing', 'awaiting_payment', 'awaiting_travel', 'awaiting_review', 'completed'].includes(caseData.status)) return
+    if (['canceled', 'awaiting_contract', 'awaiting_pricing', 'awaiting_payment', 'awaiting_travel', 'awaiting_review', 'awaiting_settlement', 'completed'].includes(caseData.status)) return
     setSavingDates(true)
     await supabase.from('cases').update({ travel_start_date: dateStart || null, travel_end_date: dateEnd || null }).eq('id', caseData.id)
     await fetchCase()
@@ -482,7 +484,7 @@ export default function CaseDetailPage() {
 
   async function saveTripInfo() {
     if (!caseData) return
-    if (['canceled', 'awaiting_contract', 'awaiting_pricing', 'awaiting_payment', 'awaiting_travel', 'awaiting_review', 'completed'].includes(caseData.status)) return
+    if (['canceled', 'awaiting_contract', 'awaiting_pricing', 'awaiting_payment', 'awaiting_travel', 'awaiting_review', 'awaiting_settlement', 'completed'].includes(caseData.status)) return
     setSavingTrip(true); setTripError('')
     try {
       const newConcept = tripForm.concept.trim() || null
@@ -648,7 +650,7 @@ export default function CaseDetailPage() {
 
   async function saveMembers() {
     if (!caseData) return
-    if (['canceled', 'awaiting_contract', 'awaiting_pricing', 'awaiting_payment', 'awaiting_travel', 'awaiting_review', 'completed'].includes(caseData.status)) return
+    if (['canceled', 'awaiting_contract', 'awaiting_pricing', 'awaiting_payment', 'awaiting_travel', 'awaiting_review', 'awaiting_settlement', 'completed'].includes(caseData.status)) return
 
     // Validation
     const activeMembers = pendingMembers.filter(p => !p.isRemoved)
@@ -879,7 +881,7 @@ export default function CaseDetailPage() {
 
   const isCanceled = caseData.status === 'canceled'
   // Trip Info / Members / Travel Dates lock — once schedule is confirmed, this info is set in stone.
-  const tripMembersLocked = isCanceled || ['awaiting_contract', 'awaiting_pricing', 'awaiting_payment', 'awaiting_travel', 'awaiting_review', 'completed'].includes(caseData.status)
+  const tripMembersLocked = isCanceled || ['awaiting_contract', 'awaiting_pricing', 'awaiting_payment', 'awaiting_travel', 'awaiting_review', 'awaiting_settlement', 'completed'].includes(caseData.status)
   const lead = caseData.case_members.find(m => m.is_lead)
   const companions = caseData.case_members.filter(m => !m.is_lead)
   const quote = caseData.documents?.find(d => d.type === "quotation") ?? null
@@ -908,7 +910,17 @@ export default function CaseDetailPage() {
   })
   const sortedGroups = quote?.document_groups ? [...quote.document_groups].sort((a, b) => a.order - b.order) : []
 
-  const totalKrw = quote?.total_price ?? 0
+  const scheduleConfirmed = (caseData.schedules ?? []).some(s => s.status === 'confirmed')
+
+  // Before schedule is confirmed, display only original-quotation items so the
+  // agent sees the same amount the client sees on the quotation document.
+  // After confirmation (or once finalized), show the full updated total.
+  const totalKrw = (!scheduleConfirmed && !quote?.finalized_at)
+    ? (quote?.document_groups ?? [])
+        .flatMap(g => (g.document_items ?? []))
+        .filter(it => it.origin === 'original' || it.origin == null)
+        .reduce((s, it) => s + (it.final_price ?? 0), 0)
+    : (quote?.total_price ?? 0)
   const agentMarginRate = quote?.agent_margin_rate ?? 0
   const earningsKrw = agentMarginRate > 0 ? Math.round(totalKrw * agentMarginRate / (1 + agentMarginRate)) : 0
   const toUsd = (krw: number) => krw / exchangeRate
@@ -1008,7 +1020,7 @@ export default function CaseDetailPage() {
           )}
 
           {/* Client Review Survey — visible in awaiting_review and after */}
-          {!isCanceled && (caseData.status === 'awaiting_review' || caseData.status === 'completed') && (
+          {!isCanceled && (caseData.status === 'awaiting_review' || caseData.status === 'awaiting_settlement' || caseData.status === 'completed') && (
             <AgentSurveySection
               caseId={caseData.id}
               caseNumber={caseData.case_number}
@@ -1601,24 +1613,31 @@ export default function CaseDetailPage() {
             </section>
           )}
 
-          {/* Selected Products — shared component (matches admin) */}
-          {(caseData.documents?.length ?? 0) > 0 && (
-            <SelectedProductsSection
-              documents={(caseData.documents ?? [])
-                .filter(d => d.type === 'quotation' || d.type === 'additional_invoice')
-                .map(d => ({
-                  id: d.id,
-                  type: d.type as 'quotation' | 'additional_invoice',
-                  document_number: d.document_number ?? null,
-                  total_price: d.total_price ?? null,
-                  finalized_at: d.finalized_at ?? null,
-                  document_groups: d.document_groups,
-                }))}
-              exchangeRate={exchangeRate}
-              defaultExpanded={false}
-              showKRW={false}
-            />
-          )}
+          {/* Selected Products — shared component (matches admin).
+              Until schedule is confirmed, only show original quotation items
+              (origin='original'). Admin-added items become visible once the
+              schedule is confirmed so the agent sees the full updated list. */}
+          {(caseData.documents?.length ?? 0) > 0 && (() => {
+            const scheduleConfirmed = (caseData.schedules ?? []).some(s => s.status === 'confirmed')
+            return (
+              <SelectedProductsSection
+                documents={(caseData.documents ?? [])
+                  .filter(d => d.type === 'quotation' || d.type === 'additional_invoice')
+                  .map(d => ({
+                    id: d.id,
+                    type: d.type as 'quotation' | 'additional_invoice',
+                    document_number: d.document_number ?? null,
+                    total_price: d.total_price ?? null,
+                    finalized_at: d.finalized_at ?? null,
+                    document_groups: d.document_groups,
+                  }))}
+                exchangeRate={exchangeRate}
+                defaultExpanded={false}
+                showKRW={false}
+                showOriginalOnly={!scheduleConfirmed}
+              />
+            )
+          })()}
 
           {/* Schedule — tone matches Hero when this section is the action target.
               Action targets: reviewing_schedule (confirm/revise) and
@@ -1747,8 +1766,11 @@ export default function CaseDetailPage() {
                 {caseData.status === 'awaiting_review' && (
                   <p className="text-xs text-gray-500">Travel completed. Submit client review next.</p>
                 )}
+                {caseData.status === 'awaiting_settlement' && (
+                  <p className="text-xs text-gray-500">Review submitted. Commission invoice pending.</p>
+                )}
                 {caseData.status === 'completed' && (
-                  <p className="text-xs text-gray-500">Travel completed. Commission pending settlement.</p>
+                  <p className="text-xs text-gray-500">Case completed. Settlement paid.</p>
                 )}
 
                 {schedule.status === 'pending' && (

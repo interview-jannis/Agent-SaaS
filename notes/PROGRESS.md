@@ -2,11 +2,13 @@
 
 ## 현재 상태
 - **Phase**: 시뮬 직전 정합성 + 운영성. 3자 계약 evidentiary 강화 + 순서 무관 + 실시간 자동 새로고침, Overview 캐시베이시스 회계, Edit Selected Products audit trail (origin + soft delete), ScheduleEditor 대수술 (Free time / partner / block-time 범위 / group / internal note / pending row / coverage gate), agent → admin 메모. ScheduleEditor 2차 (draft save / edit button / group re-pick / cancel restore / delete confirm / multi-day product / ✓ indicator / duration / Shared color), ScheduleDocument 전면 재설계 (cover: flight+groups, day sections: group separation, variantTag chip).
-- **마지막 작업**: 2026-05-06 (2차) — ScheduleEditor: draft auto-save, 커밋된 row Edit 버튼 + 스냅샷 restore, 그룹 재선택 sentinel `__choose__`, 필드 잠금 (!isPending), 삭제 confirm 분기, multi-day 상품 중복 허용 + ✓ indicator, 소요시간 picker 표시, Shared 흰 배경+검정 테두리, variantTag 필드 분리. ScheduleDocument: FlightData/GroupData props, GROUP_PALETTE inline, cover(그룹+항공+여행정보), day 그룹 분리, variantTag chip. schedule/[slug]: outbound_flight/inbound_flight/document_group_members 쿼리 추가, groups 빌드 후 전달.
-- **마지막 업데이트**: 2026-05-06 (개발 마감 5/8, 시뮬레이션 5/11~15, 런칭 5/18)
+- **마지막 작업**: 2026-05-08 — `awaiting_settlement` 신규 상태 (awaiting_review → awaiting_settlement → completed), commission invoice Mark Paid 통합 (settlement 자동 생성 + completed 전이 + agent 알림), Admin Settlement 섹션 제거, admin case Client Review 섹션 추가, pre-confirmation 상품 노출 정합성 수정 (showOriginalOnly 시 removed_at 무시), QuoteDocument pre-confirmation origin 필터, Admin Financials "May change" 배너 schedule 확정 후 제거, Notes from Agent 완료 단계 스타일 분기.
+- **마지막 업데이트**: 2026-05-08 (개발 마감 5/8, 시뮬레이션 5/11~15, 런칭 5/18)
 - **SaaS 브랜드명**: **Tiktak** (UI 전역, 법인명 Interview Co., Ltd)
 
-> 2026-05-06 상세 (2차): `notes/26.05.06.md` §11–13 (ScheduleEditor 2차 개선 + ScheduleDocument 전면 재설계). **미완료**: 스케줄 시간 정렬 버그, internal notes 스타일 subtle로.
+> 2026-05-08 상세: `notes/26.05.08.md` (awaiting_settlement + commission invoice Mark Paid 통합 + Client Review 섹션 + pre-confirmation origin 필터 정합성).
+> 2026-05-07 상세: `notes/26.05.07.md` (모바일 대응 ScheduleDocument + invoice 표 + schedule 시각 계층 + Quotation admin 이름 + 빌드 오류 수정).
+> 2026-05-06 상세 (2차): `notes/26.05.06.md` §11–13 (ScheduleEditor 2차 개선 + ScheduleDocument 전면 재설계).
 > 2026-05-06 상세 (1차): `notes/26.05.06.md` §1–10 (3자 계약 evidentiary + 순서 무관 + Realtime / Cases 표 통일 / 캐시베이시스 회계 / Documents audit trail / ScheduleEditor 대수술 / agent_notes / Time24Input / 카테고리 sort_order)
 > 2026-05-05 상세: `notes/26.05.05.md` (호텔 × nights 가격 + variant 모달 가격 desc + 스케줄 템플릿 Option A 결정 + 호텔 객실 정원/저가 객실 cutoff todo)
 > 2026-05-05 짧은 메모: 스케줄 엑셀 업로드 → 자동 링크 설계 논의(JSONB items + 고정 템플릿안) — 작업 자체는 deferred. 카드/리스트 UX 잔손질 + 감사로그 sweep + Surveys 페이지 분리 PR 클로즈 (커밋 ba28e7b).
@@ -32,8 +34,8 @@
 ### 5/8 마감 전 (🔥 시급)
 
 #### ScheduleDocument 버그 (개발)
-- [ ] **스케줄 시간 정렬 버그** — 렌더된 스케줄에서 시간 순서가 뒤죽박죽 (사용자 스크린샷 + PDF 확인). `DayItems` 컴포넌트 안에서 items가 이미 정렬된 상태로 오는지, block 내 time 기준 정렬이 실제로 적용되는지 확인. `compareScheduleItems` 함수는 맞음 — 렌더 경로에서 정렬 누락 의심.
-- [ ] **Internal notes 스타일** — `showInternalNotes=true` 모드 amber 박스가 VIP 문서에서 너무 시각적으로 강함. 방향: amber 배경 제거, 회색 italic 소형 텍스트 또는 collapsed 토글로 교체.
+- [x] **스케줄 시간 정렬 버그** — 수정 완료 (5/7)
+- [x] **Internal notes 스타일** — amber 박스 → subtle 스타일로 교체 완료 (5/7)
 
 #### 컨텐츠 (사용자 본인)
 - [ ] **호텔 데이터 정리** — VIP 클라이언트 대상이라 ₩1,000,000/박 미만 객실은 카탈로그에서 제외 (예: SOFITEL `Luxury Lake Room $243.57`, `Prestige Suite $473.61`, `1-Bedroom Premier $338.29` 같은 라인). v19 마스터 빌드 시 cutoff 적용 + deleteMissing으로 정리
@@ -77,7 +79,7 @@
 - [x] **감사 로그 7 surface 일괄** (5/4 저녁) — products(create/update/delete/bulk_upload), categories/subcategories, system_settings 7키, contract_templates, clients, admins(invite/delete), documents(issue/item_add/remove/paid). 아이콘 톤 monochrome 통일
 - [x] **`/admin/surveys` 신규 페이지** (5/4 저녁) — Questions 탭(편집) + Responses 탭(제출 응답). 기존 contracts 페이지에서 분리
 - [x] **Layout 폴리시** (5/4 저녁) — Status 컬럼 제거(inactive 인라인 배지), Partner Name 컬럼 → 상품명 아래 회색 텍스트, 절반화면 헤더 줄바꿈(admin products/agent home/admin cases/agent cases). USD 상품에도 KRW 환산 표시 (단일+range 모두)
-- [ ] Admin case detail에 survey 응답 read-only 노출 (현재 `/admin/surveys`엔 있으나 case 페이지 안에도 필요)
+- [x] **Admin case detail에 survey 응답 read-only 노출** — Client Review 섹션 추가 (5/8)
 - [ ] 3자 계약 client 페이지 모바일 점검
 - [ ] Stamp invoice 렌더 위치/크기 시뮬에서 실제 확인
 

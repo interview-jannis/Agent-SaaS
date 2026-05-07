@@ -232,8 +232,10 @@ export default function AgentDashboardPage() {
         }
       }
       case 'awaiting_review': {
-        // Travel done, agent needs to submit client review/survey
         return { line: 'Submit client review', urgency: 'warn' }
+      }
+      case 'awaiting_settlement': {
+        return { line: 'Issue commission invoice', urgency: 'warn' }
       }
       case 'completed': {
         const end = c.travel_end_date
