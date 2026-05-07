@@ -1,15 +1,20 @@
-// Editorial schedule renderer — customer-facing /schedule/[slug] and admin preview.
-// Redesigned 2026-05-06: cover includes flight info + group members; day sections
-// separate shared vs per-group items visually; variantTag shown as a chip.
+'use client'
 
+// Customer-facing schedule renderer — /schedule/[slug]
+// Layout: block-as-section headers, 2-column time/content, group tab filter.
+// Modes:
+//   public  (default)        — full groups, group chips inline, no internal info
+//   internal (?internal=1)   — public + address / partnerContact / driverInfo per item
+
+import React, { useState, useEffect } from 'react'
 import {
   type ScheduleItem,
+  type ScheduleItemBlock,
   SCHEDULE_BLOCKS,
   SCHEDULE_BLOCK_LABEL,
   compareScheduleItems,
   dateForDay,
   formatDayHeader,
-  groupDayByBlock,
 } from '@/types/schedule'
 
 type FlightData = {
@@ -33,25 +38,23 @@ type Props = {
   travelStartDate: string | null
   travelEndDate: string | null
   hotelName: string | null
-  agentName: string | null
-  agentPhone: string | null
+  concierge_name: string | null
+  concierge_phone: string | null
   version: number
   createdAt: string | null
   showInternalNotes?: boolean
-  filterGroupId?: string | null
-  groupNameById?: Record<string, string>
-  // New
+  initialGroupId?: string | null   // from ?group= URL param — pre-selects a tab
   outboundFlight?: FlightData
   inboundFlight?: FlightData
   groups?: GroupData[]
 }
 
-// Accent colors for group sections (matches admin editor GROUP_TONES palette)
-const GROUP_PALETTE = [
-  { accent: '#60a5fa', bg: '#eff6ff', text: '#1d4ed8' },
-  { accent: '#34d399', bg: '#ecfdf5', text: '#065f46' },
-  { accent: '#fb923c', bg: '#fff7ed', text: '#9a3412' },
-  { accent: '#a78bfa', bg: '#f5f3ff', text: '#5b21b6' },
+// Group tab accent colours (same palette as editor GROUP_TONES)
+const GROUP_COLORS = [
+  { accent: '#3b82f6', bg: '#eff6ff', text: '#1d4ed8', border: '#bfdbfe' },
+  { accent: '#10b981', bg: '#ecfdf5', text: '#065f46', border: '#a7f3d0' },
+  { accent: '#f97316', bg: '#fff7ed', text: '#c2410c', border: '#fed7aa' },
+  { accent: '#8b5cf6', bg: '#f5f3ff', text: '#5b21b6', border: '#ddd6fe' },
 ]
 
 function formatRange(start: string | null, end: string | null): string {
@@ -78,19 +81,43 @@ function formatFlightDateTime(dt: string | null | undefined): { date: string; ti
   }
 }
 
-export default function ScheduleDocument(props: Props) {
-  const {
-    items, caseNumber, leadName, travelStartDate, travelEndDate,
-    hotelName, agentName, agentPhone, version, createdAt,
-    showInternalNotes = false,
-    filterGroupId, groupNameById,
-    outboundFlight, inboundFlight, groups = [],
-  } = props
+function formatTimeRange(time: string | null, endTime: string | null | undefined): string | null {
+  if (!time) return null
+  if (endTime) return `${time} – ${endTime}`
+  return time
+}
 
-  const filtered = filterGroupId
-    ? items.filter(it => !it.groupId || it.groupId === filterGroupId)
+export default function ScheduleDocument({
+  items, caseNumber, leadName, travelStartDate, travelEndDate,
+  hotelName, concierge_name, concierge_phone,
+  version, createdAt,
+  showInternalNotes = false,
+  initialGroupId,
+  outboundFlight, inboundFlight, groups = [],
+}: Props) {
+  // null = "All groups" tab
+  const [activeGroupId, setActiveGroupId] = useState<string | null>(initialGroupId ?? null)
+
+  // Sync URL ?group= param when tab changes (without full navigation)
+  useEffect(() => {
+    const url = new URL(window.location.href)
+    if (activeGroupId) {
+      url.searchParams.set('group', activeGroupId)
+    } else {
+      url.searchParams.delete('group')
+    }
+    window.history.replaceState(null, '', url.toString())
+  }, [activeGroupId])
+
+  const isMultiGroup = groups.length > 1
+  const showTabs = isMultiGroup
+
+  // Filter items by active tab: null = all, group id = that group + shared (groupId===null)
+  const filtered = activeGroupId
+    ? items.filter(it => !it.groupId || it.groupId === activeGroupId)
     : items
   const sorted = [...filtered].sort(compareScheduleItems)
+
   const nights = nightsBetween(travelStartDate, travelEndDate)
   const tripDays = nights + 1
   const daysWithItems = Array.from(new Set(sorted.map(i => i.day)))
@@ -104,297 +131,456 @@ export default function ScheduleDocument(props: Props) {
     ? new Date(createdAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
     : ''
 
-  // Multi-group admin view: groups visible, items separated
-  const isMultiGroup = !filterGroupId && groups.length > 1
-
   const outDep = formatFlightDateTime(outboundFlight?.departure_datetime)
   const outArr = formatFlightDateTime(outboundFlight?.arrival_datetime)
-  const inDep = formatFlightDateTime(inboundFlight?.departure_datetime)
-  const inArr = formatFlightDateTime(inboundFlight?.arrival_datetime)
+  const inDep  = formatFlightDateTime(inboundFlight?.departure_datetime)
+  const inArr  = formatFlightDateTime(inboundFlight?.arrival_datetime)
   const hasFlights = !!(outboundFlight?.departure_airport || inboundFlight?.departure_airport)
 
+  // Group colour + name lookup by id
+  const groupColorById: Record<string, typeof GROUP_COLORS[0]> = {}
+  const groupNameById:  Record<string, string> = {}
+  groups.forEach((g, i) => {
+    groupColorById[g.id] = GROUP_COLORS[i % GROUP_COLORS.length]
+    groupNameById[g.id]  = g.name
+  })
+
   return (
-    <div className="bg-white text-gray-900 min-h-screen print:min-h-0">
+    <div style={{ background: '#e8e4de', minHeight: '100vh', padding: '0' }}>
       <style>{`
-        @page { size: A4; margin: 18mm; }
-        .sch-serif { font-family: 'Cormorant Garamond', 'Noto Serif KR', Georgia, serif; }
+        @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400&family=Inter:wght@300;400;500;600&display=swap');
+        @page { size: A4; margin: 16mm; }
+        * { box-sizing: border-box; }
+        .sch-serif { font-family: 'Cormorant Garamond', Georgia, serif; }
+        .sch-sans  { font-family: 'Inter', system-ui, sans-serif; }
+        @media print {
+          body { background: white !important; }
+          .sch-page { box-shadow: none !important; margin-bottom: 0 !important; }
+          .sch-tabs { display: none !important; }
+          .sch-no-print { display: none !important; }
+        }
+        @media (max-width: 600px) {
+          .sch-outer        { padding: 0 !important; }
+          .sch-page         { margin-bottom: 10px !important; }
+          .sch-tabs         { padding: 14px 16px 0 !important; gap: 6px !important; }
+          .sch-cover-inner  { padding: 40px 24px 32px !important; }
+          .sch-day-inner    { padding: 32px 24px 24px !important; }
+          .sch-footer       { padding: 14px 24px !important; }
+          .sch-cover-title  { font-size: 34px !important; line-height: 1.1 !important; }
+          .sch-cover-date   { font-size: 16px !important; }
+          .sch-day-num      { font-size: 42px !important; min-width: 50px !important; }
+          .sch-day-date     { font-size: 18px !important; }
+          .sch-item-title   { font-size: 15px !important; }
+          .sch-row          { grid-template-columns: 64px 1fr !important; gap: 0 10px !important; }
+          .sch-flights-grid { gap: 14px !important; }
+          .sch-flight-detail { line-height: 1.5 !important; }
+        }
       `}</style>
 
-      <article className="max-w-4xl mx-auto bg-white">
+      {/* ── Group tab filter (screen only) ── */}
+      {showTabs && (
+        <div className="sch-tabs sch-no-print" style={{
+          maxWidth: '720px', margin: '0 auto', padding: '24px 24px 0',
+          display: 'flex', gap: '8px', flexWrap: 'wrap',
+        }}>
+          <button
+            onClick={() => setActiveGroupId(null)}
+            style={{
+              fontFamily: 'Inter, sans-serif',
+              fontSize: '11px', fontWeight: 600,
+              letterSpacing: '0.14em', textTransform: 'uppercase',
+              padding: '6px 16px', borderRadius: '4px', border: '1px solid',
+              cursor: 'pointer', transition: 'all 0.15s',
+              background: activeGroupId === null ? '#1a1a1a' : '#fff',
+              color:      activeGroupId === null ? '#fff'    : '#888',
+              borderColor: activeGroupId === null ? '#1a1a1a' : '#ddd',
+            }}
+          >
+            All
+          </button>
+          {groups.map((g, gi) => {
+            const col = GROUP_COLORS[gi % GROUP_COLORS.length]
+            const isActive = activeGroupId === g.id
+            return (
+              <button key={g.id} onClick={() => setActiveGroupId(g.id)} style={{
+                fontFamily: 'Inter, sans-serif',
+                fontSize: '11px', fontWeight: 600,
+                letterSpacing: '0.14em', textTransform: 'uppercase',
+                padding: '6px 16px', borderRadius: '4px', border: '1px solid',
+                cursor: 'pointer', transition: 'all 0.15s',
+                background: isActive ? col.accent : '#fff',
+                color:      isActive ? '#fff'     : col.text,
+                borderColor: isActive ? col.accent : col.border,
+              }}>
+                {g.name}
+              </button>
+            )
+          })}
+        </div>
+      )}
 
-        {/* ── Cover ── */}
-        <header className="px-6 sm:px-12 lg:px-16 pt-12 sm:pt-16 pb-10 sm:pb-14">
+      <div className="sch-outer" style={{ maxWidth: '720px', margin: '0 auto', padding: showTabs ? '16px 24px 48px' : '32px 24px 48px' }}>
 
-          <p className="text-[10px] tracking-[0.3em] text-gray-400 uppercase">Tiktak · Personal Itinerary</p>
-          <h1 className="sch-serif text-4xl sm:text-5xl lg:text-6xl text-gray-900 mt-3 leading-tight">
-            {leadName || 'Guest'}
-          </h1>
-          {caseNumber && <p className="text-xs text-gray-400 mt-1">{caseNumber}</p>}
-          {(travelStartDate || travelEndDate) && (
-            <p className="sch-serif text-xl sm:text-2xl text-gray-400 mt-2 italic">
-              {formatRange(travelStartDate, travelEndDate)}
-              {nights > 0 && <span className="not-italic text-base ml-2 text-gray-400">· {nights} {nights === 1 ? 'night' : 'nights'}</span>}
+        {/* ── Cover page ── */}
+        <div className="sch-page" style={{ background: '#fff', marginBottom: '28px' }}>
+          <div className="sch-cover-inner" style={{ padding: '60px 64px 52px' }}>
+            <p className="sch-sans" style={{ fontSize: '10px', letterSpacing: '0.32em', color: '#b0a898', textTransform: 'uppercase', marginBottom: '20px' }}>
+              Tiktak · Personal Itinerary
             </p>
-          )}
-
-          {/* Groups */}
-          {isMultiGroup && (
-            <div className="mt-8 pt-8 border-t border-gray-100 grid gap-4"
-              style={{ gridTemplateColumns: `repeat(${Math.min(groups.length, 4)}, minmax(0, 1fr))` }}>
-              {groups.map((g, gi) => {
-                const pal = GROUP_PALETTE[gi % GROUP_PALETTE.length]
-                return (
-                  <div key={g.id} style={{ borderLeft: `3px solid ${pal.accent}`, paddingLeft: '12px' }}>
-                    <p className="text-[10px] tracking-[0.2em] uppercase font-semibold mb-1.5"
-                      style={{ color: pal.text }}>{g.name}</p>
-                    {g.members.length === 0
-                      ? <p className="text-xs text-gray-400 italic">—</p>
-                      : g.members.map(m => (
-                        <p key={m} className="text-sm text-gray-700">· {m}</p>
-                      ))
-                    }
-                  </div>
-                )
-              })}
-            </div>
-          )}
-
-          {/* Flights */}
-          {hasFlights && (
-            <div className="mt-8 pt-8 border-t border-gray-100 grid grid-cols-2 gap-8">
-              {outboundFlight?.departure_airport && (
-                <div>
-                  <p className="text-[10px] tracking-[0.25em] text-gray-400 uppercase mb-2">Outbound Flight</p>
-                  <p className="text-base font-medium text-gray-900">
-                    {outboundFlight.departure_airport} → {outboundFlight.arrival_airport ?? '—'}
-                    {outboundFlight.flight_number && <span className="text-sm text-gray-400 ml-2">{outboundFlight.flight_number}</span>}
-                  </p>
-                  {outDep && <p className="text-sm text-gray-600 mt-0.5">Dep&nbsp;&nbsp;{outDep.date} · {outDep.time}</p>}
-                  {outArr && <p className="text-sm text-gray-400">Arr&nbsp;&nbsp;&nbsp;{outArr.date} · {outArr.time}</p>}
-                </div>
-              )}
-              {inboundFlight?.departure_airport && (
-                <div>
-                  <p className="text-[10px] tracking-[0.25em] text-gray-400 uppercase mb-2">Return Flight</p>
-                  <p className="text-base font-medium text-gray-900">
-                    {inboundFlight.departure_airport} → {inboundFlight.arrival_airport ?? '—'}
-                    {inboundFlight.flight_number && <span className="text-sm text-gray-400 ml-2">{inboundFlight.flight_number}</span>}
-                  </p>
-                  {inDep && <p className="text-sm text-gray-600 mt-0.5">Dep&nbsp;&nbsp;{inDep.date} · {inDep.time}</p>}
-                  {inArr && <p className="text-sm text-gray-400">Arr&nbsp;&nbsp;&nbsp;{inArr.date} · {inArr.time}</p>}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Arrival / Departure / Stay */}
-          <div className="mt-8 pt-8 border-t border-gray-100 flex flex-wrap gap-x-10 gap-y-4">
-            {travelStartDate && (
-              <div>
-                <p className="text-[10px] tracking-[0.25em] text-gray-400 uppercase">Arrival</p>
-                <p className="text-sm text-gray-900 mt-1">
-                  {new Date(travelStartDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
-                </p>
-              </div>
+            <h1 className="sch-serif sch-cover-title" style={{ fontSize: '56px', fontWeight: 400, lineHeight: 1.05, color: '#1a1a1a' }}>
+              {leadName || 'Guest'}
+            </h1>
+            {caseNumber && (
+              <p className="sch-sans" style={{ fontSize: '11px', color: '#c0b8ae', marginTop: '6px', letterSpacing: '0.06em' }}>{caseNumber}</p>
             )}
-            {travelEndDate && (
-              <div>
-                <p className="text-[10px] tracking-[0.25em] text-gray-400 uppercase">Departure</p>
-                <p className="text-sm text-gray-900 mt-1">
-                  {new Date(travelEndDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
-                </p>
-              </div>
+            {(travelStartDate || travelEndDate) && (
+              <p className="sch-serif sch-cover-date" style={{ fontSize: '22px', color: '#9a9088', marginTop: '10px', fontStyle: 'italic' }}>
+                {formatRange(travelStartDate, travelEndDate)}
+                {nights > 0 && (
+                  <span className="sch-sans" style={{ fontStyle: 'normal', fontSize: '13px', color: '#c0b8ae', marginLeft: '10px' }}>
+                    · {nights} {nights === 1 ? 'night' : 'nights'}
+                  </span>
+                )}
+              </p>
             )}
-            {hotelName && (
-              <div>
-                <p className="text-[10px] tracking-[0.25em] text-gray-400 uppercase">Stay</p>
-                <p className="text-sm text-gray-900 mt-1">{hotelName}</p>
-              </div>
-            )}
-          </div>
-        </header>
 
-        {/* ── Day sections ── */}
-        <div className="border-t border-gray-200">
-          {allDays.length === 0 ? (
-            <div className="px-6 sm:px-12 lg:px-16 py-16 text-center">
-              <p className="text-sm text-gray-400">Your itinerary will appear here.</p>
-            </div>
-          ) : (
-            allDays.map((day, idx) => {
-              const dayItems = sorted.filter(i => i.day === day)
-              const dateObj = dateForDay(travelStartDate, day)
-              const isLast = idx === allDays.length - 1
-
-              // Split into shared and per-group
-              const sharedItems = dayItems.filter(i => !i.groupId)
-              const groupSections = groups
-                .map((g, gi) => ({ g, gi, items: dayItems.filter(i => i.groupId === g.id) }))
-                .filter(s => s.items.length > 0)
-
-              return (
-                <section
-                  key={day}
-                  className={`px-6 sm:px-12 lg:px-16 py-10 sm:py-14 ${isLast ? '' : 'border-b border-gray-200'} print:break-inside-avoid`}
-                >
-                  {/* Day header */}
-                  <div className="flex items-baseline gap-4 sm:gap-6 mb-8 sm:mb-10">
-                    <p className="sch-serif text-5xl sm:text-6xl lg:text-7xl text-gray-900 leading-none tabular-nums">
-                      {String(day).padStart(2, '0')}
-                    </p>
-                    <p className="sch-serif text-xl sm:text-2xl text-gray-900">
-                      {dateObj ? formatDayHeader(dateObj) : `Day ${day}`}
-                    </p>
-                  </div>
-
-                  {dayItems.length === 0 ? (
-                    <p className="text-sm text-gray-400 italic">At leisure</p>
-                  ) : isMultiGroup ? (
-                    // Multi-group admin view
-                    <div className="space-y-8">
-                      {sharedItems.length > 0 && (
-                        <DayItems items={sharedItems} showInternalNotes={showInternalNotes} />
-                      )}
-                      {groupSections.map(({ g, gi, items: gItems }) => {
-                        const pal = GROUP_PALETTE[gi % GROUP_PALETTE.length]
-                        return (
-                          <div key={g.id}>
-                            <div className="flex items-center gap-3 mb-5">
-                              <div className="h-px flex-1 bg-gray-100" />
-                              <span className="text-[10px] tracking-[0.25em] uppercase font-semibold px-2"
-                                style={{ color: pal.text }}>{g.name}</span>
-                              <div className="h-px flex-1 bg-gray-100" />
-                            </div>
-                            <div style={{ borderLeft: `2px solid ${pal.accent}`, paddingLeft: '16px' }}>
-                              <DayItems items={gItems} showInternalNotes={showInternalNotes} />
-                            </div>
-                          </div>
-                        )
-                      })}
+            {/* Groups — shown when multi-group and "All" tab active (or print) */}
+            {isMultiGroup && (
+              <div style={{ marginTop: '30px', paddingTop: '26px', borderTop: '1px solid #f0ece6',
+                display: 'grid', gridTemplateColumns: `repeat(${Math.min(groups.length, 4)}, minmax(0,1fr))`, gap: '20px' }}>
+                {groups.map((g, gi) => {
+                  const col = GROUP_COLORS[gi % GROUP_COLORS.length]
+                  return (
+                    <div key={g.id} style={{ borderLeft: `3px solid ${col.accent}`, paddingLeft: '12px' }}>
+                      <p className="sch-sans" style={{ fontSize: '10px', letterSpacing: '0.24em', textTransform: 'uppercase', fontWeight: 600, color: col.text, marginBottom: '6px' }}>
+                        {g.name}
+                      </p>
+                      {g.members.length === 0
+                        ? <p className="sch-sans" style={{ fontSize: '13px', color: '#bbb', fontStyle: 'italic' }}>—</p>
+                        : g.members.map(m => (
+                          <p key={m} className="sch-sans" style={{ fontSize: '13px', color: '#666', lineHeight: 1.75 }}>· {m}</p>
+                        ))
+                      }
                     </div>
-                  ) : (
-                    // Single-group or filtered client view
-                    <DayItems
-                      items={dayItems}
-                      showInternalNotes={showInternalNotes}
-                      groupNameById={!filterGroupId ? groupNameById : undefined}
-                    />
-                  )}
-                </section>
-              )
-            })
-          )}
+                  )
+                })}
+              </div>
+            )}
+
+            {/* Flights */}
+            {hasFlights && (
+              <div className="sch-flights-grid" style={{ marginTop: '30px', paddingTop: '26px', borderTop: '1px solid #f0ece6',
+                display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '28px' }}>
+                {outboundFlight?.departure_airport && (
+                  <div>
+                    <p className="sch-sans" style={{ fontSize: '10px', letterSpacing: '0.24em', color: '#c0b8ae', textTransform: 'uppercase', marginBottom: '6px' }}>Outbound Flight</p>
+                    <p className="sch-sans" style={{ fontSize: '15px', fontWeight: 500, color: '#1a1a1a', marginBottom: '4px' }}>
+                      {outboundFlight.departure_airport} → {outboundFlight.arrival_airport ?? '—'}
+                      {outboundFlight.flight_number && <span style={{ fontSize: '12px', color: '#bbb', marginLeft: '8px' }}>{outboundFlight.flight_number}</span>}
+                    </p>
+                    {outDep && <p className="sch-sans" className="sch-flight-detail" style={{ fontSize: '12px', color: '#999', lineHeight: 1.9 }}><b style={{ color: '#666', fontWeight: 500 }}>Dep</b>&nbsp;&nbsp;{outDep.date} · {outDep.time}</p>}
+                    {outArr && <p className="sch-sans" className="sch-flight-detail" style={{ fontSize: '12px', color: '#999', lineHeight: 1.9 }}><b style={{ color: '#666', fontWeight: 500 }}>Arr</b>&nbsp;&nbsp;&nbsp;{outArr.date} · {outArr.time}</p>}
+                  </div>
+                )}
+                {inboundFlight?.departure_airport && (
+                  <div>
+                    <p className="sch-sans" style={{ fontSize: '10px', letterSpacing: '0.24em', color: '#c0b8ae', textTransform: 'uppercase', marginBottom: '6px' }}>Return Flight</p>
+                    <p className="sch-sans" style={{ fontSize: '15px', fontWeight: 500, color: '#1a1a1a', marginBottom: '4px' }}>
+                      {inboundFlight.departure_airport} → {inboundFlight.arrival_airport ?? '—'}
+                      {inboundFlight.flight_number && <span style={{ fontSize: '12px', color: '#bbb', marginLeft: '8px' }}>{inboundFlight.flight_number}</span>}
+                    </p>
+                    {inDep && <p className="sch-sans" className="sch-flight-detail" style={{ fontSize: '12px', color: '#999', lineHeight: 1.9 }}><b style={{ color: '#666', fontWeight: 500 }}>Dep</b>&nbsp;&nbsp;{inDep.date} · {inDep.time}</p>}
+                    {inArr && <p className="sch-sans" className="sch-flight-detail" style={{ fontSize: '12px', color: '#999', lineHeight: 1.9 }}><b style={{ color: '#666', fontWeight: 500 }}>Arr</b>&nbsp;&nbsp;&nbsp;{inArr.date} · {inArr.time}</p>}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Arrival / Departure / Stay */}
+            <div style={{ marginTop: '30px', paddingTop: '26px', borderTop: '1px solid #f0ece6', display: 'flex', gap: '40px', flexWrap: 'wrap' }}>
+              {travelStartDate && (
+                <div>
+                  <p className="sch-sans" style={{ fontSize: '10px', letterSpacing: '0.24em', color: '#c0b8ae', textTransform: 'uppercase', marginBottom: '4px' }}>Arrival</p>
+                  <p className="sch-sans" style={{ fontSize: '13px', color: '#1a1a1a' }}>
+                    {new Date(travelStartDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+                  </p>
+                </div>
+              )}
+              {travelEndDate && (
+                <div>
+                  <p className="sch-sans" style={{ fontSize: '10px', letterSpacing: '0.24em', color: '#c0b8ae', textTransform: 'uppercase', marginBottom: '4px' }}>Departure</p>
+                  <p className="sch-sans" style={{ fontSize: '13px', color: '#1a1a1a' }}>
+                    {new Date(travelEndDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+                  </p>
+                </div>
+              )}
+              {hotelName && (
+                <div>
+                  <p className="sch-sans" style={{ fontSize: '10px', letterSpacing: '0.24em', color: '#c0b8ae', textTransform: 'uppercase', marginBottom: '4px' }}>Accommodation</p>
+                  <p className="sch-sans" style={{ fontSize: '13px', color: '#1a1a1a' }}>{hotelName}</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <Footer concierge_name={concierge_name} concierge_phone={concierge_phone} versionLabel={versionLabel} createdLabel={createdLabel} />
         </div>
 
-        {/* ── Footer ── */}
-        <footer className="px-6 sm:px-12 lg:px-16 py-6 sm:py-8 border-t border-gray-200 bg-gray-50">
-          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-3">
-            <div>
-              <p className="text-[10px] tracking-[0.25em] text-gray-400 uppercase">Concierge</p>
-              {agentName && <p className="text-sm text-gray-900 mt-1">{agentName}</p>}
-              {agentPhone && <p className="text-xs text-gray-500">{agentPhone}</p>}
-            </div>
-            <p className="text-[10px] text-gray-400 tabular-nums">
-              {versionLabel}{createdLabel ? ` · prepared ${createdLabel}` : ''}
-            </p>
+        {/* ── Day pages ── */}
+        {allDays.length === 0 ? (
+          <div className="sch-page" style={{ background: '#fff', padding: '48px 64px', textAlign: 'center' }}>
+            <p className="sch-sans" style={{ fontSize: '13px', color: '#bbb' }}>Your itinerary will appear here.</p>
           </div>
-        </footer>
+        ) : (
+          allDays.map((day, dayIdx) => {
+            const dayItems = sorted.filter(i => i.day === day)
+            const dateObj  = dateForDay(travelStartDate, day)
 
-      </article>
+            return (
+              <div key={day} className="sch-page" style={{ background: '#fff', marginBottom: dayIdx === allDays.length - 1 ? 0 : '28px' }}>
+                <div className="sch-day-inner" style={{ padding: '50px 64px 44px' }}>
+
+                  {/* Day header */}
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '18px', marginBottom: '36px' }}>
+                    <span className="sch-serif sch-day-num" style={{ fontSize: '70px', fontWeight: 400, lineHeight: 1, color: '#1a1a1a', minWidth: '80px' }}>
+                      {String(day).padStart(2, '0')}
+                    </span>
+                    <span className="sch-serif sch-day-date" style={{ fontSize: '26px', color: '#6a6058' }}>
+                      {dateObj ? formatDayHeader(dateObj) : `Day ${day}`}
+                    </span>
+                  </div>
+
+                  {/* Empty day */}
+                  {dayItems.length === 0 ? (
+                    <p className="sch-sans" style={{ fontSize: '13px', color: '#bbb', fontStyle: 'italic' }}>At leisure</p>
+                  ) : (
+                    <DayBlocks
+                      dayItems={dayItems}
+                      showInternalNotes={showInternalNotes}
+                      isMultiGroup={isMultiGroup && !activeGroupId}
+                      groupColorById={groupColorById}
+                      groupNameById={groupNameById}
+                    />
+                  )}
+                </div>
+                <Footer concierge_name={concierge_name} concierge_phone={concierge_phone} versionLabel={versionLabel} createdLabel={createdLabel} />
+              </div>
+            )
+          })
+        )}
+      </div>
     </div>
   )
 }
 
-// ── Day items renderer ────────────────────────────────────────────────────────
+// ── Block sections for one day ────────────────────────────────────────────────
 
-function DayItems({
-  items,
+function DayBlocks({
+  dayItems,
   showInternalNotes,
+  isMultiGroup,
+  groupColorById,
   groupNameById,
 }: {
-  items: ScheduleItem[]
+  dayItems: ScheduleItem[]
   showInternalNotes: boolean
-  groupNameById?: Record<string, string>
+  isMultiGroup: boolean
+  groupColorById: Record<string, typeof GROUP_COLORS[0]>
+  groupNameById: Record<string, string>
 }) {
-  const byBlock = groupDayByBlock(items)
+  // Group items by (block, endBlock) pair — each unique combo gets its own section header.
+  // Key format: "morning" | "afternoon" | "afternoon→evening" etc.
+  const sectionMap = new Map<string, ScheduleItem[]>()
+  for (const item of dayItems) {
+    const key = (item.endBlock && item.endBlock !== item.block)
+      ? `${item.block}→${item.endBlock}`
+      : item.block
+    if (!sectionMap.has(key)) sectionMap.set(key, [])
+    sectionMap.get(key)!.push(item)
+  }
+
+  // Sort section keys: by start block index, then no-span before span, then end block index
+  const sortedKeys = Array.from(sectionMap.keys()).sort((a, b) => {
+    const [aStart, aEnd] = a.split('→') as [string, string | undefined]
+    const [bStart, bEnd] = b.split('→') as [string, string | undefined]
+    const ai = SCHEDULE_BLOCKS.indexOf(aStart as ScheduleItemBlock)
+    const bi = SCHEDULE_BLOCKS.indexOf(bStart as ScheduleItemBlock)
+    if (ai !== bi) return ai - bi
+    if (!aEnd && bEnd) return -1
+    if (aEnd && !bEnd) return 1
+    if (aEnd && bEnd) return SCHEDULE_BLOCKS.indexOf(aEnd as ScheduleItemBlock) - SCHEDULE_BLOCKS.indexOf(bEnd as ScheduleItemBlock)
+    return 0
+  })
+
+  function sectionLabel(key: string): string {
+    const [start, end] = key.split('→') as [string, string | undefined]
+    if (end) return `${SCHEDULE_BLOCK_LABEL[start as ScheduleItemBlock]} → ${SCHEDULE_BLOCK_LABEL[end as ScheduleItemBlock]}`
+    return SCHEDULE_BLOCK_LABEL[start as ScheduleItemBlock]
+  }
 
   return (
-    <div className="space-y-7 sm:space-y-9">
-      {SCHEDULE_BLOCKS.map(block => {
-        const blockItems = byBlock.get(block) ?? []
-        if (blockItems.length === 0) return null
-        return blockItems.map((item, itemIdx) => {
-          const timeStr = item.time && item.endTime
-            ? `${item.time} – ${item.endTime}`
-            : (item.time ?? null)
-          const blockStr = item.endBlock && item.endBlock !== block
-            ? `${SCHEDULE_BLOCK_LABEL[block]} → ${SCHEDULE_BLOCK_LABEL[item.endBlock]}`
-            : SCHEDULE_BLOCK_LABEL[block]
-
-          return (
-            <div
-              key={item.id}
-              className="grid grid-cols-1 sm:grid-cols-[130px_1fr] gap-1 sm:gap-8"
-            >
-              {/* Time / block label */}
-              <div className="pt-0.5 sm:pt-1">
-                {itemIdx === 0 ? (
-                  <p className="text-[11px] tracking-[0.2em] text-gray-400 uppercase">
-                    {timeStr
-                      ? <><span className="tabular-nums">{timeStr}</span><span className="mx-1 text-gray-300">·</span>{blockStr}</>
-                      : blockStr}
-                  </p>
-                ) : timeStr ? (
-                  <p className="text-[11px] text-gray-400 tabular-nums">{timeStr}</p>
-                ) : (
-                  <p className="text-[11px] text-gray-200">·</p>
-                )}
-              </div>
-
-              {/* Content */}
-              <div>
-                {/* Eyebrow: partner + group badge (single-group admin view) */}
-                {(item.partner || (groupNameById && item.groupId && groupNameById[item.groupId])) && (
-                  <p className="text-[10px] tracking-[0.2em] text-gray-400 uppercase mb-1 flex items-center gap-2 flex-wrap">
-                    {item.partner && <span>{item.partner}</span>}
-                    {groupNameById && item.groupId && groupNameById[item.groupId] && (
-                      <span className="text-[9px] font-semibold bg-gray-100 border border-gray-200 px-1.5 py-0.5 rounded-full text-gray-500 normal-case tracking-normal">
-                        {groupNameById[item.groupId]}
-                      </span>
-                    )}
-                  </p>
-                )}
-
-                {/* Title + variantTag chip */}
-                <div className="flex items-baseline gap-2 flex-wrap">
-                  <p className="sch-serif text-lg sm:text-xl text-gray-900 leading-snug">
-                    {item.title || '—'}
-                  </p>
-                  {item.variantTag && (
-                    <span className="text-[10px] font-medium text-gray-500 bg-gray-100 border border-gray-200 rounded-full px-2 py-0.5 shrink-0">
-                      {item.variantTag}
-                    </span>
-                  )}
-                </div>
-
-                {item.notes && (
-                  <p className="text-sm text-gray-500 mt-1.5 leading-relaxed whitespace-pre-line">
-                    {item.notes}
-                  </p>
-                )}
-
-                {showInternalNotes && (item.location || item.internalNotes) && (
-                  <div className="mt-2 px-2.5 py-1.5 bg-amber-50 border border-amber-200 rounded text-[11px] text-amber-900 leading-relaxed">
-                    <span className="font-semibold tracking-wide uppercase text-[9px] text-amber-600 block mb-0.5">Internal</span>
-                    {item.location && <span className="block">{item.location}</span>}
-                    {item.internalNotes && <span className="block mt-0.5">{item.internalNotes}</span>}
-                  </div>
-                )}
-              </div>
-            </div>
-          )
-        })
+    <>
+      {sortedKeys.map(key => {
+        const sectionItems = sectionMap.get(key)!
+        return (
+          <div key={key} style={{ marginBottom: '28px' }}>
+            <p className="sch-sans" style={{
+              fontSize: '10px', fontWeight: 600, letterSpacing: '0.22em',
+              textTransform: 'uppercase', color: '#b0a898',
+              paddingBottom: '8px', borderBottom: '1px solid #ede9e3',
+            }}>
+              {sectionLabel(key)}
+            </p>
+            {sectionItems.map((item, idx) => (
+              <ScheduleRow
+                key={item.id}
+                item={item}
+                isLast={idx === sectionItems.length - 1}
+                showInternalNotes={showInternalNotes}
+                isMultiGroup={isMultiGroup}
+                groupColorById={groupColorById}
+                groupNameById={groupNameById}
+              />
+            ))}
+          </div>
+        )
       })}
+    </>
+  )
+}
+
+// ── Single schedule row ───────────────────────────────────────────────────────
+
+function ScheduleRow({
+  item, isLast, showInternalNotes, isMultiGroup, groupColorById, groupNameById,
+}: {
+  item: ScheduleItem
+  isLast: boolean
+  showInternalNotes: boolean
+  isMultiGroup: boolean
+  groupColorById: Record<string, typeof GROUP_COLORS[0]>
+  groupNameById: Record<string, string>
+}) {
+  const timeStr   = formatTimeRange(item.time, item.endTime)
+  const groupCol  = item.groupId ? groupColorById[item.groupId] : null
+  const isPrayer  = item.isPrayer === true
+  const showStripe = isMultiGroup && !!item.groupId && !!groupCol
+  const hasEyebrow = !!item.partner
+  const hasInternalDetail = showInternalNotes && (item.address || item.partnerContact || item.driverInfo || item.location || item.internalNotes)
+
+  return (
+    <div className="sch-row" style={{
+      display: 'grid',
+      gridTemplateColumns: '118px 1fr',
+      gap: '0 20px',
+      padding: '11px 0',
+      paddingLeft: showStripe ? '12px' : '0',
+      borderBottom: isLast ? 'none' : '1px solid #f5f2ee',
+      borderLeft: showStripe ? `2px solid ${groupCol!.accent}` : 'none',
+      alignItems: 'start',
+    }}>
+      {/* Time column */}
+      <div className="sch-sans" style={{
+        fontVariantNumeric: 'tabular-nums',
+        letterSpacing: '0.02em',
+        paddingTop: '4px',
+        whiteSpace: 'nowrap',
+      }}>
+        <span style={{
+          fontSize: '11.5px',
+          color: isPrayer ? '#c07830' : (timeStr ? '#b0a898' : '#ddd'),
+        }}>
+          {timeStr ?? '—'}
+        </span>
+      </div>
+
+      {/* Content column */}
+      <div style={{ paddingTop: '1px' }}>
+        {hasEyebrow && (
+          <div style={{ marginBottom: '3px' }}>
+            <span className="sch-sans" style={{ fontSize: '9.5px', letterSpacing: '0.2em', textTransform: 'uppercase', color: '#c0b8ae' }}>
+              {item.partner}
+            </span>
+          </div>
+        )}
+
+        {/* Title */}
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap' }}>
+          <p className="sch-serif sch-item-title" style={{
+            fontSize: '19px', fontWeight: 400, lineHeight: 1.3,
+            color: isPrayer ? '#c07830' : '#1a1a1a',
+            fontStyle: isPrayer ? 'italic' : 'normal',
+          }}>
+            {item.title || '—'}
+          </p>
+          {item.variantTag && (
+            <span className="sch-sans" style={{
+              fontSize: '10px', color: '#999', background: '#f5f2ee',
+              border: '1px solid #ede9e3', borderRadius: '20px', padding: '1px 8px',
+            }}>
+              {item.variantTag}
+            </span>
+          )}
+        </div>
+
+        {/* Public notes */}
+        {item.notes && (
+          <p className="sch-sans" style={{ fontSize: '12px', color: '#999', marginTop: '3px', lineHeight: 1.6 }}>
+            {item.notes}
+          </p>
+        )}
+
+        {/* Internal details (admin ?internal=1 mode) */}
+        {hasInternalDetail && (
+          <div style={{ marginTop: '6px', paddingTop: '5px', borderTop: '1px dashed #ede9e3' }}>
+            {item.address && <InternalRow label="Address" value={item.address} />}
+            {item.location && !item.address && <InternalRow label="Location" value={item.location} />}
+            {item.partnerContact && <InternalRow label="Contact" value={item.partnerContact} />}
+            {item.driverInfo && <InternalRow label="Driver" value={item.driverInfo} />}
+            {item.internalNotes && <InternalRow label="Note" value={item.internalNotes} />}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function InternalRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ display: 'flex', gap: '8px', alignItems: 'baseline', marginTop: '3px' }}>
+      <span className="sch-sans" style={{ fontSize: '9.5px', fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#c8c0b8', minWidth: '58px', flexShrink: 0 }}>
+        {label}
+      </span>
+      <span className="sch-sans" style={{ fontSize: '11.5px', color: '#aaa', lineHeight: 1.55, fontStyle: 'italic' }}>
+        {value}
+      </span>
+    </div>
+  )
+}
+
+function Footer({ concierge_name, concierge_phone, versionLabel, createdLabel }: {
+  concierge_name: string | null
+  concierge_phone: string | null
+  versionLabel: string
+  createdLabel: string
+}) {
+  return (
+    <div className="sch-footer" style={{
+      padding: '18px 64px',
+      background: '#faf8f5',
+      borderTop: '1px solid #ede9e3',
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'flex-end',
+    }}>
+      <div>
+        <p className="sch-sans" style={{ fontSize: '9.5px', letterSpacing: '0.24em', color: '#c0b8ae', textTransform: 'uppercase', marginBottom: '4px' }}>Concierge</p>
+        {concierge_name && <p className="sch-sans" style={{ fontSize: '13px', color: '#555' }}>{concierge_name}</p>}
+        {concierge_phone && <p className="sch-sans" style={{ fontSize: '11px', color: '#bbb', marginTop: '2px' }}>{concierge_phone}</p>}
+      </div>
+      <p className="sch-sans" style={{ fontSize: '10px', color: '#c8c0b8' }}>
+        {versionLabel}{createdLabel ? ` · prepared ${createdLabel}` : ''}
+      </p>
     </div>
   )
 }

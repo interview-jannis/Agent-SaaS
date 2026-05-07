@@ -24,6 +24,7 @@ export default async function SchedulePage({
     .select(`
       id, pdf_url, items, version, created_at,
       first_opened_at, open_count,
+      concierge_name, concierge_phone,
       cases(id, agent_id, case_number, travel_start_date, travel_end_date,
         outbound_flight, inbound_flight,
         case_members(id, is_lead, clients(name)),
@@ -95,6 +96,8 @@ export default async function SchedulePage({
     created_at: string | null
     first_opened_at: string | null
     open_count: number | null
+    concierge_name: string | null
+    concierge_phone: string | null
     cases: CaseLite | null
   } | undefined
 
@@ -163,28 +166,26 @@ export default async function SchedulePage({
       }
     }
 
-    // Look up the agent for concierge footer
-    let agentName: string | null = null
-    let agentPhone: string | null = null
-    if (caseRef?.agent_id) {
+    // Concierge footer: schedule override first, fall back to agent name/phone
+    let concierge_name:  string | null = schedule.concierge_name  ?? null
+    let concierge_phone: string | null = schedule.concierge_phone ?? null
+    if (!concierge_name && caseRef?.agent_id) {
       const { data: agent } = await supabase
         .from('agents')
         .select('name, phone')
         .eq('id', caseRef.agent_id)
         .single()
       if (agent) {
-        agentName = (agent as { name: string | null }).name ?? null
-        agentPhone = (agent as { phone: string | null }).phone ?? null
+        concierge_name  = (agent as { name: string | null }).name   ?? null
+        concierge_phone = (agent as { phone: string | null }).phone ?? null
       }
     }
 
-    // Build group name lookup + members for the new multi-group layout
-    const groupNameById: Record<string, string> = {}
+    // Build group data for multi-group layout
     const groups: { id: string; name: string; members: string[] }[] = []
     const quotationDoc = caseRef?.documents?.find(d => d.type === 'quotation')
     for (const g of quotationDoc?.document_groups ?? []) {
       if (!g?.id || !g?.name) continue
-      groupNameById[g.id] = g.name
       const members = (g.document_group_members ?? [])
         .map(m => {
           const cm = caseRef?.case_members?.find(cm => cm.id === m.case_member_id)
@@ -193,7 +194,6 @@ export default async function SchedulePage({
         .filter((n): n is string => n !== null)
       groups.push({ id: g.id, name: g.name, members })
     }
-    const filterGroupId = group ? group : null
 
     return (
       <>
@@ -204,13 +204,12 @@ export default async function SchedulePage({
           travelStartDate={caseRef?.travel_start_date ?? null}
           travelEndDate={caseRef?.travel_end_date ?? null}
           hotelName={hotelName}
-          agentName={agentName}
-          agentPhone={agentPhone}
+          concierge_name={concierge_name}
+          concierge_phone={concierge_phone}
           version={schedule.version}
           createdAt={schedule.created_at}
           showInternalNotes={internal === '1'}
-          filterGroupId={filterGroupId}
-          groupNameById={groupNameById}
+          initialGroupId={group ?? null}
           outboundFlight={caseRef?.outbound_flight ?? null}
           inboundFlight={caseRef?.inbound_flight ?? null}
           groups={groups}

@@ -29,6 +29,11 @@ export type ScheduleItem = {
   location: string | null
   notes: string | null              // VIP-facing — rendered on client schedule
   internalNotes?: string | null     // admin/concierge only — never rendered to client
+  // Admin internal-only operational details (shown in ?internal=1 mode)
+  address?: string | null          // exact address of venue
+  partnerContact?: string | null   // partner contact person + phone
+  driverInfo?: string | null       // driver name + phone + pickup instruction
+  isPrayer?: boolean               // marks item as Islamic prayer time (orange italic styling)
   variantId: string | null         // optional ref to product_variants for context
   groupId?: string | null           // document_groups.id this item belongs to
                                     //   null = shared activity (visible to all groups)

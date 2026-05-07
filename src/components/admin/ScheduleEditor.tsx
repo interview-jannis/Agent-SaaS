@@ -62,6 +62,9 @@ type Props = {
   slug: string | null
   // Save creates a new version on top of this.
   nextVersion: number
+  // Concierge footer override (carried from last version — admin can edit).
+  initialConciergeName?: string | null
+  initialConciergePhone?: string | null
 }
 
 export default function ScheduleEditor({
@@ -70,8 +73,11 @@ export default function ScheduleEditor({
   initialItems, defaultDayCount, caseProducts,
   caseGroups = [],
   onSaved, onSaveDraft, slug, nextVersion,
+  initialConciergeName = null, initialConciergePhone = null,
 }: Props) {
   const [items, setItems] = useState<ScheduleItem[]>(initialItems)
+  const [conciergeName, setConciergeName] = useState<string>(initialConciergeName ?? '')
+  const [conciergePhone, setConciergePhone] = useState<string>(initialConciergePhone ?? '')
   const [revisionNote, setRevisionNote] = useState('')
   const [saving, setSaving] = useState(false)
   const [savingDraft, setSavingDraft] = useState(false)
@@ -194,6 +200,32 @@ export default function ScheduleEditor({
   // "Free time" + pick a block every time. Half-day = single block (morning
   // OR afternoon). Full-day = three rows (morning + afternoon + evening) so
   // the editorial output renders blank periods consistently.
+  const PRAYER_PRESETS: Array<{ name: string; block: ScheduleItemBlock }> = [
+    { name: 'Fajr',    block: 'morning'   },
+    { name: 'Dhuhr',   block: 'afternoon' },
+    { name: 'Asr',     block: 'afternoon' },
+    { name: 'Maghrib', block: 'evening'   },
+    { name: 'Isha',    block: 'evening'   },
+  ]
+
+  function addPrayerTime(day: number, prayerName: string) {
+    const preset = PRAYER_PRESETS.find(p => p.name === prayerName)
+    if (!preset) return
+    const newItem: ScheduleItem = {
+      id: generateScheduleItemId(),
+      day,
+      block: preset.block,
+      time: null,
+      title: `${preset.name} Prayer`,
+      location: null,
+      notes: null,
+      variantId: null,
+      isPrayer: true,
+      sortOrder: items.filter(i => i.day === day).length,
+    }
+    setItems(prev => [...prev, newItem])
+  }
+
   function addFreeTime(day: number, kind: 'morning' | 'afternoon' | 'evening' | 'full') {
     const baseSort = items.filter(i => i.day === day).length
     if (kind === 'full') {
@@ -323,6 +355,8 @@ export default function ScheduleEditor({
         items: normalized,
         pdf_url: null,
         revision_note: revisionNote.trim() || null,
+        concierge_name: conciergeName.trim() || null,
+        concierge_phone: conciergePhone.trim() || null,
       })
       if (insertError) throw insertError
 
@@ -383,6 +417,7 @@ export default function ScheduleEditor({
                   + Add Item
                 </button>
                 <FreeTimeMenu onPick={(kind) => addFreeTime(day, kind)} />
+                <PrayerMenu onPick={(prayer) => addPrayerTime(day, prayer)} />
               </div>
             </div>
             <div className="divide-y divide-gray-100">
@@ -418,6 +453,32 @@ export default function ScheduleEditor({
           </div>
         )
       })}
+
+      <div className="bg-white rounded-xl border border-gray-100 p-3 space-y-2">
+        <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Concierge footer</p>
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="block text-[10px] text-gray-400 mb-0.5">Name</label>
+            <input
+              type="text"
+              value={conciergeName}
+              onChange={(e) => setConciergeName(e.target.value)}
+              placeholder="Leave blank to use agent name"
+              className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-900 focus:outline-none focus:border-[#0f4c35]"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] text-gray-400 mb-0.5">Phone</label>
+            <input
+              type="text"
+              value={conciergePhone}
+              onChange={(e) => setConciergePhone(e.target.value)}
+              placeholder="Leave blank to use agent phone"
+              className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-900 focus:outline-none focus:border-[#0f4c35]"
+            />
+          </div>
+        </div>
+      </div>
 
       {nextVersion > 1 && (
         <div className="bg-white rounded-xl border border-gray-100 p-3">
@@ -568,6 +629,40 @@ function FreeTimeMenu({
   )
 }
 
+// ── Prayer time menu ─────────────────────────────────────────────────────────
+
+function PrayerMenu({ onPick }: { onPick: (prayer: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const prayers = ['Fajr', 'Dhuhr', 'Asr', 'Maghrib', 'Isha']
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        className="text-xs font-medium text-orange-500 hover:text-orange-700"
+      >
+        + Prayer ▾
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 z-10 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[130px] divide-y divide-gray-100">
+          {prayers.map(p => (
+            <button
+              key={p}
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => { onPick(p); setOpen(false) }}
+              className="w-full text-left px-3 py-1.5 text-xs text-orange-700 hover:bg-orange-50"
+            >
+              {p}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Item row ──────────────────────────────────────────────────────────────────
 
 // Color palette for group accents — repeats if there are more groups.
@@ -610,8 +705,11 @@ function ItemRow({
   onResetGroup: () => void
 }) {
   // Resolve group tone for left stripe + chip background.
+  // Prayer items always use orange stripe regardless of group.
   const groupIdx = item.groupId ? caseGroups.findIndex(g => g.id === item.groupId) : -1
-  const tone = groupIdx >= 0 ? GROUP_TONES[groupIdx % GROUP_TONES.length] : SHARED_TONE
+  const tone = item.isPrayer
+    ? { stripe: 'border-l-orange-400', chip: '', chipText: '' }
+    : groupIdx >= 0 ? GROUP_TONES[groupIdx % GROUP_TONES.length] : SHARED_TONE
   const showGroupSelect = caseGroups.length > 1
 
   // Picker scope: filter caseProducts based on the row's group context, then
@@ -825,7 +923,7 @@ function ItemRow({
           value={item.location ?? ''}
           onChange={(e) => onUpdate({ location: e.target.value || null })}
           disabled={!isPending}
-          placeholder="Location — internal (address, building, floor)"
+          placeholder="Location"
           className="text-xs border border-dashed border-gray-300 rounded-lg px-2 py-1.5 text-gray-700 bg-gray-50 focus:outline-none focus:border-[#0f4c35] placeholder:text-gray-400 disabled:cursor-default"
         />
         <input
@@ -833,8 +931,32 @@ function ItemRow({
           value={item.internalNotes ?? ''}
           onChange={(e) => onUpdate({ internalNotes: e.target.value || null })}
           disabled={!isPending}
-          placeholder="Internal note (driver, contact, prep…)"
+          placeholder="Internal note"
           className="text-xs border border-dashed border-gray-300 rounded-lg px-2 py-1.5 text-gray-700 bg-gray-50 focus:outline-none focus:border-[#0f4c35] placeholder:text-gray-400 disabled:cursor-default"
+        />
+        <input
+          type="text"
+          value={item.address ?? ''}
+          onChange={(e) => onUpdate({ address: e.target.value || null })}
+          disabled={!isPending}
+          placeholder="Full address"
+          className="text-xs border border-dashed border-gray-300 rounded-lg px-2 py-1.5 text-gray-700 bg-gray-50 focus:outline-none focus:border-[#0f4c35] placeholder:text-gray-400 disabled:cursor-default"
+        />
+        <input
+          type="text"
+          value={item.partnerContact ?? ''}
+          onChange={(e) => onUpdate({ partnerContact: e.target.value || null })}
+          disabled={!isPending}
+          placeholder="Partner contact"
+          className="text-xs border border-dashed border-gray-300 rounded-lg px-2 py-1.5 text-gray-700 bg-gray-50 focus:outline-none focus:border-[#0f4c35] placeholder:text-gray-400 disabled:cursor-default"
+        />
+        <input
+          type="text"
+          value={item.driverInfo ?? ''}
+          onChange={(e) => onUpdate({ driverInfo: e.target.value || null })}
+          disabled={!isPending}
+          placeholder="Driver details"
+          className="md:col-span-2 text-xs border border-dashed border-gray-300 rounded-lg px-2 py-1.5 text-gray-700 bg-gray-50 focus:outline-none focus:border-[#0f4c35] placeholder:text-gray-400 disabled:cursor-default"
         />
       </div>
 
@@ -849,7 +971,7 @@ function ItemRow({
                 onCancelDraft()
                 return
               }
-              const hasData = item.title.trim() || item.variantId || item.notes || item.location || item.internalNotes
+              const hasData = item.title.trim() || item.variantId || item.notes || item.location || item.internalNotes || item.address || item.partnerContact || item.driverInfo
               if (!hasData || window.confirm('Discard this item?')) onCancelDraft()
             }}
             className="text-xs font-medium text-gray-600 hover:text-gray-900 px-3 py-1 rounded-lg border border-gray-200 hover:bg-white"

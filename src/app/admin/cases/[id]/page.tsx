@@ -12,6 +12,7 @@ import CaseDocumentsSection from '@/components/CaseDocumentsSection'
 import AdminCaseContractSection from '@/components/AdminCaseContractSection'
 import SelectedProductsSection from '@/components/SelectedProductsSection'
 import ScheduleEditor from '@/components/admin/ScheduleEditor'
+import { SCHEDULE_BLOCK_LABEL, compareScheduleItems } from '@/types/schedule'
 import type { DocumentRow } from '@/lib/documents'
 import type { ScheduleItem } from '@/types/schedule'
 import { nightsBetween } from '@/lib/pricing'
@@ -116,6 +117,8 @@ type Schedule = {
   confirmed_at: string | null
   created_at: string
   first_opened_at: string | null
+  concierge_name: string | null
+  concierge_phone: string | null
 }
 
 type Agent = { id: string; agent_number: string; name: string }
@@ -215,10 +218,7 @@ export default function AdminCaseDetailPage() {
   // Transient action ids (one in flight at a time)
   const [structuralBusy, setStructuralBusy] = useState<string | null>(null)
   const [deletingScheduleId, setDeletingScheduleId] = useState<string | null>(null)
-  // Internal-note editing on a confirmed schedule (in-place, no version bump).
-  const [internalEditScheduleId, setInternalEditScheduleId] = useState<string | null>(null)
-  const [internalDraft, setInternalDraft] = useState<ScheduleItem[]>([])
-  const [savingInternal, setSavingInternal] = useState(false)
+  const [expandedScheduleId, setExpandedScheduleId] = useState<string | null>(null)
   const [actionError, setActionError] = useState('')
 
   // Edit Selected Products — staged add/remove diff. Save commits all changes
@@ -263,7 +263,7 @@ export default function AdminCaseDetailPage() {
           id, type, document_number, slug, total_price, payment_due_date, payment_received_at, agent_margin_rate, company_margin_rate, finalized_at, from_party, to_party, created_at,
           document_groups(id, name, order, member_count, document_items(id, base_price, final_price, variant_id, variant_label_snapshot, origin, removed_at, products(id, name, description, partner_name, duration_value, duration_unit, has_female_doctor, has_prayer_room, dietary_type, location_address, product_categories(name))), document_group_members(id, case_member_id))
         ),
-        schedules(id, slug, pdf_url, items, status, version, file_name, revision_note, admin_note, confirmed_at, created_at, first_opened_at)
+        schedules(id, slug, pdf_url, items, status, version, file_name, revision_note, admin_note, confirmed_at, created_at, first_opened_at, concierge_name, concierge_phone)
       `)
       .eq('id', id)
       .maybeSingle()
@@ -491,10 +491,19 @@ export default function AdminCaseDetailPage() {
     || caseData.status === 'awaiting_review'
     || caseData.status === 'completed'
     || caseData.status === 'canceled'
-  const canUploadSchedule = !scheduleLocked
-    && (caseData.status === 'awaiting_schedule' || caseData.status === 'reviewing_schedule')
-    && (latestSchedule === null || latestSchedule.status === 'pending' || latestSchedule.status === 'revision_requested')
-    && scheduleReady
+  const canUploadSchedule = scheduleReady
+    && (
+      // First build: no schedule yet (or stale pending draft before first send)
+      caseData.status === 'awaiting_schedule'
+      // Revision: agent requested changes — allow a new version
+      || (caseData.status === 'reviewing_schedule' && latestSchedule?.status === 'revision_requested')
+    )
+  // After confirm: items are locked but admin can still patch operational details
+  const canEditInternalOnly =
+    !!latestSchedule
+    && latestSchedule.status === 'confirmed'
+    && !!latestSchedule.items
+    && latestSchedule.items.length > 0
   const sortedGroups = latestQuote?.document_groups ? [...latestQuote.document_groups].sort((a, b) => a.order - b.order) : []
   const baseUrl = typeof window !== 'undefined' ? window.location.origin : ''
 
@@ -989,8 +998,9 @@ export default function AdminCaseDetailPage() {
                     'Pending Review'
                   const canDelete = !scheduleLocked && isLatest && s.status === 'pending' && !s.first_opened_at
                   return (
-                    <div key={s.id} className={`bg-white rounded-xl border p-3 space-y-1.5 ${isLatest ? 'border-gray-300' : 'border-gray-100'}`}>
-                      <div className="flex items-start gap-2 flex-wrap">
+                    <div key={s.id} className={`bg-white rounded-xl border ${isLatest ? 'border-gray-300' : 'border-gray-100'}`}>
+                      {/* Card header row — always visible */}
+                      <div className="flex items-center gap-2 flex-wrap p-3">
                         <span className="text-xs font-semibold text-gray-700">v{s.version}</span>
                         {isLatest && <span className="text-[9px] font-medium text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">LATEST</span>}
                         <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${statusStyle}`}>{statusLabel}</span>
@@ -998,6 +1008,17 @@ export default function AdminCaseDetailPage() {
                           <span className="text-xs text-gray-700 border-l-2 border-rose-300 pl-2 flex-1 min-w-0 whitespace-pre-line">{s.revision_note}</span>
                         )}
                         <div className="ml-auto flex items-center gap-3">
+                          {s.items && s.items.length > 0 && (
+                            <button
+                              onClick={() => setExpandedScheduleId(prev => prev === s.id ? null : s.id)}
+                              className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-800 transition-colors"
+                            >
+                              <svg className={`w-3.5 h-3.5 transition-transform ${expandedScheduleId === s.id ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                              </svg>
+                              {expandedScheduleId === s.id ? 'Collapse' : `View (${s.items.length})`}
+                            </button>
+                          )}
                           {s.slug && (s.pdf_url || (s.items && s.items.length > 0)) && (
                             <a
                               href={`${baseUrl}/schedule/${s.slug}?preview=1&internal=1&v=${s.version}`}
@@ -1013,6 +1034,42 @@ export default function AdminCaseDetailPage() {
                           <span className="text-[10px] text-gray-400">{s.created_at.slice(0, 10)}</span>
                         </div>
                       </div>
+
+                      {/* Expanded items view */}
+                      {expandedScheduleId === s.id && s.items && s.items.length > 0 && (() => {
+                        const days = Array.from(new Set(s.items.map((it: ScheduleItem) => it.day))).sort((a, b) => a - b)
+                        return (
+                          <div className="border-t border-gray-100 divide-y divide-gray-100">
+                            {days.map((day: number) => {
+                              const dayItems = (s.items as ScheduleItem[]).filter(it => it.day === day).sort(compareScheduleItems)
+                              return (
+                                <div key={day}>
+                                  <p className="px-3 py-1.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide bg-gray-50">Day {day}</p>
+                                  {dayItems.map(it => (
+                                    <div key={it.id} className="px-3 py-2 flex items-start gap-3 border-t border-gray-50">
+                                      <div className="w-20 shrink-0">
+                                        <p className="text-[10px] text-gray-400 uppercase tracking-wide">{SCHEDULE_BLOCK_LABEL[it.block]}{it.endBlock && it.endBlock !== it.block ? ` →` : ''}</p>
+                                        {it.endBlock && it.endBlock !== it.block && (
+                                          <p className="text-[10px] text-gray-400 uppercase tracking-wide">{SCHEDULE_BLOCK_LABEL[it.endBlock]}</p>
+                                        )}
+                                        {it.time && <p className="text-[10px] text-gray-400 tabular-nums mt-0.5">{it.time}{it.endTime ? ` – ${it.endTime}` : ''}</p>}
+                                      </div>
+                                      <div className="flex-1 min-w-0">
+                                        {it.partner && <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">{it.partner}</p>}
+                                        <p className="text-xs text-gray-800">{it.title}{it.variantTag ? ` · ${it.variantTag}` : ''}</p>
+                                        {it.location && <p className="text-[11px] text-gray-400 mt-0.5">{it.location}</p>}
+                                        {it.notes && <p className="text-[11px] text-gray-500 mt-0.5 italic">{it.notes}</p>}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )
+                      })()}
+
+                      <div className="px-3 pb-3 space-y-1.5">
                       {s.file_name && <p className="text-xs text-gray-500 break-all">{s.file_name}</p>}
                       {s.admin_note && (() => {
                         // Pending: blue (still actionable). Confirmed/older: muted gray (historical).
@@ -1045,90 +1102,7 @@ export default function AdminCaseDetailPage() {
                         </div>
                       )}
 
-                      {/* Confirmed schedules: internal-only inline editor.
-                          Title / time / block / notes are locked once the
-                          agent has signed off, but concierge ops detail
-                          (driver, contact, prep) often updates afterward —
-                          let admin edit it in place without a new version. */}
-                      {isLatest && s.status === 'confirmed' && s.items && s.items.length > 0 && (() => {
-                        const isEditing = internalEditScheduleId === s.id
-                        return (
-                          <div className="pt-2 mt-1 border-t border-gray-100 space-y-2">
-                            <div className="flex items-center justify-between">
-                              <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Internal Notes (concierge handover)</p>
-                              {!isEditing ? (
-                                <button
-                                  onClick={() => { setInternalDraft(s.items as ScheduleItem[]); setInternalEditScheduleId(s.id) }}
-                                  className="text-[11px] font-medium text-gray-500 hover:text-gray-800 px-2 py-0.5 rounded border border-gray-200 hover:bg-white">
-                                  Edit
-                                </button>
-                              ) : (
-                                <div className="flex items-center gap-2">
-                                  <button
-                                    onClick={() => { setInternalEditScheduleId(null); setInternalDraft([]) }}
-                                    disabled={savingInternal}
-                                    className="text-[11px] font-medium text-gray-500 hover:text-gray-800 px-2 py-0.5 rounded border border-gray-200 hover:bg-white disabled:opacity-40">
-                                    Cancel
-                                  </button>
-                                  <button
-                                    onClick={async () => {
-                                      setSavingInternal(true)
-                                      try {
-                                        const { error } = await supabase
-                                          .from('schedules')
-                                          .update({ items: internalDraft })
-                                          .eq('id', s.id)
-                                        if (error) throw error
-                                        await logAsCurrentUser('schedule.internal_notes_updated',
-                                          { type: 'case', id: caseData.id, label: caseData.case_number },
-                                          { schedule_version: s.version })
-                                        setInternalEditScheduleId(null)
-                                        setInternalDraft([])
-                                        await fetchCase()
-                                      } catch (e: unknown) {
-                                        setActionError((e as { message?: string })?.message ?? 'Failed to save internal notes.')
-                                      } finally {
-                                        setSavingInternal(false)
-                                      }
-                                    }}
-                                    disabled={savingInternal}
-                                    className="text-[11px] font-medium bg-[#0f4c35] text-white hover:bg-[#0a3828] px-2.5 py-0.5 rounded disabled:opacity-40">
-                                    {savingInternal ? 'Saving…' : 'Save'}
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                            <div className="bg-gray-50 rounded-lg border border-gray-100 divide-y divide-gray-100">
-                              {(isEditing ? internalDraft : (s.items as ScheduleItem[])).map((it, idx) => (
-                                <div key={it.id} className="px-2.5 py-1.5 flex items-start gap-2">
-                                  <span className="text-[10px] text-gray-400 tabular-nums shrink-0 w-12 pt-0.5">
-                                    D{it.day}{it.time ? ` · ${it.time}` : ''}
-                                  </span>
-                                  <div className="flex-1 min-w-0 space-y-1">
-                                    <p className="text-xs text-gray-800 truncate">{it.title || '—'}</p>
-                                    {isEditing ? (
-                                      <input
-                                        type="text"
-                                        value={it.internalNotes ?? ''}
-                                        onChange={(e) => {
-                                          const v = e.target.value || null
-                                          setInternalDraft(prev => prev.map((x, i) => i === idx ? { ...x, internalNotes: v } : x))
-                                        }}
-                                        placeholder="Internal note (driver, contact, prep…)"
-                                        className="w-full text-[11px] border border-dashed border-gray-300 rounded px-2 py-1 text-gray-700 bg-white focus:outline-none focus:border-[#0f4c35] placeholder:text-gray-400"
-                                      />
-                                    ) : it.internalNotes ? (
-                                      <p className="text-[11px] text-gray-700 whitespace-pre-line">{it.internalNotes}</p>
-                                    ) : (
-                                      <p className="text-[11px] text-gray-300 italic">no internal note</p>
-                                    )}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )
-                      })()}
+                      </div>
                     </div>
                   )
                 })}
@@ -1986,10 +1960,20 @@ export default function AdminCaseDetailPage() {
                   }}
                   slug={latestSchedule?.slug ?? null}
                   nextVersion={nextVersion}
+                  initialConciergeName={latestSchedule?.concierge_name ?? null}
+                  initialConciergePhone={latestSchedule?.concierge_phone ?? null}
                 />
               </section>
             )
           })()}
+
+          {/* Confirmed schedule — admin can still update internal/operational details */}
+          {canEditInternalOnly && (
+            <ScheduleInternalEditor
+              schedule={latestSchedule!}
+              onSaved={() => fetchCase()}
+            />
+          )}
 
           {caseData.status === 'awaiting_travel' && (
             <section className="border border-emerald-200 bg-emerald-50 rounded-2xl p-4">
@@ -2314,5 +2298,104 @@ export default function AdminCaseDetailPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+// ── Confirmed schedule: admin-only operational fields editor ──────────────────
+// Items (title/time/block) are read-only. Only address/partnerContact/driverInfo/
+// internalNotes can be changed — saves directly to schedules.items (no new version).
+
+function ScheduleInternalEditor({
+  schedule,
+  onSaved,
+}: {
+  schedule: { id: string; version: number; items: import('@/types/schedule').ScheduleItem[] | null }
+  onSaved: () => void
+}) {
+  const [items, setItems] = useState(() => schedule.items ?? [])
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [error, setError] = useState('')
+
+  function patch(id: string, field: string, value: string) {
+    setItems(prev => prev.map(it => it.id === id ? { ...it, [field]: value || null } : it))
+    setSaved(false)
+  }
+
+  async function handleSave() {
+    setSaving(true)
+    setError('')
+    try {
+      const { error: err } = await supabase.from('schedules').update({ items }).eq('id', schedule.id)
+      if (err) throw err
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2500)
+      onSaved()
+    } catch (e: unknown) {
+      setError((e as { message?: string })?.message ?? 'Failed to save.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const days = Array.from(new Set(items.map(i => i.day))).sort((a, b) => a - b)
+
+  return (
+    <section className="border border-gray-200 bg-white rounded-2xl p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Schedule v{schedule.version} — Operational Details</p>
+          <p className="text-[11px] text-gray-400 mt-0.5">Schedule is confirmed. You can still update internal operational info (not visible to client).</p>
+        </div>
+      </div>
+
+      {days.map(day => {
+        const dayItems = items.filter(i => i.day === day)
+        return (
+          <div key={day} className="border border-gray-100 rounded-xl overflow-hidden">
+            <div className="bg-gray-50 px-3 py-2 border-b border-gray-100">
+              <p className="text-xs font-semibold text-gray-600">Day {day}</p>
+            </div>
+            <div className="divide-y divide-gray-100">
+              {dayItems.map(it => (
+                <div key={it.id} className="px-3 py-2.5 space-y-2">
+                  {/* Read-only header */}
+                  <div className="flex items-baseline gap-2 flex-wrap">
+                    <span className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">
+                      {SCHEDULE_BLOCK_LABEL[it.block]}{it.endBlock && it.endBlock !== it.block ? ` → ${SCHEDULE_BLOCK_LABEL[it.endBlock]}` : ''}
+                    </span>
+                    {it.time && <span className="text-[10px] text-gray-400">{it.time}{it.endTime ? ` – ${it.endTime}` : ''}</span>}
+                    <span className="text-xs font-medium text-gray-800">{it.title}</span>
+                  </div>
+                  {/* Editable internal fields */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5">
+                    <input type="text" value={it.address ?? ''} onChange={e => patch(it.id, 'address', e.target.value)}
+                      placeholder="Address"
+                      className="text-xs border border-dashed border-gray-300 rounded-lg px-2 py-1.5 text-gray-700 bg-gray-50 focus:outline-none focus:border-[#0f4c35] placeholder:text-gray-400" />
+                    <input type="text" value={it.partnerContact ?? ''} onChange={e => patch(it.id, 'partnerContact', e.target.value)}
+                      placeholder="Partner contact (name + phone)"
+                      className="text-xs border border-dashed border-gray-300 rounded-lg px-2 py-1.5 text-gray-700 bg-gray-50 focus:outline-none focus:border-[#0f4c35] placeholder:text-gray-400" />
+                    <input type="text" value={it.driverInfo ?? ''} onChange={e => patch(it.id, 'driverInfo', e.target.value)}
+                      placeholder="Driver info (name + phone + pickup)"
+                      className="text-xs border border-dashed border-gray-300 rounded-lg px-2 py-1.5 text-gray-700 bg-gray-50 focus:outline-none focus:border-[#0f4c35] placeholder:text-gray-400" />
+                    <input type="text" value={it.internalNotes ?? ''} onChange={e => patch(it.id, 'internalNotes', e.target.value)}
+                      placeholder="Internal note"
+                      className="text-xs border border-dashed border-gray-300 rounded-lg px-2 py-1.5 text-gray-700 bg-gray-50 focus:outline-none focus:border-[#0f4c35] placeholder:text-gray-400" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )
+      })}
+
+      {error && <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</p>}
+      <div className="flex justify-end">
+        <button onClick={handleSave} disabled={saving}
+          className="text-sm font-medium bg-[#0f4c35] text-white hover:bg-[#0a3828] px-4 py-2 rounded-xl disabled:opacity-40">
+          {saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save operational details'}
+        </button>
+      </div>
+    </section>
   )
 }

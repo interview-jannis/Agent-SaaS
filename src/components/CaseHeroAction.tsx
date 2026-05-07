@@ -199,6 +199,13 @@ export function AgentCaseHero(p: AgentHeroProps) {
           headline={`Review Schedule v${p.scheduleVersion ?? '?'}`}
           subline={<span>Confirm with the client, or request a revision with notes.</span>}
         >
+          <button onClick={p.onScrollToSchedule}
+            className="text-xs font-medium px-3 py-2 rounded-lg border border-violet-200 text-violet-600 hover:bg-violet-50 flex items-center gap-1.5">
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+            </svg>
+            View Schedule
+          </button>
           <button onClick={p.onRequestRevision} disabled={p.busy}
             className={`text-xs font-medium px-3 py-2 rounded-lg border border-rose-200 text-rose-700 hover:bg-rose-50 disabled:opacity-40`}>
             Request Revision
