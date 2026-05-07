@@ -36,6 +36,7 @@ type Row = {
   base_price?: number | string
   price_currency?: string
   description?: string
+  highlights?: string
   duration_value?: number | string
   duration_unit?: string
   has_female_doctor?: boolean | string
@@ -139,8 +140,12 @@ export async function POST(req: Request) {
   let rows: Row[]
   try {
     const wb = XLSX.read(buf, { type: 'buffer' })
-    const ws = wb.Sheets[wb.SheetNames[0]]
-    rows = XLSX.utils.sheet_to_json<Row>(ws, { defval: '' })
+    // Support both single-sheet (legacy "Products") and multi-sheet (one per
+    // category) formats. All sheets are merged into one flat row list; rows
+    // without a valid category/partner/name are skipped downstream.
+    rows = wb.SheetNames.flatMap(sn =>
+      XLSX.utils.sheet_to_json<Row>(wb.Sheets[sn], { defval: '' })
+    )
   } catch (e) {
     return NextResponse.json({ error: `Could not parse xlsx: ${(e as Error).message}` }, { status: 400 })
   }
@@ -228,6 +233,7 @@ export async function POST(req: Request) {
       name: grp.name,
       partner_name: grp.partner,
       description: normStr(first.description) ?? '',
+      highlights: normStr(first.highlights) ?? null,
       duration_value: normNum(first.duration_value) ?? null,
       duration_unit: normStr(first.duration_unit) ?? null,
       has_female_doctor: normBool(first.has_female_doctor) ?? null,
@@ -254,6 +260,7 @@ export async function POST(req: Request) {
       const checks: Array<[string, unknown, unknown]> = [
         ['subcategory_id', existing.subcategory_id, desired.subcategory_id],
         ['description', existing.description ?? '', desired.description],
+        ['highlights', (existing as ProductRecord & { highlights?: string | null }).highlights ?? null, desired.highlights],
         ['duration_value', existing.duration_value, desired.duration_value],
         ['duration_unit', existing.duration_unit ?? null, desired.duration_unit],
         ['has_female_doctor', existing.has_female_doctor, desired.has_female_doctor],

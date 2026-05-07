@@ -205,7 +205,7 @@ Agent 수동 개입:
 - `src/lib/caseStatus.ts` — case status 단일 소스 (라벨/스타일/오너/CANCELLABLE/ACTIVE/TRAVEL_DONE). `Awaiting Final Pricing` 라벨.
 - `src/lib/caseTransitions.ts` — 상태 전이 헬퍼 (`isTravelDone` 등)
 - `src/lib/documents.ts` — documents 모델 read/write 헬퍼 (4/30 SOP 5종 invoice)
-- `src/lib/pricing.ts` (2026-05-04) — `appliesMargin(category, subcategory)` 단일 진실 소스. K-Wellness>Spa만 마진, 나머지 Wellness + Subpackage는 원가 통과. `variantPriceUsd/Krw` 헬퍼 — agent home cart, review page, quote 모두 이걸 통해 가격 계산.
+- `src/lib/pricing.ts` (2026-05-04, 5/7 업데이트) — `appliesMargin(category, subcategory)` 단일 진실 소스. K-Wellness>Spa/Henna만 마진, 나머지 Wellness + Subpackage 기본은 원가 통과. `subpackageMult(config)`: disabled면 0(무상), enabled면 1+rate. `isHotelItem` / `nightsBetween` 헬퍼. `variantPriceUsd/Krw` 헬퍼 — agent home cart, review page, quote 모두 이걸 통해 가격 계산.
 - `src/lib/notifications.ts` — `createNotification`, `notifyAgent`, `notifyAllAdmins`
 - `src/lib/audit.ts` — `logAudit`, `getActor`, `logAsCurrentUser`. **5/4 sweep**: products(create/update/delete/bulk_upload), categories/subcategories, system_settings, contract_templates, clients(create/update), admins(invite/delete), documents(issue/item_added/item_removed/paid)도 모두 logged. `/admin/audit` 아이콘 톤 monochrome 통일. 새 액션 추가 시 [`/admin/audit/page.tsx`](src/app/admin/audit/page.tsx)의 `ACTION_VERB` + `ACTION_TONE` + `ActionIcon` paths 3곳 모두 등록 필요 (안 그러면 dot fallback).
 - `src/hooks/useNotifications.ts` — Realtime 구독

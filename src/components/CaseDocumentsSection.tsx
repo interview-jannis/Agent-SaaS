@@ -75,10 +75,10 @@ const TYPE_TONE: Record<DocumentType, string> = {
 
 const TYPE_LABEL_TONE: Record<DocumentType, string> = {
   quotation: 'text-gray-600',
-  deposit_invoice: 'text-cyan-700',
-  final_invoice: 'text-violet-700',
-  additional_invoice: 'text-amber-700',
-  commission_invoice: 'text-emerald-700',
+  deposit_invoice: 'text-gray-700',
+  final_invoice: 'text-gray-700',
+  additional_invoice: 'text-gray-700',
+  commission_invoice: 'text-gray-700',
 }
 
 function fmtKRW(n: number) { return '₩' + (n ?? 0).toLocaleString('ko-KR') }
@@ -414,20 +414,20 @@ export default function CaseDocumentsSection({
   return (
     <section className={embedded
       ? 'pt-4 border-t border-gray-200 space-y-3'
-      : `${ctaHighlight ? 'bg-cyan-50 border border-cyan-200' : 'bg-gray-50'} rounded-2xl p-4 space-y-3`}>
+      : `${ctaHighlight ? 'bg-green-50 border border-green-200' : 'bg-gray-50'} rounded-2xl p-4 space-y-3`}>
       <div className="flex items-center justify-between flex-wrap gap-2">
         <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Invoices</p>
         <div className="flex items-center gap-2 flex-wrap">
           {actor === 'agent' && !has.depositToClient && (
             <button onClick={() => setIssuing('deposit_to_client')} disabled={!canIssue || contractPending}
-              className="text-xs font-medium px-2.5 py-1.5 rounded-lg bg-cyan-600 text-white hover:bg-cyan-700 disabled:opacity-40"
+              className="text-xs font-medium px-2.5 py-1.5 rounded-lg bg-[#0f4c35] text-white hover:bg-[#0a3828] disabled:opacity-40"
               title={contractPending ? 'Available after the 3-party contract is signed' : 'Agent → Client (collect deposit from client)'}>
               + Deposit
             </button>
           )}
           {actor === 'admin' && !has.depositToAgent && (
             <button onClick={() => setIssuing('deposit_settlement')} disabled={!canIssue || !has.depositToClient || contractPending}
-              className="text-xs font-medium px-2.5 py-1.5 rounded-lg bg-cyan-700 text-white hover:bg-cyan-800 disabled:opacity-40"
+              className="text-xs font-medium px-2.5 py-1.5 rounded-lg bg-[#0f4c35] text-white hover:bg-[#0a3828] disabled:opacity-40"
               title={contractPending ? 'Available after the 3-party contract is signed' : (has.depositToClient ? 'Admin → Agent (record deposit forward owed)' : 'Available after agent issues the client-facing deposit invoice')}>
               + Deposit Settlement
             </button>
@@ -441,7 +441,7 @@ export default function CaseDocumentsSection({
           )}
           {actor === 'agent' && !has.commission && (
             <button onClick={() => setIssuing('commission')} disabled={!canIssue || !travelCompletedAt}
-              className="text-xs font-medium px-2.5 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-40"
+              className="text-xs font-medium px-2.5 py-1.5 rounded-lg bg-[#0f4c35] text-white hover:bg-[#0a3828] disabled:opacity-40"
               title={travelCompletedAt ? 'Agent → Admin (claim margin)' : 'Available after travel is marked complete'}>
               + Commission
             </button>
@@ -452,10 +452,10 @@ export default function CaseDocumentsSection({
         <p className="text-[11px] text-gray-500">Issue Quotation first via Home flow.</p>
       )}
       {ctaHighlight && actor === 'agent' && (
-        <p className="text-[11px] text-cyan-800">3-party contract signed — issue the deposit invoice to start collecting from the client.</p>
+        <p className="text-[11px] text-green-800">3-party contract signed — issue the deposit invoice to start collecting from the client.</p>
       )}
       {ctaHighlight && actor === 'admin' && (
-        <p className="text-[11px] text-cyan-800">Awaiting deposit. After the agent issues the client deposit invoice, record the settlement here.</p>
+        <p className="text-[11px] text-green-800">Awaiting deposit. After the agent issues the client deposit invoice, record the settlement here.</p>
       )}
       {error && <p className="text-xs text-red-500">{error}</p>}
 
@@ -632,7 +632,7 @@ export default function CaseDocumentsSection({
                 </span>
                 <span className="text-[10px] font-mono text-gray-500">{doc.document_number}</span>
                 {paid ? (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 font-medium">Paid {doc.payment_received_at?.slice(0, 10)}</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 font-medium">Paid {doc.payment_received_at?.slice(0, 10)}</span>
                 ) : overdue ? (
                   <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-100 text-red-700 font-medium">Overdue</span>
                 ) : (
@@ -764,13 +764,13 @@ export default function CaseDocumentsSection({
                       <button onClick={() => { setPaidAtEditingId(null); setPaidAtValue('') }}
                         className="text-[11px] font-medium text-gray-600 hover:text-gray-900 px-2 py-1 rounded-lg border border-gray-200 hover:bg-white">Cancel</button>
                       <button onClick={() => doMarkPaid(doc.id)} disabled={busy === doc.id || !paidAtValue}
-                        className="text-[11px] font-medium bg-emerald-600 text-white hover:bg-emerald-700 rounded-lg px-2.5 py-1 disabled:opacity-40">
+                        className="text-[11px] font-medium bg-[#0f4c35] text-white hover:bg-[#0a3828] rounded-lg px-2.5 py-1 disabled:opacity-40">
                         {busy === doc.id ? 'Saving…' : 'Save'}
                       </button>
                     </div>
                   ) : (
                     <button onClick={() => { setPaidAtEditingId(doc.id); setPaidAtValue(new Date().toISOString().slice(0, 10)) }}
-                      className="text-[11px] font-medium text-emerald-700 hover:text-white hover:bg-emerald-600 px-2.5 py-1 rounded-lg border border-emerald-200 hover:border-emerald-600 transition-colors">
+                      className="text-[11px] font-medium text-[#0f4c35] hover:text-white hover:bg-[#0f4c35] px-2.5 py-1 rounded-lg border border-green-200 hover:border-[#0f4c35] transition-colors">
                       Mark paid
                     </button>
                   )

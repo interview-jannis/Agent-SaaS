@@ -1035,9 +1035,9 @@ export default function CaseDetailPage() {
               <div className="flex items-center gap-2">
                 <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Trip Setup</h3>
                 {(caseInfoComplete && allClientsComplete && groupsComplete && caseData.travel_start_date) ? (
-                  <span className="text-[10px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">Ready</span>
+                  <span className="text-[10px] font-medium text-green-700 bg-green-50 border border-green-200 px-1.5 py-0.5 rounded">Ready</span>
                 ) : infoCollectionActive ? (
-                  <span className="text-[10px] font-medium text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">In progress</span>
+                  <span className="text-[10px] font-medium text-gray-500 bg-gray-100 border border-gray-200 px-1.5 py-0.5 rounded">In progress</span>
                 ) : null}
               </div>
               <button onClick={() => setSetupCollapsed(!setupCollapsed)}
@@ -1110,11 +1110,11 @@ export default function CaseDetailPage() {
           </div>
 
           {/* Trip Info (case-level) */}
-          <div id="trip-info" className={`scroll-mt-20 ${(caseInfoComplete || !infoCollectionActive) ? '' : '-mx-2 px-2 py-3 rounded-xl bg-amber-50 border border-amber-200'} pt-5 border-t border-gray-200`}>
+          <div id="trip-info" className={`scroll-mt-20 ${(caseInfoComplete || !infoCollectionActive) ? '' : '-mx-2 px-2 py-3 rounded-xl bg-green-50 border border-green-200'} pt-5 border-t border-gray-200`}>
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Trip Info</h3>
-                {!caseInfoComplete && infoCollectionActive && <span className="text-[10px] font-medium text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">Required</span>}
+                {!caseInfoComplete && infoCollectionActive && <span className="text-[10px] font-medium text-green-700 bg-green-100 px-1.5 py-0.5 rounded">Required</span>}
               </div>
               {!editTrip ? (
                 !tripMembersLocked && (
@@ -1234,7 +1234,7 @@ export default function CaseDetailPage() {
                 </Link>
                 {lead.clients?.nationality && <span className="text-xs text-gray-500">· {lead.clients.nationality}</span>}
                 {lead.clients?.gender && <span className="text-xs text-gray-400 capitalize">· {lead.clients.gender}</span>}
-                {lead.clients?.needs_muslim_friendly && <span className="text-xs text-emerald-600 font-medium">· Muslim Friendly</span>}
+                {lead.clients?.needs_muslim_friendly && <span className="text-xs text-[#0f4c35] font-medium">· Muslim Friendly</span>}
               </div>
             </div>
           )}
@@ -1254,7 +1254,7 @@ export default function CaseDetailPage() {
                 </h3>
                 {!memberReady
                   ? <span className="text-[10px] font-medium text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">{memberIssueCount} issue{memberIssueCount > 1 ? 's' : ''}</span>
-                  : <span className="text-[10px] font-medium text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">Ready</span>}
+                  : <span className="text-[10px] font-medium text-green-700 bg-green-100 px-1.5 py-0.5 rounded">Ready</span>}
                 {editMembers && dirty && <span className="text-[10px] font-medium text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">Unsaved</span>}
               </div>
               {!editMembers ? (
@@ -1277,7 +1277,7 @@ export default function CaseDetailPage() {
                   const full = assigned === g.member_count
                   const over = assigned > g.member_count
                   return (
-                    <span key={g.id} className={`px-2 py-0.5 rounded-full border ${over ? 'bg-red-50 border-red-200 text-red-700' : full ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-amber-50 border-amber-200 text-amber-700'}`}>
+                    <span key={g.id} className={`px-2 py-0.5 rounded-full border ${over ? 'bg-red-50 border-red-200 text-red-700' : full ? 'bg-green-50 border-green-200 text-green-700' : 'bg-amber-50 border-amber-200 text-amber-700'}`}>
                       {g.name}: {assigned}/{g.member_count}
                     </span>
                   )
@@ -1389,7 +1389,7 @@ export default function CaseDetailPage() {
                                   </Link>
                                   <span className="text-[10px] font-mono text-gray-400">{p.clientNumber}</span>
                                   {p.isLead && <span className="text-[9px] font-medium text-white bg-[#0f4c35] px-1.5 py-0.5 rounded">LEAD</span>}
-                                  {p.needsMuslim && <span className="text-[10px] text-emerald-600">Muslim</span>}
+                                  {p.needsMuslim && <span className="text-[10px] text-[#0f4c35]">Muslim</span>}
                                 </div>
                               ))}
                             </div>
@@ -1407,7 +1407,7 @@ export default function CaseDetailPage() {
                                 </Link>
                                 <span className="text-[10px] font-mono text-gray-400">{p.clientNumber}</span>
                                 {p.isLead && <span className="text-[9px] font-medium text-white bg-[#0f4c35] px-1.5 py-0.5 rounded">LEAD</span>}
-                                {p.needsMuslim && <span className="text-[10px] text-emerald-600">Muslim</span>}
+                                {p.needsMuslim && <span className="text-[10px] text-[#0f4c35]">Muslim</span>}
                               </div>
                             ))}
                           </div>
@@ -1423,7 +1423,7 @@ export default function CaseDetailPage() {
               <>
                 {(() => {
                   const renderMemberCard = (p: PendingMember) => {
-                    const borderCls = p.isRemoved ? 'border-red-200 bg-red-50/40' : p.isNew ? 'border-emerald-300 bg-emerald-50/40' : 'border-gray-100 bg-white'
+                    const borderCls = p.isRemoved ? 'border-red-200 bg-red-50/40' : p.isNew ? 'border-green-300 bg-green-50/40' : 'border-gray-100 bg-white'
                     return (
                       <div key={p.id} className={`rounded-xl border p-2.5 space-y-1.5 ${borderCls}`}>
                         <div className="flex items-center gap-2 flex-wrap">
@@ -1437,7 +1437,7 @@ export default function CaseDetailPage() {
                           {p.clientNumber && <span className="text-[10px] font-mono text-gray-400">{p.clientNumber}</span>}
                           {p.isLead && !p.isRemoved && <span className="text-[9px] font-medium text-white bg-[#0f4c35] px-1.5 py-0.5 rounded">LEAD</span>}
                           {p.needsMuslim && !p.isRemoved && <span className="text-[10px] text-emerald-600">Muslim</span>}
-                          {p.isNew && <span className="text-[9px] font-medium text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">NEW</span>}
+                          {p.isNew && <span className="text-[9px] font-medium text-green-700 bg-green-100 px-1.5 py-0.5 rounded">NEW</span>}
                           {p.isRemoved && <span className="text-[9px] font-medium text-red-700 bg-red-100 px-1.5 py-0.5 rounded">REMOVED</span>}
                           <button onClick={() => stageToggleRemove(p.id)}
                             className={`ml-auto text-lg leading-none ${p.isRemoved ? 'text-gray-500 hover:text-gray-700' : 'text-gray-300 hover:text-red-400'}`}
@@ -1564,9 +1564,9 @@ export default function CaseDetailPage() {
           {/* Free-form memo edited by agent, read by admin while building the
               schedule. Saved on cases.agent_notes. */}
           {!isCanceled && (
-            <section className={`rounded-2xl p-5 space-y-3 ${caseData.status === 'completed' ? 'bg-gray-50 border border-gray-200' : 'bg-white border-2 border-red-300'}`}>
+            <section className={`rounded-2xl p-5 space-y-3 ${caseData.status === 'completed' ? 'bg-gray-50 border border-gray-200' : 'bg-white border border-gray-200'}`}>
               <div className="flex items-center justify-between">
-                <h3 className={`text-xs font-semibold uppercase tracking-wide ${caseData.status === 'completed' ? 'text-gray-500' : 'text-red-600'}`}>Notes for Tiktak</h3>
+                <h3 className={`text-xs font-semibold uppercase tracking-wide ${caseData.status === 'completed' ? 'text-gray-500' : 'text-gray-700'}`}>Notes for Tiktak</h3>
                 {!notesEditing ? (
                   <button onClick={() => { setNotesDraft(caseData.agent_notes ?? ''); setNotesEditing(true) }}
                     className="text-xs font-medium text-[#0f4c35] hover:underline">
@@ -1647,14 +1647,14 @@ export default function CaseDetailPage() {
             const isTravelDone = caseData.status === 'awaiting_travel'
             const isActionTarget = isReviewing || isTravelDone
             const sectionClass = isReviewing
-              ? 'scroll-mt-20 bg-violet-50 border border-violet-200 rounded-2xl p-5'
+              ? 'scroll-mt-20 bg-green-50 border border-green-200 rounded-2xl p-5'
               : isTravelDone
-                ? 'scroll-mt-20 bg-emerald-50 border border-emerald-200 rounded-2xl p-5'
+                ? 'scroll-mt-20 bg-green-50 border border-green-200 rounded-2xl p-5'
                 : 'scroll-mt-20 bg-gray-50 rounded-2xl p-5'
             const labelClass = isReviewing
-              ? 'text-xs font-semibold text-violet-700 uppercase tracking-wide'
+              ? 'text-xs font-semibold text-green-700 uppercase tracking-wide'
               : isTravelDone
-                ? 'text-xs font-semibold text-emerald-700 uppercase tracking-wide'
+                ? 'text-xs font-semibold text-green-700 uppercase tracking-wide'
                 : 'text-xs font-semibold text-gray-400 uppercase tracking-wide'
             void isActionTarget
             return (
@@ -1707,9 +1707,9 @@ export default function CaseDetailPage() {
                     <div className="flex items-center gap-2">
                       <p className="text-sm font-medium text-gray-800">Version {schedule.version}</p>
                       <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${
-                        schedule.status === 'confirmed' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                        schedule.status === 'confirmed' ? 'bg-green-50 text-green-700 border-green-200' :
                         schedule.status === 'revision_requested' ? 'bg-rose-50 text-rose-700 border-rose-200' :
-                        'bg-blue-50 text-blue-700 border-blue-200'
+                        'bg-gray-100 text-gray-600 border-gray-200'
                       }`}>
                         {schedule.status === 'confirmed' ? 'Confirmed' :
                          schedule.status === 'revision_requested' ? 'Revision Requested' :
@@ -1749,7 +1749,7 @@ export default function CaseDetailPage() {
                 })()}
 
                 {schedule.status === 'confirmed' && schedule.confirmed_at && (
-                  <p className="text-xs text-emerald-600">Confirmed on {schedule.confirmed_at.slice(0, 10)}</p>
+                  <p className="text-xs text-gray-500">Confirmed on {schedule.confirmed_at.slice(0, 10)}</p>
                 )}
 
                 {scheduleError && <p className="text-xs text-red-500">{scheduleError}</p>}
@@ -1839,7 +1839,7 @@ export default function CaseDetailPage() {
                 <div className="flex items-center gap-2">
                   <h3 className={labelClass}>Financials</h3>
                   {!quote.finalized_at && (
-                    <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5 uppercase tracking-wide">
+                    <span className="text-[10px] font-semibold text-gray-500 bg-gray-100 border border-gray-200 rounded-full px-2 py-0.5 uppercase tracking-wide">
                       Estimated
                     </span>
                   )}
@@ -1909,7 +1909,7 @@ export default function CaseDetailPage() {
                   <p className="text-base font-bold text-gray-900">{fmtUsd(toUsd(totalKrw))}</p>
                   {!quote.finalized_at && (
                     <p className="mt-1">
-                      <span className="text-[10px] font-medium text-amber-900 bg-yellow-200 px-1.5 py-0.5 rounded">
+                      <span className="text-[10px] font-medium text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
                         May change after admin finalizes
                       </span>
                     </p>

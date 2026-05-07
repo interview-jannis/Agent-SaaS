@@ -73,12 +73,13 @@ type ClientForm = {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const GROUP_PALETTE = [
-  { border: 'border-blue-400', tab: 'bg-blue-500 text-white', tabOff: 'bg-white text-blue-600 border border-blue-200', btn: 'bg-blue-500 hover:bg-blue-600 text-white', btnOff: 'border border-blue-300 text-blue-600 hover:bg-blue-50' },
-  { border: 'border-emerald-400', tab: 'bg-emerald-500 text-white', tabOff: 'bg-white text-emerald-600 border border-emerald-200', btn: 'bg-emerald-500 hover:bg-emerald-600 text-white', btnOff: 'border border-emerald-300 text-emerald-600 hover:bg-emerald-50' },
-  { border: 'border-orange-400', tab: 'bg-orange-500 text-white', tabOff: 'bg-white text-orange-600 border border-orange-200', btn: 'bg-orange-500 hover:bg-orange-600 text-white', btnOff: 'border border-orange-300 text-orange-600 hover:bg-orange-50' },
-  { border: 'border-purple-400', tab: 'bg-purple-500 text-white', tabOff: 'bg-white text-purple-600 border border-purple-200', btn: 'bg-purple-500 hover:bg-purple-600 text-white', btnOff: 'border border-purple-300 text-purple-600 hover:bg-purple-50' },
-]
+const GROUP_PALETTE = Array(8).fill({
+  border: 'border-gray-200',
+  tab: 'bg-[#0f4c35] text-white',
+  tabOff: 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50',
+  btn: 'bg-[#0f4c35] hover:bg-[#0a3526] text-white',
+  btnOff: 'border border-gray-300 text-gray-600 hover:bg-gray-50',
+})
 
 const DIETARY_FILTER_OPTIONS = [
   { value: 'halal_certified', label: 'Halal Certified' },
@@ -555,6 +556,11 @@ export default function AgentHomePage() {
   function renderProductCard(product: Product, compact = false) {
     const activeGroup = groups[activeGroupIndex]
     const inActiveGroup = activeGroup?.items.some(it => it.productId === product.id) ?? false
+    // Groups other than active that already contain this product
+    const otherGroupsWithProduct = groups.filter(
+      g => g.id !== activeGroupId && g.items.some(it => it.productId === product.id)
+    )
+    const inOtherGroup = otherGroupsWithProduct.length > 0
     const variantCount = (product.product_variants ?? []).filter(v => v.is_active).length
     const activePalette = GROUP_PALETTE[activeGroupIndex]
     const imgs = product.product_images ?? []
@@ -566,7 +572,11 @@ export default function AgentHomePage() {
       <div
         key={product.id}
         className={`bg-white rounded-2xl border-2 overflow-hidden flex flex-col transition-all ${
-          inActiveGroup ? activePalette.border : 'border-gray-100'
+          inActiveGroup
+            ? 'border-[#0f4c35]'
+            : inOtherGroup
+            ? 'border-[#0f4c35] border-dashed'
+            : 'border-gray-100'
         }`}
       >
         {/* Image with carousel */}
@@ -606,6 +616,20 @@ export default function AgentHomePage() {
                 ))}
               </div>
             </>
+          )}
+          {/* Other-group badge — inside the relative image div so absolute positioning is correct */}
+          {inOtherGroup && !inActiveGroup && (
+            <div className="absolute top-1.5 left-1.5 flex gap-1 z-10">
+              {otherGroupsWithProduct.map(g => {
+                const gIdx = groups.findIndex(x => x.id === g.id)
+                const label = g.name.length <= 6 ? g.name : `G${gIdx + 1}`
+                return (
+                  <span key={g.id} className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-[#0f4c35] text-white leading-tight">
+                    {label}
+                  </span>
+                )
+              })}
+            </div>
           )}
         </div>
 

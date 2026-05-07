@@ -2,12 +2,11 @@
 
 ## 현재 상태
 - **Phase**: 시뮬 직전 정합성 + 운영성. 3자 계약 evidentiary 강화 + 순서 무관 + 실시간 자동 새로고침, Overview 캐시베이시스 회계, Edit Selected Products audit trail (origin + soft delete), ScheduleEditor 대수술 (Free time / partner / block-time 범위 / group / internal note / pending row / coverage gate), agent → admin 메모. ScheduleEditor 2차 (draft save / edit button / group re-pick / cancel restore / delete confirm / multi-day product / ✓ indicator / duration / Shared color), ScheduleDocument 전면 재설계 (cover: flight+groups, day sections: group separation, variantTag chip).
-- **마지막 작업**: 2026-05-08 — `awaiting_settlement` 신규 상태 (awaiting_review → awaiting_settlement → completed), commission invoice Mark Paid 통합 (settlement 자동 생성 + completed 전이 + agent 알림), Admin Settlement 섹션 제거, admin case Client Review 섹션 추가, pre-confirmation 상품 노출 정합성 수정 (showOriginalOnly 시 removed_at 무시), QuoteDocument pre-confirmation origin 필터, Admin Financials "May change" 배너 schedule 확정 후 제거, Notes from Agent 완료 단계 스타일 분기.
-- **마지막 업데이트**: 2026-05-08 (개발 마감 5/8, 시뮬레이션 5/11~15, 런칭 5/18)
+- **마지막 작업**: 2026-05-07 — 상품 데이터 마스터 v20 생성. K-Wellness 비-Spa 63행 전면 재구축(Internal_Price 3-1~3-4 기준, Shopping/K-Content/Tour/Leisure 56행), K-Starcation 재구축(팬텀 4번째 행 제거 + K-Beauty notes 오염 해결, 3행으로 정정), Concierge variant label 공백 처리, Sofitel Presidential Suite ₩0 + 문의 안내. 8개 소스 파일 전수 감사. → 그 이전: Guide 페이지(사내 OT 문서), `awaiting_settlement` 신규 상태, commission invoice Mark Paid 통합, admin case Client Review 섹션, pre-confirmation 정합성, ScheduleDocument 모바일, invoice 모바일, Subpackage 가격 로직, 빌드 오류 수정.
+- **마지막 업데이트**: 2026-05-07 (개발 마감 5/8, 시뮬레이션 5/11~15, 런칭 5/18)
 - **SaaS 브랜드명**: **Tiktak** (UI 전역, 법인명 Interview Co., Ltd)
 
-> 2026-05-08 상세: `notes/26.05.08.md` (awaiting_settlement + commission invoice Mark Paid 통합 + Client Review 섹션 + pre-confirmation origin 필터 정합성).
-> 2026-05-07 상세: `notes/26.05.07.md` (모바일 대응 ScheduleDocument + invoice 표 + schedule 시각 계층 + Quotation admin 이름 + 빌드 오류 수정).
+> 2026-05-07 상세: `notes/26.05.07.md` (§1–18: 모바일 대응 ScheduleDocument + invoice 표 + schedule 시각 계층 + Quotation admin 이름 + 빌드 오류 수정 + Subpackage 가격 로직 + awaiting_settlement 신규 상태 + commission invoice Mark Paid 통합 + Client Review 섹션 + pre-confirmation origin 필터 정합성. §19: Guide 페이지 구현. §20: 데이터 마스터 v20 — K-Wellness/K-Starcation 재구축 + 전수 감사).
 > 2026-05-06 상세 (2차): `notes/26.05.06.md` §11–13 (ScheduleEditor 2차 개선 + ScheduleDocument 전면 재설계).
 > 2026-05-06 상세 (1차): `notes/26.05.06.md` §1–10 (3자 계약 evidentiary + 순서 무관 + Realtime / Cases 표 통일 / 캐시베이시스 회계 / Documents audit trail / ScheduleEditor 대수술 / agent_notes / Time24Input / 카테고리 sort_order)
 > 2026-05-05 상세: `notes/26.05.05.md` (호텔 × nights 가격 + variant 모달 가격 desc + 스케줄 템플릿 Option A 결정 + 호텔 객실 정원/저가 객실 cutoff todo)
@@ -39,7 +38,8 @@
 
 #### 컨텐츠 (사용자 본인)
 - [ ] **호텔 데이터 정리** — VIP 클라이언트 대상이라 ₩1,000,000/박 미만 객실은 카탈로그에서 제외 (예: SOFITEL `Luxury Lake Room $243.57`, `Prestige Suite $473.61`, `1-Bedroom Premier $338.29` 같은 라인). v19 마스터 빌드 시 cutoff 적용 + deleteMissing으로 정리
-- [ ] **잘못 매핑된 variants 정리 (v19)** — variants가 없어야 할 product에 다른 product의 variant 라벨이 박혀 있는 row들. 예: Rarelee `Beauty · Private Consulting` (#P-038)에 `Allergan` variant가 attached (Allergan은 다른 Beauty 시술의 브랜드 variant인데 Rarelee 컨설팅엔 무관). 데이터 검수 후 잘못된 variant_label은 NULL(default sole variant)로 정리하거나 잘못된 row 제거. 케이스에 이미 박힌 `variant_label_snapshot`은 신규 견적부터 깨끗해짐 (스냅샷 모델)
+- [x] **K-Wellness/K-Starcation/Concierge/Sofitel 데이터 수정 (v20)** — v18 K-Wellness 비-Spa 63행(보톡스 브랜드 variant 오염) 제거 후 Internal_Price 3-1~3-4 기준 56행 재구축. K-Starcation 팬텀 4번째 행 제거 + K-Beauty notes 오염 해결(3행 재구축). Concierge "1 session"/"5 sessions" variant 공백. Sofitel Presidential Suite ₩22M → ₩0+문의. 8개 소스 파일 전수 감사 완료. `data/products_master_v20.xlsx` (351행)
+- [ ] **잘못 매핑된 variants 정리 (K-Beauty)** — variants가 없어야 할 product에 다른 product의 variant 라벨이 박혀 있는 row들. 예: Rarelee `Beauty · Private Consulting` (#P-038)에 `Allergan` variant가 attached. v20에서 K-Wellness/K-Starcation은 해결. K-Beauty 클리닉별 잔여 이슈 별도 정리 필요.
 - [ ] 설문 질문 실제 내용 확정 (이사님 검토 후 admin/contracts에서 갱신 — placeholder 12문항 seed됨)
 - [ ] 계약서 4종 본문 법무 검토 후 admin/contracts에서 갱신
 - [ ] Stamp 정식 이미지 업로드 (현재 Stamp 폴더의 회사 도장 PNG)
@@ -51,7 +51,7 @@
 - [ ] P-029, 030, 032, 033 (Nest Clinic 4개) name 시술명
 
 #### Wellness 마진 정책
-- [ ] **Wellness 상품 (스파, 헤나 제외) 마진 X, 원가 그대로** — 4/30 미팅 결정. 견적 계산 시 Wellness 카테고리는 회사/에이전트 마진 0 적용. 스파 + 헤나는 패키지 뻥튀기 가능 (예외)
+- [x] **Wellness 상품 (스파, 헤나 제외) 마진 X, 원가 그대로** — 5/4 완료. `src/lib/pricing.ts` `appliesMargin()`: K-Wellness는 Spa/Henna만 마진, 나머지 원가 통과.
 
 #### Agent 등록 정보 확장
 - [ ] 사업자 등록증 업로드 (개인/법인/기타)
@@ -68,6 +68,7 @@
 - [x] **Agent case 상태 시각 보강** (5/5) — Schedule 섹션 action-tone에 awaiting_travel(emerald) 추가, Financials 섹션 action-tone에 awaiting_deposit(cyan) 추가. Hero/배너 11개 status 모두 cover 확인.
 - [x] **호텔 가격 × nights** (5/5) — `Subpackage > Hotel` variant는 `unitPrice × nights` (memberCount 무시, 객실당 비용). `lib/pricing.ts` 에 `isHotelItem` + `nightsBetween` 헬퍼 추가. Agent home cart 총액 + review page 표 + 견적 생성(`addDocumentItem`)에서 hotel 라인은 nights 곱해서 base/final 저장 + variant_label_snapshot에 ` · 3 nights` 베이크. QuoteDocument/SelectedProductsSection은 final_price + snapshot 그대로 읽어서 자동 반영. Admin pre-finalize Add line item picker는 variant/nights 미인지 (기존 한계 — 빈도 낮아 backlog)
 - [x] **Variant 모달 가격 desc 정렬** (5/5) — Agent home detail 모달에서 객실/사이즈 옵션이 sort_order(≈알파벳)였는데 USD 가격 내림차순으로. VIP 카탈로그 결: 비싼 옵션이 먼저 노출. tie-break은 sort_order
+- [ ] **Subpackage 라인 아이템 노트** — agent가 Subpackage 상품 선택 시 variant처럼 노트 입력 (내부용, 고객 견적서 미노출). `document_items.notes` 컬럼 추가. admin "Notes from Agent" 섹션에 기존 `cases.agent_notes`(케이스 전체 메모)와 함께 상품별 노트 묶어서 노출.
 - [ ] **호텔 객실 정원 검증 (Phase 2)** — `product_variants`에 `min_occupancy/max_occupancy` 컬럼, ProductForm + Excel upload에 입력, v18 데이터 backfill, 카트에서 group memberCount > max_occupancy 시 경고. 견적 금액엔 영향 없음 (UX 안전장치). 시뮬에서 발견해도 늦지 않음
 - [x] **데이터 마스터 v17 → v18** (5/4 저녁: DIAR 159 rows → 11 base + 159 variants, Hotel 37 rows → 13 base + 37 variants. `[★5 Hotel]` strip + grade paren strip + Hanok inline. 사용자 검수 후 deleteMissing으로 옛 row 정리)
 - [x] **Agent 카탈로그 정렬 정책** — 가격 desc 적용 (5/4 저녁). 인기순(5건+)은 케이스 쌓이면 도입 (backlog)
@@ -79,9 +80,13 @@
 - [x] **감사 로그 7 surface 일괄** (5/4 저녁) — products(create/update/delete/bulk_upload), categories/subcategories, system_settings 7키, contract_templates, clients, admins(invite/delete), documents(issue/item_add/remove/paid). 아이콘 톤 monochrome 통일
 - [x] **`/admin/surveys` 신규 페이지** (5/4 저녁) — Questions 탭(편집) + Responses 탭(제출 응답). 기존 contracts 페이지에서 분리
 - [x] **Layout 폴리시** (5/4 저녁) — Status 컬럼 제거(inactive 인라인 배지), Partner Name 컬럼 → 상품명 아래 회색 텍스트, 절반화면 헤더 줄바꿈(admin products/agent home/admin cases/agent cases). USD 상품에도 KRW 환산 표시 (단일+range 모두)
-- [x] **Admin case detail에 survey 응답 read-only 노출** — Client Review 섹션 추가 (5/8)
-- [ ] 3자 계약 client 페이지 모바일 점검
-- [ ] Stamp invoice 렌더 위치/크기 시뮬에서 실제 확인
+- [x] **Admin case detail에 survey 응답 read-only 노출** — Client Review 섹션 추가 (5/7)
+- [x] 3자 계약 client 페이지 모바일 점검 — 5/7 확인 완료
+- [x] **Guide 페이지 (사내 OT 문서)** — Admin/Agent/Client 3탭, 역할별 화면 설명 + Cases 흐름, 한국어, case status 영문. Admin/Agent 사이드바 메뉴 추가. (5/7)
+- [x] **데이터 마스터 v18 → v20** (5/7) — 8개 소스 파일 전수 감사. K-Wellness 비-Spa 63행 재구축(Internal_Price 3-1~3-4 기준 56행, Shopping/K-Content/Tour/Leisure). K-Starcation 재구축(3행, 팬텀 행 제거 + K-Beauty 오염 해결). Concierge variant label 공백. Sofitel Presidential Suite ₩0+문의 안내. 총 351행 → `products_master_v20.xlsx`.
+- [ ] **Agent 화면 UI 색상 정리** — GROUP_PALETTE (4색 → brand green 단일), STATUS_STYLES (10색 → 3색: 에이전트 차례=green tint, 대기=gray, 취소=rose), 기타 accent 정리 (`agent/home`, `lib/caseStatus.ts`)
+- [ ] Guide 페이지 화면 캡처 추가 (UI 정리 완료 후)
+- [ ] Stamp invoice 렌더 위치/크기 시뮬에서 실제 확인 (5/3 flex inline 수정 완료, 시각 확인만)
 
 ### 5/6 완료 (3자 계약 evidentiary + Realtime + 캐시베이시스 회계 + ScheduleEditor 대수술)
 - [x] **Cases 표 admin/agent 통일 + 빈 상태 표 유지** — agent 쪽 누락된 awaiting_contract/awaiting_deposit DisplayGroup 추가 (5/4 admin sweep mirror), 헤더 `Total (USD)`/JUMP `Balance` 통일. 케이스 0건이어도 11개 빈 status 섹션 헤더 노출 (흐름 시각화).

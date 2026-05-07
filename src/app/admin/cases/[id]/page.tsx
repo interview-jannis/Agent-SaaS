@@ -574,9 +574,9 @@ export default function AdminCaseDetailPage() {
               <div className="flex items-center gap-2">
                 <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Trip Setup</h3>
                 {(caseInfoComplete && allClientsComplete && groupsComplete && caseData.travel_start_date) ? (
-                  <span className="text-[10px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">Ready</span>
+                  <span className="text-[10px] font-medium text-green-700 bg-green-50 border border-green-200 px-1.5 py-0.5 rounded">Ready</span>
                 ) : flagMissingInfo ? (
-                  <span className="text-[10px] font-medium text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">In progress</span>
+                  <span className="text-[10px] font-medium text-gray-500 bg-gray-100 border border-gray-200 px-1.5 py-0.5 rounded">In progress</span>
                 ) : (
                   <span className="text-[10px] font-medium text-gray-500 bg-gray-100 border border-gray-200 px-1.5 py-0.5 rounded">In progress</span>
                 )}
@@ -616,7 +616,7 @@ export default function AdminCaseDetailPage() {
           </div>
 
           {/* Trip Info (case-level, read-only) */}
-          <div className={`pt-4 border-t border-gray-200 ${flagMissingInfo && !caseInfoComplete ? '-mx-1 px-1 py-2 rounded-xl bg-amber-50 border border-amber-200' : ''}`}>
+          <div className={`pt-4 border-t border-gray-200 ${flagMissingInfo && !caseInfoComplete ? '-mx-1 px-1 py-2 rounded-xl bg-green-50 border border-green-200' : ''}`}>
             <div className="flex items-center gap-2 mb-3">
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Trip Info</p>
               {flagMissingInfo && !caseInfoComplete && <span className="text-[10px] font-medium text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">Incomplete</span>}
@@ -665,7 +665,7 @@ export default function AdminCaseDetailPage() {
                   <p className="text-gray-800 capitalize">{lead.clients.dietary_restriction?.replace(/_/g, ' ') || '—'}</p>
                 </div>
                 {lead.clients.needs_muslim_friendly && (
-                  <div className="col-span-2"><span className="text-xs px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-full">Muslim Friendly</span></div>
+                  <div className="col-span-2"><span className="text-xs px-2 py-0.5 bg-green-50 text-[#0f4c35] rounded-full">Muslim Friendly</span></div>
                 )}
                 {lead.clients.special_requests && (
                   <div className="col-span-2"><p className="text-[10px] text-gray-400 mb-0.5">Special Requests</p><p className="text-gray-800 text-sm">{lead.clients.special_requests}</p></div>
@@ -687,7 +687,7 @@ export default function AdminCaseDetailPage() {
                     Members ({caseData.case_members.length}{expectedMemberCount > 0 ? ` / ${expectedMemberCount}` : ''})
                   </h3>
                   {ready
-                    ? <span className="text-[10px] font-medium text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">Ready</span>
+                    ? <span className="text-[10px] font-medium text-green-700 bg-green-100 px-1.5 py-0.5 rounded">Ready</span>
                     : flagMissingInfo
                       ? <span className="text-[10px] font-medium text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">{issueCount} issue{issueCount > 1 ? 's' : ''}</span>
                       : null}
@@ -772,8 +772,8 @@ export default function AdminCaseDetailPage() {
           {caseData.agent_notes && (() => {
             const isDone = caseData.status === 'awaiting_review' || caseData.status === 'awaiting_settlement' || caseData.status === 'completed'
             return (
-              <div className={`rounded-xl p-3 space-y-1 ${isDone ? 'bg-gray-50 border border-gray-200' : 'bg-white border-2 border-red-300'}`}>
-                <p className={`text-[10px] font-semibold uppercase tracking-wide ${isDone ? 'text-gray-400' : 'text-red-600'}`}>Notes from agent</p>
+              <div className={`rounded-xl p-3 space-y-1 ${isDone ? 'bg-gray-50 border border-gray-200' : 'bg-white border border-gray-200'}`}>
+                <p className={`text-[10px] font-semibold uppercase tracking-wide ${isDone ? 'text-gray-400' : 'text-gray-700'}`}>Notes from agent</p>
                 <p className="text-xs text-gray-800 whitespace-pre-wrap">{caseData.agent_notes}</p>
               </div>
             )
@@ -899,10 +899,10 @@ export default function AdminCaseDetailPage() {
             }
 
             return (
-              <section className="border border-violet-100 bg-white rounded-2xl p-4 space-y-3">
+              <section className="border border-gray-200 bg-white rounded-2xl p-4 space-y-3">
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <div className="flex items-baseline gap-3 min-w-0">
-                    <p className="text-xs font-semibold text-violet-700 uppercase tracking-wide">Edit Selected Products</p>
+                    <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Edit Selected Products</p>
                     <p className="text-[10px] text-gray-400">
                       {dirty
                         ? `${stagedAdds.length} to add · ${stagedRemoves.size} to remove — review then save`
@@ -973,7 +973,7 @@ export default function AdminCaseDetailPage() {
                                 muted = true
                               } else if (wasAdminAdded) {
                                 badge = 'Added'
-                                badgeClass = 'bg-emerald-100 text-emerald-700'
+                                badgeClass = 'bg-green-100 text-green-700'
                               } else {
                                 badge = 'Original'
                                 badgeClass = 'bg-gray-100 text-gray-500'
@@ -1034,14 +1034,14 @@ export default function AdminCaseDetailPage() {
                               )
                             })}
                             {groupStaged.map(add => (
-                              <div key={add.tempId} className="flex items-center gap-3 px-3 py-2 bg-emerald-50/60">
-                                <span className="text-[9px] font-semibold uppercase tracking-wide shrink-0 px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">
+                              <div key={add.tempId} className="flex items-center gap-3 px-3 py-2 bg-green-50/60">
+                                <span className="text-[9px] font-semibold uppercase tracking-wide shrink-0 px-1.5 py-0.5 rounded bg-green-100 text-green-700">
                                   New
                                 </span>
                                 <div className="flex-1 min-w-0">
                                   <p className="text-sm text-emerald-900 truncate">{add.productName}</p>
                                   {(add.partnerName || add.variantLabel) && (
-                                    <p className="text-[10px] text-emerald-700/70 truncate">
+                                    <p className="text-[10px] text-gray-400 truncate">
                                       {add.partnerName ?? ''}
                                       {add.partnerName && add.variantLabel && ' · '}
                                       {add.variantLabel ?? ''}
@@ -1049,8 +1049,8 @@ export default function AdminCaseDetailPage() {
                                   )}
                                 </div>
                                 <div className="text-right shrink-0">
-                                  <p className="text-xs text-emerald-800 tabular-nums">{fmtKRW(add.finalPrice)}</p>
-                                  <p className="text-[10px] text-emerald-700/70 tabular-nums">{fmtUSD(add.finalPrice / exchangeRate)}</p>
+                                  <p className="text-xs text-gray-800 tabular-nums">{fmtKRW(add.finalPrice)}</p>
+                                  <p className="text-[10px] text-gray-400 tabular-nums">{fmtUSD(add.finalPrice / exchangeRate)}</p>
                                 </div>
                                 <button
                                   type="button"
@@ -1204,7 +1204,7 @@ export default function AdminCaseDetailPage() {
                       ? `$${v.base_price.toLocaleString('en-US')}`
                       : fmtKRW(v.base_price)
                   return (
-                    <div className="bg-white rounded-xl border border-violet-100 px-3 py-2 flex flex-wrap items-center gap-2 relative">
+                    <div className="bg-white rounded-xl border border-gray-200 px-3 py-2 flex flex-wrap items-center gap-2 relative">
                       <span className="text-[10px] text-gray-500 shrink-0">Add to</span>
                       {sortedGroups.length > 1 && (
                         <select
@@ -1251,11 +1251,11 @@ export default function AdminCaseDetailPage() {
                                     type="button"
                                     onMouseDown={(e) => e.preventDefault()}
                                     onClick={() => onProductClick(p)}
-                                    className="w-full text-left px-3 py-1.5 hover:bg-violet-50 text-xs">
+                                    className="w-full text-left px-3 py-1.5 hover:bg-gray-50 text-xs">
                                     <div className="flex items-center justify-between gap-2">
                                       <span className="text-gray-900 truncate">{p.name}</span>
                                       {multi && (
-                                        <span className="text-[10px] font-medium text-violet-700 bg-violet-50 border border-violet-100 rounded px-1.5 py-0.5 shrink-0">
+                                        <span className="text-[10px] font-medium text-gray-600 bg-gray-100 border border-gray-200 rounded px-1.5 py-0.5 shrink-0">
                                           {p.variants.length} variants {expanded ? '▲' : '▼'}
                                         </span>
                                       )}
@@ -1271,7 +1271,7 @@ export default function AdminCaseDetailPage() {
                                     </div>
                                   </button>
                                   {multi && expanded && (
-                                    <div className="bg-violet-50/40 border-t border-violet-100 divide-y divide-violet-100/60">
+                                    <div className="bg-gray-50/60 border-t border-gray-100 divide-y divide-gray-100/60">
                                       {p.variants.map(v => (
                                         <button
                                           key={v.id}
@@ -1331,11 +1331,11 @@ export default function AdminCaseDetailPage() {
               </div>
 
               {scheduleLocked && (
-                <div className="flex items-center gap-2 border border-emerald-200 bg-emerald-50 rounded-xl px-3 py-2">
-                  <svg className="w-3.5 h-3.5 text-emerald-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <div className="flex items-center gap-2 border border-green-200 bg-green-50 rounded-xl px-3 py-2">
+                  <svg className="w-3.5 h-3.5 text-green-700 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
                   </svg>
-                  <p className="text-xs text-emerald-800">
+                  <p className="text-xs text-green-800">
                     {(caseData.status === 'completed' || caseData.status === 'awaiting_review')
                       ? 'Travel complete — schedule is locked.'
                       : 'Agent has confirmed the schedule — no further edits allowed.'}
@@ -1347,9 +1347,9 @@ export default function AdminCaseDetailPage() {
                 {sortedSchedules.map((s) => {
                   const isLatest = s.id === latestSchedule?.id
                   const statusStyle =
-                    s.status === 'confirmed' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                    s.status === 'confirmed' ? 'bg-green-50 text-green-700 border-green-200' :
                     s.status === 'revision_requested' ? 'bg-rose-50 text-rose-700 border-rose-200' :
-                    'bg-blue-50 text-blue-700 border-blue-200'
+                    'bg-gray-100 text-gray-600 border-gray-200'
                   const statusLabel =
                     s.status === 'confirmed' ? 'Confirmed' :
                     s.status === 'revision_requested' ? 'Revision Requested' :
@@ -1557,9 +1557,9 @@ export default function AdminCaseDetailPage() {
               : (caseData.schedule_draft_items ?? [])
             const nextVersion = (latestSchedule?.version ?? 0) + 1
             return (
-              <section id="schedule-upload" className={`scroll-mt-20 border rounded-2xl p-4 space-y-3 ${caseData.status === 'awaiting_schedule' ? 'border-blue-200 bg-blue-50' : 'border-violet-200 bg-violet-50'}`}>
+              <section id="schedule-upload" className={`scroll-mt-20 border rounded-2xl p-4 space-y-3 border-green-200 bg-green-50`}>
                 <div className="flex items-baseline justify-between gap-2">
-                  <p className={`text-xs font-semibold uppercase tracking-wide ${caseData.status === 'awaiting_schedule' ? 'text-blue-700' : 'text-violet-700'}`}>
+                  <p className={`text-xs font-semibold uppercase tracking-wide text-green-700`}>
                     {sortedSchedules.length === 0 ? 'Build Schedule' : `New Version (v${nextVersion})`}
                   </p>
                   {latestSchedule?.slug && (
@@ -1611,9 +1611,9 @@ export default function AdminCaseDetailPage() {
             })()
             const dueDateValue = dueDateEdit || defaultDue
             return (
-            <section id="pricing" className="scroll-mt-20 border border-violet-200 bg-violet-50 rounded-2xl p-4 space-y-3">
+            <section id="pricing" className="scroll-mt-20 border border-green-200 bg-green-50 rounded-2xl p-4 space-y-3">
               <div className="flex items-center justify-between flex-wrap gap-2">
-                <p className="text-xs font-semibold text-violet-700 uppercase tracking-wide">
+                <p className="text-xs font-semibold text-green-700 uppercase tracking-wide">
                   {latestQuote.finalized_at ? 'Edit Final Pricing' : 'Finalize Pricing'}
                 </p>
                 {latestQuote.finalized_at && (
@@ -1629,7 +1629,7 @@ export default function AdminCaseDetailPage() {
 
               {pricingError && <p className="text-xs text-red-500">{pricingError}</p>}
 
-              <div className="bg-white rounded-xl border border-violet-100 divide-y divide-gray-100">
+              <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
                 {sortedGroups.flatMap(g => g.document_items.filter(it => !it.removed_at).map(item => {
                   // pricingEdits stores canonical KRW digits; currency toggle only changes display.
                   const krwDigits = pricingEdits[item.id] ?? String(item.final_price)
@@ -1687,13 +1687,13 @@ export default function AdminCaseDetailPage() {
                 const newTotal = liveSum
                 const diff = newTotal - latestQuote.total_price
                 return (
-                  <div className="flex items-baseline justify-between bg-white rounded-xl border border-violet-100 px-3 py-2">
+                  <div className="flex items-baseline justify-between bg-white rounded-xl border border-gray-200 px-3 py-2">
                     <span className="text-xs text-gray-500">New Total</span>
                     <div className="flex items-baseline gap-3">
                       <span className="text-sm font-bold text-gray-900 tabular-nums">{fmtUSD(newTotal / exchangeRate)}</span>
                       <span className="text-[11px] text-gray-400 tabular-nums">{fmtKRW(newTotal)}</span>
                       {diff !== 0 && (
-                        <span className={`text-[10px] font-medium tabular-nums ${diff > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                        <span className={`text-[10px] font-medium tabular-nums ${diff > 0 ? 'text-[#0f4c35]' : 'text-red-500'}`}>
                           {diff > 0 ? '+' : ''}{fmtKRW(diff)}
                         </span>
                       )}
@@ -1703,7 +1703,7 @@ export default function AdminCaseDetailPage() {
               })()}
 
               {/* Payment Due Date — defaults to today + 7d, admin can override */}
-              <div className="bg-white rounded-xl border border-violet-100 px-3 py-2 flex items-center justify-between gap-3">
+              <div className="bg-white rounded-xl border border-gray-200 px-3 py-2 flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-xs text-gray-700 font-medium">Payment Due Date</p>
                   <p className="text-[10px] text-gray-400">Default is 7 days from today. Adjust if the client needs more or less time.</p>
@@ -1873,7 +1873,7 @@ export default function AdminCaseDetailPage() {
                 <div className="flex items-center gap-2">
                   <p className={labelClass}>Financials</p>
                   {!latestQuote.finalized_at && (
-                    <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5 uppercase tracking-wide">
+                    <span className="text-[10px] font-semibold text-gray-500 bg-gray-100 border border-gray-200 rounded-full px-2 py-0.5 uppercase tracking-wide">
                       Estimated
                     </span>
                   )}
@@ -1926,13 +1926,13 @@ export default function AdminCaseDetailPage() {
                         <p className="text-[10px] text-red-500">− {fmtKRW(pendingRemovals)} pending removal</p>
                       )}
                       {pendingAdditions > 0 && (
-                        <p className="text-[10px] text-emerald-600">+ {fmtKRW(pendingAdditions)} pending addition</p>
+                        <p className="text-[10px] text-[#0f4c35]">+ {fmtKRW(pendingAdditions)} pending addition</p>
                       )}
                     </div>
                   )}
                   {!latestQuote.finalized_at && !schedConfirmed && (
                     <p className="mt-1">
-                      <span className="text-[10px] font-medium text-amber-900 bg-yellow-200 px-1.5 py-0.5 rounded">
+                      <span className="text-[10px] font-medium text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
                         May change after you finalize
                       </span>
                     </p>
@@ -1949,13 +1949,13 @@ export default function AdminCaseDetailPage() {
                         <p className="text-[10px] text-red-500">− {fmtUSD(pendingRemovals / exchangeRate)} pending removal</p>
                       )}
                       {pendingAdditions > 0 && (
-                        <p className="text-[10px] text-emerald-600">+ {fmtUSD(pendingAdditions / exchangeRate)} pending addition</p>
+                        <p className="text-[10px] text-[#0f4c35]">+ {fmtUSD(pendingAdditions / exchangeRate)} pending addition</p>
                       )}
                     </div>
                   )}
                   {!latestQuote.finalized_at && !schedConfirmed && (
                     <p className="mt-1">
-                      <span className="text-[10px] font-medium text-amber-900 bg-yellow-200 px-1.5 py-0.5 rounded">
+                      <span className="text-[10px] font-medium text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
                         May change after you finalize
                       </span>
                     </p>
@@ -2046,7 +2046,7 @@ export default function AdminCaseDetailPage() {
               <div className="flex items-center justify-between">
                 <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide">Confirm Payment</p>
                 <button onClick={() => { setEditingPricing(true); setPricingEdits({}); setPricingError('') }}
-                  className="text-[10px] text-violet-700 hover:underline">Edit pricing</button>
+                  className="text-[10px] text-gray-500 hover:underline">Edit pricing</button>
               </div>
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Payment Date <span className="text-amber-700">*</span></label>
@@ -2062,8 +2062,8 @@ export default function AdminCaseDetailPage() {
           )}
 
           {caseData.status === 'awaiting_travel' && (
-            <section className="border border-emerald-200 bg-emerald-50 rounded-2xl p-4">
-              <p className="text-xs text-emerald-700">Agent will mark travel complete after the trip.</p>
+            <section className="border border-gray-200 bg-gray-50 rounded-2xl p-4">
+              <p className="text-xs text-gray-500">Agent will mark travel complete after the trip.</p>
             </section>
           )}
           {/* Partner Payouts — track cash sent to hospitals/hotels/etc per partner */}
@@ -2103,7 +2103,7 @@ export default function AdminCaseDetailPage() {
                   <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Partner Payouts</p>
                   <div className="flex items-baseline gap-3 text-[10px] text-gray-500">
                     <span>Paid <span className="font-semibold tabular-nums text-gray-700">{fmtUSD(totalPaid / exchangeRate)}</span> of {fmtUSD(totalSuggested / exchangeRate)}</span>
-                    {allPaid && <span className="text-emerald-700 font-medium">All settled ✓</span>}
+                    {allPaid && <span className="text-[#0f4c35] font-medium">All settled ✓</span>}
                   </div>
                 </div>
 
@@ -2149,14 +2149,14 @@ export default function AdminCaseDetailPage() {
                     if (existing && !editing) {
                       // Paid view
                       return (
-                        <div key={g.name} className="bg-white rounded-xl border border-emerald-200 p-3 flex items-center gap-3 flex-wrap">
-                          <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                        <div key={g.name} className="bg-white rounded-xl border border-green-200 p-3 flex items-center gap-3 flex-wrap">
+                          <span className="w-2 h-2 rounded-full bg-[#0f4c35] shrink-0" />
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium text-gray-900">{g.name}</p>
                             <p className="text-[10px] text-gray-500">{g.items.length} item{g.items.length !== 1 ? 's' : ''} · paid {existing.paid_at}{existing.note ? ` · ${existing.note}` : ''}</p>
                           </div>
                           <span className="text-right tabular-nums">
-                            <span className="text-sm font-semibold text-emerald-700">{fmtUSD(existing.amount / exchangeRate)}</span>
+                            <span className="text-sm font-semibold text-[#0f4c35]">{fmtUSD(existing.amount / exchangeRate)}</span>
                             <span className="text-[10px] text-gray-400 ml-2">{fmtKRW(existing.amount)}</span>
                           </span>
                           <div className="flex items-center gap-2 shrink-0">
@@ -2191,7 +2191,7 @@ export default function AdminCaseDetailPage() {
                     return (
                       <div key={g.name} className={`bg-white rounded-xl border p-3 space-y-2 ${existing ? 'border-emerald-200' : 'border-gray-200'}`}>
                         <div className="flex items-center gap-3 flex-wrap">
-                          <span className={`w-2 h-2 rounded-full shrink-0 ${existing ? 'bg-emerald-500' : 'bg-amber-400'}`} />
+                          <span className={`w-2 h-2 rounded-full shrink-0 ${existing ? 'bg-[#0f4c35]' : 'bg-gray-300'}`} />
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium text-gray-900">{g.name}</p>
                             <p className="text-[10px] text-gray-500">{g.items.length} item{g.items.length !== 1 ? 's' : ''} · suggested {fmtUSD(g.suggested / exchangeRate)} · {fmtKRW(g.suggested)}</p>

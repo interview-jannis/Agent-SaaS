@@ -61,19 +61,20 @@ export const STATUS_LABELS: Record<CaseStatus, string> = {
   canceled: 'Canceled',
 }
 
+// 3-tone scheme: agent's turn = green tint, admin/waiting = gray, canceled = rose
 export const STATUS_STYLES: Record<CaseStatus, string> = {
-  awaiting_info: 'bg-gray-100 text-gray-700 border-gray-200',
-  awaiting_contract: 'bg-indigo-50 text-indigo-700 border-indigo-200',
-  awaiting_deposit: 'bg-orange-50 text-orange-700 border-orange-200',
-  awaiting_schedule: 'bg-amber-50 text-amber-700 border-amber-200',
-  reviewing_schedule: 'bg-violet-50 text-violet-700 border-violet-200',
-  awaiting_pricing: 'bg-blue-50 text-blue-700 border-blue-200',
-  awaiting_payment: 'bg-cyan-50 text-cyan-700 border-cyan-200',
-  awaiting_travel: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  awaiting_review: 'bg-teal-50 text-teal-700 border-teal-200',
-  awaiting_settlement: 'bg-violet-50 text-violet-700 border-violet-200',
-  completed: 'bg-gray-50 text-gray-500 border-gray-200',
-  canceled: 'bg-rose-50 text-rose-700 border-rose-200',
+  awaiting_info:      'bg-green-50 text-green-800 border-green-200',
+  awaiting_contract:  'bg-green-50 text-green-800 border-green-200',
+  awaiting_deposit:   'bg-green-50 text-green-800 border-green-200',
+  awaiting_schedule:  'bg-gray-100 text-gray-600 border-gray-200',
+  reviewing_schedule: 'bg-green-50 text-green-800 border-green-200',
+  awaiting_pricing:   'bg-gray-100 text-gray-600 border-gray-200',
+  awaiting_payment:   'bg-green-50 text-green-800 border-green-200',
+  awaiting_travel:    'bg-gray-50 text-gray-500 border-gray-200',
+  awaiting_review:    'bg-green-50 text-green-800 border-green-200',
+  awaiting_settlement:'bg-gray-100 text-gray-600 border-gray-200',
+  completed:          'bg-gray-50 text-gray-400 border-gray-200',
+  canceled:           'bg-rose-50 text-rose-700 border-rose-200',
 }
 
 // Whose move it is — drives Action Required queue split + chip context.

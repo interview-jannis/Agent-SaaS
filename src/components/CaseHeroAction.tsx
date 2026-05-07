@@ -4,18 +4,13 @@ import { type CaseStatus } from '@/lib/caseStatus'
 
 // ── Shared bits ──────────────────────────────────────────────────────────────
 
-type Tone = 'amber' | 'violet' | 'blue' | 'cyan' | 'emerald' | 'gray' | 'indigo' | 'orange' | 'teal'
+// 3-tone scheme: green = my turn to act, amber = overdue/urgent, gray = waiting/done
+type Tone = 'green' | 'amber' | 'gray'
 
 const TONE: Record<Tone, { wrap: string; eyebrow: string; primaryBtn: string; ghostBtn: string; icon: string }> = {
-  amber:   { wrap: 'border-amber-200 bg-amber-50',     eyebrow: 'text-amber-700',   primaryBtn: 'bg-amber-600 hover:bg-amber-700 text-white',     ghostBtn: 'text-amber-700 hover:bg-amber-100', icon: 'text-amber-500' },
-  violet:  { wrap: 'border-violet-200 bg-violet-50',   eyebrow: 'text-violet-700',  primaryBtn: 'bg-violet-600 hover:bg-violet-700 text-white',   ghostBtn: 'text-violet-700 hover:bg-violet-100', icon: 'text-violet-500' },
-  blue:    { wrap: 'border-blue-200 bg-blue-50',       eyebrow: 'text-blue-700',    primaryBtn: 'bg-blue-600 hover:bg-blue-700 text-white',       ghostBtn: 'text-blue-700 hover:bg-blue-100', icon: 'text-blue-500' },
-  cyan:    { wrap: 'border-cyan-200 bg-cyan-50',       eyebrow: 'text-cyan-700',    primaryBtn: 'bg-[#0f4c35] hover:bg-[#0a3828] text-white',     ghostBtn: 'text-cyan-700 hover:bg-cyan-100', icon: 'text-cyan-500' },
-  emerald: { wrap: 'border-emerald-200 bg-emerald-50', eyebrow: 'text-emerald-700', primaryBtn: 'bg-[#0f4c35] hover:bg-[#0a3828] text-white',     ghostBtn: 'text-emerald-700 hover:bg-emerald-100', icon: 'text-emerald-500' },
-  gray:    { wrap: 'border-gray-200 bg-gray-50',       eyebrow: 'text-gray-500',    primaryBtn: 'bg-gray-700 hover:bg-gray-800 text-white',       ghostBtn: 'text-gray-700 hover:bg-gray-100', icon: 'text-gray-400' },
-  indigo:  { wrap: 'border-indigo-200 bg-indigo-50',   eyebrow: 'text-indigo-700',  primaryBtn: 'bg-indigo-600 hover:bg-indigo-700 text-white',   ghostBtn: 'text-indigo-700 hover:bg-indigo-100', icon: 'text-indigo-500' },
-  orange:  { wrap: 'border-orange-200 bg-orange-50',   eyebrow: 'text-orange-700',  primaryBtn: 'bg-orange-600 hover:bg-orange-700 text-white',   ghostBtn: 'text-orange-700 hover:bg-orange-100', icon: 'text-orange-500' },
-  teal:    { wrap: 'border-teal-200 bg-teal-50',       eyebrow: 'text-teal-700',    primaryBtn: 'bg-teal-600 hover:bg-teal-700 text-white',       ghostBtn: 'text-teal-700 hover:bg-teal-100', icon: 'text-teal-500' },
+  green: { wrap: 'border-green-200 bg-green-50',   eyebrow: 'text-green-800',  primaryBtn: 'bg-[#0f4c35] hover:bg-[#0a3828] text-white', ghostBtn: 'text-green-700 hover:bg-green-100', icon: 'text-green-700' },
+  amber: { wrap: 'border-amber-200 bg-amber-50',   eyebrow: 'text-amber-700',  primaryBtn: 'bg-amber-600 hover:bg-amber-700 text-white',  ghostBtn: 'text-amber-700 hover:bg-amber-100', icon: 'text-amber-500' },
+  gray:  { wrap: 'border-gray-200 bg-gray-50',     eyebrow: 'text-gray-500',   primaryBtn: 'bg-gray-700 hover:bg-gray-800 text-white',    ghostBtn: 'text-gray-600 hover:bg-gray-100',   icon: 'text-gray-400' },
 }
 
 function CopyIcon() {
@@ -110,13 +105,13 @@ export function AgentCaseHero(p: AgentHeroProps) {
     case 'awaiting_contract':
       return (
         <HeroShell
-          tone="indigo"
+          tone="green"
           eyebrow="Action needed"
           headline="Send 3-party contract for signing"
           subline={<span>Once client + you + admin all sign the contract, the deposit invoice can be issued.</span>}
         >
           <button onClick={p.onSendContract ?? (() => document.getElementById('case-contract')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))}
-            className={`text-xs font-medium px-3 py-2 rounded-lg flex items-center gap-1.5 ${TONE.indigo.primaryBtn}`}>
+            className={`text-xs font-medium px-3 py-2 rounded-lg flex items-center gap-1.5 ${TONE.green.primaryBtn}`}>
             {p.copied ? <><CheckIcon /> Copied!</> : p.onSendContract ? <><CopyIcon /> Send Contract</> : <>Send Contract</>}
           </button>
         </HeroShell>
@@ -140,14 +135,14 @@ export function AgentCaseHero(p: AgentHeroProps) {
             : 'Deposit settled — moving to info phase'
       return (
         <HeroShell
-          tone="orange"
+          tone="green"
           eyebrow="Action needed"
           headline={headline}
           subline={<span>{subBits.join(' · ')}.</span>}
         >
           {p.onScrollToDocuments && (
             <button onClick={p.onScrollToDocuments}
-              className={`text-xs font-medium px-3 py-2 rounded-lg ${TONE.orange.primaryBtn}`}>
+              className={`text-xs font-medium px-3 py-2 rounded-lg ${TONE.green.primaryBtn}`}>
               Go to Invoices
             </button>
           )}
@@ -165,7 +160,7 @@ export function AgentCaseHero(p: AgentHeroProps) {
       const primary = !p.caseInfoComplete ? p.onScrollToTrip : p.onScrollToMembers
       return (
         <HeroShell
-          tone="amber"
+          tone="green"
           eyebrow="Action needed"
           headline="Complete client & trip info"
           subline={
@@ -174,7 +169,7 @@ export function AgentCaseHero(p: AgentHeroProps) {
               : <span>All set — schedule will start as soon as save propagates.</span>
           }
         >
-          <button onClick={primary} className={`text-xs font-medium px-3 py-2 rounded-lg ${TONE.amber.primaryBtn}`}>
+          <button onClick={primary} className={`text-xs font-medium px-3 py-2 rounded-lg ${TONE.green.primaryBtn}`}>
             Resolve
           </button>
         </HeroShell>
@@ -184,7 +179,7 @@ export function AgentCaseHero(p: AgentHeroProps) {
     case 'awaiting_schedule':
       return (
         <HeroShell
-          tone="blue"
+          tone="gray"
           eyebrow="In progress"
           headline="Tiktak is preparing your schedule"
           subline={<span>You&apos;ll be notified once the schedule is ready to review.</span>}
@@ -194,13 +189,13 @@ export function AgentCaseHero(p: AgentHeroProps) {
     case 'reviewing_schedule':
       return (
         <HeroShell
-          tone="violet"
+          tone="green"
           eyebrow="Action needed"
           headline={`Review Schedule v${p.scheduleVersion ?? '?'}`}
           subline={<span>Confirm with the client, or request a revision with notes.</span>}
         >
           <button onClick={p.onScrollToSchedule}
-            className="text-xs font-medium px-3 py-2 rounded-lg border border-violet-200 text-violet-600 hover:bg-violet-50 flex items-center gap-1.5">
+            className="text-xs font-medium px-3 py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 flex items-center gap-1.5">
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
             </svg>
@@ -211,7 +206,7 @@ export function AgentCaseHero(p: AgentHeroProps) {
             Request Revision
           </button>
           <button onClick={p.onConfirmSchedule} disabled={p.busy}
-            className={`text-xs font-medium px-3 py-2 rounded-lg ${TONE.violet.primaryBtn} disabled:opacity-40`}>
+            className={`text-xs font-medium px-3 py-2 rounded-lg ${TONE.green.primaryBtn} disabled:opacity-40`}>
             {p.busy ? 'Confirming…' : 'Confirm Schedule'}
           </button>
         </HeroShell>
@@ -220,7 +215,7 @@ export function AgentCaseHero(p: AgentHeroProps) {
     case 'awaiting_pricing':
       return (
         <HeroShell
-          tone="blue"
+          tone="gray"
           eyebrow="In progress"
           headline="Final invoice in preparation"
           subline={<span>Schedule confirmed. Tiktak is finalizing the pricing — you&apos;ll be notified once the invoice is ready to send.</span>}
@@ -238,10 +233,10 @@ export function AgentCaseHero(p: AgentHeroProps) {
       const onSend = p.hasInvoice ? p.onSendInvoice : p.onSendQuotation
       const label = p.hasInvoice ? 'Send Invoice' : 'Send Quotation'
       return (
-        <HeroShell tone={overdue ? 'amber' : 'cyan'} eyebrow="Action needed" headline="Send invoice link to client" subline={sub}>
+        <HeroShell tone={overdue ? 'amber' : 'green'} eyebrow="Action needed" headline="Send invoice link to client" subline={sub}>
           {onSend && (
             <button onClick={onSend}
-              className={`text-xs font-medium px-3 py-2 rounded-lg flex items-center gap-1.5 ${overdue ? TONE.amber.primaryBtn : TONE.cyan.primaryBtn}`}>
+              className={`text-xs font-medium px-3 py-2 rounded-lg flex items-center gap-1.5 ${overdue ? TONE.amber.primaryBtn : TONE.green.primaryBtn}`}>
               {p.copied ? <><CheckIcon /> Copied!</> : <><CopyIcon /> {label}</>}
             </button>
           )}
@@ -259,20 +254,20 @@ export function AgentCaseHero(p: AgentHeroProps) {
             ? <span>Travel begins today.</span>
             : <span>Travel underway. Mark complete after the trip ends.</span>
       return (
-        <HeroShell tone="emerald" eyebrow="Confirmed" headline="Payment received · trip locked in" subline={sub} />
+        <HeroShell tone="gray" eyebrow="Confirmed" headline="Payment received · trip locked in" subline={sub} />
       )
     }
 
     case 'awaiting_review':
       return (
         <HeroShell
-          tone="teal"
+          tone="green"
           eyebrow="Action needed"
           headline="Submit client review"
           subline={<span>Trip wrapped up. Fill in the survey below to finalize the case and unlock commission claim.</span>}
         >
           <button onClick={() => document.getElementById('survey')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-            className={`text-xs font-medium px-3 py-2 rounded-lg ${TONE.teal.primaryBtn}`}>
+            className={`text-xs font-medium px-3 py-2 rounded-lg ${TONE.green.primaryBtn}`}>
             Go to Review
           </button>
         </HeroShell>
@@ -282,13 +277,13 @@ export function AgentCaseHero(p: AgentHeroProps) {
       if (!p.travelCompletedAt) {
         return (
           <HeroShell
-            tone="emerald"
+            tone="green"
             eyebrow="Action needed"
             headline="Mark travel complete"
             subline={<span>Once you confirm the trip ended, you&apos;ll submit a review and settlement enters the queue.</span>}
           >
             <button onClick={p.onMarkTravelComplete} disabled={p.busy}
-              className={`text-xs font-medium px-3 py-2 rounded-lg ${TONE.emerald.primaryBtn} disabled:opacity-40`}>
+              className={`text-xs font-medium px-3 py-2 rounded-lg ${TONE.green.primaryBtn} disabled:opacity-40`}>
               {p.busy ? 'Updating…' : 'Mark Travel Complete'}
             </button>
           </HeroShell>
@@ -340,13 +335,13 @@ export function AdminCaseHero(p: AdminHeroProps) {
     case 'awaiting_contract':
       return (
         <HeroShell
-          tone="indigo"
+          tone="green"
           eyebrow="Action needed"
           headline="3-party contract pending signature"
           subline={<span>Counter-sign once agent + client both sign. Status advances to deposit phase automatically.</span>}
         >
           <button onClick={() => document.getElementById('case-contract')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-            className={`text-xs font-medium px-3 py-2 rounded-lg ${TONE.indigo.primaryBtn}`}>
+            className={`text-xs font-medium px-3 py-2 rounded-lg ${TONE.green.primaryBtn}`}>
             Go to Contract
           </button>
         </HeroShell>
@@ -355,7 +350,7 @@ export function AdminCaseHero(p: AdminHeroProps) {
     case 'awaiting_deposit':
       return (
         <HeroShell
-          tone="orange"
+          tone="gray"
           eyebrow="Waiting on agent"
           headline="Deposit settlement in progress"
           subline={
@@ -371,7 +366,7 @@ export function AdminCaseHero(p: AdminHeroProps) {
     case 'awaiting_info':
       return (
         <HeroShell
-          tone="amber"
+          tone="gray"
           eyebrow="Waiting on agent"
           headline="Agent is collecting client + trip info"
           subline={
@@ -388,7 +383,7 @@ export function AdminCaseHero(p: AdminHeroProps) {
     case 'awaiting_schedule':
       return (
         <HeroShell
-          tone="blue"
+          tone={p.scheduleReady ? 'green' : 'gray'}
           eyebrow="Action needed"
           headline="Upload schedule PDF"
           subline={p.scheduleReady
@@ -396,7 +391,7 @@ export function AdminCaseHero(p: AdminHeroProps) {
             : <span>Waiting for agent to finish prerequisites first.</span>}
         >
           <button onClick={p.onScrollToScheduleUpload} disabled={!p.scheduleReady}
-            className={`text-xs font-medium px-3 py-2 rounded-lg ${TONE.blue.primaryBtn} disabled:opacity-40`}>
+            className={`text-xs font-medium px-3 py-2 rounded-lg ${TONE.green.primaryBtn} disabled:opacity-40`}>
             Go to Upload
           </button>
         </HeroShell>
@@ -405,8 +400,8 @@ export function AdminCaseHero(p: AdminHeroProps) {
     case 'reviewing_schedule':
       return (
         <HeroShell
-          tone="violet"
-          eyebrow="Waiting on agent"
+          tone={p.scheduleStatus === 'revision_requested' ? 'green' : 'gray'}
+          eyebrow={p.scheduleStatus === 'revision_requested' ? 'Action needed' : 'Waiting on agent'}
           headline={`Agent reviewing Schedule v${p.scheduleVersion ?? '?'}`}
           subline={p.scheduleStatus === 'revision_requested'
             ? <span>Revision requested — upload a new version below.</span>
@@ -414,7 +409,7 @@ export function AdminCaseHero(p: AdminHeroProps) {
         >
           {p.scheduleStatus === 'revision_requested' && (
             <button onClick={p.onScrollToScheduleUpload}
-              className={`text-xs font-medium px-3 py-2 rounded-lg ${TONE.violet.primaryBtn}`}>
+              className={`text-xs font-medium px-3 py-2 rounded-lg ${TONE.green.primaryBtn}`}>
               Upload New Version
             </button>
           )}
@@ -424,13 +419,13 @@ export function AdminCaseHero(p: AdminHeroProps) {
     case 'awaiting_pricing':
       return (
         <HeroShell
-          tone="violet"
+          tone="green"
           eyebrow="Action needed"
           headline="Finalize pricing & issue invoice"
           subline={<span>Schedule confirmed. Set final line-item prices and the payment due date.</span>}
         >
           <button onClick={p.onScrollToPricing}
-            className={`text-xs font-medium px-3 py-2 rounded-lg ${TONE.violet.primaryBtn}`}>
+            className={`text-xs font-medium px-3 py-2 rounded-lg ${TONE.green.primaryBtn}`}>
             Go to Pricing
           </button>
         </HeroShell>
@@ -444,9 +439,9 @@ export function AdminCaseHero(p: AdminHeroProps) {
           : <span>Invoice issued · due {p.paymentDueDate}. Confirm once funds arrive.</span>
         : <span>Confirm once funds arrive in the company account.</span>
       return (
-        <HeroShell tone={overdue ? 'amber' : 'cyan'} eyebrow="Action needed" headline="Confirm payment received" subline={sub}>
+        <HeroShell tone={overdue ? 'amber' : 'green'} eyebrow="Action needed" headline="Confirm payment received" subline={sub}>
           <button onClick={p.onScrollToConfirmPayment}
-            className={`text-xs font-medium px-3 py-2 rounded-lg ${overdue ? TONE.amber.primaryBtn : TONE.cyan.primaryBtn}`}>
+            className={`text-xs font-medium px-3 py-2 rounded-lg ${overdue ? TONE.amber.primaryBtn : TONE.green.primaryBtn}`}>
             Go to Confirm
           </button>
         </HeroShell>
@@ -460,13 +455,13 @@ export function AdminCaseHero(p: AdminHeroProps) {
         : days > 0
           ? <span>Travel begins in {days} day{days === 1 ? '' : 's'} ({p.travelStartDate}). Agent marks complete after the trip.</span>
           : <span>Travel in progress. Agent will mark complete after the trip ends.</span>
-      return <HeroShell tone="emerald" eyebrow="On track" headline="Payment confirmed · trip booked" subline={sub} />
+      return <HeroShell tone="gray" eyebrow="On track" headline="Payment confirmed · trip booked" subline={sub} />
     }
 
     case 'awaiting_review':
       return (
         <HeroShell
-          tone="teal"
+          tone="gray"
           eyebrow="Waiting on agent"
           headline="Travel done · agent submitting client review"
           subline={<span>Settlement is queued and partner payouts are unlocked. Commission claim becomes available once review is submitted.</span>}
