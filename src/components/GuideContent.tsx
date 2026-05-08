@@ -286,6 +286,8 @@ function EditTextarea({ label, value, onChange }: { label: string; value: string
 }
 
 function BrowserFrame({ src, alt }: { src: string; alt: string }) {
+  const [failed, setFailed] = useState(false)
+  if (failed) return null
   return (
     <div className="mt-3 rounded-lg overflow-hidden border border-gray-200 shadow-sm">
       <div className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 border-b border-gray-200">
@@ -295,7 +297,7 @@ function BrowserFrame({ src, alt }: { src: string; alt: string }) {
         <span className="flex-1 mx-2 h-4 rounded bg-white border border-gray-200 text-[9px] text-gray-400 flex items-center px-2">tiktak</span>
       </div>
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={src} alt={alt} className="w-full block" loading="lazy" />
+      <img src={src} alt={alt} className="w-full block" loading="lazy" onError={() => setFailed(true)} />
     </div>
   )
 }
