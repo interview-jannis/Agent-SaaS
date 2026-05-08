@@ -261,7 +261,10 @@ export default function AdminCaseDetailPage() {
   const [attachDeleting, setAttachDeleting] = useState<string | null>(null)
   const [attachError, setAttachError] = useState('')
   const [attachDragOver, setAttachDragOver] = useState(false)
+  const [pendingAttachFile, setPendingAttachFile] = useState<File | null>(null)
+  const [pendingAttachPreviewUrl, setPendingAttachPreviewUrl] = useState<string | null>(null)
   const [copiedAttachId, setCopiedAttachId] = useState<string | null>(null)
+  const [confirmDeleteAttachId, setConfirmDeleteAttachId] = useState<string | null>(null)
 
   // ── Data fetching ──────────────────────────────────────────────────────────
 
@@ -339,6 +342,14 @@ export default function AdminCaseDetailPage() {
     }
     init()
   }, [fetchCase])
+
+  // Object URL for pending attachment preview — revoked on cleanup
+  useEffect(() => {
+    if (!pendingAttachFile) { setPendingAttachPreviewUrl(null); return }
+    const url = URL.createObjectURL(pendingAttachFile)
+    setPendingAttachPreviewUrl(url)
+    return () => URL.revokeObjectURL(url)
+  }, [pendingAttachFile])
 
   // Load active products with their variants + category/subcategory names for
   // the staging picker. Variants matter so admin staging produces document_items
@@ -2337,6 +2348,7 @@ export default function AdminCaseDetailPage() {
                   .eq('case_id', caseData.id)
                   .order('created_at', { ascending: false })
                 setAttachments((fresh as CaseAttachment[]) ?? [])
+                setPendingAttachFile(null)
               } catch (e: unknown) {
                 setAttachError((e as { message?: string })?.message ?? 'Upload failed.')
               } finally {
@@ -2349,38 +2361,40 @@ export default function AdminCaseDetailPage() {
               className={`rounded-2xl border overflow-hidden transition-colors ${
                 attachDragOver ? 'border-[#0f4c35] bg-[#0f4c35]/5' : 'border-gray-200 bg-gray-50'
               }`}
-              onDragOver={(e) => { e.preventDefault(); setAttachDragOver(true) }}
+              onDragOver={(e) => { e.preventDefault(); if (!pendingAttachFile) setAttachDragOver(true) }}
               onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setAttachDragOver(false) }}
-              onDrop={async (e) => {
+              onDrop={(e) => {
                 e.preventDefault()
                 setAttachDragOver(false)
-                if (attachUploading) return
+                if (attachUploading || pendingAttachFile) return
                 const file = e.dataTransfer.files?.[0]
-                if (file) await uploadFile(file)
+                if (file) { setAttachError(''); setPendingAttachFile(file) }
               }}
             >
               <div className="flex items-center justify-between px-4 py-2.5 bg-gray-100 border-b border-gray-200">
                 <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Attachments</p>
-                <label className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors cursor-pointer ${
-                  attachUploading
-                    ? 'opacity-40 cursor-wait bg-white border-gray-200 text-gray-400'
-                    : 'bg-[#0f4c35] text-white border-[#0f4c35] hover:bg-[#0a3828]'
-                }`}>
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M7.5 12L12 7.5m0 0l4.5 4.5M12 7.5v9" />
-                  </svg>
-                  {attachUploading ? 'Uploading…' : 'Upload File'}
-                  <input
-                    type="file"
-                    className="hidden"
-                    disabled={attachUploading}
-                    onChange={async (e) => {
-                      const file = e.target.files?.[0]
-                      e.target.value = ''
-                      if (file) await uploadFile(file)
-                    }}
-                  />
-                </label>
+                {!pendingAttachFile && (
+                  <label className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors cursor-pointer ${
+                    attachUploading
+                      ? 'opacity-40 cursor-wait bg-white border-gray-200 text-gray-400'
+                      : 'bg-[#0f4c35] text-white border-[#0f4c35] hover:bg-[#0a3828]'
+                  }`}>
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M7.5 12L12 7.5m0 0l4.5 4.5M12 7.5v9" />
+                    </svg>
+                    Upload File
+                    <input
+                      type="file"
+                      className="hidden"
+                      disabled={attachUploading}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0]
+                        e.target.value = ''
+                        if (file) { setAttachError(''); setPendingAttachFile(file) }
+                      }}
+                    />
+                  </label>
+                )}
               </div>
 
               <div className="p-4 space-y-3">
@@ -2397,7 +2411,55 @@ export default function AdminCaseDetailPage() {
                   <p className="text-xs text-red-500">{attachError}</p>
                 )}
 
-                {!attachDragOver && attachments.length === 0 && (
+                {!attachDragOver && pendingAttachFile && (
+                  <div className="bg-white rounded-xl border border-[#0f4c35]/30 overflow-hidden">
+                    {/* Preview area */}
+                    {pendingAttachPreviewUrl && pendingAttachFile.type.startsWith('image/') && (
+                      <div className="flex items-center justify-center bg-gray-50 border-b border-gray-100 p-3">
+                        <img src={pendingAttachPreviewUrl} alt="preview" className="max-h-48 max-w-full object-contain rounded" />
+                      </div>
+                    )}
+                    {pendingAttachPreviewUrl && pendingAttachFile.type === 'application/pdf' && (
+                      <div className="flex items-center gap-2 px-3 pt-2.5 pb-1">
+                        <svg className="w-4 h-4 text-red-400 shrink-0" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM8.5 17.5c-.3 0-.5-.1-.7-.3-.4-.4-.3-1 .1-1.3l.6-.5c-.2-.6-.3-1.2-.3-1.9 0-.6.1-1.2.3-1.8H8c-.6 0-1-.4-1-1s.4-1 1-1h1.5c.5-.8 1.1-1.4 1.8-1.8.2-.1.5-.2.7-.2.8 0 1.5.5 1.7 1.3l.1.5c.4.1.7.2 1 .4.5.3.8.8.8 1.3 0 .4-.2.8-.5 1.1-.3.3-.7.4-1.1.4h-.4c-.1.5-.3.9-.5 1.3l.4.3c.4.3.5.9.1 1.3-.2.2-.4.3-.7.3-.2 0-.4-.1-.6-.2l-.5-.4c-.3.1-.7.2-1 .2s-.7-.1-1-.2l-.5.4c-.2.1-.4.2-.6.2z"/>
+                        </svg>
+                        <span className="text-xs text-gray-600 flex-1 truncate">{pendingAttachFile.name}</span>
+                        <a href={pendingAttachPreviewUrl} target="_blank" rel="noopener noreferrer"
+                          className="flex items-center gap-1 text-xs font-medium text-[#0f4c35] hover:underline shrink-0">
+                          Open PDF
+                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+                          </svg>
+                        </a>
+                      </div>
+                    )}
+                    {/* File info + actions */}
+                    <div className="flex items-center gap-3 px-3 py-2.5">
+                      <svg className="w-4 h-4 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                      </svg>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-gray-800 truncate">{pendingAttachFile.name}</p>
+                        <p className="text-[10px] text-gray-400">{(pendingAttachFile.size / 1024).toFixed(0)} KB</p>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          onClick={() => { setPendingAttachFile(null); setAttachError('') }}
+                          disabled={attachUploading}
+                          className="px-2.5 py-1 text-xs font-medium rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-100 transition-colors disabled:opacity-40"
+                        >Cancel</button>
+                        <button
+                          onClick={() => uploadFile(pendingAttachFile)}
+                          disabled={attachUploading}
+                          className="px-2.5 py-1 text-xs font-medium rounded-lg bg-[#0f4c35] text-white hover:bg-[#0a3828] transition-colors disabled:opacity-40"
+                        >{attachUploading ? 'Uploading…' : 'Save'}</button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {!attachDragOver && !pendingAttachFile && attachments.length === 0 && (
                   <p className="text-xs text-gray-400">No files yet — upload or drag & drop a file here.</p>
                 )}
 
@@ -2434,35 +2496,48 @@ export default function AdminCaseDetailPage() {
                               </svg>
                             )}
                           </button>
+                          {confirmDeleteAttachId === att.id ? (
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => setConfirmDeleteAttachId(null)}
+                                className="px-2 py-1 text-xs font-medium rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-100 transition-colors"
+                              >Cancel</button>
+                              <button
+                                disabled={attachDeleting === att.id}
+                                onClick={async () => {
+                                  setAttachDeleting(att.id)
+                                  setConfirmDeleteAttachId(null)
+                                  setAttachError('')
+                                  try {
+                                    const marker = '/case-files/'
+                                    const idx = att.file_url.indexOf(marker)
+                                    if (idx !== -1) {
+                                      const storagePath = att.file_url.slice(idx + marker.length).split('?')[0]
+                                      await supabase.storage.from('case-files').remove([storagePath])
+                                    }
+                                    const { error: dbErr } = await supabase.from('case_attachments').delete().eq('id', att.id)
+                                    if (dbErr) throw dbErr
+                                    setAttachments(prev => prev.filter(a => a.id !== att.id))
+                                  } catch (e: unknown) {
+                                    setAttachError((e as { message?: string })?.message ?? 'Delete failed.')
+                                  } finally {
+                                    setAttachDeleting(null)
+                                  }
+                                }}
+                                className="px-2 py-1 text-xs font-medium rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors disabled:opacity-40"
+                              >{attachDeleting === att.id ? 'Deleting…' : 'Delete'}</button>
+                            </div>
+                          ) : (
                           <button
-                            disabled={attachDeleting === att.id}
-                            onClick={async () => {
-                              if (!window.confirm(`Delete "${att.file_name}"?`)) return
-                              setAttachDeleting(att.id)
-                              setAttachError('')
-                              try {
-                                const marker = '/case-files/'
-                                const idx = att.file_url.indexOf(marker)
-                                if (idx !== -1) {
-                                  const storagePath = att.file_url.slice(idx + marker.length).split('?')[0]
-                                  await supabase.storage.from('case-files').remove([storagePath])
-                                }
-                                const { error: dbErr } = await supabase.from('case_attachments').delete().eq('id', att.id)
-                                if (dbErr) throw dbErr
-                                setAttachments(prev => prev.filter(a => a.id !== att.id))
-                              } catch (e: unknown) {
-                                setAttachError((e as { message?: string })?.message ?? 'Delete failed.')
-                              } finally {
-                                setAttachDeleting(null)
-                              }
-                            }}
-                            className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-40"
+                            onClick={() => setConfirmDeleteAttachId(att.id)}
+                            className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
                             title="Delete"
                           >
                             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                               <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
                             </svg>
                           </button>
+                          )}
                         </div>
                       </div>
                     ))}
