@@ -402,10 +402,10 @@ export default function CaseDocumentsSection({
     })
   }
 
-  // Visible documents in this section: invoices only. Quotation + final_invoice
-  // already render in the existing Financials section above.
+  // Visible documents in this section: all invoice types. Quotation is
+  // rendered separately in the Selected Products section.
   const invoiceDocs = documents.filter(d =>
-    d.type === 'deposit_invoice' || d.type === 'additional_invoice' || d.type === 'commission_invoice'
+    d.type === 'deposit_invoice' || d.type === 'final_invoice' || d.type === 'additional_invoice' || d.type === 'commission_invoice'
   ).sort((a, b) => (a.created_at ?? '').localeCompare(b.created_at ?? ''))
 
   const canIssue = !!quotation  // need a quotation to base off
@@ -606,8 +606,11 @@ export default function CaseDocumentsSection({
         const overdue = !paid && doc.payment_due_date && new Date(doc.payment_due_date) < new Date()
         const baseUrl = typeof window !== 'undefined' ? window.location.origin : ''
         // Commission invoice (agent → admin): admin marks paid when they disburse.
+        // Final invoice: admin confirms balance received from client.
         // All other invoices: issuer (from_party) confirms receipt.
-        const canEdit = doc.type === 'commission_invoice' ? actor === 'admin' : actor === doc.from_party
+        const canEdit = (doc.type === 'commission_invoice' || doc.type === 'final_invoice')
+          ? actor === 'admin'
+          : actor === doc.from_party
         // Direction-specific label, since both deposit_invoice and final_invoice
         // can be admin → client; commission/deposit_invoice differ by from_party.
         const label = doc.type === 'deposit_invoice' && doc.to_party === 'agent'
@@ -650,9 +653,9 @@ export default function CaseDocumentsSection({
               </div>
             </div>
 
-            {/* Items — hidden for deposit_invoice (single flat amount, the line
-                item just repeats the total → noise). */}
-            {doc.type !== 'deposit_invoice' && (
+            {/* Items — hidden for deposit_invoice (flat amount) and final_invoice
+                (preview link is sufficient; items managed via Finalize Pricing). */}
+            {doc.type !== 'deposit_invoice' && doc.type !== 'final_invoice' && (
               <div className="bg-white rounded-lg border border-gray-100 divide-y divide-gray-50">
                 {docItems.length === 0 ? (
                   <p className="text-[11px] text-gray-400 px-3 py-2">No items.</p>
@@ -679,8 +682,8 @@ export default function CaseDocumentsSection({
               </div>
             )}
 
-            {/* Add item inline form — deposit/commission invoices are flat amounts, no line items */}
-            {!paid && canEdit && doc.type !== 'deposit_invoice' && doc.type !== 'commission_invoice' && (
+            {/* Add item inline form — deposit/commission/final invoices are not editable here */}
+            {!paid && canEdit && doc.type !== 'deposit_invoice' && doc.type !== 'final_invoice' && doc.type !== 'commission_invoice' && (
               addingItemTo === doc.id ? (
                 <div className="bg-white rounded-lg border border-gray-200 p-2.5 space-y-2">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
