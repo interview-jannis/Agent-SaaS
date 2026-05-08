@@ -689,29 +689,28 @@ export default function GuideContent({ defaultTab }: { defaultTab?: Tab }) {
             {/* Onboarding flow */}
             <div>
               <h3 className="text-base font-semibold text-gray-900 mb-3">온보딩 흐름</h3>
-              <div className="flex flex-col sm:flex-row gap-0 overflow-x-auto pb-1">
+              {/* Desktop stepper */}
+              <div className="hidden sm:flex overflow-x-auto pb-2">
                 {ONBOARDING_STEPS.map((step, i) => (
-                  <div key={step.label} className="flex sm:flex-col items-start sm:items-center gap-2 sm:gap-1 min-w-0 sm:min-w-[96px] sm:max-w-[110px]">
-                    <div className="flex sm:flex-col items-center gap-2 sm:gap-0 w-full">
-                      <div className="flex items-center w-full sm:w-auto sm:flex-col">
-                        {i > 0 && <div className="hidden sm:block h-px w-full bg-gray-200 -mt-4 mb-0" />}
-                        <div className="w-7 h-7 rounded-full bg-[#0f4c35] text-white text-xs font-bold flex items-center justify-center shrink-0 z-10">
-                          {i + 1}
-                        </div>
-                        {i < ONBOARDING_STEPS.length - 1 && (
-                          <div className="flex-1 h-px bg-gray-200 sm:hidden ml-1" />
-                        )}
+                  <div key={step.label} className="flex flex-col items-center flex-1 min-w-[100px]">
+                    {/* Circle + connecting lines */}
+                    <div className="relative w-full flex items-center justify-center h-8">
+                      {i > 0 && <div className="absolute left-0 right-1/2 top-1/2 h-px bg-gray-200" />}
+                      {i < ONBOARDING_STEPS.length - 1 && <div className="absolute left-1/2 right-0 top-1/2 h-px bg-gray-200" />}
+                      <div className="w-7 h-7 rounded-full bg-[#0f4c35] text-white text-xs font-bold flex items-center justify-center z-10 relative shrink-0">
+                        {i + 1}
                       </div>
                     </div>
-                    <div className="sm:text-center pb-3 sm:pb-0">
-                      <p className="text-xs font-semibold text-gray-800 whitespace-nowrap sm:whitespace-normal sm:mt-1.5">{step.label}</p>
-                      <p className="text-xs text-gray-500 mt-0.5 leading-relaxed hidden sm:block">{step.desc}</p>
+                    {/* Label + desc */}
+                    <div className="text-center px-2 mt-1.5 pb-3">
+                      <p className="text-xs font-semibold text-gray-800">{step.label}</p>
+                      <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">{step.desc}</p>
                     </div>
                   </div>
                 ))}
               </div>
-              {/* Mobile: show descriptions separately */}
-              <div className="sm:hidden mt-3 space-y-2">
+              {/* Mobile list */}
+              <div className="sm:hidden space-y-2">
                 {ONBOARDING_STEPS.map((step, i) => (
                   <div key={step.label} className="flex gap-2 text-sm">
                     <span className="text-[#0f4c35] font-bold w-4 shrink-0">{i + 1}.</span>

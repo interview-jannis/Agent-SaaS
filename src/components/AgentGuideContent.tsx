@@ -316,20 +316,18 @@ export default function AgentGuideContent() {
           <div>
             <h3 className="text-base font-semibold text-gray-900 mb-3">Getting Started</h3>
             {/* Desktop stepper */}
-            <div className="hidden sm:flex gap-0 overflow-x-auto pb-1">
+            <div className="hidden sm:flex overflow-x-auto pb-2">
               {ONBOARDING_STEPS.map((step, i) => (
-                <div key={step.label} className="flex flex-col items-center gap-1 min-w-[96px] max-w-[120px]">
-                  <div className="flex items-center w-full flex-col">
-                    <div className="relative flex items-center justify-center w-full">
-                      {i > 0 && <div className="absolute left-0 right-1/2 h-px bg-gray-200 top-3.5" />}
-                      {i < ONBOARDING_STEPS.length - 1 && <div className="absolute right-0 left-1/2 h-px bg-gray-200 top-3.5" />}
-                      <div className="w-7 h-7 rounded-full bg-[#0f4c35] text-white text-xs font-bold flex items-center justify-center z-10 relative">
-                        {i + 1}
-                      </div>
+                <div key={step.label} className="flex flex-col items-center flex-1 min-w-[100px]">
+                  <div className="relative w-full flex items-center justify-center h-8">
+                    {i > 0 && <div className="absolute left-0 right-1/2 top-1/2 h-px bg-gray-200" />}
+                    {i < ONBOARDING_STEPS.length - 1 && <div className="absolute left-1/2 right-0 top-1/2 h-px bg-gray-200" />}
+                    <div className="w-7 h-7 rounded-full bg-[#0f4c35] text-white text-xs font-bold flex items-center justify-center z-10 relative shrink-0">
+                      {i + 1}
                     </div>
                   </div>
-                  <div className="text-center px-1 pb-3">
-                    <p className="text-xs font-semibold text-gray-800 mt-1">{step.label}</p>
+                  <div className="text-center px-2 mt-1.5 pb-3">
+                    <p className="text-xs font-semibold text-gray-800">{step.label}</p>
                     <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">{step.desc}</p>
                   </div>
                 </div>
