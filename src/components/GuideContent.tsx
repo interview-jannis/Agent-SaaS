@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 
 type Tab = 'admin' | 'agent' | 'client'
@@ -210,17 +210,63 @@ function OwnerBadge({ owner, highlight }: { owner: 'agent' | 'admin' | 'none'; h
   return <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">{owner === 'admin' ? '어드민' : '에이전트'}</span>
 }
 
-function EditInput({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+// uploadKey는 Supabase Storage 저장 경로에 사용 (e.g. 'overview' → 'screenshots/guide-overview.png')
+function ImageUploadField({ label, value, onChange, uploadKey }: {
+  label: string; value: string; onChange: (v: string) => void; uploadKey: string
+}) {
+  const [uploading, setUploading] = useState(false)
+  const ref = useRef<HTMLInputElement>(null)
+
+  async function upload(file: File) {
+    setUploading(true)
+    const ext = file.name.split('.').pop() ?? 'png'
+    const path = `screenshots/guide-${uploadKey}.${ext}`
+    const { error } = await supabase.storage.from('guide').upload(path, file, {
+      upsert: true, contentType: file.type,
+    })
+    if (error) {
+      alert('업로드 실패: ' + error.message)
+    } else {
+      const { data } = supabase.storage.from('guide').getPublicUrl(path)
+      onChange(data.publicUrl)
+    }
+    setUploading(false)
+  }
+
   return (
     <div className="mt-3">
       <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">{label}</p>
-      <input
-        type="url"
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        placeholder="https://..."
-        className="w-full text-xs font-mono border border-[#0f4c35]/30 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#0f4c35]/40 bg-white text-gray-800 placeholder-gray-300"
-      />
+      <div className="flex gap-2 items-center">
+        <input
+          type="url"
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          placeholder="https://... (또는 아래에서 업로드)"
+          className="flex-1 min-w-0 text-xs font-mono border border-[#0f4c35]/30 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#0f4c35]/40 bg-white text-gray-800 placeholder-gray-300"
+        />
+        <button
+          type="button"
+          onClick={() => ref.current?.click()}
+          disabled={uploading}
+          className="shrink-0 flex items-center gap-1.5 text-xs font-medium text-white bg-[#0f4c35] hover:bg-[#0f4c35]/90 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-60"
+        >
+          {uploading ? (
+            <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+            </svg>
+          ) : (
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+            </svg>
+          )}
+          {uploading ? '업로드 중…' : '이미지 업로드'}
+        </button>
+        <input
+          ref={ref} type="file" accept="image/*" className="hidden"
+          onChange={e => { const f = e.target.files?.[0]; if (f) { upload(f); e.target.value = '' } }}
+        />
+      </div>
     </div>
   )
 }
@@ -257,10 +303,11 @@ function BrowserFrame({ src, alt }: { src: string; alt: string }) {
 // ─── SectionCard ──────────────────────────────────────────────────────────────
 function SectionCard({
   icon, title, desc, details, screenshot,
-  editMode, onChangeScreenshot, onChangeDesc,
+  editMode, uploadKey, onChangeScreenshot, onChangeDesc,
 }: {
   icon: React.ReactNode; title: string; desc: string; details: string[]; screenshot?: string
   editMode: boolean
+  uploadKey: string
   onChangeScreenshot: (v: string) => void
   onChangeDesc: (v: string) => void
 }) {
@@ -293,7 +340,12 @@ function SectionCard({
           {editMode && (
             <div className="mt-4 p-3 rounded-lg border border-[#0f4c35]/15 bg-[#0f4c35]/3">
               <EditTextarea label="설명 텍스트" value={desc} onChange={onChangeDesc} />
-              <EditInput label="스크린샷 URL" value={screenshot ?? ''} onChange={onChangeScreenshot} />
+              <ImageUploadField
+                label="스크린샷"
+                value={screenshot ?? ''}
+                onChange={onChangeScreenshot}
+                uploadKey={uploadKey}
+              />
               {screenshot && (
                 <div className="mt-2">
                   <p className="text-[10px] text-gray-400 mb-1">미리보기</p>
@@ -384,10 +436,11 @@ function CasesFlow({
                         onChange={v => onEdit('actions', `${perspective}_${step.status}`, v)}
                       />
                       {perspective !== 'client' && (
-                        <EditInput
-                          label={`${perspective === 'admin' ? 'Admin' : 'Agent'} 스크린샷 URL`}
+                        <ImageUploadField
+                          label={`${perspective === 'admin' ? 'Admin' : 'Agent'} 스크린샷`}
                           value={caseSS(step.status, perspective as 'admin' | 'agent') ?? ''}
                           onChange={v => onEdit('screenshots', `case_${perspective}_${step.status}`, v)}
+                          uploadKey={`case-${perspective}-${step.status}`}
                         />
                       )}
                       {screenshot && (
@@ -543,7 +596,7 @@ export default function GuideContent({ defaultTab }: { defaultTab?: Tab }) {
                     key={s.key} icon={s.icon} title={s.title}
                     desc={desc(s.key, s.desc)} details={s.details}
                     screenshot={ss(s.key)}
-                    editMode={editMode}
+                    editMode={editMode} uploadKey={s.key}
                     onChangeScreenshot={v => setEdit('screenshots', s.key, v)}
                     onChangeDesc={v => setEdit('descs', s.key, v)}
                   />
@@ -596,7 +649,7 @@ export default function GuideContent({ defaultTab }: { defaultTab?: Tab }) {
                     key={s.key} icon={s.icon} title={s.title}
                     desc={desc(s.key, s.desc)} details={s.details}
                     screenshot={ss(s.key)}
-                    editMode={editMode}
+                    editMode={editMode} uploadKey={s.key}
                     onChangeScreenshot={v => setEdit('screenshots', s.key, v)}
                     onChangeDesc={v => setEdit('descs', s.key, v)}
                   />
@@ -644,7 +697,7 @@ export default function GuideContent({ defaultTab }: { defaultTab?: Tab }) {
                     key={s.key} icon={s.icon} title={s.title}
                     desc={desc(s.key, s.desc)} details={s.details}
                     screenshot={ss(s.key)}
-                    editMode={editMode}
+                    editMode={editMode} uploadKey={s.key}
                     onChangeScreenshot={v => setEdit('screenshots', s.key, v)}
                     onChangeDesc={v => setEdit('descs', s.key, v)}
                   />
