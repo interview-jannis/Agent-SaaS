@@ -244,6 +244,9 @@ export default function AdminCaseDetailPage() {
   // Trip Setup collapse — defaults to collapsed when all info is complete.
   const [setupCollapsed, setSetupCollapsed] = useState(false)
   const [setupCollapseInitialized, setSetupCollapseInitialized] = useState(false)
+  // Terminal collapse — schedule & financials auto-collapse in completed/awaiting_settlement
+  const [scheduleCollapsed, setScheduleCollapsed] = useState(false)
+  const [financialsCollapsed, setFinancialsCollapsed] = useState(false)
 
   // ── Data fetching ──────────────────────────────────────────────────────────
 
@@ -374,6 +377,17 @@ export default function AdminCaseDetailPage() {
     })()
     return () => { cancelled = true }
   }, [])
+
+  // Terminal states (completed/awaiting_settlement) — auto-collapse heavy sections.
+  const isTerminal = caseData?.status === 'completed' || caseData?.status === 'awaiting_settlement'
+  useEffect(() => {
+    if (!caseData) return
+    if (isTerminal) {
+      setScheduleCollapsed(true)
+      setFinancialsCollapsed(true)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [caseData?.status])
 
   // First time data resolves and Trip Setup is fully ready, default to collapsed.
   // Placed BEFORE early returns so the hook count is stable across renders.
@@ -616,7 +630,7 @@ export default function AdminCaseDetailPage() {
           </div>
 
           {/* Trip Info (case-level, read-only) */}
-          <div className={`pt-4 border-t border-gray-200 ${flagMissingInfo && !caseInfoComplete ? '-mx-1 px-1 py-2 rounded-xl bg-green-50 border border-green-200' : ''}`}>
+          <div className={`pt-4 border-t border-gray-200 ${flagMissingInfo && !caseInfoComplete ? '-mx-1 px-1 py-2 rounded-xl bg-white border-2 border-[#0f4c35]' : ''}`}>
             <div className="flex items-center gap-2 mb-3">
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Trip Info</p>
               {flagMissingInfo && !caseInfoComplete && <span className="text-[10px] font-medium text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">Incomplete</span>}
@@ -737,9 +751,9 @@ export default function AdminCaseDetailPage() {
                 })()}
 
                 {!ready && flagMissingInfo && (
-                  <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
-                    <p className="text-[10px] font-semibold text-amber-800 uppercase tracking-wide mb-1.5">{issueCount} issue{issueCount > 1 ? 's' : ''} to resolve</p>
-                    <ul className="space-y-1 text-xs text-amber-800">
+                  <div className="bg-white border border-gray-200 rounded-xl px-4 py-3">
+                    <p className="text-[10px] font-semibold text-gray-600 uppercase tracking-wide mb-1.5">{issueCount} issue{issueCount > 1 ? 's' : ''} to resolve</p>
+                    <ul className="space-y-1 text-xs text-gray-600">
                       {memberShortfall && (
                         <li>· Members: {caseData.case_members.length} of {expectedMemberCount} registered</li>
                       )}
@@ -772,8 +786,8 @@ export default function AdminCaseDetailPage() {
           {caseData.agent_notes && (() => {
             const isDone = caseData.status === 'awaiting_review' || caseData.status === 'awaiting_settlement' || caseData.status === 'completed'
             return (
-              <div className={`rounded-xl p-3 space-y-1 ${isDone ? 'bg-gray-50 border border-gray-200' : 'bg-white border border-gray-200'}`}>
-                <p className={`text-[10px] font-semibold uppercase tracking-wide ${isDone ? 'text-gray-400' : 'text-gray-700'}`}>Notes from agent</p>
+              <div className={`rounded-xl p-3 space-y-1 ${isDone ? 'bg-white border border-gray-200' : 'bg-white border-2 border-red-400'}`}>
+                <p className={`text-[10px] font-semibold uppercase tracking-wide ${isDone ? 'text-gray-400' : 'text-red-600'}`}>Notes from agent</p>
                 <p className="text-xs text-gray-800 whitespace-pre-wrap">{caseData.agent_notes}</p>
               </div>
             )
@@ -781,11 +795,11 @@ export default function AdminCaseDetailPage() {
 
           {/* Client Review — shown once survey is submitted */}
           {caseSurvey && (() => {
-            const isHighlight = caseData.status === 'awaiting_settlement' || caseData.status === 'completed'
+            const isHighlight = caseData.status === 'completed'
             return (
-              <div className={`rounded-xl p-4 space-y-3 ${isHighlight ? 'bg-teal-50 border-2 border-teal-300' : 'bg-gray-50 border border-gray-200'}`}>
+              <div className={`rounded-xl p-4 space-y-3 ${isHighlight ? 'bg-white border-2 border-[#0f4c35]' : 'bg-white border border-gray-200'}`}>
                 <div className="flex items-center justify-between">
-                  <p className={`text-[10px] font-semibold uppercase tracking-wide ${isHighlight ? 'text-teal-700' : 'text-gray-400'}`}>Client Review</p>
+                  <p className={`text-[10px] font-semibold uppercase tracking-wide ${isHighlight ? 'text-[#0f4c35]' : 'text-gray-400'}`}>Client Review</p>
                   <span className="text-[10px] text-gray-400">Submitted {new Date(caseSurvey.submitted_at).toLocaleString()}</span>
                 </div>
                 <div className="space-y-2">
@@ -1327,12 +1341,27 @@ export default function AdminCaseDetailPage() {
             <section className="bg-gray-50 rounded-2xl p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Schedule History</p>
-                <span className="text-[10px] text-gray-400">{sortedSchedules.length} version{sortedSchedules.length > 1 ? 's' : ''}</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-gray-400">{sortedSchedules.length} version{sortedSchedules.length > 1 ? 's' : ''}</span>
+                  {isTerminal && (
+                    <button onClick={() => setScheduleCollapsed(!scheduleCollapsed)}
+                      className="text-[11px] font-medium text-gray-500 hover:text-gray-800 px-2 py-1 rounded-lg border border-gray-200 hover:bg-gray-100">
+                      {scheduleCollapsed ? '▼ Expand' : '▲ Collapse'}
+                    </button>
+                  )}
+                </div>
               </div>
 
+              {scheduleCollapsed ? (
+                <p className="text-xs text-gray-400">
+                  {latestSchedule
+                    ? `v${latestSchedule.version} · ${latestSchedule.status === 'confirmed' ? 'Confirmed' : latestSchedule.status}`
+                    : 'No schedule'}
+                </p>
+              ) : (<>
               {scheduleLocked && (
-                <div className="flex items-center gap-2 border border-green-200 bg-green-50 rounded-xl px-3 py-2">
-                  <svg className="w-3.5 h-3.5 text-green-700 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <div className="flex items-center gap-2 border border-gray-200 bg-white rounded-xl px-3 py-2">
+                  <svg className="w-3.5 h-3.5 text-[#0f4c35] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
                   </svg>
                   <p className="text-xs text-green-800">
@@ -1475,6 +1504,7 @@ export default function AdminCaseDetailPage() {
                   )
                 })}
               </div>
+              </>)}
             </section>
           )}
 
@@ -1557,9 +1587,9 @@ export default function AdminCaseDetailPage() {
               : (caseData.schedule_draft_items ?? [])
             const nextVersion = (latestSchedule?.version ?? 0) + 1
             return (
-              <section id="schedule-upload" className={`scroll-mt-20 border rounded-2xl p-4 space-y-3 border-green-200 bg-green-50`}>
+              <section id="schedule-upload" className={`scroll-mt-20 border-2 border-[#0f4c35] bg-white rounded-2xl p-4 space-y-3`}>
                 <div className="flex items-baseline justify-between gap-2">
-                  <p className={`text-xs font-semibold uppercase tracking-wide text-green-700`}>
+                  <p className={`text-xs font-semibold uppercase tracking-wide text-[#0f4c35]`}>
                     {sortedSchedules.length === 0 ? 'Build Schedule' : `New Version (v${nextVersion})`}
                   </p>
                   {latestSchedule?.slug && (
@@ -1611,9 +1641,9 @@ export default function AdminCaseDetailPage() {
             })()
             const dueDateValue = dueDateEdit || defaultDue
             return (
-            <section id="pricing" className="scroll-mt-20 border border-green-200 bg-green-50 rounded-2xl p-4 space-y-3">
+            <section id="pricing" className="scroll-mt-20 border-2 border-[#0f4c35] bg-white rounded-2xl p-4 space-y-3">
               <div className="flex items-center justify-between flex-wrap gap-2">
-                <p className="text-xs font-semibold text-green-700 uppercase tracking-wide">
+                <p className="text-xs font-semibold text-[#0f4c35] uppercase tracking-wide">
                   {latestQuote.finalized_at ? 'Edit Final Pricing' : 'Finalize Pricing'}
                 </p>
                 {latestQuote.finalized_at && (
@@ -1860,12 +1890,13 @@ export default function AdminCaseDetailPage() {
               agent-side cyan tone — both sides have parallel actions in these
               two windows, so both get the action signal. */}
           {latestQuote && (() => {
-            const isActionTarget = caseData.status === 'awaiting_deposit' || caseData.status === 'awaiting_payment'
+            const isCompleted = caseData.status === 'completed'
+            const isActionTarget = (caseData.status === 'awaiting_deposit' || caseData.status === 'awaiting_payment') && !isCompleted
             const sectionClass = isActionTarget
-              ? 'bg-cyan-50 border border-cyan-200 rounded-2xl p-4 space-y-3'
+              ? 'bg-white border-2 border-[#0f4c35] rounded-2xl p-4 space-y-3'
               : 'bg-gray-50 rounded-2xl p-4 space-y-3'
             const labelClass = isActionTarget
-              ? 'text-xs font-semibold text-cyan-700 uppercase tracking-wide'
+              ? 'text-xs font-semibold text-[#0f4c35] uppercase tracking-wide'
               : 'text-xs font-semibold text-gray-400 uppercase tracking-wide'
             return (
             <section className={sectionClass}>
@@ -1897,8 +1928,21 @@ export default function AdminCaseDetailPage() {
                     <a href={`${baseUrl}/quote/${latestQuote.slug}?preview=1`} target="_blank" rel="noopener noreferrer"
                       className="text-xs text-gray-400 hover:text-[#0f4c35] transition-colors">Preview ↗</a>
                   )}
+                  {isTerminal && (
+                    <button onClick={() => setFinancialsCollapsed(!financialsCollapsed)}
+                      className="text-[11px] font-medium text-gray-500 hover:text-gray-800 px-2 py-1 rounded-lg border border-gray-200 hover:bg-gray-100">
+                      {financialsCollapsed ? '▼ Expand' : '▲ Collapse'}
+                    </button>
+                  )}
                 </div>
               </div>
+              {financialsCollapsed ? (
+                <p className="text-xs text-gray-400">
+                  {latestQuote.finalized_at
+                    ? `Finalized · ${fmtKRW(latestQuote.total_price ?? 0)}`
+                    : `Estimated · ${fmtKRW(latestQuote.total_price ?? 0)}`}
+                </p>
+              ) : (<>
               {(() => {
                 const schedConfirmed = (caseData.schedules ?? []).some(s => s.status === 'confirmed')
                 const allItems = (latestQuote.document_groups ?? []).flatMap((g: { document_items: QuoteItem[] }) => g.document_items ?? [])
@@ -2036,6 +2080,7 @@ export default function AdminCaseDetailPage() {
                 exchangeRate={exchangeRate}
                 onChanged={fetchCase}
               />
+              </>)}
             </section>
             )
           })()}

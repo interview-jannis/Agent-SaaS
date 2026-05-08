@@ -156,6 +156,9 @@ export default function CaseDetailPage() {
   // (collapsed when complete) via the effect below once data loads.
   const [setupCollapsed, setSetupCollapsed] = useState(false)
   const [setupCollapseInitialized, setSetupCollapseInitialized] = useState(false)
+  // Terminal collapse — schedule & financials auto-collapse in completed/awaiting_settlement
+  const [scheduleCollapsed, setScheduleCollapsed] = useState(false)
+  const [financialsCollapsed, setFinancialsCollapsed] = useState(false)
   const [agentClients, setAgentClients] = useState<AgentClient[]>([])
   const [caseData, setCaseData] = useState<CaseDetail | null>(null)
   const [exchangeRate, setExchangeRate] = useState(1350)
@@ -303,6 +306,17 @@ export default function CaseDetailPage() {
     }
     load()
   }, [fetchCase])
+
+  // Terminal states (completed/awaiting_settlement) — auto-collapse heavy sections.
+  const isTerminal = caseData?.status === 'completed' || caseData?.status === 'awaiting_settlement'
+  useEffect(() => {
+    if (!caseData) return
+    if (isTerminal) {
+      setScheduleCollapsed(true)
+      setFinancialsCollapsed(true)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [caseData?.status])
 
   // First time data resolves and Trip Setup is fully ready, default to collapsed.
   // Subsequent toggles are user-driven. Placed BEFORE early returns so the hook
@@ -1110,7 +1124,7 @@ export default function CaseDetailPage() {
           </div>
 
           {/* Trip Info (case-level) */}
-          <div id="trip-info" className={`scroll-mt-20 ${(caseInfoComplete || !infoCollectionActive) ? '' : '-mx-2 px-2 py-3 rounded-xl bg-green-50 border border-green-200'} pt-5 border-t border-gray-200`}>
+          <div id="trip-info" className={`scroll-mt-20 ${(caseInfoComplete || !infoCollectionActive) ? '' : '-mx-2 px-2 py-3 rounded-xl bg-white border-2 border-[#0f4c35]'} pt-5 border-t border-gray-200`}>
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Trip Info</h3>
@@ -1529,9 +1543,9 @@ export default function CaseDetailPage() {
 
             {/* Member-related readiness checklist (embedded, view mode only) */}
             {!editMembers && !memberReady && infoCollectionActive && (
-              <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mt-1">
-                <p className="text-[10px] font-semibold text-amber-800 uppercase tracking-wide mb-1.5">{memberIssueCount} issue{memberIssueCount > 1 ? 's' : ''} to resolve</p>
-                <ul className="space-y-1 text-xs text-amber-800">
+              <div className="bg-white border border-gray-200 rounded-xl px-4 py-3 mt-1">
+                <p className="text-[10px] font-semibold text-gray-600 uppercase tracking-wide mb-1.5">{memberIssueCount} issue{memberIssueCount > 1 ? 's' : ''} to resolve</p>
+                <ul className="space-y-1 text-xs text-gray-600">
                   {memberShortfall && (
                     <li>· Members: {caseData.case_members.length} of {expectedMemberCount} registered</li>
                   )}
@@ -1564,9 +1578,9 @@ export default function CaseDetailPage() {
           {/* Free-form memo edited by agent, read by admin while building the
               schedule. Saved on cases.agent_notes. */}
           {!isCanceled && (
-            <section className={`rounded-2xl p-5 space-y-3 ${caseData.status === 'completed' ? 'bg-gray-50 border border-gray-200' : 'bg-white border border-gray-200'}`}>
+            <section className={`rounded-2xl p-5 space-y-3 ${caseData.status === 'completed' ? 'bg-white border border-gray-200' : 'bg-white border-2 border-red-400'}`}>
               <div className="flex items-center justify-between">
-                <h3 className={`text-xs font-semibold uppercase tracking-wide ${caseData.status === 'completed' ? 'text-gray-500' : 'text-gray-700'}`}>Notes for Tiktak</h3>
+                <h3 className={`text-xs font-semibold uppercase tracking-wide ${caseData.status === 'completed' ? 'text-gray-500' : 'text-red-600'}`}>Notes for Tiktak</h3>
                 {!notesEditing ? (
                   <button onClick={() => { setNotesDraft(caseData.agent_notes ?? ''); setNotesEditing(true) }}
                     className="text-xs font-medium text-[#0f4c35] hover:underline">
@@ -1646,21 +1660,25 @@ export default function CaseDetailPage() {
             const isReviewing = caseData.status === 'reviewing_schedule'
             const isTravelDone = caseData.status === 'awaiting_travel'
             const isActionTarget = isReviewing || isTravelDone
-            const sectionClass = isReviewing
-              ? 'scroll-mt-20 bg-green-50 border border-green-200 rounded-2xl p-5'
-              : isTravelDone
-                ? 'scroll-mt-20 bg-green-50 border border-green-200 rounded-2xl p-5'
-                : 'scroll-mt-20 bg-gray-50 rounded-2xl p-5'
-            const labelClass = isReviewing
-              ? 'text-xs font-semibold text-green-700 uppercase tracking-wide'
-              : isTravelDone
-                ? 'text-xs font-semibold text-green-700 uppercase tracking-wide'
-                : 'text-xs font-semibold text-gray-400 uppercase tracking-wide'
+            const isCompleted = caseData.status === 'completed'
+            const sectionClass = (isReviewing || isTravelDone) && !isCompleted
+              ? 'scroll-mt-20 bg-white border-2 border-[#0f4c35] rounded-2xl p-5'
+              : 'scroll-mt-20 bg-white border border-gray-200 rounded-2xl p-5'
+            const labelClass = (isReviewing || isTravelDone) && !isCompleted
+              ? 'text-xs font-semibold text-[#0f4c35] uppercase tracking-wide'
+              : 'text-xs font-semibold text-gray-400 uppercase tracking-wide'
             void isActionTarget
             return (
           <section id="schedule" className={sectionClass}>
             <div className="flex items-center justify-between mb-3">
               <h3 className={labelClass}>Schedule</h3>
+              <div className="flex items-center gap-2">
+              {isTerminal && (
+                <button onClick={() => setScheduleCollapsed(!scheduleCollapsed)}
+                  className="text-[11px] font-medium text-gray-500 hover:text-gray-800 px-2 py-1 rounded-lg border border-gray-200 hover:bg-gray-100">
+                  {scheduleCollapsed ? '▼ Expand' : '▲ Collapse'}
+                </button>
+              )}
               {schedule?.slug && (schedule.pdf_url || (schedule.items && schedule.items.length > 0)) && (
                 <div className="flex items-center gap-2">
                   {/* Preview — open schedule page in new tab */}
@@ -1695,8 +1713,15 @@ export default function CaseDetailPage() {
                   </button>
                 </div>
               )}
+              </div>
             </div>
-            {!schedule ? (
+            {scheduleCollapsed ? (
+              <p className="text-xs text-gray-400">
+                {schedule
+                  ? `v${schedule.version} · ${schedule.status === 'confirmed' ? 'Confirmed' : schedule.status}`
+                  : 'No schedule uploaded'}
+              </p>
+            ) : !schedule ? (
               !scheduleReady
                 ? <p className="text-sm text-amber-700">Complete trip info, every client&apos;s info, and group assignments above. The schedule will be uploaded once everything is ready.</p>
                 : <p className="text-sm text-gray-400">No schedule uploaded yet. We will notify you once it is ready.</p>
@@ -1827,17 +1852,24 @@ export default function CaseDetailPage() {
               and awaiting_payment (send balance invoice link). */}
           {quote && (() => {
             const isActionTarget = caseData.status === 'awaiting_payment' || caseData.status === 'awaiting_deposit'
-            const sectionClass = isActionTarget
-              ? 'scroll-mt-20 bg-cyan-50 border border-cyan-200 rounded-2xl p-5 space-y-4'
-              : 'scroll-mt-20 bg-gray-50 rounded-2xl p-5 space-y-4'
-            const labelClass = isActionTarget
-              ? 'text-xs font-semibold text-cyan-700 uppercase tracking-wide'
+            const isCompleted = caseData.status === 'completed'
+            const sectionClass = isActionTarget && !isCompleted
+              ? 'scroll-mt-20 bg-white border-2 border-[#0f4c35] rounded-2xl p-5 space-y-4'
+              : 'scroll-mt-20 bg-white border border-gray-200 rounded-2xl p-5 space-y-4'
+            const labelClass = isActionTarget && !isCompleted
+              ? 'text-xs font-semibold text-[#0f4c35] uppercase tracking-wide'
               : 'text-xs font-semibold text-gray-400 uppercase tracking-wide'
             return (
             <section id="financials" className={sectionClass}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <h3 className={labelClass}>Financials</h3>
+                  {isTerminal && (
+                    <button onClick={() => setFinancialsCollapsed(!financialsCollapsed)}
+                      className="text-[11px] font-medium text-gray-500 hover:text-gray-800 px-2 py-1 rounded-lg border border-gray-200 hover:bg-gray-100">
+                      {financialsCollapsed ? '▼ Expand' : '▲ Collapse'}
+                    </button>
+                  )}
                   {!quote.finalized_at && (
                     <span className="text-[10px] font-semibold text-gray-500 bg-gray-100 border border-gray-200 rounded-full px-2 py-0.5 uppercase tracking-wide">
                       Estimated
@@ -1892,6 +1924,12 @@ export default function CaseDetailPage() {
                   )
                 })()}
               </div>
+
+              {financialsCollapsed ? (
+                <p className="text-xs text-gray-400">
+                  {quote.finalized_at ? `Total ${quote.total_price ? `$${Number(quote.total_price).toLocaleString()}` : '—'}` : 'Estimated pricing'}
+                </p>
+              ) : <>
 
               {/* Awaiting final invoice — schedule is confirmed, admin is finalizing pricing */}
               {caseData.status === 'awaiting_pricing' && (
@@ -1962,6 +2000,7 @@ export default function CaseDetailPage() {
                   onChanged={async () => { await fetchCase() }}
                 />
               </div>
+              </>}
             </section>
             )
           })()}

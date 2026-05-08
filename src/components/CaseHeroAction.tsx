@@ -8,9 +8,9 @@ import { type CaseStatus } from '@/lib/caseStatus'
 type Tone = 'green' | 'amber' | 'gray'
 
 const TONE: Record<Tone, { wrap: string; eyebrow: string; primaryBtn: string; ghostBtn: string; icon: string }> = {
-  green: { wrap: 'border-green-200 bg-green-50',   eyebrow: 'text-green-800',  primaryBtn: 'bg-[#0f4c35] hover:bg-[#0a3828] text-white', ghostBtn: 'text-green-700 hover:bg-green-100', icon: 'text-green-700' },
-  amber: { wrap: 'border-amber-200 bg-amber-50',   eyebrow: 'text-amber-700',  primaryBtn: 'bg-amber-600 hover:bg-amber-700 text-white',  ghostBtn: 'text-amber-700 hover:bg-amber-100', icon: 'text-amber-500' },
-  gray:  { wrap: 'border-gray-200 bg-gray-50',     eyebrow: 'text-gray-500',   primaryBtn: 'bg-gray-700 hover:bg-gray-800 text-white',    ghostBtn: 'text-gray-600 hover:bg-gray-100',   icon: 'text-gray-400' },
+  green: { wrap: 'border-2 border-[#0f4c35] bg-white',  eyebrow: 'text-[#0f4c35]',  primaryBtn: 'bg-[#0f4c35] hover:bg-[#0a3828] text-white', ghostBtn: 'text-[#0f4c35] hover:bg-gray-100', icon: 'text-[#0f4c35]' },
+  amber: { wrap: 'border-2 border-amber-500 bg-white',   eyebrow: 'text-amber-700',  primaryBtn: 'bg-amber-600 hover:bg-amber-700 text-white',  ghostBtn: 'text-amber-700 hover:bg-amber-50',  icon: 'text-amber-500' },
+  gray:  { wrap: 'border border-gray-200 bg-white',      eyebrow: 'text-gray-500',   primaryBtn: 'bg-gray-700 hover:bg-gray-800 text-white',    ghostBtn: 'text-gray-600 hover:bg-gray-100',   icon: 'text-gray-400' },
 }
 
 function CopyIcon() {
