@@ -4,6 +4,13 @@ import { useState } from 'react'
 
 // ─── Screenshot URLs ──────────────────────────────────────────────────────────
 const SS = 'https://tknucfjnqapriadgiwuv.supabase.co/storage/v1/object/public/guide/screenshots'
+
+// Case-step screenshots (agent perspective)
+const CASE_SS: Record<string, string> = {
+  awaiting_contract: `${SS}/case-agent-awaiting_contract.png`,
+  awaiting_payment:  `${SS}/case-agent-awaiting_payment.png`,
+  completed:         `${SS}/case-agent-completed.png`,
+}
 const SCREENSHOTS: Record<string, string> = {
   home:      `${SS}/agent-home.png`,
   cases:     `${SS}/agent-cases.png`,
@@ -277,6 +284,18 @@ function CasePipeline() {
               {isOpen && (
                 <div className="mx-1 px-4 py-3 rounded-b-xl border border-t-0 border-gray-200 bg-gray-50">
                   <p className="text-sm text-gray-700 leading-relaxed">{step.action}</p>
+                  {CASE_SS[step.status] && (
+                    <div className="mt-3 rounded-lg overflow-hidden border border-gray-200 shadow-sm">
+                      <div className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 border-b border-gray-200">
+                        <span className="w-2.5 h-2.5 rounded-full bg-red-400" />
+                        <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
+                        <span className="w-2.5 h-2.5 rounded-full bg-green-400" />
+                        <span className="flex-1 mx-2 h-4 rounded bg-white border border-gray-200 text-[9px] text-gray-400 flex items-center px-2">tiktak</span>
+                      </div>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={CASE_SS[step.status]} alt={`${step.label} screen`} className="w-full block" loading="lazy" />
+                    </div>
+                  )}
                 </div>
               )}
             </div>

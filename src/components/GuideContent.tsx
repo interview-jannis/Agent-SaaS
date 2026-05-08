@@ -4,6 +4,23 @@ import { useState } from 'react'
 
 type Tab = 'admin' | 'agent' | 'client'
 
+// Case-status screenshots (admin + agent perspective)
+const _CSS = 'https://tknucfjnqapriadgiwuv.supabase.co/storage/v1/object/public/guide/screenshots'
+const CASE_SCREENSHOTS: Record<string, { admin?: string; agent?: string }> = {
+  awaiting_contract: {
+    admin: `${_CSS}/case-admin-awaiting_contract.png`,
+    agent: `${_CSS}/case-agent-awaiting_contract.png`,
+  },
+  awaiting_payment: {
+    admin: `${_CSS}/case-admin-awaiting_payment.png`,
+    agent: `${_CSS}/case-agent-awaiting_payment.png`,
+  },
+  completed: {
+    admin: `${_CSS}/case-admin-completed.png`,
+    agent: `${_CSS}/case-agent-completed.png`,
+  },
+}
+
 const CASE_STEPS = [
   {
     status: 'awaiting_contract',
@@ -162,11 +179,27 @@ function CasesFlow({ perspective }: { perspective: Tab }) {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
                 </svg>
               </button>
-              {isOpen && (
-                <div className={`mx-1 px-4 py-3 rounded-b-xl border border-t-0 ${c.border} ${c.bg}`}>
-                  <p className="text-sm text-gray-700 leading-relaxed">{action}</p>
-                </div>
-              )}
+              {isOpen && (() => {
+                const ss = CASE_SCREENSHOTS[step.status]
+                const screenshot = perspective === 'admin' ? ss?.admin : perspective === 'agent' ? ss?.agent : undefined
+                return (
+                  <div className={`mx-1 px-4 py-3 rounded-b-xl border border-t-0 ${c.border} ${c.bg}`}>
+                    <p className="text-sm text-gray-700 leading-relaxed">{action}</p>
+                    {screenshot && (
+                      <div className="mt-3 rounded-lg overflow-hidden border border-gray-200 shadow-sm">
+                        <div className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 border-b border-gray-200">
+                          <span className="w-2.5 h-2.5 rounded-full bg-red-400" />
+                          <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
+                          <span className="w-2.5 h-2.5 rounded-full bg-green-400" />
+                          <span className="flex-1 mx-2 h-4 rounded bg-white border border-gray-200 text-[9px] text-gray-400 flex items-center px-2">tiktak</span>
+                        </div>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={screenshot} alt={`${step.label} screen`} className="w-full block" loading="lazy" />
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
             </div>
           )
         })}
