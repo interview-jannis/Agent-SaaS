@@ -179,17 +179,31 @@ function CasesFlow({ perspective }: { perspective: Tab }) {
 // ─── Screenshot URLs (hosted in Supabase Storage → guide bucket) ─────────────
 const SS = 'https://tknucfjnqapriadgiwuv.supabase.co/storage/v1/object/public/guide/screenshots'
 const GUIDE_SCREENSHOTS: Record<string, string> = {
-  overview:   `${SS}/admin-overview.png`,
-  cases:      `${SS}/admin-cases.png`,
-  products:   `${SS}/admin-products.png`,
-  agents:     `${SS}/admin-agents.png`,
-  clients:    `${SS}/admin-clients.png`,
-  settlement: `${SS}/admin-settlement.png`,
-  contracts:  `${SS}/admin-contracts.png`,
-  surveys:    `${SS}/admin-surveys.png`,
-  admins:     `${SS}/admin-admins.png`,
-  audit:      `${SS}/admin-audit.png`,
-  settings:   `${SS}/admin-settings.png`,
+  // Admin pages
+  overview:        `${SS}/admin-overview.png`,
+  cases:           `${SS}/admin-cases.png`,
+  products:        `${SS}/admin-products.png`,
+  agents:          `${SS}/admin-agents.png`,
+  clients:         `${SS}/admin-clients.png`,
+  settlement:      `${SS}/admin-settlement.png`,
+  contracts:       `${SS}/admin-contracts.png`,
+  surveys:         `${SS}/admin-surveys.png`,
+  admins:          `${SS}/admin-admins.png`,
+  audit:           `${SS}/admin-audit.png`,
+  settings:        `${SS}/admin-settings.png`,
+  // Agent pages
+  agent_home:      `${SS}/agent-home.png`,
+  agent_cases:     `${SS}/agent-cases.png`,
+  agent_clients:   `${SS}/agent-clients.png`,
+  agent_payouts:   `${SS}/agent-payouts.png`,
+  agent_dashboard: `${SS}/agent-dashboard.png`,
+  agent_profile:   `${SS}/agent-profile.png`,
+  // Client-facing pages
+  client_quote:           `${SS}/client-quote.png`,
+  client_case_contract:   `${SS}/client-case_contract.png`,
+  client_deposit_invoice: `${SS}/client-deposit_invoice.png`,
+  client_schedule:        `${SS}/client-schedule.png`,
+  client_final_invoice:   `${SS}/client-final_invoice.png`,
 }
 
 // ─── Admin sections ───────────────────────────────────────────────────────────
@@ -387,6 +401,7 @@ const AGENT_SECTIONS = [
       '월별 통계: 활성 케이스, 완료 여행, 발생 매출',
       '신규 케이스 빠른 생성 — 상품 선택 및 견적 구성',
     ],
+    screenshot: GUIDE_SCREENSHOTS.agent_home,
   },
   {
     icon: (
@@ -403,6 +418,7 @@ const AGENT_SECTIONS = [
       '케이스 취소(잔금 결제 전) — 취소 사유와 함께 처리',
       '어드민에게만 보이는 내부 메모(Agent Notes) 작성 가능',
     ],
+    screenshot: GUIDE_SCREENSHOTS.agent_cases,
   },
   {
     icon: (
@@ -418,6 +434,7 @@ const AGENT_SECTIONS = [
       '여권, 비상 연락처, 병력, 생활 습관, 식이·무슬림 친화 설정 등 상세 관리',
       '한 고객이 여러 케이스에 등록될 수 있습니다 (재방문 고객)',
     ],
+    screenshot: GUIDE_SCREENSHOTS.agent_clients,
   },
   {
     icon: (
@@ -433,6 +450,7 @@ const AGENT_SECTIONS = [
       '요율 구간: 15%(0~10명) / 20%(11~30명) / 25%(31명+)',
       '매월 초기화 — 케이스 단위가 아닌 환자 단위 집계 (그룹 4명 = 4명 카운트)',
     ],
+    screenshot: GUIDE_SCREENSHOTS.agent_payouts,
   },
   {
     icon: (
@@ -447,6 +465,7 @@ const AGENT_SECTIONS = [
       '기간별 발생 매출',
       '환자 수 추적 (커미션 요율 구간에 영향)',
     ],
+    screenshot: GUIDE_SCREENSHOTS.agent_dashboard,
   },
   {
     icon: (
@@ -461,6 +480,7 @@ const AGENT_SECTIONS = [
       '계좌 정보 — 커미션 정산금이 입금될 계좌',
       '비밀번호 변경',
     ],
+    screenshot: GUIDE_SCREENSHOTS.agent_profile,
   },
 ]
 
@@ -492,6 +512,7 @@ const CLIENT_TOUCH_POINTS = [
       '상품 목록, 그룹 인원별 수량, 예상 금액 표시',
       '어드민이 최종 가격을 확정하기 전까지 유효한 견적입니다',
     ],
+    screenshot: GUIDE_SCREENSHOTS.client_quote,
   },
   {
     icon: (
@@ -507,6 +528,7 @@ const CLIENT_TOUCH_POINTS = [
       '서명 패드에 전자 서명을 진행합니다',
       '고객·에이전트·어드민 3자 모두 서명해야 다음 단계로 넘어갑니다',
     ],
+    screenshot: GUIDE_SCREENSHOTS.client_case_contract,
   },
   {
     icon: (
@@ -521,6 +543,7 @@ const CLIENT_TOUCH_POINTS = [
       '에이전트 계좌 정보 포함',
       '수령 확인 후 일정 준비가 시작됩니다',
     ],
+    screenshot: GUIDE_SCREENSHOTS.client_deposit_invoice,
   },
   {
     icon: (
@@ -536,6 +559,7 @@ const CLIENT_TOUCH_POINTS = [
       '그룹 여행의 경우 구성원별 일정이 다를 수 있습니다',
       '여행 중 참고를 위해 PDF로 인쇄하거나 저장하세요',
     ],
+    screenshot: GUIDE_SCREENSHOTS.client_schedule,
   },
   {
     icon: (
@@ -550,6 +574,7 @@ const CLIENT_TOUCH_POINTS = [
       '법인 도장 및 계좌 정보 포함',
       '납부 완료 시 예약이 최종 확정됩니다',
     ],
+    screenshot: GUIDE_SCREENSHOTS.client_final_invoice,
   },
 ]
 
