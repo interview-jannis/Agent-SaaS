@@ -2,10 +2,11 @@
 
 ## 현재 상태
 - **Phase**: 시뮬 직전 정합성 + 운영성. 3자 계약 evidentiary 강화 + 순서 무관 + 실시간 자동 새로고침, Overview 캐시베이시스 회계, Edit Selected Products audit trail (origin + soft delete), ScheduleEditor 대수술 (Free time / partner / block-time 범위 / group / internal note / pending row / coverage gate), agent → admin 메모. ScheduleEditor 2차 (draft save / edit button / group re-pick / cancel restore / delete confirm / multi-day product / ✓ indicator / duration / Shared color), ScheduleDocument 전면 재설계 (cover: flight+groups, day sections: group separation, variantTag chip).
-- **마지막 작업**: 2026-05-07 — 상품 데이터 마스터 v20 생성. K-Wellness 비-Spa 63행 전면 재구축(Internal_Price 3-1~3-4 기준, Shopping/K-Content/Tour/Leisure 56행), K-Starcation 재구축(팬텀 4번째 행 제거 + K-Beauty notes 오염 해결, 3행으로 정정), Concierge variant label 공백 처리, Sofitel Presidential Suite ₩0 + 문의 안내. 8개 소스 파일 전수 감사. → 그 이전: Guide 페이지(사내 OT 문서), `awaiting_settlement` 신규 상태, commission invoice Mark Paid 통합, admin case Client Review 섹션, pre-confirmation 정합성, ScheduleDocument 모바일, invoice 모바일, Subpackage 가격 로직, 빌드 오류 수정.
-- **마지막 업데이트**: 2026-05-07 (개발 마감 5/8, 시뮬레이션 5/11~15, 런칭 5/18)
+- **마지막 작업**: 2026-05-08 — v21 K-Beauty 오염 정정(Ruby Clinic / SELENA Clinic Hongdae variant_label 공백 처리), agent home "Free" vs "Price on request" 구분 UI(renderVariantRow + 2-level group range). → 그 이전: 상품 데이터 마스터 v20, Guide 페이지, `awaiting_settlement` 신규 상태, commission invoice Mark Paid 통합, admin case Client Review 섹션, pre-confirmation 정합성, ScheduleDocument 모바일, Subpackage 가격 로직 완성, 빌드 오류 수정.
+- **마지막 업데이트**: 2026-05-08 (개발 마감 5/8, 시뮬레이션 5/11~15, 런칭 5/18)
 - **SaaS 브랜드명**: **Tiktak** (UI 전역, 법인명 Interview Co., Ltd)
 
+> 2026-05-08 상세: `notes/26.05.07.md` (§22: 데이터 마스터 v21 — Ruby Clinic / SELENA Clinic Hongdae variant_label 정리(K-Beauty 오염 정정). §23: agent home "Free" vs "Price on request" 구분 UI).
 > 2026-05-07 상세: `notes/26.05.07.md` (§1–18: 모바일 대응 ScheduleDocument + invoice 표 + schedule 시각 계층 + Quotation admin 이름 + 빌드 오류 수정 + Subpackage 가격 로직 + awaiting_settlement 신규 상태 + commission invoice Mark Paid 통합 + Client Review 섹션 + pre-confirmation origin 필터 정합성. §19: Guide 페이지 구현. §20: 데이터 마스터 v20 — K-Wellness/K-Starcation 재구축 + 전수 감사. §21: UI 색상 3톤 통일 — Agent/Admin 전면 정리).
 > 2026-05-06 상세 (2차): `notes/26.05.06.md` §11–13 (ScheduleEditor 2차 개선 + ScheduleDocument 전면 재설계).
 > 2026-05-06 상세 (1차): `notes/26.05.06.md` §1–10 (3자 계약 evidentiary + 순서 무관 + Realtime / Cases 표 통일 / 캐시베이시스 회계 / Documents audit trail / ScheduleEditor 대수술 / agent_notes / Time24Input / 카테고리 sort_order)
@@ -39,7 +40,8 @@
 #### 컨텐츠 (사용자 본인)
 - [ ] **호텔 데이터 정리** — VIP 클라이언트 대상이라 ₩1,000,000/박 미만 객실은 카탈로그에서 제외 (예: SOFITEL `Luxury Lake Room $243.57`, `Prestige Suite $473.61`, `1-Bedroom Premier $338.29` 같은 라인). v19 마스터 빌드 시 cutoff 적용 + deleteMissing으로 정리
 - [x] **K-Wellness/K-Starcation/Concierge/Sofitel 데이터 수정 (v20)** — v18 K-Wellness 비-Spa 63행(보톡스 브랜드 variant 오염) 제거 후 Internal_Price 3-1~3-4 기준 56행 재구축. K-Starcation 팬텀 4번째 행 제거 + K-Beauty notes 오염 해결(3행 재구축). Concierge "1 session"/"5 sessions" variant 공백. Sofitel Presidential Suite ₩22M → ₩0+문의. 8개 소스 파일 전수 감사 완료. `data/products_master_v20.xlsx` (351행)
-- [ ] **잘못 매핑된 variants 정리 (K-Beauty)** — variants가 없어야 할 product에 다른 product의 variant 라벨이 박혀 있는 row들. 예: Rarelee `Beauty · Private Consulting` (#P-038)에 `Allergan` variant가 attached. v20에서 K-Wellness/K-Starcation은 해결. K-Beauty 클리닉별 잔여 이슈 별도 정리 필요.
+- [x] **잘못 매핑된 variants 정리 (K-Beauty 일부)** — Ruby Clinic 4개 패키지 + SELENA Clinic Hongdae 3개 티어: 보톡스 브랜드명(Xeomin/Allergan/Domestic)이 variant_label로 오염 → v21에서 공백 처리 완료 (data/scripts/generate_v21.js). Rarelee 등 나머지 클리닉별 잔여 이슈는 별도 검토 필요.
+- [x] **Agent home "Free" vs "Price on request" 구분** — Subpackage margin disabled(무상) → "Free"(gray), 진짜 가격 미설정 → "Price on request"(amber). priceLabel() + renderVariantRow + 2-level group range 3곳 모두 적용.
 - [ ] 설문 질문 실제 내용 확정 (이사님 검토 후 admin/contracts에서 갱신 — placeholder 12문항 seed됨)
 - [ ] 계약서 4종 본문 법무 검토 후 admin/contracts에서 갱신
 - [ ] Stamp 정식 이미지 업로드 (현재 Stamp 폴더의 회사 도장 PNG)
