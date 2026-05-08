@@ -544,6 +544,7 @@ export default function AgentHomePage() {
     }))
     const min = Math.min(...prices)
     const max = Math.max(...prices)
+    if (min === 0 && max === 0) return 'Price on request'
     const fmt = (n: number) => `$${n.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
     if (min === max) return `$${min.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
     return `${fmt(min)} – ${fmt(max)}`
@@ -653,7 +654,7 @@ export default function AgentHomePage() {
           </button>
 
           <div className="mt-auto min-w-0">
-            <p className="text-sm font-bold text-gray-900 leading-tight truncate">{priceLabel(product)}</p>
+            <p className={`text-sm font-bold leading-tight truncate ${priceLabel(product) === 'Price on request' ? 'text-amber-600' : 'text-gray-900'}`}>{priceLabel(product)}</p>
             {product.duration_value && (
               <p className="text-[10px] text-gray-400 leading-tight">{product.duration_value} {product.duration_unit}</p>
             )}
@@ -1129,8 +1130,8 @@ export default function AgentHomePage() {
                   return (
                     <div className="flex items-center gap-4">
                       <div className="bg-gray-50 rounded-xl px-4 py-2.5 text-center">
-                        <p className="text-lg font-bold text-gray-900">{toUSD(detailProduct)}</p>
-                        <p className="text-xs text-gray-400">per person</p>
+                        <p className={`text-lg font-bold ${toUSD(detailProduct) === 'Price on request' ? 'text-amber-600' : 'text-gray-900'}`}>{toUSD(detailProduct)}</p>
+                        <p className="text-xs text-gray-400">{toUSD(detailProduct) === 'Price on request' ? 'contact us' : 'per person'}</p>
                       </div>
                       <div className="bg-gray-50 rounded-xl px-4 py-2.5 text-center">
                         <p className="text-base font-semibold text-gray-900">{detailProduct.duration_value} {detailProduct.duration_unit}</p>
@@ -1178,7 +1179,10 @@ export default function AgentHomePage() {
                         <p className="text-sm font-medium text-gray-900">{display}</p>
                       </div>
                       <div className="text-right">
-                        <p className={`text-sm font-bold ${inCart ? 'text-[#0f4c35]' : 'text-gray-900'}`}>${usd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                        {usd === 0
+                          ? <p className="text-sm font-bold text-amber-600">Price on request</p>
+                          : <p className={`text-sm font-bold ${inCart ? 'text-[#0f4c35]' : 'text-gray-900'}`}>${usd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                        }
                         <p className="text-[10px] text-gray-400">{inCart ? '✓ in cart' : 'tap to add'}</p>
                       </div>
                     </button>
@@ -1206,9 +1210,11 @@ export default function AgentHomePage() {
                       const expanded = expandedVariantGroup[`${detailProduct.id}::${gi}`] ?? anyInCart
                       const prices = g.items.map(usdFor)
                       const min = Math.min(...prices), max = Math.max(...prices)
-                      const range = min === max
-                        ? `$${min.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
-                        : `$${min.toLocaleString('en-US', { maximumFractionDigits: 0 })} – $${max.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
+                      const range = (min === 0 && max === 0)
+                        ? 'Price on request'
+                        : min === max
+                          ? `$${min.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
+                          : `$${min.toLocaleString('en-US', { maximumFractionDigits: 0 })} – $${max.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
                       return (
                         <div key={g.prefix} className="space-y-2">
                           <button
