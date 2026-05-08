@@ -11,6 +11,13 @@ const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Se
 
 type BankInfo = Record<string, string>
 
+type BusinessInfo = {
+  type: 'individual' | 'company'
+  company_name?: string | null
+  registration_number?: string | null
+  doc_url?: string | null
+}
+
 type Agent = {
   id: string
   agent_number: string | null
@@ -21,6 +28,7 @@ type Agent = {
   margin_rate: number | null
   is_active: boolean
   bank_info: BankInfo | null
+  business_info: BusinessInfo | null
   onboarding_status: 'pending_onboarding' | 'awaiting_approval' | 'approved' | null
   rejection_reason: string | null
   rejected_at: string | null
@@ -91,7 +99,7 @@ export default function AdminAgentDetailPage() {
   const fetchData = useCallback(async () => {
     const [agentRes, casesRes, settlementsRes, contractsRes, rateRes, adminsRes, sessionRes] = await Promise.all([
       supabase.from('agents')
-        .select('id, agent_number, name, email, phone, country, margin_rate, is_active, bank_info, onboarding_status, rejection_reason, rejected_at, invite_token, invite_expires_at, assigned_admin_id')
+        .select('id, agent_number, name, email, phone, country, margin_rate, is_active, bank_info, business_info, onboarding_status, rejection_reason, rejected_at, invite_token, invite_expires_at, assigned_admin_id')
         .eq('id', id).single(),
       supabase.from('cases')
         .select('id, case_number, status, travel_start_date, travel_end_date, travel_completed_at, payment_date, created_at, documents(type, total_price, company_margin_rate, agent_margin_rate), case_members(is_lead, clients(name))')
@@ -433,6 +441,40 @@ export default function AdminAgentDetailPage() {
               </div>
             ) : (
               <p className="text-xs text-amber-700">Agent has not submitted bank details. Settlement cannot be processed until they fill their profile.</p>
+            )}
+          </section>
+
+          {/* Business registration */}
+          <section className="bg-gray-50 rounded-2xl p-5">
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-4">Business Registration</h3>
+            {agent.business_info ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
+                <div>
+                  <p className="text-[10px] text-gray-400 mb-0.5">Type</p>
+                  <p className="text-gray-800 capitalize">{agent.business_info.type}</p>
+                </div>
+                {agent.business_info.company_name && (
+                  <div>
+                    <p className="text-[10px] text-gray-400 mb-0.5">Company / Agency Name</p>
+                    <p className="text-gray-800">{agent.business_info.company_name}</p>
+                  </div>
+                )}
+                {agent.business_info.registration_number && (
+                  <div>
+                    <p className="text-[10px] text-gray-400 mb-0.5">Registration Number</p>
+                    <p className="text-gray-800 font-mono">{agent.business_info.registration_number}</p>
+                  </div>
+                )}
+                {agent.business_info.doc_url && (
+                  <div>
+                    <p className="text-[10px] text-gray-400 mb-0.5">Registration Document</p>
+                    <a href={agent.business_info.doc_url} target="_blank" rel="noopener noreferrer"
+                      className="text-xs text-[#0f4c35] underline hover:no-underline">View Document ↗</a>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-xs text-gray-400">Not provided.</p>
             )}
           </section>
           </>

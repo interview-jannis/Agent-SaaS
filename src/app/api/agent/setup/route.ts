@@ -9,7 +9,7 @@ export async function POST(req: Request) {
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!serviceKey) return NextResponse.json({ error: 'Service role key not configured.' }, { status: 500 })
 
-  const { authUserId, email, password, phone, bank } = await req.json() as {
+  const { authUserId, email, password, phone, bank, business_info } = await req.json() as {
     authUserId?: string; email?: string; password?: string; phone?: string
     bank?: {
       bank_name?: string
@@ -19,6 +19,12 @@ export async function POST(req: Request) {
       address?: string
       beneficiary_number?: string
     }
+    business_info?: {
+      type?: string
+      company_name?: string | null
+      registration_number?: string | null
+      doc_url?: string | null
+    } | null
   }
 
   if (!authUserId || !email || !password) {
@@ -107,6 +113,7 @@ export async function POST(req: Request) {
     email,
     phone: phone?.trim() || null,
     bank_info,
+    business_info: business_info ?? null,
     setup_completed_at: new Date().toISOString(),
     // Invalidate invite token — real credentials are now set
     invite_token: null,

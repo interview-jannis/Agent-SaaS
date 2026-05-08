@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { logAsCurrentUser } from '@/lib/audit'
 
+type BusinessType = 'individual' | 'company'
+
 export default function SetupWizardPage() {
   const router = useRouter()
   const [authUserId, setAuthUserId] = useState<string | null>(null)
@@ -13,6 +15,12 @@ export default function SetupWizardPage() {
   const [form, setForm] = useState({ email: '', password: '', confirmPassword: '', phone: '' })
   // Schema aligned with admin system_settings.bank_details (2026-05-01)
   const [bank, setBank] = useState({ bank_name: '', account_number: '', beneficiary: '', swift_code: '', address: '', beneficiary_number: '' })
+  // Business registration (optional)
+  const [business, setBusiness] = useState<{ type: BusinessType; company_name: string; registration_number: string; doc_url: string }>({
+    type: 'individual', company_name: '', registration_number: '', doc_url: '',
+  })
+  const [uploadingDoc, setUploadingDoc] = useState(false)
+  const [docUploadError, setDocUploadError] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -36,6 +44,23 @@ export default function SetupWizardPage() {
     init()
   }, [router])
 
+  async function uploadBusinessDoc(file: File) {
+    if (!authUserId) return
+    setUploadingDoc(true); setDocUploadError('')
+    try {
+      const ext = file.name.split('.').pop()?.toLowerCase() ?? 'pdf'
+      const path = `agents/${authUserId}/business-reg-${Date.now()}.${ext}`
+      const { error: upErr } = await supabase.storage.from('agent-docs').upload(path, file, { cacheControl: '3600', upsert: true })
+      if (upErr) throw upErr
+      const { data: pub } = supabase.storage.from('agent-docs').getPublicUrl(path)
+      setBusiness(p => ({ ...p, doc_url: pub.publicUrl }))
+    } catch (e: unknown) {
+      setDocUploadError((e as { message?: string })?.message ?? 'Upload failed.')
+    } finally {
+      setUploadingDoc(false)
+    }
+  }
+
   async function submit() {
     if (!authUserId) return
     if (!form.email.trim()) { setError('Email is required.'); return }
@@ -46,6 +71,15 @@ export default function SetupWizardPage() {
       setError('Bank Name, Account Number, Beneficiary, and Swift Code are required so we can pay your commissions.'); return
     }
     setSaving(true); setError('')
+    // Build business_info only if any field is filled
+    const business_info = (business.company_name.trim() || business.registration_number.trim() || business.doc_url)
+      ? {
+          type: business.type,
+          company_name: business.company_name.trim() || null,
+          registration_number: business.registration_number.trim() || null,
+          doc_url: business.doc_url || null,
+        }
+      : null
     try {
       const res = await fetch('/api/agent/setup', {
         method: 'POST',
@@ -56,6 +90,7 @@ export default function SetupWizardPage() {
           password: form.password,
           phone: form.phone.trim(),
           bank,
+          business_info,
         }),
       })
       if (!res.ok) {
@@ -174,6 +209,67 @@ export default function SetupWizardPage() {
             <input type="text" value={bank.address} onChange={e => setBank(p => ({ ...p, address: e.target.value }))}
               placeholder="Optional"
               className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
+          </div>
+        </div>
+      </section>
+
+      <section className="bg-white rounded-2xl border border-gray-200 p-6 space-y-4">
+        <div>
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Business Registration</p>
+          <p className="text-[11px] text-gray-400 mt-0.5">Optional — you can also add or update this from your profile later.</p>
+        </div>
+
+        {/* Business type */}
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-2">Business Type</label>
+          <div className="flex gap-4">
+            {([['individual', 'Individual'], ['company', 'Company / Agency']] as const).map(([val, label]) => (
+              <label key={val} className="flex items-center gap-2 cursor-pointer">
+                <input type="radio" checked={business.type === val} onChange={() => setBusiness(p => ({ ...p, type: val }))}
+                  className="accent-[#0f4c35]" />
+                <span className="text-sm text-gray-700">{label}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {business.type === 'company' && (
+            <div className="md:col-span-2">
+              <label className="block text-xs font-medium text-gray-600 mb-1.5">Company / Agency Name</label>
+              <input type="text" value={business.company_name} onChange={e => setBusiness(p => ({ ...p, company_name: e.target.value }))}
+                placeholder="ABC Travel Agency LLC"
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
+            </div>
+          )}
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">Registration Number</label>
+            <input type="text" value={business.registration_number} onChange={e => setBusiness(p => ({ ...p, registration_number: e.target.value }))}
+              placeholder="e.g. 123-45-67890"
+              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">Registration Document</label>
+            {business.doc_url ? (
+              <div className="flex items-center gap-2">
+                <svg className="w-4 h-4 text-[#0f4c35] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <a href={business.doc_url} target="_blank" rel="noopener noreferrer" className="text-xs text-[#0f4c35] underline truncate">
+                  Uploaded ↗
+                </a>
+                <button onClick={() => setBusiness(p => ({ ...p, doc_url: '' }))} className="text-xs text-gray-400 hover:text-gray-600 shrink-0">Remove</button>
+              </div>
+            ) : (
+              <div>
+                <input type="file" accept="image/*,.pdf" disabled={uploadingDoc}
+                  onChange={e => { const f = e.target.files?.[0]; if (f) uploadBusinessDoc(f); e.target.value = '' }}
+                  className="block text-xs text-gray-700 file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-gray-100 file:text-gray-700 file:text-xs file:font-medium file:cursor-pointer hover:file:bg-gray-200" />
+                {uploadingDoc && <p className="text-xs text-gray-500 mt-1">Uploading...</p>}
+                {docUploadError && <p className="text-xs text-red-500 mt-1">{docUploadError}</p>}
+              </div>
+            )}
+            <p className="text-[10px] text-gray-400 mt-1">PDF or image. Max 10 MB.</p>
           </div>
         </div>
       </section>

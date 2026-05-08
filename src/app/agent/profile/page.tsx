@@ -5,6 +5,13 @@ import { supabase } from '@/lib/supabase'
 import ChangePasswordCard from '@/components/ChangePasswordCard'
 import { COUNTRIES, COUNTRY_DATALIST_ID } from '@/lib/countries'
 
+type BusinessInfo = {
+  type: 'individual' | 'company'
+  company_name?: string | null
+  registration_number?: string | null
+  doc_url?: string | null
+}
+
 type AgentProfile = {
   id: string
   agent_number: string | null
@@ -15,6 +22,7 @@ type AgentProfile = {
   margin_rate: number | null
   is_active: boolean
   stamp_url: string | null
+  business_info: BusinessInfo | null
 }
 
 export default function AgentProfilePage() {
@@ -32,6 +40,13 @@ export default function AgentProfilePage() {
   const [uploadingStamp, setUploadingStamp] = useState(false)
   const [stampError, setStampError] = useState('')
 
+  // Business registration
+  const [editBusiness, setEditBusiness] = useState(false)
+  const [businessDraft, setBusinessDraft] = useState<BusinessInfo>({ type: 'individual', company_name: '', registration_number: '', doc_url: '' })
+  const [savingBusiness, setSavingBusiness] = useState(false)
+  const [uploadingBusinessDoc, setUploadingBusinessDoc] = useState(false)
+  const [businessDocError, setBusinessDocError] = useState('')
+
   const [error, setError] = useState('')
 
   async function fetchProfile() {
@@ -39,7 +54,7 @@ export default function AgentProfilePage() {
     const uid = session?.user?.id
     if (!uid) return
     const { data } = await supabase.from('agents')
-      .select('id, agent_number, name, email, phone, country, margin_rate, is_active, stamp_url')
+      .select('id, agent_number, name, email, phone, country, margin_rate, is_active, stamp_url, business_info')
       .eq('auth_user_id', uid).single()
     if (!data) return
     const ag = data as AgentProfile
@@ -228,6 +243,157 @@ export default function AgentProfilePage() {
                 {stampError && <p className="text-xs text-red-500 mt-1">{stampError}</p>}
               </div>
             </div>
+          </section>
+
+          {/* Business Registration */}
+          <section className="bg-gray-50 rounded-2xl p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Business Registration</h3>
+              {!editBusiness ? (
+                <button onClick={() => {
+                  setEditBusiness(true)
+                  setBusinessDraft({
+                    type: profile.business_info?.type ?? 'individual',
+                    company_name: profile.business_info?.company_name ?? '',
+                    registration_number: profile.business_info?.registration_number ?? '',
+                    doc_url: profile.business_info?.doc_url ?? '',
+                  })
+                  setBusinessDocError('')
+                }} className="text-xs font-medium text-[#0f4c35] hover:underline">Edit</button>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <button onClick={() => { setEditBusiness(false); setBusinessDocError('') }} className="text-xs text-gray-400 hover:text-gray-600">Cancel</button>
+                  <button disabled={savingBusiness} onClick={async () => {
+                    if (!profile) return
+                    setSavingBusiness(true); setError('')
+                    try {
+                      const payload: BusinessInfo | null = (businessDraft.company_name?.trim() || businessDraft.registration_number?.trim() || businessDraft.doc_url)
+                        ? {
+                            type: businessDraft.type,
+                            company_name: businessDraft.company_name?.trim() || null,
+                            registration_number: businessDraft.registration_number?.trim() || null,
+                            doc_url: businessDraft.doc_url || null,
+                          }
+                        : null
+                      const { error: upErr } = await supabase.from('agents').update({ business_info: payload }).eq('id', profile.id)
+                      if (upErr) throw upErr
+                      await fetchProfile()
+                      setEditBusiness(false)
+                    } catch (e: unknown) {
+                      setError((e as { message?: string })?.message ?? 'Failed to save.')
+                    } finally {
+                      setSavingBusiness(false)
+                    }
+                  }} className="text-xs font-medium text-[#0f4c35] hover:underline disabled:opacity-40">
+                    {savingBusiness ? 'Saving...' : 'Save'}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {!editBusiness ? (
+              profile.business_info ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
+                  <div>
+                    <p className="text-[10px] text-gray-400 mb-0.5">Business Type</p>
+                    <p className="text-gray-800 capitalize">{profile.business_info.type}</p>
+                  </div>
+                  {profile.business_info.company_name && (
+                    <div>
+                      <p className="text-[10px] text-gray-400 mb-0.5">Company / Agency Name</p>
+                      <p className="text-gray-800">{profile.business_info.company_name}</p>
+                    </div>
+                  )}
+                  {profile.business_info.registration_number && (
+                    <div>
+                      <p className="text-[10px] text-gray-400 mb-0.5">Registration Number</p>
+                      <p className="text-gray-800 font-mono">{profile.business_info.registration_number}</p>
+                    </div>
+                  )}
+                  {profile.business_info.doc_url && (
+                    <div>
+                      <p className="text-[10px] text-gray-400 mb-0.5">Registration Document</p>
+                      <a href={profile.business_info.doc_url} target="_blank" rel="noopener noreferrer"
+                        className="text-xs text-[#0f4c35] underline hover:no-underline">View Document ↗</a>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-400">Not provided yet.</p>
+              )
+            ) : (
+              <div className="space-y-3">
+                {/* Type */}
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1.5">Business Type</label>
+                  <div className="flex gap-4">
+                    {([['individual', 'Individual'], ['company', 'Company / Agency']] as const).map(([val, label]) => (
+                      <label key={val} className="flex items-center gap-2 cursor-pointer">
+                        <input type="radio" checked={businessDraft.type === val} onChange={() => setBusinessDraft(p => ({ ...p, type: val }))}
+                          className="accent-[#0f4c35]" />
+                        <span className="text-sm text-gray-700">{label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {businessDraft.type === 'company' && (
+                    <div className="sm:col-span-2">
+                      <label className="block text-xs text-gray-500 mb-1">Company / Agency Name</label>
+                      <input value={businessDraft.company_name ?? ''} onChange={e => setBusinessDraft(p => ({ ...p, company_name: e.target.value }))}
+                        placeholder="ABC Travel Agency LLC"
+                        className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
+                    </div>
+                  )}
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Registration Number</label>
+                    <input value={businessDraft.registration_number ?? ''} onChange={e => setBusinessDraft(p => ({ ...p, registration_number: e.target.value }))}
+                      placeholder="e.g. 123-45-67890"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Registration Document</label>
+                    {businessDraft.doc_url ? (
+                      <div className="flex items-center gap-2 mt-1">
+                        <svg className="w-4 h-4 text-[#0f4c35] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <a href={businessDraft.doc_url} target="_blank" rel="noopener noreferrer" className="text-xs text-[#0f4c35] underline truncate">
+                          Uploaded ↗
+                        </a>
+                        <button onClick={() => setBusinessDraft(p => ({ ...p, doc_url: '' }))} className="text-xs text-gray-400 hover:text-gray-600 shrink-0">Remove</button>
+                      </div>
+                    ) : (
+                      <div>
+                        <input type="file" accept="image/*,.pdf" disabled={uploadingBusinessDoc}
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0]
+                            if (!file || !profile) return
+                            setUploadingBusinessDoc(true); setBusinessDocError('')
+                            try {
+                              const ext = file.name.split('.').pop()?.toLowerCase() ?? 'pdf'
+                              const path = `agents/${profile.id}/business-reg-${Date.now()}.${ext}`
+                              const { error: upErr } = await supabase.storage.from('agent-docs').upload(path, file, { cacheControl: '3600', upsert: true })
+                              if (upErr) throw upErr
+                              const { data: pub } = supabase.storage.from('agent-docs').getPublicUrl(path)
+                              setBusinessDraft(p => ({ ...p, doc_url: pub.publicUrl }))
+                            } catch (err: unknown) {
+                              setBusinessDocError((err as { message?: string })?.message ?? 'Upload failed.')
+                            } finally {
+                              setUploadingBusinessDoc(false)
+                              e.target.value = ''
+                            }
+                          }}
+                          className="block text-xs text-gray-700 file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-gray-100 file:text-gray-700 file:text-xs file:font-medium file:cursor-pointer hover:file:bg-gray-200" />
+                        {uploadingBusinessDoc && <p className="text-xs text-gray-500 mt-1">Uploading...</p>}
+                        {businessDocError && <p className="text-xs text-red-500 mt-1">{businessDocError}</p>}
+                        <p className="text-[10px] text-gray-400 mt-1">PDF or image. Max 10 MB.</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           </section>
 
           <ChangePasswordCard />
