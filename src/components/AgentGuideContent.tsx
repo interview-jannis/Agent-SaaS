@@ -1,12 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { supabase } from '@/lib/supabase'
 
-// ─── Screenshot URLs ──────────────────────────────────────────────────────────
+// ─── Screenshot defaults ──────────────────────────────────────────────────────
 const SS = 'https://tknucfjnqapriadgiwuv.supabase.co/storage/v1/object/public/guide/screenshots'
 
-// Case-step screenshots (agent perspective)
-const CASE_SS: Record<string, string> = {
+const DEFAULT_CASE_SS: Record<string, string> = {
   awaiting_contract:   `${SS}/case-agent-awaiting_contract.png`,
   awaiting_deposit:    `${SS}/case-agent-awaiting_deposit.png`,
   awaiting_schedule:   `${SS}/case-agent-awaiting_schedule.png`,
@@ -18,7 +18,7 @@ const CASE_SS: Record<string, string> = {
   awaiting_settlement: `${SS}/case-agent-awaiting_settlement.png`,
   completed:           `${SS}/case-agent-completed.png`,
 }
-const SCREENSHOTS: Record<string, string> = {
+const DEFAULT_SS: Record<string, string> = {
   home:      `${SS}/agent-home.png`,
   cases:     `${SS}/agent-cases.png`,
   clients:   `${SS}/agent-clients.png`,
@@ -26,6 +26,10 @@ const SCREENSHOTS: Record<string, string> = {
   dashboard: `${SS}/agent-dashboard.png`,
   profile:   `${SS}/agent-profile.png`,
 }
+
+// Overrides from system_settings (populated on mount)
+// Key mapping: section key → agent_home/agent_cases/etc, case screenshots → case_agent_{status}
+type GuideOverrides = { screenshots: Record<string, string>; descs: Record<string, string>; actions: Record<string, string> }
 
 // ─── Case pipeline ────────────────────────────────────────────────────────────
 const CASE_STEPS = [
@@ -250,8 +254,16 @@ function SectionCard({ icon, title, desc, details, screenshot }: {
 }
 
 // ─── Case pipeline component ──────────────────────────────────────────────────
-function CasePipeline() {
+function CasePipeline({ overrides }: { overrides: GuideOverrides }) {
   const [expanded, setExpanded] = useState<string | null>(null)
+
+  function getScreenshot(status: string): string | undefined {
+    return overrides.screenshots[`case_agent_${status}`] || DEFAULT_CASE_SS[status]
+  }
+  function getAction(status: string, defaultAction: string): string {
+    return overrides.actions[`agent_${status}`] || defaultAction
+  }
+
   return (
     <div>
       <h3 className="text-base font-semibold text-gray-900 mb-1">How Cases Work</h3>
@@ -262,6 +274,8 @@ function CasePipeline() {
       <div className="space-y-2">
         {CASE_STEPS.map((step, i) => {
           const isOpen = expanded === step.status
+          const screenshot = getScreenshot(step.status)
+          const actionText = getAction(step.status, step.action)
           return (
             <div key={step.status}>
               <button
@@ -274,9 +288,7 @@ function CasePipeline() {
                     : 'bg-gray-50 border border-transparent hover:bg-gray-100'
                 }`}
               >
-                <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
-                  step.isYourMove ? 'bg-[#0f4c35] text-white' : 'bg-gray-200 text-gray-500'
-                }`}>
+                <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${step.isYourMove ? 'bg-[#0f4c35] text-white' : 'bg-gray-200 text-gray-500'}`}>
                   {i + 1}
                 </span>
                 <span className="flex-1 text-sm font-medium text-gray-700">{step.label}</span>
@@ -290,8 +302,8 @@ function CasePipeline() {
               </button>
               {isOpen && (
                 <div className="mx-1 px-4 py-3 rounded-b-xl border border-t-0 border-gray-200 bg-gray-50">
-                  <p className="text-sm text-gray-700 leading-relaxed">{step.action}</p>
-                  {CASE_SS[step.status] && (
+                  <p className="text-sm text-gray-700 leading-relaxed">{actionText}</p>
+                  {screenshot && (
                     <div className="mt-3 rounded-lg overflow-hidden border border-gray-200 shadow-sm">
                       <div className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 border-b border-gray-200">
                         <span className="w-2.5 h-2.5 rounded-full bg-red-400" />
@@ -300,7 +312,7 @@ function CasePipeline() {
                         <span className="flex-1 mx-2 h-4 rounded bg-white border border-gray-200 text-[9px] text-gray-400 flex items-center px-2">tiktak</span>
                       </div>
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={CASE_SS[step.status]} alt={`${step.label} screen`} className="w-full block" loading="lazy" />
+                      <img src={screenshot} alt={`${step.label} screen`} className="w-full block" loading="lazy" />
                     </div>
                   )}
                 </div>
@@ -316,6 +328,23 @@ function CasePipeline() {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function AgentGuideContent() {
+  const [overrides, setOverrides] = useState<GuideOverrides>({ screenshots: {}, descs: {}, actions: {} })
+
+  useEffect(() => {
+    supabase.from('system_settings').select('value').eq('key', 'guide_content').maybeSingle()
+      .then(({ data }) => {
+        if (data?.value) {
+          const v = data.value as Partial<GuideOverrides>
+          setOverrides({ screenshots: v.screenshots ?? {}, descs: v.descs ?? {}, actions: v.actions ?? {} })
+        }
+      })
+  }, [])
+
+  function getSS(key: string, defaultKey: string): string | undefined {
+    // key in system_settings uses agent_ prefix (e.g. agent_home), but AGENT_SECTIONS use 'home'
+    return overrides.screenshots[`agent_${key}`] || DEFAULT_SS[key]
+  }
+
   return (
     <div className="h-full overflow-y-auto">
       <div className="max-w-3xl mx-auto px-4 md:px-8 py-8">
@@ -384,9 +413,9 @@ export default function AgentGuideContent() {
                   key={s.key}
                   icon={s.icon}
                   title={s.title}
-                  desc={s.desc}
+                  desc={overrides.descs[`agent_${s.key}`] || s.desc}
                   details={s.details}
-                  screenshot={SCREENSHOTS[s.key]}
+                  screenshot={getSS(s.key, s.key)}
                 />
               ))}
             </div>
@@ -394,7 +423,7 @@ export default function AgentGuideContent() {
 
           {/* ── Case pipeline ── */}
           <div className="border-t border-gray-100 pt-8">
-            <CasePipeline />
+            <CasePipeline overrides={overrides} />
           </div>
 
         </div>
