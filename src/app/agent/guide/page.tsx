@@ -1,5 +1,5 @@
-import GuideContent from '@/components/GuideContent'
+import AgentGuideContent from '@/components/AgentGuideContent'
 
 export default function AgentGuidePage() {
-  return <GuideContent defaultTab="agent" />
+  return <AgentGuideContent />
 }

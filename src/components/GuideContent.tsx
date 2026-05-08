@@ -176,6 +176,22 @@ function CasesFlow({ perspective }: { perspective: Tab }) {
   )
 }
 
+// ─── Screenshot URLs (hosted in Supabase Storage → guide bucket) ─────────────
+const SS = 'https://tknucfjnqapriadgiwuv.supabase.co/storage/v1/object/public/guide/screenshots'
+const GUIDE_SCREENSHOTS: Record<string, string> = {
+  overview:   `${SS}/admin-overview.png`,
+  cases:      `${SS}/admin-cases.png`,
+  products:   `${SS}/admin-products.png`,
+  agents:     `${SS}/admin-agents.png`,
+  clients:    `${SS}/admin-clients.png`,
+  settlement: `${SS}/admin-settlement.png`,
+  contracts:  `${SS}/admin-contracts.png`,
+  surveys:    `${SS}/admin-surveys.png`,
+  admins:     `${SS}/admin-admins.png`,
+  audit:      `${SS}/admin-audit.png`,
+  settings:   `${SS}/admin-settings.png`,
+}
+
 // ─── Admin sections ───────────────────────────────────────────────────────────
 
 const ADMIN_SECTIONS = [
@@ -192,6 +208,7 @@ const ADMIN_SECTIONS = [
       '해당 기간 매출 및 커미션 수치',
       '어드민 액션이 필요한 케이스로 빠르게 접근 가능',
     ],
+    screenshot: GUIDE_SCREENSHOTS.overview,
   },
   {
     icon: (
@@ -209,6 +226,7 @@ const ADMIN_SECTIONS = [
       'Finalize Pricing — 항목별 가격 확정 후 잔금 인보이스 발행',
       '케이스 취소(잔금 결제 전) — 사유 기록과 함께 처리',
     ],
+    screenshot: GUIDE_SCREENSHOTS.cases,
   },
   {
     icon: (
@@ -224,6 +242,7 @@ const ADMIN_SECTIONS = [
       'Excel 일괄 업로드 — Dry-run 미리보기 후 확정 가능',
       'Manage Categories — 카테고리 추가 및 순서 변경',
     ],
+    screenshot: GUIDE_SCREENSHOTS.products,
   },
   {
     icon: (
@@ -240,6 +259,7 @@ const ADMIN_SECTIONS = [
       '에이전트별 활성 케이스 수, 커미션 요율, 월간 완료 환자 수 확인',
       '담당 어드민 배정 (슈퍼 어드민 전용)',
     ],
+    screenshot: GUIDE_SCREENSHOTS.agents,
   },
   {
     icon: (
@@ -254,6 +274,7 @@ const ADMIN_SECTIONS = [
       '각 고객의 담당 에이전트로 바로 이동 가능',
       '필수 필드 미입력 시 케이스 다음 단계 진행 불가',
     ],
+    screenshot: GUIDE_SCREENSHOTS.clients,
   },
   {
     icon: (
@@ -268,6 +289,7 @@ const ADMIN_SECTIONS = [
       '송금 완료 후 지급일 입력 → 정산 완료 처리',
       'Partner Payouts — 병원, 호텔 등 협력사별 결제 현황 추적',
     ],
+    screenshot: GUIDE_SCREENSHOTS.settlement,
   },
   {
     icon: (
@@ -282,6 +304,7 @@ const ADMIN_SECTIONS = [
       '파트너십 계약 본문 편집 — 커미션 및 협력 조건',
       '슈퍼 어드민만 수정 가능, 일반 어드민은 조회만 가능',
     ],
+    screenshot: GUIDE_SCREENSHOTS.contracts,
   },
   {
     icon: (
@@ -295,6 +318,7 @@ const ADMIN_SECTIONS = [
       '질문 탭 — 여행 후 설문 질문 추가·수정·순서 변경 (슈퍼 어드민 전용)',
       '응답 탭 — 케이스별 제출된 설문 응답 전체 조회',
     ],
+    screenshot: GUIDE_SCREENSHOTS.surveys,
   },
   {
     icon: (
@@ -309,6 +333,7 @@ const ADMIN_SECTIONS = [
       '슈퍼 어드민 지정 — 템플릿 편집, 어드민 관리 등 전체 권한 부여',
       '어드민 계정 삭제 (본인 계정은 삭제 불가)',
     ],
+    screenshot: GUIDE_SCREENSHOTS.admins,
   },
   {
     icon: (
@@ -323,6 +348,7 @@ const ADMIN_SECTIONS = [
       '행위자 유형(어드민/에이전트/시스템) 및 날짜 범위로 필터링',
       '컴플라이언스, 분쟁 해결, 온보딩 검토에 활용',
     ],
+    screenshot: GUIDE_SCREENSHOTS.audit,
   },
   {
     icon: (
@@ -341,6 +367,7 @@ const ADMIN_SECTIONS = [
       '회사 도장 — 최종 인보이스에 삽입되는 법인 도장 이미지',
       '온보딩 OT — 신규 에이전트에게 보여주는 오리엔테이션 자료',
     ],
+    screenshot: GUIDE_SCREENSHOTS.settings,
   },
 ]
 
@@ -526,7 +553,7 @@ const CLIENT_TOUCH_POINTS = [
   },
 ]
 
-function SectionCard({ icon, title, desc, details }: { icon: React.ReactNode; title: string; desc: string; details: string[] }) {
+function SectionCard({ icon, title, desc, details, screenshot }: { icon: React.ReactNode; title: string; desc: string; details: string[]; screenshot?: string }) {
   const [open, setOpen] = useState(false)
   return (
     <div className="border border-gray-200 rounded-xl overflow-hidden">
@@ -555,6 +582,25 @@ function SectionCard({ icon, title, desc, details }: { icon: React.ReactNode; ti
               </li>
             ))}
           </ul>
+          {screenshot && (
+            <div className="mt-4 rounded-lg overflow-hidden border border-gray-200 shadow-sm">
+              {/* Browser chrome bar */}
+              <div className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 border-b border-gray-200">
+                <span className="w-2.5 h-2.5 rounded-full bg-red-400" />
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
+                <span className="w-2.5 h-2.5 rounded-full bg-green-400" />
+                <span className="flex-1 mx-2 h-4 rounded bg-white border border-gray-200 text-[9px] text-gray-400 flex items-center px-2">tiktak</span>
+              </div>
+              {/* Screenshot image */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={screenshot}
+                alt={`${title} screen`}
+                className="w-full block"
+                loading="lazy"
+              />
+            </div>
+          )}
         </div>
       )}
     </div>
