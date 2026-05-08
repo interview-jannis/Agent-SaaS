@@ -110,6 +110,14 @@ type CaseDetail = {
   schedules: Schedule[]
 }
 
+type CaseAttachment = {
+  id: string
+  file_name: string
+  file_url: string
+  file_size: number | null
+  created_at: string
+}
+
 type AgentClient = { id: string; name: string; nationality: string }
 type NewClientForm = {
   name: string; nationality: string; gender: 'male' | 'female'; date_of_birth: string
@@ -159,6 +167,8 @@ export default function CaseDetailPage() {
   // Terminal collapse — schedule & financials auto-collapse in completed/awaiting_settlement
   const [scheduleCollapsed, setScheduleCollapsed] = useState(false)
   const [financialsCollapsed, setFinancialsCollapsed] = useState(false)
+  const [attachments, setAttachments] = useState<CaseAttachment[]>([])
+  const [copiedAttachId, setCopiedAttachId] = useState<string | null>(null)
   const [agentClients, setAgentClients] = useState<AgentClient[]>([])
   const [caseData, setCaseData] = useState<CaseDetail | null>(null)
   const [exchangeRate, setExchangeRate] = useState(1350)
@@ -261,6 +271,14 @@ export default function CaseDetailPage() {
     const ccRow = cc as { client_token: string | null; agent_signed_at: string | null } | null
     setContractToken(ccRow?.client_token ?? null)
     setContractAgentSigned(!!ccRow?.agent_signed_at)
+
+    // Attachments
+    const { data: att } = await supabase
+      .from('case_attachments')
+      .select('id, file_name, file_url, file_size, created_at')
+      .eq('case_id', id)
+      .order('created_at', { ascending: false })
+    setAttachments((att as CaseAttachment[]) ?? [])
 
     // Self-heal: cases can get stuck in a transition-eligible state if Mark
     // Paid / info save happened before the auto-advance code shipped (or via
@@ -1018,6 +1036,169 @@ export default function CaseDetailPage() {
             busy={confirmingSchedule || markingTravelComplete || submittingRevision}
           />
 
+          {/* ─── FINANCIALS — always second, right after Hero ─── */}
+          {quote && (() => {
+            const isActionTarget = caseData.status === 'awaiting_payment' || caseData.status === 'awaiting_deposit'
+            const isCompleted = caseData.status === 'completed'
+            const sectionClass = isActionTarget && !isCompleted
+              ? 'scroll-mt-20 bg-white border border-[#0f4c35] rounded-2xl overflow-hidden'
+              : 'scroll-mt-20 bg-white border border-gray-200 rounded-2xl overflow-hidden'
+            const headerClass = isActionTarget && !isCompleted
+              ? 'flex items-center justify-between px-5 py-2.5 bg-green-50 border-b border-green-200'
+              : 'flex items-center justify-between px-5 py-2.5 bg-gray-100 border-b border-gray-200'
+            const labelClass = isActionTarget && !isCompleted
+              ? 'text-xs font-semibold text-[#0f4c35] uppercase tracking-wide'
+              : 'text-xs font-semibold text-gray-700 uppercase tracking-wide'
+            return (
+            <section id="financials" className={sectionClass}>
+              <div className={headerClass}>
+                <div className="flex items-center gap-2">
+                  <h3 className={labelClass}>Financials</h3>
+                  {isTerminal && (
+                    <button onClick={() => setFinancialsCollapsed(!financialsCollapsed)}
+                      className="text-[11px] font-medium text-gray-500 hover:text-gray-800 px-2 py-1 rounded-lg border border-gray-200 hover:bg-gray-100">
+                      {financialsCollapsed ? '▼ Expand' : '▲ Collapse'}
+                    </button>
+                  )}
+                  {!quote.finalized_at && (
+                    <span className="text-[10px] font-semibold text-gray-500 bg-gray-100 border border-gray-200 rounded-full px-2 py-0.5 uppercase tracking-wide">
+                      Estimated
+                    </span>
+                  )}
+                </div>
+                {quote.slug && (() => {
+                  const finalInvoice = caseData?.documents?.find(d => d.type === 'final_invoice')
+                  const previewSlug = quote.finalized_at && finalInvoice?.slug ? finalInvoice.slug : quote.slug
+                  const previewPath = quote.finalized_at ? 'invoice' : 'quote'
+                  return (
+                  <div className="flex items-center gap-2">
+                    {/* Preview — open invoice in new tab */}
+                    <a
+                      href={`${typeof window !== 'undefined' ? window.location.origin : ''}/${previewPath}/${previewSlug}?preview=1`}
+                      target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-[#0f4c35] transition-colors px-2 py-1.5 rounded-lg hover:bg-gray-100">
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                      Preview
+                    </a>
+                    {/* Send — copy quote/invoice link to clipboard. Label flips once admin finalizes pricing.
+                        Hidden during awaiting_pricing since the new invoice isn't ready yet. */}
+                    {!isCanceled && caseData.status !== 'awaiting_pricing' && (() => {
+                      const isInvoiceStage = !!quote.finalized_at
+                      const sendLabel = isInvoiceStage ? 'Send Invoice' : 'Send Quotation'
+                      return (
+                        <button onClick={sendInvoice}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors
+                            bg-[#0f4c35] text-white border-[#0f4c35] hover:bg-[#0a3828]">
+                          {copied ? (
+                            <>
+                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                              </svg>
+                              Copied!
+                            </>
+                          ) : (
+                            <>
+                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0 0a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186zm0-12.814a2.25 2.25 0 103.933-2.185 2.25 2.25 0 00-3.933 2.185z" />
+                              </svg>
+                              {sendLabel}
+                            </>
+                          )}
+                        </button>
+                      )
+                    })()}
+                  </div>
+                  )
+                })()}
+              </div>
+              {/* /financials header */}
+              <div className="p-5 space-y-4">
+
+              {financialsCollapsed ? (
+                <p className="text-xs text-gray-400">
+                  {quote.finalized_at ? `Total ${quote.total_price ? `$${Number(quote.total_price).toLocaleString()}` : '—'}` : 'Estimated pricing'}
+                </p>
+              ) : <>
+
+              {/* Awaiting final invoice — schedule is confirmed, admin is finalizing pricing */}
+              {caseData.status === 'awaiting_pricing' && (
+                <div className="border-l-4 border-blue-400 bg-blue-50 rounded-r-xl px-4 py-3">
+                  <p className="text-xs font-semibold text-blue-800">Final invoice in preparation</p>
+                  <p className="text-xs text-blue-700 mt-0.5">Schedule has been confirmed. Admin is finalizing the pricing — the official invoice will be ready shortly. You&apos;ll be notified once it&apos;s available to send to your client.</p>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-white rounded-xl border border-gray-100 p-3">
+                  <p className="text-[10px] text-gray-400 mb-1">
+                    {quote.finalized_at ? 'Total Amount' : 'Estimated Quote'}
+                  </p>
+                  <p className="text-base font-bold text-gray-900">{fmtUsd(toUsd(totalKrw))}</p>
+                  {!quote.finalized_at && (
+                    <p className="mt-1">
+                      <span className="text-[10px] font-medium text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
+                        May change after admin finalizes
+                      </span>
+                    </p>
+                  )}
+                </div>
+                {quote.finalized_at && quote.payment_due_date ? (
+                  <div className="bg-white rounded-xl border border-gray-100 p-3">
+                    <p className="text-[10px] text-gray-400 mb-1">Payment Due</p>
+                    <p className={`text-sm font-medium ${caseData.status === 'awaiting_payment' && new Date(quote.payment_due_date) < new Date() ? 'text-red-500' : 'text-gray-900'}`}>
+                      {quote.payment_due_date}
+                    </p>
+                    {caseData.status === 'awaiting_payment' && new Date(quote.payment_due_date) < new Date() && (
+                      <p className="text-[10px] text-red-400 mt-0.5">Overdue</p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="bg-gray-50 rounded-xl border border-dashed border-gray-200 p-3">
+                    <p className="text-[10px] text-gray-400 mb-1">Payment Due</p>
+                    <p className="text-xs text-gray-400">Set when admin finalizes pricing</p>
+                  </div>
+                )}
+              </div>
+              {earningsKrw > 0 && (
+                <div className="bg-[#0f4c35]/5 border border-[#0f4c35]/15 rounded-xl p-3 flex items-center justify-between">
+                  <div>
+                    <p className="text-[10px] text-[#0f4c35]/70 mb-1">Your Estimated Earnings</p>
+                    <p className="text-base font-bold text-[#0f4c35]">{fmtUsd(toUsd(earningsKrw))}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[10px] text-gray-400 mb-1">Commission Rate</p>
+                    <p className="text-sm font-semibold text-gray-700">{(agentMarginRate * 100).toFixed(0)}%</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Invoices — embedded inside Financials wrapper */}
+              <div id="documents">
+                <CaseDocumentsSection
+                  caseId={caseData.id}
+                  caseNumber={caseData.case_number}
+                  agentId={caseData.agent_id ?? ''}
+                  actor="agent"
+                  caseStatus={caseData.status}
+                  embedded
+                  travelCompletedAt={caseData.travel_completed_at}
+                  quotation={quote as unknown as DocumentRow}
+                  finalInvoice={(caseData.documents?.find(d => d.type === 'final_invoice') ?? null) as unknown as DocumentRow | null}
+                  documents={(caseData.documents ?? []) as unknown as DocumentRow[]}
+                  exchangeRate={exchangeRate}
+                  onChanged={async () => { await fetchCase() }}
+                />
+              </div>
+              </>}
+              </div>{/* /p-5 content wrapper */}
+            </section>
+            )
+          })()}
+          {/* ─── /FINANCIALS ─── */}
+
           {/* 3-Party Contract — visible from awaiting_contract onwards */}
           {!isCanceled && caseData.status !== 'awaiting_info' && (
             <AgentCaseContractSection
@@ -1044,8 +1225,8 @@ export default function CaseDetailPage() {
           )}
 
           {/* ─── TRIP SETUP — Travel + Trip Info + Lead Client + Members all-in-one ─── */}
-          <section className="bg-gray-50 rounded-2xl p-5 space-y-5">
-            <div className="flex items-center justify-between flex-wrap gap-2">
+          <section className="bg-gray-50 rounded-2xl border border-gray-200 overflow-hidden">
+            <div className="flex items-center justify-between flex-wrap gap-2 px-5 py-2.5 bg-gray-100 border-b border-gray-200">
               <div className="flex items-center gap-2">
                 <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Trip Setup</h3>
                 {(caseInfoComplete && allClientsComplete && groupsComplete && caseData.travel_start_date) ? (
@@ -1059,6 +1240,8 @@ export default function CaseDetailPage() {
                 {setupCollapsed ? '▼ Expand' : '▲ Collapse'}
               </button>
             </div>
+            {/* /trip setup header */}
+            <div className="p-5 space-y-5">
 
             {setupCollapsed ? (
               <div className="text-xs text-gray-600 space-y-0.5">
@@ -1571,6 +1754,7 @@ export default function CaseDetailPage() {
 
             </>
             )}
+            </div>{/* /p-5 content wrapper */}
           </section>
           {/* ─── /TRIP SETUP ─── */}
 
@@ -1578,9 +1762,9 @@ export default function CaseDetailPage() {
           {/* Free-form memo edited by agent, read by admin while building the
               schedule. Saved on cases.agent_notes. */}
           {!isCanceled && (
-            <section className={`rounded-2xl p-5 space-y-3 ${caseData.status === 'completed' ? 'bg-white border border-gray-200' : 'bg-white border-2 border-red-400'}`}>
-              <div className="flex items-center justify-between">
-                <h3 className={`text-xs font-semibold uppercase tracking-wide ${caseData.status === 'completed' ? 'text-gray-500' : 'text-red-600'}`}>Notes for Tiktak</h3>
+            <section className={`rounded-2xl overflow-hidden ${caseData.status === 'completed' ? 'bg-white border border-gray-200' : 'bg-white border border-red-300'}`}>
+              <div className={`flex items-center justify-between px-5 py-2.5 border-b ${caseData.status === 'completed' ? 'bg-gray-100 border-gray-200' : 'bg-red-50 border-red-200'}`}>
+                <h3 className={`text-xs font-semibold uppercase tracking-wide ${caseData.status === 'completed' ? 'text-gray-700' : 'text-red-600'}`}>Notes for Tiktak</h3>
                 {!notesEditing ? (
                   <button onClick={() => { setNotesDraft(caseData.agent_notes ?? ''); setNotesEditing(true) }}
                     className="text-xs font-medium text-[#0f4c35] hover:underline">
@@ -1611,6 +1795,8 @@ export default function CaseDetailPage() {
                   </div>
                 )}
               </div>
+              {/* /notes header */}
+              <div className="p-5 space-y-3">
               {notesEditing ? (
                 <textarea
                   value={notesDraft}
@@ -1624,6 +1810,7 @@ export default function CaseDetailPage() {
               ) : (
                 <p className="text-xs text-gray-400 italic">No notes yet. Add anything our concierge team should know when planning the schedule — special requests, blocked days, recovery preferences.</p>
               )}
+              </div>{/* /p-5 content wrapper */}
             </section>
           )}
 
@@ -1662,15 +1849,18 @@ export default function CaseDetailPage() {
             const isActionTarget = isReviewing || isTravelDone
             const isCompleted = caseData.status === 'completed'
             const sectionClass = (isReviewing || isTravelDone) && !isCompleted
-              ? 'scroll-mt-20 bg-white border-2 border-[#0f4c35] rounded-2xl p-5'
-              : 'scroll-mt-20 bg-white border border-gray-200 rounded-2xl p-5'
+              ? 'scroll-mt-20 bg-white border border-[#0f4c35] rounded-2xl overflow-hidden'
+              : 'scroll-mt-20 bg-white border border-gray-200 rounded-2xl overflow-hidden'
+            const headerClass = (isReviewing || isTravelDone) && !isCompleted
+              ? 'flex items-center justify-between px-5 py-2.5 bg-green-50 border-b border-green-200'
+              : 'flex items-center justify-between px-5 py-2.5 bg-gray-100 border-b border-gray-200'
             const labelClass = (isReviewing || isTravelDone) && !isCompleted
               ? 'text-xs font-semibold text-[#0f4c35] uppercase tracking-wide'
-              : 'text-xs font-semibold text-gray-400 uppercase tracking-wide'
+              : 'text-xs font-semibold text-gray-700 uppercase tracking-wide'
             void isActionTarget
             return (
           <section id="schedule" className={sectionClass}>
-            <div className="flex items-center justify-between mb-3">
+            <div className={headerClass}>
               <h3 className={labelClass}>Schedule</h3>
               <div className="flex items-center gap-2">
               {isTerminal && (
@@ -1715,6 +1905,8 @@ export default function CaseDetailPage() {
               )}
               </div>
             </div>
+            {/* /schedule header */}
+            <div className="p-5 space-y-3">
             {scheduleCollapsed ? (
               <p className="text-xs text-gray-400">
                 {schedule
@@ -1812,6 +2004,7 @@ export default function CaseDetailPage() {
                 )}
               </div>
             )}
+            </div>{/* /p-5 content wrapper */}
           </section>
             )
           })()}
@@ -1847,164 +2040,62 @@ export default function CaseDetailPage() {
             </div>
           )}
 
-          {/* ─── FINANCIALS — Summary + Invoices grouped in one box ───
-              Action target on awaiting_deposit (issue/forward deposit invoice)
-              and awaiting_payment (send balance invoice link). */}
-          {quote && (() => {
-            const isActionTarget = caseData.status === 'awaiting_payment' || caseData.status === 'awaiting_deposit'
-            const isCompleted = caseData.status === 'completed'
-            const sectionClass = isActionTarget && !isCompleted
-              ? 'scroll-mt-20 bg-white border-2 border-[#0f4c35] rounded-2xl p-5 space-y-4'
-              : 'scroll-mt-20 bg-white border border-gray-200 rounded-2xl p-5 space-y-4'
-            const labelClass = isActionTarget && !isCompleted
-              ? 'text-xs font-semibold text-[#0f4c35] uppercase tracking-wide'
-              : 'text-xs font-semibold text-gray-400 uppercase tracking-wide'
-            return (
-            <section id="financials" className={sectionClass}>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <h3 className={labelClass}>Financials</h3>
-                  {isTerminal && (
-                    <button onClick={() => setFinancialsCollapsed(!financialsCollapsed)}
-                      className="text-[11px] font-medium text-gray-500 hover:text-gray-800 px-2 py-1 rounded-lg border border-gray-200 hover:bg-gray-100">
-                      {financialsCollapsed ? '▼ Expand' : '▲ Collapse'}
-                    </button>
-                  )}
-                  {!quote.finalized_at && (
-                    <span className="text-[10px] font-semibold text-gray-500 bg-gray-100 border border-gray-200 rounded-full px-2 py-0.5 uppercase tracking-wide">
-                      Estimated
-                    </span>
-                  )}
-                </div>
-                {quote.slug && (() => {
-                  const finalInvoice = caseData?.documents?.find(d => d.type === 'final_invoice')
-                  const previewSlug = quote.finalized_at && finalInvoice?.slug ? finalInvoice.slug : quote.slug
-                  const previewPath = quote.finalized_at ? 'invoice' : 'quote'
-                  return (
-                  <div className="flex items-center gap-2">
-                    {/* Preview — open invoice in new tab */}
-                    <a
-                      href={`${typeof window !== 'undefined' ? window.location.origin : ''}/${previewPath}/${previewSlug}?preview=1`}
-                      target="_blank" rel="noopener noreferrer"
-                      className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-[#0f4c35] transition-colors px-2 py-1.5 rounded-lg hover:bg-gray-100">
-                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                      </svg>
-                      Preview
-                    </a>
-                    {/* Send — copy quote/invoice link to clipboard. Label flips once admin finalizes pricing.
-                        Hidden during awaiting_pricing since the new invoice isn't ready yet. */}
-                    {!isCanceled && caseData.status !== 'awaiting_pricing' && (() => {
-                      const isInvoiceStage = !!quote.finalized_at
-                      const sendLabel = isInvoiceStage ? 'Send Invoice' : 'Send Quotation'
-                      return (
-                        <button onClick={sendInvoice}
-                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors
-                            bg-[#0f4c35] text-white border-[#0f4c35] hover:bg-[#0a3828]">
-                          {copied ? (
-                            <>
-                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                              </svg>
-                              Copied!
-                            </>
-                          ) : (
-                            <>
-                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0 0a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186zm0-12.814a2.25 2.25 0 103.933-2.185 2.25 2.25 0 00-3.933 2.185z" />
-                              </svg>
-                              {sendLabel}
-                            </>
-                          )}
-                        </button>
-                      )
-                    })()}
-                  </div>
-                  )
-                })()}
+
+          {/* ─── ATTACHMENTS (view-only for agent) ─── */}
+          {attachments.length > 0 && (
+            <section className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+              <div className="px-5 py-2.5 bg-gray-100 border-b border-gray-200">
+                <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Attachments</h3>
               </div>
-
-              {financialsCollapsed ? (
-                <p className="text-xs text-gray-400">
-                  {quote.finalized_at ? `Total ${quote.total_price ? `$${Number(quote.total_price).toLocaleString()}` : '—'}` : 'Estimated pricing'}
-                </p>
-              ) : <>
-
-              {/* Awaiting final invoice — schedule is confirmed, admin is finalizing pricing */}
-              {caseData.status === 'awaiting_pricing' && (
-                <div className="border-l-4 border-blue-400 bg-blue-50 rounded-r-xl px-4 py-3">
-                  <p className="text-xs font-semibold text-blue-800">Final invoice in preparation</p>
-                  <p className="text-xs text-blue-700 mt-0.5">Schedule has been confirmed. Admin is finalizing the pricing — the official invoice will be ready shortly. You&apos;ll be notified once it&apos;s available to send to your client.</p>
-                </div>
-              )}
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-white rounded-xl border border-gray-100 p-3">
-                  <p className="text-[10px] text-gray-400 mb-1">
-                    {quote.finalized_at ? 'Total Amount' : 'Estimated Quote'}
-                  </p>
-                  <p className="text-base font-bold text-gray-900">{fmtUsd(toUsd(totalKrw))}</p>
-                  {!quote.finalized_at && (
-                    <p className="mt-1">
-                      <span className="text-[10px] font-medium text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
-                        May change after admin finalizes
-                      </span>
-                    </p>
-                  )}
-                </div>
-                {quote.finalized_at && quote.payment_due_date ? (
-                  <div className="bg-white rounded-xl border border-gray-100 p-3">
-                    <p className="text-[10px] text-gray-400 mb-1">Payment Due</p>
-                    <p className={`text-sm font-medium ${caseData.status === 'awaiting_payment' && new Date(quote.payment_due_date) < new Date() ? 'text-red-500' : 'text-gray-900'}`}>
-                      {quote.payment_due_date}
-                    </p>
-                    {caseData.status === 'awaiting_payment' && new Date(quote.payment_due_date) < new Date() && (
-                      <p className="text-[10px] text-red-400 mt-0.5">Overdue</p>
-                    )}
+              <div className="p-5 space-y-3">
+              <div className="space-y-1.5">
+                {attachments.map((att) => (
+                  <div key={att.id} className="flex items-center gap-3 bg-gray-50 rounded-xl border border-gray-100 px-3 py-2.5">
+                    <svg className="w-4 h-4 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                    </svg>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-gray-800 truncate">{att.file_name}</p>
+                      <p className="text-[10px] text-gray-400">
+                        {att.file_size ? `${(att.file_size / 1024).toFixed(0)} KB · ` : ''}
+                        {new Date(att.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <a
+                        href={att.file_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="p-1.5 rounded-lg text-gray-400 hover:text-[#0f4c35] hover:bg-gray-100 transition-colors"
+                        title="Open"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+                        </svg>
+                      </a>
+                      <button
+                        onClick={async () => { await navigator.clipboard.writeText(att.file_url); setCopiedAttachId(att.id); setTimeout(() => setCopiedAttachId(null), 2000) }}
+                        className={`p-1.5 rounded-lg transition-colors ${copiedAttachId === att.id ? 'text-[#0f4c35] bg-green-50' : 'text-gray-400 hover:text-[#0f4c35] hover:bg-gray-100'}`}
+                        title="Copy link"
+                      >
+                        {copiedAttachId === att.id ? (
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                          </svg>
+                        ) : (
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
+                          </svg>
+                        )}
+                      </button>
+                    </div>
                   </div>
-                ) : (
-                  <div className="bg-gray-50 rounded-xl border border-dashed border-gray-200 p-3">
-                    <p className="text-[10px] text-gray-400 mb-1">Payment Due</p>
-                    <p className="text-xs text-gray-400">Set when admin finalizes pricing</p>
-                  </div>
-                )}
+                ))}
               </div>
-              {earningsKrw > 0 && (
-                <div className="bg-[#0f4c35]/5 border border-[#0f4c35]/15 rounded-xl p-3 flex items-center justify-between">
-                  <div>
-                    <p className="text-[10px] text-[#0f4c35]/70 mb-1">Your Estimated Earnings</p>
-                    <p className="text-base font-bold text-[#0f4c35]">{fmtUsd(toUsd(earningsKrw))}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-[10px] text-gray-400 mb-1">Commission Rate</p>
-                    <p className="text-sm font-semibold text-gray-700">{(agentMarginRate * 100).toFixed(0)}%</p>
-                  </div>
-                </div>
-              )}
-
-              {/* Invoices — embedded inside Financials wrapper */}
-              <div id="documents">
-                <CaseDocumentsSection
-                  caseId={caseData.id}
-                  caseNumber={caseData.case_number}
-                  agentId={caseData.agent_id ?? ''}
-                  actor="agent"
-                  caseStatus={caseData.status}
-                  embedded
-                  travelCompletedAt={caseData.travel_completed_at}
-                  quotation={quote as unknown as DocumentRow}
-                  finalInvoice={(caseData.documents?.find(d => d.type === 'final_invoice') ?? null) as unknown as DocumentRow | null}
-                  documents={(caseData.documents ?? []) as unknown as DocumentRow[]}
-                  exchangeRate={exchangeRate}
-                  onChanged={async () => { await fetchCase() }}
-                />
-              </div>
-              </>}
+              </div>{/* /p-5 content wrapper */}
             </section>
-            )
-          })()}
-          {/* ─── /FINANCIALS ─── */}
+          )}
+          {/* ─── /ATTACHMENTS ─── */}
 
           {/* Cancel Case — agent self-service, only before payment */}
           {CANCELLABLE_STATUSES.includes(caseData.status) && (

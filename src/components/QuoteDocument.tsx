@@ -160,14 +160,16 @@ export default async function QuoteDocument({
     }
   }
 
-  const [rateRes, bankRes, stampRes, superAdminRes] = await Promise.all([
-    supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single(),
+  const [bankRes, stampRes, superAdminRes] = await Promise.all([
     supabase.from('system_settings').select('value').eq('key', 'bank_details').single(),
     supabase.from('system_settings').select('value').eq('key', 'company_stamp').maybeSingle(),
     supabase.from('admins').select('name, title').eq('is_super_admin', true).limit(1).maybeSingle(),
   ])
 
-  const exchangeRate = (rateRes.data?.value as { usd_krw?: number } | null)?.usd_krw ?? 1350
+  // 문서 생성 시 스냅샷된 환율 사용 (price_rate_snapshot).
+  // 환율 설정이 바뀌어도 기존 발행 문서의 달러 금액은 절대 변하지 않음.
+  // null이면 기본값 1500 (마이그레이션 이전 문서 fallback).
+  const exchangeRate = (quote as unknown as { price_rate_snapshot?: number | null }).price_rate_snapshot ?? 1500
   const adminBank = (bankRes.data?.value as BankDetails | null) ?? {}
   const companyStampUrl = (stampRes.data?.value as { url?: string | null } | null)?.url ?? null
 

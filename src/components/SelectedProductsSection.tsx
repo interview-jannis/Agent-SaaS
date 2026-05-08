@@ -208,8 +208,8 @@ export default function SelectedProductsSection({
   }
 
   return (
-    <section className="bg-gray-50 rounded-2xl p-5 space-y-4">
-      <div className="flex items-center gap-2">
+    <section className="bg-gray-50 rounded-2xl border border-gray-200 overflow-hidden">
+      <div className="flex items-center gap-2 px-5 py-2.5 bg-gray-100 border-b border-gray-200">
         <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Selected Products</h3>
         {additions.length > 0 && (
           <span className="text-[10px] font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">
@@ -227,6 +227,7 @@ export default function SelectedProductsSection({
           {expanded ? '▲ Collapse' : '▼ Expand'}
         </button>
       </div>
+      <div className="p-5 space-y-4">
 
       {quotation
         ? renderDoc(quotation, 'Quotation')
@@ -248,6 +249,7 @@ export default function SelectedProductsSection({
       {detailItem && (
         <ProductDetailModal item={detailItem} exchangeRate={exchangeRate} showKRW={showKRW} onClose={() => setDetailItem(null)} />
       )}
+      </div>{/* /p-5 content wrapper */}
     </section>
   )
 }

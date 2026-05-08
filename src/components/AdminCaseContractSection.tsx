@@ -104,18 +104,9 @@ export default function AdminCaseContractSection({ caseId, caseNumber, caseStatu
   const isExpanded = expanded ?? !fullySigned
 
   return (
-    <section id="case-contract" className="scroll-mt-20 bg-gray-50 rounded-2xl p-5 space-y-4">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex-1 min-w-0">
-          <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">3-Party Contract</h3>
-          <p className="text-xs text-gray-500 mt-0.5">
-            {fullySigned
-              ? 'Fully signed.'
-              : contract.admin_signed_at
-                ? `Awaiting ${!contract.agent_signed_at ? 'agent' : 'client'} signature.`
-                : 'Counter-sign below — remaining parties can sign in any order.'}
-          </p>
-        </div>
+    <section id="case-contract" className="scroll-mt-20 bg-gray-50 rounded-2xl border border-gray-200 overflow-hidden">
+      <div className="flex items-center justify-between gap-3 flex-wrap px-4 py-2.5 bg-gray-100 border-b border-gray-200">
+        <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">3-Party Contract</h3>
         <div className="flex items-center gap-2 shrink-0">
           {fullySigned && contract.client_token && (
             <button onClick={() => window.open(`/case-contract/${contract.client_token}?print=1`, '_blank', 'noopener')}
@@ -129,6 +120,14 @@ export default function AdminCaseContractSection({ caseId, caseNumber, caseStatu
           </button>
         </div>
       </div>
+      <div className="p-4 space-y-4">
+      <p className="text-xs text-gray-500">
+        {fullySigned
+          ? 'Fully signed.'
+          : contract.admin_signed_at
+            ? `Awaiting ${!contract.agent_signed_at ? 'agent' : 'client'} signature.`
+            : 'Counter-sign below — remaining parties can sign in any order.'}
+      </p>
 
       {error && <p className="text-xs text-red-500 bg-red-50 px-3 py-2 rounded-lg">{error}</p>}
 
@@ -152,6 +151,7 @@ export default function AdminCaseContractSection({ caseId, caseNumber, caseStatu
       {caseStatus === 'awaiting_contract' && contract.admin_signed_at && (
         <p className="text-xs text-gray-400 italic">All sigs collected. Status will advance on refresh.</p>
       )}
+      </div>{/* /p-4 content wrapper */}
     </section>
   )
 }

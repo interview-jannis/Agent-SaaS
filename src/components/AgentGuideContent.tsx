@@ -1,7 +1,14 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+export type GuideEdits = {
+  screenshots: Record<string, string>
+  descs: Record<string, string>
+  actions: Record<string, string>
+}
 
 // ─── Screenshot defaults ──────────────────────────────────────────────────────
 const SS = 'https://tknucfjnqapriadgiwuv.supabase.co/storage/v1/object/public/guide/screenshots'
@@ -26,10 +33,6 @@ const DEFAULT_SS: Record<string, string> = {
   dashboard: `${SS}/agent-dashboard.png`,
   profile:   `${SS}/agent-profile.png`,
 }
-
-// Overrides from system_settings (populated on mount)
-// Key mapping: section key → agent_home/agent_cases/etc, case screenshots → case_agent_{status}
-type GuideOverrides = { screenshots: Record<string, string>; descs: Record<string, string>; actions: Record<string, string> }
 
 // ─── Case pipeline ────────────────────────────────────────────────────────────
 const CASE_STEPS = [
@@ -203,6 +206,81 @@ const AGENT_SECTIONS = [
   },
 ]
 
+// ─── Edit UI components ───────────────────────────────────────────────────────
+function ImageUploadField({ label, value, onChange, uploadKey }: {
+  label: string; value: string; onChange: (v: string) => void; uploadKey: string
+}) {
+  const [uploading, setUploading] = useState(false)
+  const ref = useRef<HTMLInputElement>(null)
+
+  async function upload(file: File) {
+    setUploading(true)
+    const ext = file.name.split('.').pop() ?? 'png'
+    const path = `screenshots/guide-${uploadKey}.${ext}`
+    const { error } = await supabase.storage.from('guide').upload(path, file, {
+      upsert: true, contentType: file.type,
+    })
+    if (error) {
+      alert('Upload failed: ' + error.message)
+    } else {
+      const { data } = supabase.storage.from('guide').getPublicUrl(path)
+      onChange(data.publicUrl)
+    }
+    setUploading(false)
+  }
+
+  return (
+    <div className="mt-3">
+      <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">{label}</p>
+      <div className="flex gap-2 items-center">
+        <input
+          type="url"
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          placeholder="https://... or upload below"
+          className="flex-1 min-w-0 text-xs font-mono border border-[#0f4c35]/30 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#0f4c35]/40 bg-white text-gray-800 placeholder-gray-300"
+        />
+        <button
+          type="button"
+          onClick={() => ref.current?.click()}
+          disabled={uploading}
+          className="shrink-0 flex items-center gap-1.5 text-xs font-medium text-white bg-[#0f4c35] hover:bg-[#0f4c35]/90 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-60"
+        >
+          {uploading ? (
+            <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+            </svg>
+          ) : (
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+            </svg>
+          )}
+          {uploading ? 'Uploading…' : 'Upload Image'}
+        </button>
+        <input
+          ref={ref} type="file" accept="image/*" className="hidden"
+          onChange={e => { const f = e.target.files?.[0]; if (f) { upload(f); e.target.value = '' } }}
+        />
+      </div>
+    </div>
+  )
+}
+
+function EditTextarea({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <div className="mt-3">
+      <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">{label}</p>
+      <textarea
+        rows={3}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        className="w-full text-xs border border-[#0f4c35]/30 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#0f4c35]/40 bg-white text-gray-800 resize-y leading-relaxed"
+      />
+    </div>
+  )
+}
+
 // ─── Browser frame (hides itself on 404) ─────────────────────────────────────
 function BrowserFrame({ src, alt }: { src: string; alt: string }) {
   const [failed, setFailed] = useState(false)
@@ -221,9 +299,12 @@ function BrowserFrame({ src, alt }: { src: string; alt: string }) {
   )
 }
 
-// ─── Section card with screenshot ────────────────────────────────────────────
-function SectionCard({ icon, title, desc, details, screenshot }: {
+// ─── Section card ─────────────────────────────────────────────────────────────
+function SectionCard({ icon, title, desc, details, screenshot, editMode, uploadKey, onChangeScreenshot, onChangeDesc }: {
   icon: React.ReactNode; title: string; desc: string; details: string[]; screenshot?: string
+  editMode?: boolean; uploadKey?: string
+  onChangeScreenshot?: (v: string) => void
+  onChangeDesc?: (v: string) => void
 }) {
   const [open, setOpen] = useState(false)
   return (
@@ -253,22 +334,43 @@ function SectionCard({ icon, title, desc, details, screenshot }: {
               </li>
             ))}
           </ul>
-          {screenshot && <BrowserFrame src={screenshot} alt={`${title} screen`} />}
+          {screenshot && !editMode && <BrowserFrame src={screenshot} alt={`${title} screen`} />}
+          {editMode && uploadKey && onChangeScreenshot && onChangeDesc && (
+            <div className="mt-4 p-3 rounded-lg border border-[#0f4c35]/15 bg-[#0f4c35]/3">
+              <EditTextarea label="Description text" value={desc} onChange={onChangeDesc} />
+              <ImageUploadField
+                label="Screenshot"
+                value={screenshot ?? ''}
+                onChange={onChangeScreenshot}
+                uploadKey={uploadKey}
+              />
+              {screenshot && (
+                <div className="mt-2">
+                  <p className="text-[10px] text-gray-400 mb-1">Preview</p>
+                  <BrowserFrame src={screenshot} alt={`${title} screen`} />
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
   )
 }
 
-// ─── Case pipeline component ──────────────────────────────────────────────────
-function CasePipeline({ overrides }: { overrides: GuideOverrides }) {
+// ─── Case pipeline ────────────────────────────────────────────────────────────
+function CasePipeline({ edits, editMode, onEdit }: {
+  edits: GuideEdits
+  editMode?: boolean
+  onEdit?: (type: keyof GuideEdits, key: string, value: string) => void
+}) {
   const [expanded, setExpanded] = useState<string | null>(null)
 
   function getScreenshot(status: string): string | undefined {
-    return overrides.screenshots[`case_agent_${status}`] || DEFAULT_CASE_SS[status]
+    return edits.screenshots[`case_agent_${status}`] || DEFAULT_CASE_SS[status]
   }
   function getAction(status: string, defaultAction: string): string {
-    return overrides.actions[`agent_${status}`] || defaultAction
+    return edits.actions[`agent_${status}`] || defaultAction
   }
 
   return (
@@ -310,7 +412,28 @@ function CasePipeline({ overrides }: { overrides: GuideOverrides }) {
               {isOpen && (
                 <div className="mx-1 px-4 py-3 rounded-b-xl border border-t-0 border-gray-200 bg-gray-50">
                   <p className="text-sm text-gray-700 leading-relaxed">{actionText}</p>
-                  {screenshot && <BrowserFrame src={screenshot} alt={`${step.label} screen`} />}
+                  {screenshot && !editMode && <BrowserFrame src={screenshot} alt={`${step.label} screen`} />}
+                  {editMode && onEdit && (
+                    <div className="mt-3 p-3 rounded-lg border border-[#0f4c35]/15 bg-[#0f4c35]/3 space-y-1">
+                      <EditTextarea
+                        label="Agent action text"
+                        value={actionText}
+                        onChange={v => onEdit('actions', `agent_${step.status}`, v)}
+                      />
+                      <ImageUploadField
+                        label="Agent screenshot"
+                        value={getScreenshot(step.status) ?? ''}
+                        onChange={v => onEdit('screenshots', `case_agent_${step.status}`, v)}
+                        uploadKey={`case-agent-${step.status}`}
+                      />
+                      {screenshot && (
+                        <div className="mt-2">
+                          <p className="text-[10px] text-gray-400 mb-1">Preview</p>
+                          <BrowserFrame src={screenshot} alt={`${step.label} screen`} />
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -322,107 +445,148 @@ function CasePipeline({ overrides }: { overrides: GuideOverrides }) {
   )
 }
 
-// ─── Main component ───────────────────────────────────────────────────────────
-export default function AgentGuideContent() {
-  const [overrides, setOverrides] = useState<GuideOverrides>({ screenshots: {}, descs: {}, actions: {} })
-
-  useEffect(() => {
-    supabase.from('system_settings').select('value').eq('key', 'guide_content').maybeSingle()
-      .then(({ data }) => {
-        if (data?.value) {
-          const v = data.value as Partial<GuideOverrides>
-          setOverrides({ screenshots: v.screenshots ?? {}, descs: v.descs ?? {}, actions: v.actions ?? {} })
-        }
-      })
-  }, [])
-
-  function getSS(key: string, defaultKey: string): string | undefined {
-    // key in system_settings uses agent_ prefix (e.g. agent_home), but AGENT_SECTIONS use 'home'
-    return overrides.screenshots[`agent_${key}`] || DEFAULT_SS[key]
+// ─── Content (shared between embedded and standalone) ─────────────────────────
+function AgentGuideContentInner({ edits, editMode, onEdit }: {
+  edits: GuideEdits
+  editMode?: boolean
+  onEdit?: (type: keyof GuideEdits, key: string, value: string) => void
+}) {
+  function getSS(key: string): string | undefined {
+    return edits.screenshots[`agent_${key}`] || DEFAULT_SS[key]
+  }
+  function getDesc(key: string, base: string): string {
+    return edits.descs[`agent_${key}`] || base
   }
 
   return (
+    <div className="space-y-10">
+
+      {/* ── Role ── */}
+      <div>
+        <span className="text-xs font-semibold uppercase tracking-wider text-[#0f4c35]">Your Role</span>
+        <p className="mt-1 text-sm text-gray-600 leading-relaxed">
+          Agents are the client-facing backbone of Tiktak. You source clients, build quotes, collect payments, and coordinate with the admin team to deliver the full medical tourism experience. After travel is complete, you submit the post-trip survey and invoice your commission. Your earnings are calculated automatically based on your monthly completed patient count.
+        </p>
+      </div>
+
+      {/* ── Onboarding ── */}
+      <div>
+        <h3 className="text-base font-semibold text-gray-900 mb-3">Getting Started</h3>
+        {/* Desktop stepper */}
+        <div className="hidden sm:flex overflow-x-auto pb-2">
+          {ONBOARDING_STEPS.map((step, i) => (
+            <div key={step.label} className="flex flex-col items-center flex-1 min-w-[100px]">
+              <div className="relative w-full flex items-center justify-center h-8">
+                {i > 0 && <div className="absolute left-0 right-1/2 top-1/2 h-px bg-gray-200" />}
+                {i < ONBOARDING_STEPS.length - 1 && <div className="absolute left-1/2 right-0 top-1/2 h-px bg-gray-200" />}
+                <div className="w-7 h-7 rounded-full bg-[#0f4c35] text-white text-xs font-bold flex items-center justify-center z-10 relative shrink-0">
+                  {i + 1}
+                </div>
+              </div>
+              <div className="text-center px-2 mt-1.5 pb-3">
+                <p className="text-xs font-semibold text-gray-800">{step.label}</p>
+                <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">{step.desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+        {/* Mobile list */}
+        <div className="sm:hidden space-y-2">
+          {ONBOARDING_STEPS.map((step, i) => (
+            <div key={step.label} className="flex gap-3 text-sm">
+              <div className="w-6 h-6 rounded-full bg-[#0f4c35] text-white text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
+                {i + 1}
+              </div>
+              <div>
+                <p className="font-semibold text-gray-800">{step.label}</p>
+                <p className="text-gray-500 text-xs mt-0.5">{step.desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Screens ── */}
+      <div>
+        <h3 className="text-base font-semibold text-gray-900 mb-3">Your Screens</h3>
+        <div className="space-y-2">
+          {AGENT_SECTIONS.map(s => (
+            <SectionCard
+              key={s.key}
+              icon={s.icon}
+              title={s.title}
+              desc={getDesc(s.key, s.desc)}
+              details={s.details}
+              screenshot={getSS(s.key)}
+              editMode={editMode}
+              uploadKey={`agent_${s.key}`}
+              onChangeScreenshot={onEdit ? v => onEdit('screenshots', `agent_${s.key}`, v) : undefined}
+              onChangeDesc={onEdit ? v => onEdit('descs', `agent_${s.key}`, v) : undefined}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* ── Case pipeline ── */}
+      <div className="border-t border-gray-100 pt-8">
+        <CasePipeline edits={edits} editMode={editMode} onEdit={onEdit} />
+      </div>
+
+    </div>
+  )
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
+export default function AgentGuideContent({
+  editMode,
+  edits,
+  onEdit,
+  embedded,
+}: {
+  editMode?: boolean
+  edits?: GuideEdits
+  onEdit?: (type: keyof GuideEdits, key: string, value: string) => void
+  embedded?: boolean
+} = {}) {
+  const [overrides, setOverrides] = useState<GuideEdits>({ screenshots: {}, descs: {}, actions: {} })
+
+  useEffect(() => {
+    // Only fetch from DB when standalone (not receiving edits from parent)
+    if (!edits) {
+      supabase.from('system_settings').select('value').eq('key', 'guide_content').maybeSingle()
+        .then(({ data }) => {
+          if (data?.value) {
+            const v = data.value as Partial<GuideEdits>
+            setOverrides({ screenshots: v.screenshots ?? {}, descs: v.descs ?? {}, actions: v.actions ?? {} })
+          }
+        })
+    }
+  }, [edits])
+
+  const effectiveEdits = edits ?? overrides
+
+  // Embedded mode: just render content (GuideContent handles layout/header)
+  if (embedded) {
+    return (
+      <AgentGuideContentInner
+        edits={effectiveEdits}
+        editMode={editMode}
+        onEdit={onEdit}
+      />
+    )
+  }
+
+  // Standalone mode: full page layout for agents
+  return (
     <div className="h-full overflow-y-auto">
       <div className="max-w-3xl mx-auto px-4 md:px-8 py-8">
-
-        {/* Header */}
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-gray-900">Agent Guide</h1>
           <p className="text-sm text-gray-500 mt-1">
             A walkthrough of your screens and how the case pipeline works.
           </p>
         </div>
-
-        <div className="space-y-10">
-
-          {/* ── Role ── */}
-          <div>
-            <span className="text-xs font-semibold uppercase tracking-wider text-[#0f4c35]">Your Role</span>
-            <p className="mt-1 text-sm text-gray-600 leading-relaxed">
-              Agents are the client-facing backbone of Tiktak. You source clients, build quotes, collect payments, and coordinate with the admin team to deliver the full medical tourism experience. After travel is complete, you submit the post-trip survey and invoice your commission. Your earnings are calculated automatically based on your monthly completed patient count.
-            </p>
-          </div>
-
-          {/* ── Onboarding ── */}
-          <div>
-            <h3 className="text-base font-semibold text-gray-900 mb-3">Getting Started</h3>
-            {/* Desktop stepper */}
-            <div className="hidden sm:flex overflow-x-auto pb-2">
-              {ONBOARDING_STEPS.map((step, i) => (
-                <div key={step.label} className="flex flex-col items-center flex-1 min-w-[100px]">
-                  <div className="relative w-full flex items-center justify-center h-8">
-                    {i > 0 && <div className="absolute left-0 right-1/2 top-1/2 h-px bg-gray-200" />}
-                    {i < ONBOARDING_STEPS.length - 1 && <div className="absolute left-1/2 right-0 top-1/2 h-px bg-gray-200" />}
-                    <div className="w-7 h-7 rounded-full bg-[#0f4c35] text-white text-xs font-bold flex items-center justify-center z-10 relative shrink-0">
-                      {i + 1}
-                    </div>
-                  </div>
-                  <div className="text-center px-2 mt-1.5 pb-3">
-                    <p className="text-xs font-semibold text-gray-800">{step.label}</p>
-                    <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">{step.desc}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-            {/* Mobile list */}
-            <div className="sm:hidden space-y-2">
-              {ONBOARDING_STEPS.map((step, i) => (
-                <div key={step.label} className="flex gap-3 text-sm">
-                  <div className="w-6 h-6 rounded-full bg-[#0f4c35] text-white text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
-                    {i + 1}
-                  </div>
-                  <div>
-                    <p className="font-semibold text-gray-800">{step.label}</p>
-                    <p className="text-gray-500 text-xs mt-0.5">{step.desc}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* ── Screens ── */}
-          <div>
-            <h3 className="text-base font-semibold text-gray-900 mb-3">Your Screens</h3>
-            <div className="space-y-2">
-              {AGENT_SECTIONS.map(s => (
-                <SectionCard
-                  key={s.key}
-                  icon={s.icon}
-                  title={s.title}
-                  desc={overrides.descs[`agent_${s.key}`] || s.desc}
-                  details={s.details}
-                  screenshot={getSS(s.key, s.key)}
-                />
-              ))}
-            </div>
-          </div>
-
-          {/* ── Case pipeline ── */}
-          <div className="border-t border-gray-100 pt-8">
-            <CasePipeline overrides={overrides} />
-          </div>
-
-        </div>
+        <AgentGuideContentInner edits={effectiveEdits} />
       </div>
     </div>
   )

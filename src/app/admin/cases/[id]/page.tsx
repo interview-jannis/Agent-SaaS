@@ -23,7 +23,7 @@ import { getMissingClientFields, getMissingCaseFields, CLIENT_INFO_COLUMNS } fro
 import {
   finalizeDocument,
   repriceDocument,
-  updateDocumentItemPrice,
+  updateDocumentItemBothPrices,
   addDocumentItem,
   removeDocumentItem,
   recalcDocumentTotal,
@@ -146,6 +146,16 @@ type Case = {
   schedules: Schedule[]
 }
 
+type CaseAttachment = {
+  id: string
+  case_id: string
+  file_name: string
+  file_url: string
+  file_size: number | null
+  uploaded_by_admin_id: string | null
+  created_at: string
+}
+
 function getAgent(c: { agents: Agent | Agent[] | null } | null | undefined): Agent | null {
   const a = c?.agents
   if (!a) return null
@@ -180,11 +190,10 @@ export default function AdminCaseDetailPage() {
   const [caseSurvey, setCaseSurvey] = useState<SurveyRow | null>(null)
 
   // Action states
-  const [confirmingPayment, setConfirmingPayment] = useState(false)
-  const [paymentDate, setPaymentDate] = useState(() => new Date().toISOString().slice(0, 10))
 
   // Pricing finalize state — keyed by quote_item.id
-  const [pricingEdits, setPricingEdits] = useState<Record<string, string>>({})
+  // Finalize Pricing: 원가(base_price) KRW 편집값 저장. final_price는 자동 계산.
+  const [pricingBaseEdits, setPricingBaseEdits] = useState<Record<string, string>>({})
   const [editingPricing, setEditingPricing] = useState(false)
   const [savingPricing, setSavingPricing] = useState(false)
   const [pricingError, setPricingError] = useState('')
@@ -194,8 +203,6 @@ export default function AdminCaseDetailPage() {
   // and Finalize Pricing section (awaiting_pricing). The structural picker only
   // operates during awaiting_schedule via direct-write helpers (no staging).
   type ItemCurrency = 'KRW' | 'USD'
-  // Per-existing-item display currency (data is always stored in KRW)
-  const [pricingCurrencies, setPricingCurrencies] = useState<Record<string, ItemCurrency>>({})
   type ProductVariant = { id: string; variant_label: string | null; base_price: number; price_currency: ItemCurrency; is_active: boolean; sort_order: number }
   type ProductRow = {
     id: string; name: string; partner_name: string | null;
@@ -248,6 +255,14 @@ export default function AdminCaseDetailPage() {
   const [scheduleCollapsed, setScheduleCollapsed] = useState(false)
   const [financialsCollapsed, setFinancialsCollapsed] = useState(false)
 
+  // Attachments
+  const [attachments, setAttachments] = useState<CaseAttachment[]>([])
+  const [attachUploading, setAttachUploading] = useState(false)
+  const [attachDeleting, setAttachDeleting] = useState<string | null>(null)
+  const [attachError, setAttachError] = useState('')
+  const [attachDragOver, setAttachDragOver] = useState(false)
+  const [copiedAttachId, setCopiedAttachId] = useState<string | null>(null)
+
   // ── Data fetching ──────────────────────────────────────────────────────────
 
   const fetchCase = useCallback(async () => {
@@ -275,7 +290,7 @@ export default function AdminCaseDetailPage() {
     if (!data) { setNotFound(true); return }
     setCaseData(data as unknown as Case)
 
-    const [{ data: pp }, { data: ss }, { data: sv }] = await Promise.all([
+    const [{ data: pp }, { data: ss }, { data: sv }, { data: att }] = await Promise.all([
       supabase.from('partner_payments')
         .select('id, case_id, partner_name, amount, paid_at, note, created_at')
         .eq('case_id', id),
@@ -287,10 +302,15 @@ export default function AdminCaseDetailPage() {
         .select('id, case_id, responses, submitted_by_actor_type, submitted_by_actor_id, submitted_at, created_at')
         .eq('case_id', id)
         .maybeSingle(),
+      supabase.from('case_attachments')
+        .select('id, case_id, file_name, file_url, file_size, uploaded_by_admin_id, created_at')
+        .eq('case_id', id)
+        .order('created_at', { ascending: false }),
     ])
     setPartnerPayments((pp as PartnerPayment[]) ?? [])
     setAgentSettlement((ss as AgentSettlement | null) ?? null)
     setCaseSurvey((sv as SurveyRow | null) ?? null)
+    setAttachments((att as CaseAttachment[]) ?? [])
 
     // Self-heal: opportunistically advance status if both deposit legs are
     // paid / info is complete. Cheap no-op when already advanced or not eligible.
@@ -311,7 +331,7 @@ export default function AdminCaseDetailPage() {
     async function init() {
       const [, rateRes] = await Promise.all([
         fetchCase(),
-        supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single(),
+        supabase.from('system_settings').select('value').eq('key', 'product_price_rate').single(),
       ])
       const r = (rateRes.data?.value as { usd_krw?: number } | null)?.usd_krw
       if (r) setExchangeRate(r)
@@ -406,31 +426,6 @@ export default function AdminCaseDetailPage() {
   }, [setupCollapseInitialized, caseData])
 
   // ── Actions ────────────────────────────────────────────────────────────────
-
-  async function confirmPayment() {
-    if (!caseData) return
-    setConfirmingPayment(true); setActionError('')
-    try {
-      const paidIso = paymentDate ? new Date(paymentDate).toISOString() : new Date().toISOString()
-      const { error } = await supabase.from('cases').update({
-        status: 'awaiting_travel',
-        payment_date: paymentDate || null,
-        payment_confirmed_at: new Date().toISOString(),
-      }).eq('id', caseData.id)
-      if (error) throw error
-      // Also mark the case's final_invoice as paid (data consistency — single source of truth migration)
-      const finalInvDoc = caseData.documents?.find(d => d.type === 'final_invoice')
-      if (finalInvDoc) {
-        await supabase.from('documents').update({ payment_received_at: paidIso }).eq('id', finalInvDoc.id)
-      }
-      await notifyAgent(caseData.agent_id, `${caseData.case_number} Payment confirmed`, `/agent/cases/${caseData.id}`)
-      await logAsCurrentUser('case.payment_confirmed', { type: 'case', id: caseData.id, label: caseData.case_number },
-        paymentDate ? { paid_on: paymentDate } : undefined)
-      await fetchCase()
-      setPaymentDate(new Date().toISOString().slice(0, 10))
-    } catch (e: unknown) { setActionError((e as { message?: string })?.message ?? 'Failed.') }
-    finally { setConfirmingPayment(false) }
-  }
 
   async function deleteScheduleVersion(scheduleId: string, pdfUrl: string | null, version: number, fileName: string | null) {
     const confirmed = window.confirm(
@@ -570,36 +565,37 @@ export default function AdminCaseDetailPage() {
             travelStartDate={caseData.travel_start_date}
             onScrollToScheduleUpload={() => document.getElementById('schedule-upload')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
             onScrollToPricing={() => document.getElementById('pricing')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-            onScrollToConfirmPayment={() => document.getElementById('confirm-payment')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+            onScrollToConfirmPayment={() => document.getElementById('financials')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
           />
 
           {/* Agent */}
-          <section className="bg-gray-50 rounded-2xl p-4">
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Agent</p>
-            <div className="flex items-center gap-2">
+          <section className="bg-gray-50 rounded-2xl border border-gray-200 overflow-hidden">
+            <div className="px-4 py-2.5 bg-gray-100 border-b border-gray-200">
+              <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Agent</p>
+            </div>
+            <div className="px-4 py-3 flex items-center gap-2">
               <span className="text-[10px] font-mono text-gray-400">{getAgent(caseData)?.agent_number}</span>
               <span className="text-sm font-medium text-gray-900">{getAgent(caseData)?.name ?? '—'}</span>
             </div>
           </section>
 
           {/* ─── TRIP SETUP — Travel + Trip Info + Lead Client + Members all-in-one ─── */}
-          <section className="bg-gray-50 rounded-2xl p-4 space-y-4">
-            <div className="flex items-center justify-between flex-wrap gap-2">
+          <section className="bg-gray-50 rounded-2xl border border-gray-200 overflow-hidden">
+            <div className="flex items-center justify-between flex-wrap gap-2 px-4 py-2.5 bg-gray-100 border-b border-gray-200">
               <div className="flex items-center gap-2">
                 <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Trip Setup</h3>
                 {(caseInfoComplete && allClientsComplete && groupsComplete && caseData.travel_start_date) ? (
                   <span className="text-[10px] font-medium text-green-700 bg-green-50 border border-green-200 px-1.5 py-0.5 rounded">Ready</span>
-                ) : flagMissingInfo ? (
-                  <span className="text-[10px] font-medium text-gray-500 bg-gray-100 border border-gray-200 px-1.5 py-0.5 rounded">In progress</span>
                 ) : (
-                  <span className="text-[10px] font-medium text-gray-500 bg-gray-100 border border-gray-200 px-1.5 py-0.5 rounded">In progress</span>
+                  <span className="text-[10px] font-medium text-gray-500 bg-white border border-gray-200 px-1.5 py-0.5 rounded">In progress</span>
                 )}
               </div>
               <button onClick={() => setSetupCollapsed(!setupCollapsed)}
-                className="text-[11px] font-medium text-gray-500 hover:text-gray-800 px-2 py-1 rounded-lg border border-gray-200 hover:bg-gray-100">
+                className="text-[11px] font-medium text-gray-500 hover:text-gray-800 px-2 py-1 rounded-lg border border-gray-200 hover:bg-white">
                 {setupCollapsed ? '▼ Expand' : '▲ Collapse'}
               </button>
             </div>
+            <div className="p-4 space-y-4">
 
             {setupCollapsed ? (
               <div className="text-xs text-gray-600 space-y-0.5">
@@ -779,6 +775,7 @@ export default function AdminCaseDetailPage() {
 
             </>
             )}
+            </div>{/* /p-4 content wrapper */}
           </section>
           {/* ─── /TRIP SETUP ─── */}
 
@@ -786,9 +783,13 @@ export default function AdminCaseDetailPage() {
           {caseData.agent_notes && (() => {
             const isDone = caseData.status === 'awaiting_review' || caseData.status === 'awaiting_settlement' || caseData.status === 'completed'
             return (
-              <div className={`rounded-xl p-3 space-y-1 ${isDone ? 'bg-white border border-gray-200' : 'bg-white border-2 border-red-400'}`}>
-                <p className={`text-[10px] font-semibold uppercase tracking-wide ${isDone ? 'text-gray-400' : 'text-red-600'}`}>Notes from agent</p>
-                <p className="text-xs text-gray-800 whitespace-pre-wrap">{caseData.agent_notes}</p>
+              <div className={`rounded-2xl overflow-hidden ${isDone ? 'bg-white border border-gray-200' : 'bg-white border border-red-300'}`}>
+                <div className={`px-4 py-2.5 border-b ${isDone ? 'bg-gray-100 border-gray-200' : 'bg-red-50 border-red-200'}`}>
+                  <p className={`text-xs font-semibold uppercase tracking-wide ${isDone ? 'text-gray-700' : 'text-red-600'}`}>Notes from agent</p>
+                </div>
+                <div className="px-4 py-3">
+                  <p className="text-xs text-gray-800 whitespace-pre-wrap">{caseData.agent_notes}</p>
+                </div>
               </div>
             )
           })()}
@@ -797,7 +798,7 @@ export default function AdminCaseDetailPage() {
           {caseSurvey && (() => {
             const isHighlight = caseData.status === 'completed'
             return (
-              <div className={`rounded-xl p-4 space-y-3 ${isHighlight ? 'bg-white border-2 border-[#0f4c35]' : 'bg-white border border-gray-200'}`}>
+              <div className={`rounded-xl p-4 space-y-3 ${isHighlight ? 'bg-white border border-[#0f4c35]' : 'bg-white border border-gray-200'}`}>
                 <div className="flex items-center justify-between">
                   <p className={`text-[10px] font-semibold uppercase tracking-wide ${isHighlight ? 'text-[#0f4c35]' : 'text-gray-400'}`}>Client Review</p>
                   <span className="text-[10px] text-gray-400">Submitted {new Date(caseSurvey.submitted_at).toLocaleString()}</span>
@@ -1338,19 +1339,20 @@ export default function AdminCaseDetailPage() {
 
           {/* Schedule History */}
           {sortedSchedules.length > 0 && (
-            <section className="bg-gray-50 rounded-2xl p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Schedule History</p>
+            <section className="bg-gray-50 rounded-2xl border border-gray-200 overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-2.5 bg-gray-100 border-b border-gray-200">
+                <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Schedule History</p>
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] text-gray-400">{sortedSchedules.length} version{sortedSchedules.length > 1 ? 's' : ''}</span>
                   {isTerminal && (
                     <button onClick={() => setScheduleCollapsed(!scheduleCollapsed)}
-                      className="text-[11px] font-medium text-gray-500 hover:text-gray-800 px-2 py-1 rounded-lg border border-gray-200 hover:bg-gray-100">
+                      className="text-[11px] font-medium text-gray-500 hover:text-gray-800 px-2 py-1 rounded-lg border border-gray-200 hover:bg-white">
                       {scheduleCollapsed ? '▼ Expand' : '▲ Collapse'}
                     </button>
                   )}
                 </div>
               </div>
+              <div className="p-4 space-y-3">
 
               {scheduleCollapsed ? (
                 <p className="text-xs text-gray-400">
@@ -1505,6 +1507,7 @@ export default function AdminCaseDetailPage() {
                 })}
               </div>
               </>)}
+            </div>{/* /p-4 content wrapper */}
             </section>
           )}
 
@@ -1587,7 +1590,7 @@ export default function AdminCaseDetailPage() {
               : (caseData.schedule_draft_items ?? [])
             const nextVersion = (latestSchedule?.version ?? 0) + 1
             return (
-              <section id="schedule-upload" className={`scroll-mt-20 border-2 border-[#0f4c35] bg-white rounded-2xl p-4 space-y-3`}>
+              <section id="schedule-upload" className={`scroll-mt-20 border border-[#0f4c35] bg-white rounded-2xl p-4 space-y-3`}>
                 <div className="flex items-baseline justify-between gap-2">
                   <p className={`text-xs font-semibold uppercase tracking-wide text-[#0f4c35]`}>
                     {sortedSchedules.length === 0 ? 'Build Schedule' : `New Version (v${nextVersion})`}
@@ -1641,13 +1644,13 @@ export default function AdminCaseDetailPage() {
             })()
             const dueDateValue = dueDateEdit || defaultDue
             return (
-            <section id="pricing" className="scroll-mt-20 border-2 border-[#0f4c35] bg-white rounded-2xl p-4 space-y-3">
+            <section id="pricing" className="scroll-mt-20 border border-[#0f4c35] bg-white rounded-2xl p-4 space-y-3">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <p className="text-xs font-semibold text-[#0f4c35] uppercase tracking-wide">
                   {latestQuote.finalized_at ? 'Edit Final Pricing' : 'Finalize Pricing'}
                 </p>
                 {latestQuote.finalized_at && (
-                  <button onClick={() => { setEditingPricing(false); setPricingEdits({}); setDueDateEdit(''); setPricingError(''); setPricingCurrencies({}) }}
+                  <button onClick={() => { setEditingPricing(false); setPricingBaseEdits({}); setDueDateEdit(''); setPricingError('') }}
                     className="text-xs text-gray-500 hover:text-gray-800">Cancel</button>
                 )}
               </div>
@@ -1661,49 +1664,37 @@ export default function AdminCaseDetailPage() {
 
               <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
                 {sortedGroups.flatMap(g => g.document_items.filter(it => !it.removed_at).map(item => {
-                  // pricingEdits stores canonical KRW digits; currency toggle only changes display.
-                  const krwDigits = pricingEdits[item.id] ?? String(item.final_price)
-                  const krwNum = Number(krwDigits) || 0
-                  const currency: ItemCurrency = pricingCurrencies[item.id] ?? 'KRW'
-                  const displayNum = currency === 'USD' ? Math.round(krwNum / exchangeRate) : krwNum
-                  const displayVal = krwDigits === '' ? '' : displayNum.toLocaleString('en-US')
-                  const origDisplay = currency === 'USD'
-                    ? `$${Math.round(item.final_price / exchangeRate).toLocaleString('en-US')}`
-                    : fmtKRW(item.final_price)
+                  // 원가(base_price) KRW 편집. final_price는 기존 base/final 비율로 자동 계산.
+                  const baseDigits = pricingBaseEdits[item.id] ?? String(item.base_price)
+                  const baseNum = Number(baseDigits) || 0
+                  // 항목별 마진 배수: 기존 final_price / base_price (카테고리 마진 규칙 보존)
+                  const itemMult = item.base_price > 0 ? item.final_price / item.base_price : 1
+                  const autoFinalKrw = Math.round(baseNum * itemMult)
+                  const autoFinalUsd = autoFinalKrw / exchangeRate
                   return (
-                    <div key={item.id} className="flex items-center gap-3 px-3 py-2">
+                    <div key={item.id} className="flex items-center gap-2 px-3 py-2.5">
                       <div className="flex-1 min-w-0">
                         <p className="text-sm text-gray-900 truncate">{item.products?.name ?? 'Item'}</p>
-                        <p className="text-[10px] text-gray-400">{g.name}</p>
+                        <p className="text-[10px] text-gray-400">{g.name} · orig {fmtKRW(item.base_price)}</p>
                       </div>
-                      <span className="text-[10px] text-gray-400 tabular-nums shrink-0">orig {origDisplay}</span>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        value={displayVal}
-                        onChange={(e) => {
-                          const cleaned = e.target.value.replace(/[^0-9]/g, '')
-                          if (cleaned === '') { setPricingEdits(p => ({ ...p, [item.id]: '' })); return }
-                          const userNum = Number(cleaned) || 0
-                          const krwVal = currency === 'USD' ? Math.round(userNum * exchangeRate) : userNum
-                          setPricingEdits(p => ({ ...p, [item.id]: String(krwVal) }))
-                        }}
-                        className="w-32 border border-gray-200 rounded-lg px-2 py-1 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35] tabular-nums text-right" />
-                      <div className="flex shrink-0 rounded-md border border-gray-200 overflow-hidden text-[10px] font-medium">
-                        <button
-                          type="button"
-                          aria-pressed={currency === 'KRW'}
-                          onClick={() => setPricingCurrencies(p => ({ ...p, [item.id]: 'KRW' }))}
-                          className={`px-1.5 py-0.5 ${currency === 'KRW' ? 'bg-[#0f4c35] text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
-                          ₩
-                        </button>
-                        <button
-                          type="button"
-                          aria-pressed={currency === 'USD'}
-                          onClick={() => setPricingCurrencies(p => ({ ...p, [item.id]: 'USD' }))}
-                          className={`px-1.5 py-0.5 border-l border-gray-200 ${currency === 'USD' ? 'bg-[#0f4c35] text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
-                          $
-                        </button>
+                      {/* 원가 입력 (KRW) */}
+                      <div className="flex items-center gap-1 shrink-0">
+                        <span className="text-xs text-gray-400">₩</span>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          placeholder={item.base_price.toLocaleString('en-US')}
+                          value={baseDigits === '' ? '' : Number(baseDigits).toLocaleString('en-US')}
+                          onChange={(e) => {
+                            const cleaned = e.target.value.replace(/[^0-9]/g, '')
+                            setPricingBaseEdits(p => ({ ...p, [item.id]: cleaned }))
+                          }}
+                          className="w-28 border border-gray-200 rounded-lg px-2 py-1 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35] tabular-nums text-right" />
+                      </div>
+                      {/* 자동계산된 고객 청구가 (USD) */}
+                      <div className="shrink-0 text-right">
+                        <p className="text-xs text-gray-400">→</p>
+                        <p className="text-sm font-semibold text-[#0f4c35] tabular-nums">{fmtUSD(autoFinalUsd)}</p>
                       </div>
                     </div>
                   )
@@ -1713,7 +1704,11 @@ export default function AdminCaseDetailPage() {
               {(() => {
                 const liveSum = sortedGroups
                   .flatMap(g => g.document_items.filter(it => !it.removed_at))
-                  .reduce((s, item) => s + (Number(pricingEdits[item.id] ?? item.final_price) || 0), 0)
+                  .reduce((s, item) => {
+                    const baseNum = Number(pricingBaseEdits[item.id] ?? String(item.base_price)) || 0
+                    const mult = item.base_price > 0 ? item.final_price / item.base_price : 1
+                    return s + Math.round(baseNum * mult)
+                  }, 0)
                 const newTotal = liveSum
                 const diff = newTotal - latestQuote.total_price
                 return (
@@ -1747,8 +1742,8 @@ export default function AdminCaseDetailPage() {
                 const hasPricingChanges = sortedGroups
                   .flatMap(g => g.document_items.filter(it => !it.removed_at))
                   .some(item => {
-                    const v = pricingEdits[item.id]
-                    return v !== undefined && Number(v) !== item.final_price
+                    const v = pricingBaseEdits[item.id]
+                    return v !== undefined && Number(v) !== item.base_price
                   })
                 const dueDateChanged = dueDateValue !== latestQuote.payment_due_date
                 const isFirstFinalize = !latestQuote.finalized_at
@@ -1761,15 +1756,21 @@ export default function AdminCaseDetailPage() {
                   setSavingPricing(true); setPricingError('')
                   try {
                     const items = sortedGroups.flatMap(g => g.document_items.filter(it => !it.removed_at))
-                    const liveSum = items.reduce((s, item) => s + (Number(pricingEdits[item.id] ?? item.final_price) || 0), 0)
+                    const liveSum = items.reduce((s, item) => {
+                      const baseNum = Number(pricingBaseEdits[item.id] ?? String(item.base_price)) || 0
+                      const mult = item.base_price > 0 ? item.final_price / item.base_price : 1
+                      return s + Math.round(baseNum * mult)
+                    }, 0)
                     const newTotal = liveSum
                     const newDueDate = dueDateValue
 
-                    // Update each quotation item whose final_price changed
+                    // Update each quotation item whose base_price changed
                     for (const item of items) {
-                      const newVal = Number(pricingEdits[item.id] ?? item.final_price) || 0
-                      if (newVal !== item.final_price) {
-                        await updateDocumentItemPrice(item.id, newVal)
+                      const newBase = Number(pricingBaseEdits[item.id] ?? String(item.base_price)) || 0
+                      if (newBase !== item.base_price) {
+                        const mult = item.base_price > 0 ? item.final_price / item.base_price : 1
+                        const newFinal = Math.round(newBase * mult)
+                        await updateDocumentItemBothPrices(item.id, newBase, newFinal)
                       }
                     }
 
@@ -1846,8 +1847,8 @@ export default function AdminCaseDetailPage() {
                     } else {
                       // Reprice — build diff summary
                       const changedItems = items.filter(item => {
-                        const newVal = Number(pricingEdits[item.id] ?? item.final_price) || 0
-                        return newVal !== item.final_price
+                        const v = pricingBaseEdits[item.id]
+                        return v !== undefined && Number(v) !== item.base_price
                       }).length
                       const dueChanged = newDueDate !== latestQuote.payment_due_date
                       const fmtKRWshort = (n: number) => `₩${n.toLocaleString('en-US')}`
@@ -1867,7 +1868,7 @@ export default function AdminCaseDetailPage() {
                         total_krw: newTotal,
                         ...(totalChanged && !isFirstFinalize ? { previous_total_krw: latestQuote.total_price } : {}),
                       })
-                    setPricingEdits({})
+                    setPricingBaseEdits({})
                     setDueDateEdit('')
                     setEditingPricing(false)
                     await fetchCase()
@@ -1893,14 +1894,17 @@ export default function AdminCaseDetailPage() {
             const isCompleted = caseData.status === 'completed'
             const isActionTarget = (caseData.status === 'awaiting_deposit' || caseData.status === 'awaiting_payment') && !isCompleted
             const sectionClass = isActionTarget
-              ? 'bg-white border-2 border-[#0f4c35] rounded-2xl p-4 space-y-3'
-              : 'bg-gray-50 rounded-2xl p-4 space-y-3'
+              ? 'bg-white border border-[#0f4c35] rounded-2xl overflow-hidden'
+              : 'bg-gray-50 rounded-2xl border border-gray-200 overflow-hidden'
+            const headerClass = isActionTarget
+              ? 'flex items-center justify-between px-4 py-2.5 bg-green-50 border-b border-green-200'
+              : 'flex items-center justify-between px-4 py-2.5 bg-gray-100 border-b border-gray-200'
             const labelClass = isActionTarget
               ? 'text-xs font-semibold text-[#0f4c35] uppercase tracking-wide'
-              : 'text-xs font-semibold text-gray-400 uppercase tracking-wide'
+              : 'text-xs font-semibold text-gray-700 uppercase tracking-wide'
             return (
-            <section className={sectionClass}>
-              <div className="flex items-center justify-between">
+            <section id="financials" className={`scroll-mt-20 ${sectionClass}`}>
+              <div className={headerClass}>
                 <div className="flex items-center gap-2">
                   <p className={labelClass}>Financials</p>
                   {!latestQuote.finalized_at && (
@@ -1930,12 +1934,13 @@ export default function AdminCaseDetailPage() {
                   )}
                   {isTerminal && (
                     <button onClick={() => setFinancialsCollapsed(!financialsCollapsed)}
-                      className="text-[11px] font-medium text-gray-500 hover:text-gray-800 px-2 py-1 rounded-lg border border-gray-200 hover:bg-gray-100">
+                      className="text-[11px] font-medium text-gray-500 hover:text-gray-800 px-2 py-1 rounded-lg border border-gray-200 hover:bg-white">
                       {financialsCollapsed ? '▼ Expand' : '▲ Collapse'}
                     </button>
                   )}
                 </div>
               </div>
+              <div className="p-4 space-y-3">
               {financialsCollapsed ? (
                 <p className="text-xs text-gray-400">
                   {latestQuote.finalized_at
@@ -2079,32 +2084,18 @@ export default function AdminCaseDetailPage() {
                 documents={(caseData.documents ?? []) as unknown as DocumentRow[]}
                 exchangeRate={exchangeRate}
                 onChanged={fetchCase}
+                onFinalPaymentConfirm={async (paidAt) => {
+                  const paidIso = new Date(paidAt).toISOString()
+                  await supabase.from('cases').update({ status: 'awaiting_travel', payment_confirmed_at: paidIso, payment_date: paidAt }).eq('id', caseData.id)
+                  await logAsCurrentUser('case.payment_confirmed', { type: 'case', id: caseData.id, label: caseData.case_number }, { paid_on: paidAt })
+                }}
               />
               </>)}
+              </div>{/* /p-4 content wrapper */}
             </section>
             )
           })()}
 
-          {/* Confirm Payment — only after pricing finalized */}
-          {caseData.status === 'awaiting_payment' && !editingPricing && (
-            <section id="confirm-payment" className="scroll-mt-20 border border-amber-200 bg-amber-50 rounded-2xl p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide">Confirm Payment</p>
-                <button onClick={() => { setEditingPricing(true); setPricingEdits({}); setPricingError('') }}
-                  className="text-[10px] text-gray-500 hover:underline">Edit pricing</button>
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">Payment Date <span className="text-amber-700">*</span></label>
-                <input type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)}
-                  min={caseData.created_at.slice(0, 10)}
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-[#0f4c35] bg-white" />
-              </div>
-              <button onClick={confirmPayment} disabled={confirmingPayment || !paymentDate}
-                className="w-full py-2.5 text-sm font-medium bg-[#0f4c35] text-white rounded-xl hover:bg-[#0a3828] disabled:opacity-40 transition-colors">
-                {confirmingPayment ? 'Confirming...' : 'Confirm Payment'}
-              </button>
-            </section>
-          )}
 
           {caseData.status === 'awaiting_travel' && (
             <section className="border border-gray-200 bg-gray-50 rounded-2xl p-4">
@@ -2143,14 +2134,15 @@ export default function AdminCaseDetailPage() {
             const paymentReceived = (caseData.schedules ?? []).some(s => s.status === 'confirmed')
 
             return (
-              <section className="bg-gray-50 rounded-2xl p-4 space-y-3">
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Partner Payouts</p>
+              <section className="bg-gray-50 rounded-2xl border border-gray-200 overflow-hidden">
+                <div className="flex items-center justify-between flex-wrap gap-2 px-4 py-2.5 bg-gray-100 border-b border-gray-200">
+                  <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Partner Payouts</p>
                   <div className="flex items-baseline gap-3 text-[10px] text-gray-500">
                     <span>Paid <span className="font-semibold tabular-nums text-gray-700">{fmtUSD(totalPaid / exchangeRate)}</span> of {fmtUSD(totalSuggested / exchangeRate)}</span>
                     {allPaid && <span className="text-[#0f4c35] font-medium">All settled ✓</span>}
                   </div>
                 </div>
+                <div className="p-4 space-y-3">
 
                 {!paymentReceived && (
                   <div className="bg-white border border-gray-200 rounded-xl p-3 text-xs text-gray-500">
@@ -2314,10 +2306,173 @@ export default function AdminCaseDetailPage() {
                     )
                   })}
                 </div>
+                </div>{/* /p-4 content wrapper */}
               </section>
             )
           })()}
 
+          {/* ─── ATTACHMENTS ─── */}
+          {(() => {
+            async function uploadFile(file: File) {
+              if (!caseData) return
+              setAttachUploading(true)
+              setAttachError('')
+              try {
+                const ext = file.name.includes('.') ? file.name.split('.').pop() : ''
+                const path = `${caseData.id}/${Date.now()}-${Math.random().toString(36).slice(2)}${ext ? `.${ext}` : ''}`
+                const { error: upErr } = await supabase.storage.from('case-files').upload(path, file)
+                if (upErr) throw upErr
+                const { data: urlData } = supabase.storage.from('case-files').getPublicUrl(path)
+                const { data: adminRow } = await supabase.from('admins').select('id').eq('auth_user_id', (await supabase.auth.getUser()).data.user?.id ?? '').maybeSingle()
+                const { error: dbErr } = await supabase.from('case_attachments').insert({
+                  case_id: caseData.id,
+                  file_name: file.name,
+                  file_url: urlData.publicUrl,
+                  file_size: file.size,
+                  uploaded_by_admin_id: (adminRow as { id: string } | null)?.id ?? null,
+                })
+                if (dbErr) throw dbErr
+                const { data: fresh } = await supabase.from('case_attachments')
+                  .select('id, case_id, file_name, file_url, file_size, uploaded_by_admin_id, created_at')
+                  .eq('case_id', caseData.id)
+                  .order('created_at', { ascending: false })
+                setAttachments((fresh as CaseAttachment[]) ?? [])
+              } catch (e: unknown) {
+                setAttachError((e as { message?: string })?.message ?? 'Upload failed.')
+              } finally {
+                setAttachUploading(false)
+              }
+            }
+
+            return (
+            <section
+              className={`rounded-2xl border overflow-hidden transition-colors ${
+                attachDragOver ? 'border-[#0f4c35] bg-[#0f4c35]/5' : 'border-gray-200 bg-gray-50'
+              }`}
+              onDragOver={(e) => { e.preventDefault(); setAttachDragOver(true) }}
+              onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setAttachDragOver(false) }}
+              onDrop={async (e) => {
+                e.preventDefault()
+                setAttachDragOver(false)
+                if (attachUploading) return
+                const file = e.dataTransfer.files?.[0]
+                if (file) await uploadFile(file)
+              }}
+            >
+              <div className="flex items-center justify-between px-4 py-2.5 bg-gray-100 border-b border-gray-200">
+                <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Attachments</p>
+                <label className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors cursor-pointer ${
+                  attachUploading
+                    ? 'opacity-40 cursor-wait bg-white border-gray-200 text-gray-400'
+                    : 'bg-[#0f4c35] text-white border-[#0f4c35] hover:bg-[#0a3828]'
+                }`}>
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M7.5 12L12 7.5m0 0l4.5 4.5M12 7.5v9" />
+                  </svg>
+                  {attachUploading ? 'Uploading…' : 'Upload File'}
+                  <input
+                    type="file"
+                    className="hidden"
+                    disabled={attachUploading}
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0]
+                      e.target.value = ''
+                      if (file) await uploadFile(file)
+                    }}
+                  />
+                </label>
+              </div>
+
+              <div className="p-4 space-y-3">
+                {attachDragOver && (
+                  <div className="flex items-center justify-center gap-2 py-4 text-sm font-medium text-[#0f4c35]">
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M7.5 12L12 7.5m0 0l4.5 4.5M12 7.5v9" />
+                    </svg>
+                    Drop to upload
+                  </div>
+                )}
+
+                {!attachDragOver && attachError && (
+                  <p className="text-xs text-red-500">{attachError}</p>
+                )}
+
+                {!attachDragOver && attachments.length === 0 && (
+                  <p className="text-xs text-gray-400">No files yet — upload or drag & drop a file here.</p>
+                )}
+
+                {!attachDragOver && attachments.length > 0 && (
+                  <div className="space-y-1.5">
+                    {attachments.map((att) => (
+                      <div key={att.id} className="flex items-center gap-3 bg-white rounded-xl border border-gray-100 px-3 py-2.5">
+                        <svg className="w-4 h-4 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                        </svg>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-gray-800 truncate">{att.file_name}</p>
+                          <p className="text-[10px] text-gray-400">
+                            {att.file_size ? `${(att.file_size / 1024).toFixed(0)} KB · ` : ''}
+                            {new Date(att.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <a href={att.file_url} target="_blank" rel="noopener noreferrer"
+                            className="p-1.5 rounded-lg text-gray-400 hover:text-[#0f4c35] hover:bg-gray-100 transition-colors" title="Open">
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+                            </svg>
+                          </a>
+                          <button onClick={async () => { await navigator.clipboard.writeText(att.file_url); setCopiedAttachId(att.id); setTimeout(() => setCopiedAttachId(null), 2000) }}
+                            className={`p-1.5 rounded-lg transition-colors ${copiedAttachId === att.id ? 'text-[#0f4c35] bg-green-50' : 'text-gray-400 hover:text-[#0f4c35] hover:bg-gray-100'}`} title="Copy link">
+                            {copiedAttachId === att.id ? (
+                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                              </svg>
+                            ) : (
+                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
+                              </svg>
+                            )}
+                          </button>
+                          <button
+                            disabled={attachDeleting === att.id}
+                            onClick={async () => {
+                              if (!window.confirm(`Delete "${att.file_name}"?`)) return
+                              setAttachDeleting(att.id)
+                              setAttachError('')
+                              try {
+                                const marker = '/case-files/'
+                                const idx = att.file_url.indexOf(marker)
+                                if (idx !== -1) {
+                                  const storagePath = att.file_url.slice(idx + marker.length).split('?')[0]
+                                  await supabase.storage.from('case-files').remove([storagePath])
+                                }
+                                const { error: dbErr } = await supabase.from('case_attachments').delete().eq('id', att.id)
+                                if (dbErr) throw dbErr
+                                setAttachments(prev => prev.filter(a => a.id !== att.id))
+                              } catch (e: unknown) {
+                                setAttachError((e as { message?: string })?.message ?? 'Delete failed.')
+                              } finally {
+                                setAttachDeleting(null)
+                              }
+                            }}
+                            className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-40"
+                            title="Delete"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </section>
+            )
+          })()}
+          {/* ─── /ATTACHMENTS ─── */}
 
         </div>
       </div>

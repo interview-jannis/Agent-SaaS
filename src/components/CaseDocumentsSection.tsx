@@ -61,6 +61,8 @@ type Props = {
   documents: DocumentRow[]                    // all docs for this case
   exchangeRate: number
   onChanged: () => Promise<void> | void       // parent re-fetches
+  /** Admin only — called after marking final_invoice paid to advance case status */
+  onFinalPaymentConfirm?: (paidAt: string) => Promise<void>
 }
 
 // Card styling — all white so no single invoice type dominates the section
@@ -97,7 +99,7 @@ async function captureSigner(): Promise<{ name: string | null; title: string | n
 }
 
 export default function CaseDocumentsSection({
-  caseId, caseNumber, agentId, actor, caseStatus, embedded, travelCompletedAt, quotation, finalInvoice, documents, exchangeRate, onChanged,
+  caseId, caseNumber, agentId, actor, caseStatus, embedded, travelCompletedAt, quotation, finalInvoice, documents, exchangeRate, onChanged, onFinalPaymentConfirm,
 }: Props) {
   const [products, setProducts] = useState<Product[]>([])
   const [items, setItems] = useState<Record<string, DocumentItemRow[]>>({})
@@ -356,7 +358,8 @@ export default function CaseDocumentsSection({
           // Admin received deposit forward from agent → notify agent
           if (agentId) await notifyAgent(agentId, `${caseNumber} Deposit forward confirmed by admin (${docNumber})`, `/agent/cases/${caseId}`)
         } else if (doc.type === 'final_invoice') {
-          // Admin received balance from client (payment confirmation) → notify agent
+          // Admin received balance from client → advance status + notify agent
+          if (onFinalPaymentConfirm) await onFinalPaymentConfirm(paidAtValue)
           if (agentId) await notifyAgent(agentId, `${caseNumber} Balance payment confirmed (${docNumber})`, `/agent/cases/${caseId}`)
         } else if (doc.type === 'commission_invoice') {
           // Admin marked commission invoice paid → create settlement + close case
@@ -770,8 +773,8 @@ export default function CaseDocumentsSection({
                     </div>
                   ) : (
                     <button onClick={() => { setPaidAtEditingId(doc.id); setPaidAtValue(new Date().toISOString().slice(0, 10)) }}
-                      className="text-[11px] font-medium text-[#0f4c35] hover:text-white hover:bg-[#0f4c35] px-2.5 py-1 rounded-lg border border-green-200 hover:border-[#0f4c35] transition-colors">
-                      Mark paid
+                      className="text-[11px] font-semibold bg-[#0f4c35] text-white hover:bg-[#0a3828] px-3 py-1.5 rounded-lg transition-colors">
+                      Mark Paid
                     </button>
                   )
                 )}

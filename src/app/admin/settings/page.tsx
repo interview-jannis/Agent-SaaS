@@ -23,7 +23,7 @@ export default function AdminSettingsPage() {
   const [loading, setLoading] = useState(true)
 
   // Inline edit state — only one section editable at a time
-  type EditTarget = 'profile' | 'rate' | 'margin' | 'bank' | 'deposit' | 'stamp' | 'subpackage' | null
+  type EditTarget = 'profile' | 'product_price_rate' | 'rate' | 'margin' | 'bank' | 'deposit' | 'stamp' | 'subpackage' | null
   const [editing, setEditing] = useState<EditTarget>(null)
 
   // My Display Info (per-admin, used as signer on invoices I finalize)
@@ -37,7 +37,15 @@ export default function AdminSettingsPage() {
   const [profileSaved, setProfileSaved] = useState(false)
   const [profileError, setProfileError] = useState('')
 
-  // Exchange rate
+  // Product price rate (frozen display rate for agents/documents — normally 1500)
+  const [productPriceRate, setProductPriceRate] = useState('1500')
+  const [productPriceRateOriginal, setProductPriceRateOriginal] = useState('1500')
+  const [productRateConfirm, setProductRateConfirm] = useState('')
+  const [savingProductRate, setSavingProductRate] = useState(false)
+  const [productRateSaved, setProductRateSaved] = useState(false)
+  const [productRateError, setProductRateError] = useState('')
+
+  // Market exchange rate (accounting / revenue reporting only)
   const [rate, setRate] = useState('')
   const [rateOriginal, setRateOriginal] = useState('')
   const [savingRate, setSavingRate] = useState(false)
@@ -85,7 +93,8 @@ export default function AdminSettingsPage() {
     async function load() {
       const { data: { session } } = await supabase.auth.getSession()
       const uid = session?.user?.id ?? null
-      const [rateRes, marginRes, bankRes, depositRes, stampRes, adminRes, subpkgRes] = await Promise.all([
+      const [productPriceRateRes, rateRes, marginRes, bankRes, depositRes, stampRes, adminRes, subpkgRes] = await Promise.all([
+        supabase.from('system_settings').select('value').eq('key', 'product_price_rate').maybeSingle(),
         supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single(),
         supabase.from('system_settings').select('value').eq('key', 'company_margin_rate').single(),
         supabase.from('system_settings').select('value').eq('key', 'bank_details').single(),
@@ -104,6 +113,9 @@ export default function AdminSettingsPage() {
         setProfileNameOriginal(admin.name ?? '')
         setProfileTitleOriginal(admin.title ?? '')
       }
+
+      const pr = (productPriceRateRes.data?.value as { usd_krw?: number } | null)?.usd_krw ?? 1500
+      setProductPriceRate(String(pr)); setProductPriceRateOriginal(String(pr))
 
       const r = (rateRes.data?.value as { usd_krw?: number } | null)?.usd_krw
       if (r) { setRate(String(r)); setRateOriginal(String(r)) }
@@ -139,6 +151,29 @@ export default function AdminSettingsPage() {
     }
     load()
   }, [])
+
+  async function saveProductRate() {
+    const val = Number(productPriceRate)
+    if (!productPriceRate || isNaN(val) || val <= 0) {
+      setProductRateError('Please enter a valid rate (e.g. 1500).')
+      return
+    }
+    setSavingProductRate(true)
+    setProductRateError('')
+    setProductRateSaved(false)
+    const { error } = await supabase
+      .from('system_settings')
+      .upsert({ key: 'product_price_rate', value: { usd_krw: val } }, { onConflict: 'key' })
+    if (error) { setProductRateError(error.message) }
+    else {
+      await logAsCurrentUser('settings.updated', { type: 'system_setting', label: 'product_price_rate' }, { from: productPriceRateOriginal, to: productPriceRate })
+      setProductPriceRateOriginal(productPriceRate)
+      setProductRateConfirm('')
+      setEditing(null)
+      setProductRateSaved(true); setTimeout(() => setProductRateSaved(false), 3000)
+    }
+    setSavingProductRate(false)
+  }
 
   async function saveRate() {
     if (!rate || isNaN(Number(rate)) || Number(rate) <= 0) {
@@ -305,10 +340,12 @@ export default function AdminSettingsPage() {
   }
 
   function startEdit(target: Exclude<EditTarget, null>) {
-    setRateError(''); setMarginError(''); setBankError(''); setProfileError(''); setDepositError(''); setStampError(''); setSubpkgError('')
+    setProductRateError(''); setRateError(''); setMarginError(''); setBankError(''); setProfileError(''); setDepositError(''); setStampError(''); setSubpkgError('')
     setEditing(target)
   }
   function cancelEdit() {
+    setProductPriceRate(productPriceRateOriginal)
+    setProductRateConfirm('')
     setRate(rateOriginal)
     setCompanyMargin(companyMarginOriginal)
     setBank(bankOriginal)
@@ -316,7 +353,7 @@ export default function AdminSettingsPage() {
     setProfileTitle(profileTitleOriginal)
     setDepositPct(depositPctOriginal)
     setSubpkgEnabled(subpkgEnabledOriginal); setSubpkgRate(subpkgRateOriginal)
-    setRateError(''); setMarginError(''); setBankError(''); setProfileError(''); setDepositError(''); setStampError(''); setSubpkgError('')
+    setProductRateError(''); setRateError(''); setMarginError(''); setBankError(''); setProfileError(''); setDepositError(''); setStampError(''); setSubpkgError('')
     setEditing(null)
   }
 
@@ -397,14 +434,100 @@ export default function AdminSettingsPage() {
           </div>
           )}
 
-          {/* System rows — all admins can view, super admin only can edit */}
-          {/* Exchange Rate row */}
+          {/* ── Agent-Facing ─────────────────────────────────── */}
+          <div className="px-6 pt-5 pb-1">
+            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Agent-Facing</p>
+          </div>
+
+          {/* Product Price Rate row (frozen display rate for agents/documents) */}
+          <div className="px-6 py-5">
+            {editing !== 'product_price_rate' ? (
+              <div className="flex items-start gap-4">
+                <div className="flex-1 min-w-0">
+                  <h2 className="text-sm font-semibold text-gray-900">Product Price Rate</h2>
+                  <p className="text-xs text-gray-500 mt-0.5">Fixed USD conversion rate used for all product prices shown to agents and on documents. Only change this after consulting with agents — all future documents will use the new rate.</p>
+                  <p className="text-sm text-gray-800 mt-2 tabular-nums">
+                    1 USD = ₩{Number(productPriceRateOriginal).toLocaleString()}
+                  </p>
+                  {productRateSaved && <p className="text-xs text-[#0f4c35] mt-1">Saved.</p>}
+                </div>
+                {isSuperAdmin && (
+                  <button onClick={() => startEdit('product_price_rate')}
+                    className="shrink-0 text-xs font-medium text-[#0f4c35] hover:underline">Edit</button>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div>
+                  <h2 className="text-sm font-semibold text-gray-900">Product Price Rate</h2>
+                  <p className="text-xs text-gray-500 mt-0.5">Fixed USD conversion rate used for all product prices shown to agents and on documents.</p>
+                </div>
+
+                {/* Destructive-action warning */}
+                <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 space-y-1">
+                  <p className="text-xs font-semibold text-rose-700">⚠ This is a high-impact change</p>
+                  <p className="text-xs text-rose-600 leading-relaxed">
+                    Changing this rate will affect <strong>all future quotations and invoices</strong>. Already-issued documents are frozen at their original rate and will not be affected. Only proceed after consulting with all active agents.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1.5">New rate — 1 USD = ? KRW</label>
+                  <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden focus-within:border-[#0f4c35] transition-all w-fit">
+                    <span className="px-3 py-2 text-sm text-gray-600 bg-gray-50 border-r border-gray-200">₩</span>
+                    <input type="number" value={productPriceRate} onChange={(e) => setProductPriceRate(e.target.value)}
+                      placeholder="1500" min={1}
+                      className="w-32 px-3 py-2 text-sm text-gray-900 focus:outline-none bg-white" />
+                  </div>
+                  {productPriceRate && !isNaN(Number(productPriceRate)) && Number(productPriceRate) > 0 && (
+                    <p className="text-xs text-gray-500 mt-1.5">
+                      Current: 1 USD = ₩{Number(productPriceRateOriginal).toLocaleString()} → New: 1 USD = ₩{Number(productPriceRate).toLocaleString()}
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1.5">
+                    Type <span className="font-mono bg-gray-100 px-1 rounded">CONFIRM</span> to enable save
+                  </label>
+                  <input
+                    type="text"
+                    autoComplete="off"
+                    readOnly
+                    onFocus={(e) => e.currentTarget.removeAttribute('readonly')}
+                    value={productRateConfirm}
+                    onChange={(e) => setProductRateConfirm(e.target.value)}
+                    placeholder="CONFIRM"
+                    className="w-36 border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-rose-400 font-mono" />
+                </div>
+
+                {productRateError && <p className="text-xs text-red-500">{productRateError}</p>}
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={saveProductRate}
+                    disabled={savingProductRate || productRateConfirm !== 'CONFIRM'}
+                    className="px-4 py-1.5 text-xs font-medium bg-rose-600 text-white rounded-lg hover:bg-rose-700 disabled:opacity-40 transition-colors">
+                    {savingProductRate ? 'Saving...' : 'Save'}
+                  </button>
+                  <button onClick={cancelEdit} disabled={savingProductRate}
+                    className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-800 disabled:opacity-40">Cancel</button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ── Internal / Business ──────────────────────────── */}
+          <div className="px-6 pt-5 pb-1 border-t border-gray-100">
+            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Internal / Business</p>
+          </div>
+
+          {/* Market Exchange Rate row (internal accounting / revenue reporting only) */}
           <div className="px-6 py-5">
             {editing !== 'rate' ? (
               <div className="flex items-start gap-4">
                 <div className="flex-1 min-w-0">
-                  <h2 className="text-sm font-semibold text-gray-900">Exchange Rate</h2>
-                  <p className="text-xs text-gray-500 mt-0.5">Used to convert product prices from KRW to USD.</p>
+                  <h2 className="text-sm font-semibold text-gray-900">Market Exchange Rate</h2>
+                  <p className="text-xs text-gray-500 mt-0.5">Current market rate for internal accounting and revenue reporting only. Does not affect product prices or documents.</p>
                   <p className="text-sm text-gray-800 mt-2 tabular-nums">
                     {rateOriginal ? `1 USD = ₩${Number(rateOriginal).toLocaleString()}` : <span className="text-gray-400">Not set</span>}
                   </p>
@@ -418,8 +541,8 @@ export default function AdminSettingsPage() {
             ) : (
               <div className="space-y-3">
                 <div>
-                  <h2 className="text-sm font-semibold text-gray-900">Exchange Rate</h2>
-                  <p className="text-xs text-gray-500 mt-0.5">Used to convert product prices from KRW to USD.</p>
+                  <h2 className="text-sm font-semibold text-gray-900">Market Exchange Rate</h2>
+                  <p className="text-xs text-gray-500 mt-0.5">Current market rate for internal accounting and revenue reporting only.</p>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1.5">1 USD = ? KRW</label>
@@ -492,6 +615,68 @@ export default function AdminSettingsPage() {
                 </div>
               </div>
             )}
+          </div>
+
+          {/* Subpackage Margin row — super admin only */}
+          {isSuperAdmin && (
+          <div className="px-6 py-5">
+            {editing !== 'subpackage' ? (
+              <div className="flex items-start gap-4">
+                <div className="flex-1 min-w-0">
+                  <h2 className="text-sm font-semibold text-gray-900">Subpackage Margin</h2>
+                  <p className="text-xs text-gray-500 mt-0.5">Markup applied to Subpackage items (vehicle, interpreter, concierge, etc.). Hotel pricing is unaffected.</p>
+                  <div className="mt-2 text-sm text-gray-800">
+                    {subpkgEnabledOriginal
+                      ? <span className="text-[#0f4c35] font-medium">{subpkgRateOriginal}% markup</span>
+                      : <span className="text-gray-400">Off — Free</span>}
+                  </div>
+                  {subpkgSaved && <p className="text-xs text-[#0f4c35] mt-1">Saved.</p>}
+                </div>
+                <button onClick={() => startEdit('subpackage')}
+                  className="shrink-0 text-xs font-medium text-[#0f4c35] hover:underline">Edit</button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div>
+                  <h2 className="text-sm font-semibold text-gray-900">Subpackage Margin</h2>
+                  <p className="text-xs text-gray-500 mt-0.5">Off = Subpackage items are free. On = flat markup applied (vehicle, interpreter, concierge, etc.). Hotel is always free.</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button onClick={() => setSubpkgEnabled(v => !v)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${subpkgEnabled ? 'bg-[#0f4c35]' : 'bg-gray-300'}`}>
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${subpkgEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+                  </button>
+                  <span className="text-sm text-gray-700">{subpkgEnabled ? 'Enabled' : 'Disabled (Free)'}</span>
+                </div>
+                {subpkgEnabled && (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1.5">Markup rate (%)</label>
+                    <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden focus-within:border-[#0f4c35] transition-all w-32">
+                      <input autoFocus type="number" value={subpkgRate} onChange={e => setSubpkgRate(e.target.value)}
+                        placeholder="50" min={0} max={200}
+                        className="flex-1 w-full px-3 py-2 text-sm text-gray-900 focus:outline-none bg-white" />
+                      <span className="px-3 py-2 text-sm text-gray-600 bg-gray-50 border-l border-gray-200">%</span>
+                    </div>
+                    <p className="text-[11px] text-gray-400 mt-1">e.g. 50 → client pays 1.5× the base cost</p>
+                  </div>
+                )}
+                {subpkgError && <p className="text-xs text-red-500">{subpkgError}</p>}
+                <div className="flex items-center gap-2">
+                  <button onClick={saveSubpackageMargin} disabled={savingSubpkg}
+                    className="px-4 py-1.5 text-xs font-medium bg-[#0f4c35] text-white rounded-lg hover:bg-[#0a3828] disabled:opacity-40 transition-colors">
+                    {savingSubpkg ? 'Saving...' : 'Save'}
+                  </button>
+                  <button onClick={cancelEdit} disabled={savingSubpkg}
+                    className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-800 disabled:opacity-40">Cancel</button>
+                </div>
+              </div>
+            )}
+          </div>
+          )}
+
+          {/* ── Operations ───────────────────────────────────── */}
+          <div className="px-6 pt-5 pb-1 border-t border-gray-100">
+            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Operations</p>
           </div>
 
           {/* Bank Account row */}
@@ -603,63 +788,6 @@ export default function AdminSettingsPage() {
               </div>
             )}
           </div>
-
-          {/* Subpackage Margin row — super admin only */}
-          {isSuperAdmin && (
-          <div className="px-6 py-5">
-            {editing !== 'subpackage' ? (
-              <div className="flex items-start gap-4">
-                <div className="flex-1 min-w-0">
-                  <h2 className="text-sm font-semibold text-gray-900">Subpackage Margin</h2>
-                  <p className="text-xs text-gray-500 mt-0.5">Markup applied to Subpackage items (vehicle, interpreter, concierge, etc.). Hotel pricing is unaffected.</p>
-                  <div className="mt-2 text-sm text-gray-800">
-                    {subpkgEnabledOriginal
-                      ? <span className="text-emerald-700 font-medium">{subpkgRateOriginal}% markup</span>
-                      : <span className="text-gray-400">Off — Free</span>}
-                  </div>
-                  {subpkgSaved && <p className="text-xs text-[#0f4c35] mt-1">Saved.</p>}
-                </div>
-                <button onClick={() => startEdit('subpackage')}
-                  className="shrink-0 text-xs font-medium text-[#0f4c35] hover:underline">Edit</button>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div>
-                  <h2 className="text-sm font-semibold text-gray-900">Subpackage Margin</h2>
-                  <p className="text-xs text-gray-500 mt-0.5">Off = Subpackage items are free. On = flat markup applied (vehicle, interpreter, concierge, etc.). Hotel is always free.</p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <button onClick={() => setSubpkgEnabled(v => !v)}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${subpkgEnabled ? 'bg-[#0f4c35]' : 'bg-gray-300'}`}>
-                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${subpkgEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
-                  </button>
-                  <span className="text-sm text-gray-700">{subpkgEnabled ? 'Enabled' : 'Disabled (Free)'}</span>
-                </div>
-                {subpkgEnabled && (
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1.5">Markup rate (%)</label>
-                    <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden focus-within:border-[#0f4c35] transition-all w-32">
-                      <input autoFocus type="number" value={subpkgRate} onChange={e => setSubpkgRate(e.target.value)}
-                        placeholder="50" min={0} max={200}
-                        className="flex-1 w-full px-3 py-2 text-sm text-gray-900 focus:outline-none bg-white" />
-                      <span className="px-3 py-2 text-sm text-gray-600 bg-gray-50 border-l border-gray-200">%</span>
-                    </div>
-                    <p className="text-[11px] text-gray-400 mt-1">e.g. 50 → client pays 1.5× the base cost</p>
-                  </div>
-                )}
-                {subpkgError && <p className="text-xs text-red-500">{subpkgError}</p>}
-                <div className="flex items-center gap-2">
-                  <button onClick={saveSubpackageMargin} disabled={savingSubpkg}
-                    className="px-4 py-1.5 text-xs font-medium bg-[#0f4c35] text-white rounded-lg hover:bg-[#0a3828] disabled:opacity-40 transition-colors">
-                    {savingSubpkg ? 'Saving...' : 'Save'}
-                  </button>
-                  <button onClick={cancelEdit} disabled={savingSubpkg}
-                    className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-800 disabled:opacity-40">Cancel</button>
-                </div>
-              </div>
-            )}
-          </div>
-          )}
 
           {/* Company Stamp row */}
           <div className="px-6 py-5">

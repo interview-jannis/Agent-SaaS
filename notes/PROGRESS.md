@@ -6,7 +6,7 @@
 - **마지막 업데이트**: 2026-05-08 (개발 마감 5/8, 시뮬레이션 5/11~15, 런칭 5/18)
 - **SaaS 브랜드명**: **Tiktak** (UI 전역, 법인명 Interview Co., Ltd)
 
-> 2026-05-08 상세: `notes/26.05.07.md` (§22: 데이터 마스터 v21 — Ruby Clinic / SELENA Clinic Hongdae variant_label 정리(K-Beauty 오염 정정). §23: agent home "Free" vs "Price on request" 구분 UI).
+> 2026-05-08 상세: `notes/26.05.08.md` (§1: 데이터 마스터 v21 — Ruby Clinic / SELENA Clinic Hongdae variant_label 정리. §2: agent home "Free" vs "Price on request" 구분 UI. §3: Agent 사업자 정보 등록 — setup wizard + profile + admin view).
 > 2026-05-07 상세: `notes/26.05.07.md` (§1–18: 모바일 대응 ScheduleDocument + invoice 표 + schedule 시각 계층 + Quotation admin 이름 + 빌드 오류 수정 + Subpackage 가격 로직 + awaiting_settlement 신규 상태 + commission invoice Mark Paid 통합 + Client Review 섹션 + pre-confirmation origin 필터 정합성. §19: Guide 페이지 구현. §20: 데이터 마스터 v20 — K-Wellness/K-Starcation 재구축 + 전수 감사. §21: UI 색상 3톤 통일 — Agent/Admin 전면 정리).
 > 2026-05-06 상세 (2차): `notes/26.05.06.md` §11–13 (ScheduleEditor 2차 개선 + ScheduleDocument 전면 재설계).
 > 2026-05-06 상세 (1차): `notes/26.05.06.md` §1–10 (3자 계약 evidentiary + 순서 무관 + Realtime / Cases 표 통일 / 캐시베이시스 회계 / Documents audit trail / ScheduleEditor 대수술 / agent_notes / Time24Input / 카테고리 sort_order)

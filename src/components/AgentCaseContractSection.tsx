@@ -159,13 +159,10 @@ export default function AgentCaseContractSection({
   const isExpanded = expanded ?? !fullySigned
 
   return (
-    <section id="case-contract" className="scroll-mt-20 bg-gray-50 rounded-2xl p-5 space-y-4">
-      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+    <section id="case-contract" className="scroll-mt-20 bg-gray-50 rounded-2xl border border-gray-200 overflow-hidden">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2 px-5 py-2.5 bg-gray-100 border-b border-gray-200">
         <div className="flex-1 min-w-0">
-          <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">3-Party Contract</h3>
-          <p className="text-xs text-gray-500 mt-0.5">
-            {fullySigned ? 'Fully signed.' : 'All 3 signatures unlock the deposit phase.'}
-          </p>
+          <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">3-Party Contract</h3>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {fullySigned && contract && contract.client_token && (
@@ -194,7 +191,7 @@ export default function AgentCaseContractSection({
           )}
         </div>
       </div>
-
+      <div className="p-5 space-y-4">
       {error && <p className="text-xs text-red-500 bg-red-50 px-3 py-2 rounded-lg">{error}</p>}
 
       {!contract ? (
@@ -237,6 +234,7 @@ export default function AgentCaseContractSection({
           <p>{contract.admin_signed_at ? '✓' : '○'} Admin {contract.admin_signed_at ? `signed ${new Date(contract.admin_signed_at).toLocaleDateString()}` : 'not signed'}</p>
         </div>
       )}
+      </div>{/* /p-5 content wrapper */}
     </section>
   )
 }

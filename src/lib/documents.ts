@@ -79,6 +79,9 @@ export type DocumentRow = {
   created_at: string
   created_by_admin_id: string | null
   notes: string | null
+  // 문서 생성 시 product_price_rate 스냅샷. QuoteDocument가 이 값으로만 KRW→USD 변환하여
+  // 이후 환율 설정 변경이 기존 문서에 영향을 주지 않음. null이면 1500 fallback.
+  price_rate_snapshot: number | null
 }
 
 export type DocumentItemRow = {
@@ -224,6 +227,8 @@ export type CreateDocumentInput = {
   agentMarginRate?: number | null
   paymentDueDate?: string | null   // YYYY-MM-DD
   notes?: string | null
+  // 문서 생성 시 product_price_rate 값을 스냅샷으로 저장 (기본 1500)
+  priceRateSnapshot?: number | null
 }
 
 // Create a new document row + return it. Generates document_number and slug
@@ -245,6 +250,7 @@ export async function createDocument(input: CreateDocumentInput): Promise<Docume
       agent_margin_rate: input.agentMarginRate ?? null,
       payment_due_date: input.paymentDueDate ?? null,
       notes: input.notes ?? null,
+      price_rate_snapshot: input.priceRateSnapshot ?? 1500,
     })
     .select('*')
     .single()
@@ -352,6 +358,19 @@ export async function updateDocumentItemPrice(itemId: string, finalPrice: number
   const { error } = await supabase
     .from('document_items')
     .update({ final_price: finalPrice })
+    .eq('id', itemId)
+  if (error) throw error
+}
+
+// Finalize Pricing에서 사용 — 어드민이 원가(base_price)를 수정하면 마진 적용가(final_price)도 함께 업데이트.
+export async function updateDocumentItemBothPrices(
+  itemId: string,
+  basePrice: number,
+  finalPrice: number,
+): Promise<void> {
+  const { error } = await supabase
+    .from('document_items')
+    .update({ base_price: basePrice, final_price: finalPrice })
     .eq('id', itemId)
   if (error) throw error
 }
@@ -716,6 +735,10 @@ export async function issueInvoice(input: IssueInvoiceInput): Promise<DocumentRo
     agentMarginRate: quotation?.agent_margin_rate ?? null,
     paymentDueDate: input.paymentDueDate ?? null,
     notes: input.notes ?? null,
+    // Inherit the product price rate snapshot from the source quotation so
+    // all derived invoices (deposit, final, additional) display the same
+    // frozen USD amounts as the original quotation.
+    priceRateSnapshot: (quotation as unknown as { price_rate_snapshot?: number | null })?.price_rate_snapshot ?? 1500,
   })
 
   if (input.signerSnapshot) {

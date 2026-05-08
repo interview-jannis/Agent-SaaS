@@ -126,7 +126,7 @@ export default function ProductForm({ productId, productNumber, categories, init
 
   useEffect(() => {
     Promise.all([
-      supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single(),
+      supabase.from('system_settings').select('value').eq('key', 'product_price_rate').maybeSingle(),
       supabase.from('system_settings').select('value').eq('key', 'company_margin_rate').single(),
       supabase.from('product_subcategories').select('id, category_id, name').order('sort_order'),
     ]).then(([rateRes, cmRes, subRes]) => {

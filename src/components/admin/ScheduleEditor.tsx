@@ -87,6 +87,16 @@ export default function ScheduleEditor({
   // Pending rows show with dashed border + inline Cancel/Save and don't count
   // for the global coverage gate (so admin can stage incomplete drafts).
   const [pendingItemIds, setPendingItemIds] = useState<Set<string>>(new Set())
+  // Days that are collapsed. Initialised to all days that already have committed items —
+  // so a loaded schedule starts compact and admins expand only what they want to edit.
+  const [collapsedDays, setCollapsedDays] = useState<Set<number>>(() => {
+    const s = new Set<number>()
+    for (const item of initialItems) s.add(item.day)
+    return s
+  })
+  function toggleDayCollapse(day: number) {
+    setCollapsedDays(prev => { const n = new Set(prev); n.has(day) ? n.delete(day) : n.add(day); return n })
+  }
   // Items whose group hasn't been explicitly chosen yet (shows "— Choose group —" prompt).
   // Cleared the moment admin changes the group select.
   const [unsetGroupItemIds, setUnsetGroupItemIds] = useState<Set<string>>(new Set())
@@ -137,6 +147,7 @@ export default function ScheduleEditor({
   // in Trip Setup instead.
 
   function addItem(day: number) {
+    setCollapsedDays(prev => { const n = new Set(prev); n.delete(day); return n }) // auto-expand
     const id = generateScheduleItemId()
     const newItem: ScheduleItem = {
       id,
@@ -402,54 +413,70 @@ export default function ScheduleEditor({
           .filter(i => i.day === day)
           .sort(compareScheduleItems)
         const dateObj = dateForDay(travelStartDate, day)
+        const hasPending = dayItems.some(i => pendingItemIds.has(i.id))
+        // Collapse unless there are pending (unsaved) items in this day
+        const isCollapsed = collapsedDays.has(day) && !hasPending
         return (
           <div key={day} className="bg-white rounded-2xl border border-gray-100 shadow-sm">
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-              <div className="flex items-baseline gap-2">
+              <button
+                onClick={() => toggleDayCollapse(day)}
+                className="flex items-baseline gap-2 flex-1 text-left"
+              >
                 <p className="text-sm font-semibold text-gray-900">Day {day}</p>
                 {dateObj && <p className="text-xs text-gray-400">{formatDayHeader(dateObj)}</p>}
-              </div>
+                {isCollapsed && dayItems.length > 0 && (
+                  <span className="text-xs text-gray-400">· {dayItems.length} item{dayItems.length !== 1 ? 's' : ''}</span>
+                )}
+              </button>
               <div className="flex items-center gap-3">
+                {!isCollapsed && (
+                  <>
+                    <button onClick={() => addItem(day)} className="text-xs font-medium text-[#0f4c35] hover:underline">+ Add Item</button>
+                    <FreeTimeMenu onPick={(kind) => addFreeTime(day, kind)} />
+                    <PrayerMenu onPick={(prayer) => addPrayerTime(day, prayer)} />
+                  </>
+                )}
                 <button
-                  onClick={() => addItem(day)}
-                  className="text-xs font-medium text-[#0f4c35] hover:underline"
+                  onClick={() => toggleDayCollapse(day)}
+                  className="text-[10px] text-gray-400 hover:text-gray-600 px-1"
                 >
-                  + Add Item
+                  {isCollapsed ? '▼' : '▲'}
                 </button>
-                <FreeTimeMenu onPick={(kind) => addFreeTime(day, kind)} />
-                <PrayerMenu onPick={(prayer) => addPrayerTime(day, prayer)} />
               </div>
             </div>
-            <div className="divide-y divide-gray-100">
-              {dayItems.length === 0 ? (
-                <p className="px-4 py-6 text-xs text-gray-400 text-center italic">No items yet — click &quot;Add Item&quot; to start.</p>
-              ) : (
-                dayItems.map((it, idx) => (
-                  <ItemRow
-                    key={it.id}
-                    item={it}
-                    caseProducts={caseProducts}
-                    caseGroups={caseGroups}
-                    sharedVariantIds={sharedVariantIds}
-                    committedVariantContexts={committedVariantContexts}
-                    isPending={pendingItemIds.has(it.id)}
-                    isEditSession={editSnapshots.has(it.id)}
-                    isGroupUnset={unsetGroupItemIds.has(it.id)}
-                    onGroupChosen={() => markGroupChosen(it.id)}
-                    onResetGroup={() => resetGroupChoice(it.id)}
-                    canMoveUp={idx > 0 && dayItems[idx - 1].block === it.block}
-                    canMoveDown={idx < dayItems.length - 1 && dayItems[idx + 1].block === it.block}
-                    onUpdate={(patch) => updateItem(it.id, patch)}
-                    onApplyVariant={(vid) => applyVariantPick(it.id, vid)}
-                    onRemove={() => removeItem(it.id)}
-                    onMove={(dir) => moveItem(it.id, dir)}
-                    onEdit={() => editItem(it.id)}
-                    onCommit={() => commitPendingItem(it.id)}
-                    onCancelDraft={() => cancelPendingItem(it.id)}
-                  />
-                ))
-              )}
-            </div>
+            {!isCollapsed && (
+              <div className="divide-y divide-gray-100">
+                {dayItems.length === 0 ? (
+                  <p className="px-4 py-6 text-xs text-gray-400 text-center italic">No items yet — click &quot;Add Item&quot; to start.</p>
+                ) : (
+                  dayItems.map((it, idx) => (
+                    <ItemRow
+                      key={it.id}
+                      item={it}
+                      caseProducts={caseProducts}
+                      caseGroups={caseGroups}
+                      sharedVariantIds={sharedVariantIds}
+                      committedVariantContexts={committedVariantContexts}
+                      isPending={pendingItemIds.has(it.id)}
+                      isEditSession={editSnapshots.has(it.id)}
+                      isGroupUnset={unsetGroupItemIds.has(it.id)}
+                      onGroupChosen={() => markGroupChosen(it.id)}
+                      onResetGroup={() => resetGroupChoice(it.id)}
+                      canMoveUp={idx > 0 && dayItems[idx - 1].block === it.block}
+                      canMoveDown={idx < dayItems.length - 1 && dayItems[idx + 1].block === it.block}
+                      onUpdate={(patch) => updateItem(it.id, patch)}
+                      onApplyVariant={(vid) => applyVariantPick(it.id, vid)}
+                      onRemove={() => removeItem(it.id)}
+                      onMove={(dir) => moveItem(it.id, dir)}
+                      onEdit={() => editItem(it.id)}
+                      onCommit={() => commitPendingItem(it.id)}
+                      onCancelDraft={() => cancelPendingItem(it.id)}
+                    />
+                  ))
+                )}
+              </div>
+            )}
           </div>
         )
       })}
