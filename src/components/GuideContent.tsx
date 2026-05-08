@@ -4,21 +4,19 @@ import { useState } from 'react'
 
 type Tab = 'admin' | 'agent' | 'client'
 
-// Case-status screenshots (admin + agent perspective)
+// Case-status screenshots (admin + agent perspective, all 10 pipeline stages)
 const _CSS = 'https://tknucfjnqapriadgiwuv.supabase.co/storage/v1/object/public/guide/screenshots'
 const CASE_SCREENSHOTS: Record<string, { admin?: string; agent?: string }> = {
-  awaiting_contract: {
-    admin: `${_CSS}/case-admin-awaiting_contract.png`,
-    agent: `${_CSS}/case-agent-awaiting_contract.png`,
-  },
-  awaiting_payment: {
-    admin: `${_CSS}/case-admin-awaiting_payment.png`,
-    agent: `${_CSS}/case-agent-awaiting_payment.png`,
-  },
-  completed: {
-    admin: `${_CSS}/case-admin-completed.png`,
-    agent: `${_CSS}/case-agent-completed.png`,
-  },
+  awaiting_contract:   { admin: `${_CSS}/case-admin-awaiting_contract.png`,   agent: `${_CSS}/case-agent-awaiting_contract.png` },
+  awaiting_deposit:    { admin: `${_CSS}/case-admin-awaiting_deposit.png`,    agent: `${_CSS}/case-agent-awaiting_deposit.png` },
+  awaiting_schedule:   { admin: `${_CSS}/case-admin-awaiting_schedule.png`,   agent: `${_CSS}/case-agent-awaiting_schedule.png` },
+  reviewing_schedule:  { admin: `${_CSS}/case-admin-reviewing_schedule.png`,  agent: `${_CSS}/case-agent-reviewing_schedule.png` },
+  awaiting_pricing:    { admin: `${_CSS}/case-admin-awaiting_pricing.png`,    agent: `${_CSS}/case-agent-awaiting_pricing.png` },
+  awaiting_payment:    { admin: `${_CSS}/case-admin-awaiting_payment.png`,    agent: `${_CSS}/case-agent-awaiting_payment.png` },
+  awaiting_travel:     { admin: `${_CSS}/case-admin-awaiting_travel.png`,     agent: `${_CSS}/case-agent-awaiting_travel.png` },
+  awaiting_review:     { admin: `${_CSS}/case-admin-awaiting_review.png`,     agent: `${_CSS}/case-agent-awaiting_review.png` },
+  awaiting_settlement: { admin: `${_CSS}/case-admin-awaiting_settlement.png`, agent: `${_CSS}/case-agent-awaiting_settlement.png` },
+  completed:           { admin: `${_CSS}/case-admin-completed.png`,           agent: `${_CSS}/case-agent-completed.png` },
 }
 
 const CASE_STEPS = [

@@ -45,3 +45,9 @@ next-env.d.ts
 
 # Local-only PDF→PNG conversions (used as OCR helper; not production data)
 data/**/pdf to png/
+
+# Local E2E screenshot helper scripts (contain service-role keys — never commit)
+notes/take-*.cjs
+notes/take-*.mjs
+notes/upload-*.cjs
+notes/screenshots/

@@ -7,9 +7,16 @@ const SS = 'https://tknucfjnqapriadgiwuv.supabase.co/storage/v1/object/public/gu
 
 // Case-step screenshots (agent perspective)
 const CASE_SS: Record<string, string> = {
-  awaiting_contract: `${SS}/case-agent-awaiting_contract.png`,
-  awaiting_payment:  `${SS}/case-agent-awaiting_payment.png`,
-  completed:         `${SS}/case-agent-completed.png`,
+  awaiting_contract:   `${SS}/case-agent-awaiting_contract.png`,
+  awaiting_deposit:    `${SS}/case-agent-awaiting_deposit.png`,
+  awaiting_schedule:   `${SS}/case-agent-awaiting_schedule.png`,
+  reviewing_schedule:  `${SS}/case-agent-reviewing_schedule.png`,
+  awaiting_pricing:    `${SS}/case-agent-awaiting_pricing.png`,
+  awaiting_payment:    `${SS}/case-agent-awaiting_payment.png`,
+  awaiting_travel:     `${SS}/case-agent-awaiting_travel.png`,
+  awaiting_review:     `${SS}/case-agent-awaiting_review.png`,
+  awaiting_settlement: `${SS}/case-agent-awaiting_settlement.png`,
+  completed:           `${SS}/case-agent-completed.png`,
 }
 const SCREENSHOTS: Record<string, string> = {
   home:      `${SS}/agent-home.png`,
