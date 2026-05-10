@@ -538,7 +538,7 @@ export default function GuideContent({ defaultTab }: { defaultTab?: Tab }) {
         <div className="flex items-start justify-between mb-6 gap-4">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">가이드</h1>
-            <p className="text-sm text-gray-500 mt-1">역할별 Tiktak 화면 안내 및 케이스 전체 흐름을 설명합니다.</p>
+            <p className="text-sm text-gray-500 mt-1">역할별 TikkTakk 화면 안내 및 케이스 전체 흐름을 설명합니다.</p>
           </div>
           {isSuperAdmin && !editMode && (
             <button
@@ -689,7 +689,7 @@ export default function GuideContent({ defaultTab }: { defaultTab?: Tab }) {
         {tab === 'client' && (
           <div className="space-y-8">
             <p className="text-sm text-gray-600 leading-relaxed">
-              고객은 Tiktak에 별도 로그인 계정이 없습니다. 모든 고객 접점은 에이전트가 발송하는 안전한 링크를 통해 이루어집니다 — 견적서, 인보이스, 계약서, 스케줄이 여기에 해당합니다. Tiktak 내 모든 운영은 담당 에이전트가 대신 처리합니다.
+              고객은 TikkTakk에 별도 로그인 계정이 없습니다. 모든 고객 접점은 에이전트가 발송하는 안전한 링크를 통해 이루어집니다 — 견적서, 인보이스, 계약서, 스케줄이 여기에 해당합니다. TikkTakk 내 모든 운영은 담당 에이전트가 대신 처리합니다.
             </p>
             <div>
               <h3 className="text-base font-semibold text-gray-900 mb-3">고객 여정</h3>

@@ -62,7 +62,7 @@ export async function POST(req: Request) {
     const dup = list?.users?.find(u => (u.email ?? '').toLowerCase() === wanted && u.id !== authUserId)
     if (dup) {
       return NextResponse.json({
-        error: `The email "${email}" is already registered to another account on Tiktak. Please sign up with a different email.`,
+        error: `The email "${email}" is already registered to another account on TikkTakk. Please sign up with a different email.`,
       }, { status: 400 })
     }
   } catch (e: unknown) {
@@ -84,7 +84,7 @@ export async function POST(req: Request) {
 
     let friendly: string
     if (status === 422 || /already|exists|registered|duplicate|email.*taken/.test(lower)) {
-      friendly = `The email "${email}" is already registered to another account on Tiktak. Please sign up with a different email.`
+      friendly = `The email "${email}" is already registered to another account on TikkTakk. Please sign up with a different email.`
     } else if (/password/.test(lower)) {
       friendly = `Password rejected: ${raw}`
     } else if (/invalid.*email|email.*invalid|email_address_invalid/.test(lower)) {
@@ -92,7 +92,7 @@ export async function POST(req: Request) {
     } else if (status === 429 || /rate.*limit/.test(lower)) {
       friendly = `Too many attempts. Please wait a minute and try again.`
     } else {
-      friendly = `Could not save your login (Supabase ${status || '?'}: "${raw}"). Please contact your Tiktak admin.`
+      friendly = `Could not save your login (Supabase ${status || '?'}: "${raw}"). Please contact your TikkTakk admin.`
     }
     return NextResponse.json({ error: friendly }, { status: 400 })
   }

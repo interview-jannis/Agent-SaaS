@@ -227,7 +227,7 @@ export default function ScheduleDocument({
         <div className="sch-page" style={{ background: '#fff', marginBottom: '28px' }}>
           <div className="sch-cover-inner" style={{ padding: '60px 64px 52px' }}>
             <p className="sch-sans" style={{ fontSize: '10px', letterSpacing: '0.32em', color: '#b0a898', textTransform: 'uppercase', marginBottom: '20px' }}>
-              Tiktak · Personal Itinerary
+              TikkTakk · Personal Itinerary
             </p>
             <h1 className="sch-serif sch-cover-title" style={{ fontSize: '56px', fontWeight: 400, lineHeight: 1.05, color: '#1a1a1a' }}>
               {leadName || 'Guest'}

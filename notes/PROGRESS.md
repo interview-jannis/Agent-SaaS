@@ -2,11 +2,11 @@
 
 ## 현재 상태
 - **Phase**: 시뮬 직전 정합성 + 운영성. 3자 계약 evidentiary 강화 + 순서 무관 + 실시간 자동 새로고침, Overview 캐시베이시스 회계, Edit Selected Products audit trail (origin + soft delete), ScheduleEditor 대수술 (Free time / partner / block-time 범위 / group / internal note / pending row / coverage gate), agent → admin 메모. ScheduleEditor 2차 (draft save / edit button / group re-pick / cancel restore / delete confirm / multi-day product / ✓ indicator / duration / Shared color), ScheduleDocument 전면 재설계 (cover: flight+groups, day sections: group separation, variantTag chip).
-- **마지막 작업**: 2026-05-08 — v21 K-Beauty 오염 정정(Ruby Clinic / SELENA Clinic Hongdae variant_label 공백 처리), agent home "Free" vs "Price on request" 구분 UI(renderVariantRow + 2-level group range). → 그 이전: 상품 데이터 마스터 v20, Guide 페이지, `awaiting_settlement` 신규 상태, commission invoice Mark Paid 통합, admin case Client Review 섹션, pre-confirmation 정합성, ScheduleDocument 모바일, Subpackage 가격 로직 완성, 빌드 오류 수정.
-- **마지막 업데이트**: 2026-05-08 (개발 마감 5/8, 시뮬레이션 5/11~15, 런칭 5/18)
-- **SaaS 브랜드명**: **Tiktak** (UI 전역, 법인명 Interview Co., Ltd)
+- **마지막 작업**: 2026-05-08 — 5/8 미팅 후 대규모 작업: Agent Home → 9단계 절차 소개 화면, Product 탭 분리, Finalize Pricing 원가 표시, 문서 금액 잠금(price_rate_snapshot), 1500원 고정환산, Case Attachments(drag&drop), Financials 섹션 고정 배치, 섹션 헤더 밴드 UI 통일. + v21 K-Beauty 오염 정정, "Free" vs "Price on request" UI, Agent 사업자 정보 등록, Guide 콘텐츠 편집, 상품 이미지 Bulk Upload.
+- **마지막 업데이트**: 2026-05-09 (시뮬레이션 5/11~15, 런칭 5/18)
+- **SaaS 브랜드명**: **TikkTakk** (5/9 전역 치환 완료)
 
-> 2026-05-08 상세: `notes/26.05.08.md` (§1: 데이터 마스터 v21 — Ruby Clinic / SELENA Clinic Hongdae variant_label 정리. §2: agent home "Free" vs "Price on request" 구분 UI. §3: Agent 사업자 정보 등록 — setup wizard + profile + admin view).
+> 2026-05-08 상세: `notes/26.05.08.md` (§1: 데이터 마스터 v21. §2: "Free" vs "Price on request" UI. §3: Agent 사업자 정보 등록. §4: Guide 콘텐츠 편집. §5: 상품 이미지 Bulk Upload. §6: Financials 섹션 고정 배치. §7: Case Attachments. §8: 섹션 헤더 밴드 + Confirm Payment 통합. §9: Agent Home → 9단계 절차 소개 + Product 탭 분리. §10: Finalize Pricing 원가 표시. §11: 문서 금액 잠금 + 1500원 고정환산).
 > 2026-05-07 상세: `notes/26.05.07.md` (§1–18: 모바일 대응 ScheduleDocument + invoice 표 + schedule 시각 계층 + Quotation admin 이름 + 빌드 오류 수정 + Subpackage 가격 로직 + awaiting_settlement 신규 상태 + commission invoice Mark Paid 통합 + Client Review 섹션 + pre-confirmation origin 필터 정합성. §19: Guide 페이지 구현. §20: 데이터 마스터 v20 — K-Wellness/K-Starcation 재구축 + 전수 감사. §21: UI 색상 3톤 통일 — Agent/Admin 전면 정리).
 > 2026-05-06 상세 (2차): `notes/26.05.06.md` §11–13 (ScheduleEditor 2차 개선 + ScheduleDocument 전면 재설계).
 > 2026-05-06 상세 (1차): `notes/26.05.06.md` §1–10 (3자 계약 evidentiary + 순서 무관 + Realtime / Cases 표 통일 / 캐시베이시스 회계 / Documents audit trail / ScheduleEditor 대수술 / agent_notes / Time24Input / 카테고리 sort_order)
@@ -31,11 +31,30 @@
 
 ## 다음 할 일
 
-### 5/8 마감 전 (🔥 시급)
+### 5/11 시뮬 전 (🔥 시급) — 5/8 미팅 액션 아이템
 
-#### ScheduleDocument 버그 (개발)
-- [x] **스케줄 시간 정렬 버그** — 수정 완료 (5/7)
-- [x] **Internal notes 스타일** — amber 박스 → subtle 스타일로 교체 완료 (5/7)
+#### 개발 (남은 것)
+- [ ] **Female/Male 상품 같은 그룹 내 복수 선택 방지** — 한 그룹 = 1인 기준, 성별 충돌 시 경고/차단
+- [ ] **통역 상품 시간 옵션 확장** — 시간 단위 늘리기 (4h/8h/연장)
+- [ ] **Agent Home 사진 추가** — 9단계 절차 소개 화면에 이미지 삽입. 상품 사진 등록 완료 후 작업.
+
+#### 개발 (완료 확인됨)
+- [x] **장바구니 localStorage 영속화** — agent/product 탭 나갔다 와도 담던 상품 유지. sessionStorage flag 제거, mount마다 localStorage 복원. 복원 시 "In-progress cart restored" 배너 + Clear 버튼 (5/9 야간)
+- [x] **Product 카드 상품명 글자 크기 업** — `text-sm` → `text-base` (5/9 야간)
+- [x] **Cases 상세화면 섹션 기본 collapse** — Trip Setup / Schedule History / Financials 모두 `useState(true)`. Schedule expand 버튼 `isTerminal` 게이트 제거 (5/9 야간)
+- [x] **Invoice 지불 상태 시각 강화** — paid 카드 `border-green-200 bg-green-50/30`, 뱃지 `✓ Paid` 초록색 (5/9 야간)
+- [x] **Attachments UI 개선** — icon 전용 버튼 → "Preview" / "Copy Link" 텍스트 버튼 (5/9 야간)
+- [x] **Commission Invoice canEdit 버그** — local `canEdit` 변수가 prop shadowing → `canMarkThisDoc`으로 rename, 담당 admin 게이트 정상 적용 (5/9 야간)
+- [x] **TikkTakk 브랜드명 전역 치환** — 코드베이스 전체 "Tiktak" → "TikkTakk" 텍스트 치환 (5/9, 30개 파일)
+- [x] **인당 견적서** — QuoteDocument `?member={id}` 탭 방식. 멤버 2명 이상 시 sticky 탭 노출, 그룹 필터 + 인당 금액 분할 (5/9)
+- [x] **Agent Home → 9단계 절차 소개 화면** — home/page.tsx STEPS 배열 (5/8). 사진은 데이터 정리 후 추가 예정.
+- [x] **K-Medical 서브카테고리 순서 재정렬** — Health Screening → Dental → Eye → Women's Health → Korean Medical (완료)
+- [x] **Product 탭 분리** — agent/product/ 라우트 + 사이드바 탭 추가 (5/8)
+- [x] **Financials 섹션 상단 고정** — 모든 상태에서 Hero 직후 2번째 섹션 (5/8 §6)
+- [x] **Finalize Pricing 원가(KRW) 입력 → 고객 청구가(USD) 자동 계산** — admin/cases/[id] (5/8 §10)
+- [x] **발행 문서 금액 잠금** — `documents.price_rate_snapshot` 스냅샷 (5/8 §11)
+- [x] **상품 달러가 1500원 고정환산** — documents.ts 1500 기본값 (5/8 §11)
+- [x] **Final Invoice 이후 파일 업로드 섹션** — Case Attachments (5/8 §7)
 
 #### 컨텐츠 (사용자 본인)
 - [ ] **호텔 데이터 정리** — VIP 클라이언트 대상이라 ₩1,000,000/박 미만 객실은 카탈로그에서 제외 (예: SOFITEL `Luxury Lake Room $243.57`, `Prestige Suite $473.61`, `1-Bedroom Premier $338.29` 같은 라인). v19 마스터 빌드 시 cutoff 적용 + deleteMissing으로 정리
@@ -71,6 +90,8 @@
 - [x] **호텔 가격 × nights** (5/5) — `Subpackage > Hotel` variant는 `unitPrice × nights` (memberCount 무시, 객실당 비용). `lib/pricing.ts` 에 `isHotelItem` + `nightsBetween` 헬퍼 추가. Agent home cart 총액 + review page 표 + 견적 생성(`addDocumentItem`)에서 hotel 라인은 nights 곱해서 base/final 저장 + variant_label_snapshot에 ` · 3 nights` 베이크. QuoteDocument/SelectedProductsSection은 final_price + snapshot 그대로 읽어서 자동 반영. Admin pre-finalize Add line item picker는 variant/nights 미인지 (기존 한계 — 빈도 낮아 backlog)
 - [x] **Variant 모달 가격 desc 정렬** (5/5) — Agent home detail 모달에서 객실/사이즈 옵션이 sort_order(≈알파벳)였는데 USD 가격 내림차순으로. VIP 카탈로그 결: 비싼 옵션이 먼저 노출. tie-break은 sort_order
 - [ ] **Subpackage 라인 아이템 노트** — agent가 Subpackage 상품 선택 시 variant처럼 노트 입력 (내부용, 고객 견적서 미노출). `document_items.notes` 컬럼 추가. admin "Notes from Agent" 섹션에 기존 `cases.agent_notes`(케이스 전체 메모)와 함께 상품별 노트 묶어서 노출.
+- [ ] **스케줄 Selected Products 커버리지 게이트 — Subpackage 예외** — 현재 스케줄 저장 시 모든 selected product가 스케줄에 포함되어야 하는 커버리지 검증이 있음. 통역·차량·컨시어지 같은 Subpackage 상품은 스케줄 항목으로 개별 배치하는 게 아니라 여행 전반에 걸친 지원 서비스이므로 이 검증에서 제외해야 함.
+- [ ] **Subpackage 서비스 일수 수량 컨트롤** — 통역/차량/컨시어지 등 일수 단위 상품은 memberCount가 아닌 일수(quantity)로 곱해야 함. 카트 담은 후 −/+ 수량 조절 UI 추가, CartItem.quantity에 저장, totalUSD/review/document 생성에서 quantity 우선 사용. Guide 페이지에 호텔(nights)·Subpackage 서비스(일수)·일반 상품(인원수) 계산 방식 설명 추가 필요.
 - [ ] **호텔 객실 정원 검증 (Phase 2)** — `product_variants`에 `min_occupancy/max_occupancy` 컬럼, ProductForm + Excel upload에 입력, v18 데이터 backfill, 카트에서 group memberCount > max_occupancy 시 경고. 견적 금액엔 영향 없음 (UX 안전장치). 시뮬에서 발견해도 늦지 않음
 - [x] **데이터 마스터 v17 → v18** (5/4 저녁: DIAR 159 rows → 11 base + 159 variants, Hotel 37 rows → 13 base + 37 variants. `[★5 Hotel]` strip + grade paren strip + Hanok inline. 사용자 검수 후 deleteMissing으로 옛 row 정리)
 - [x] **Agent 카탈로그 정렬 정책** — 가격 desc 적용 (5/4 저녁). 인기순(5건+)은 케이스 쌓이면 도입 (backlog)

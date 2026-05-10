@@ -35,6 +35,7 @@ type CaseProduct = {
   groupId: string
   groupName: string
   isSubpackage: boolean
+  isSharedGroup: boolean
   durationValue: number | null
   durationUnit: string | null
 }
@@ -58,6 +59,8 @@ type Props = {
   onSaved: () => void
   // Persists current items as a draft without sending to agent.
   onSaveDraft: (items: ScheduleItem[]) => Promise<void>
+  // When true, save/draft actions are hidden — view only.
+  readOnly?: boolean
   // Slug for "Preview" link.
   slug: string | null
   // Save creates a new version on top of this.
@@ -74,6 +77,7 @@ export default function ScheduleEditor({
   caseGroups = [],
   onSaved, onSaveDraft, slug, nextVersion,
   initialConciergeName = null, initialConciergePhone = null,
+  readOnly = false,
 }: Props) {
   const [items, setItems] = useState<ScheduleItem[]>(initialItems)
   const [conciergeName, setConciergeName] = useState<string>(initialConciergeName ?? '')
@@ -104,18 +108,12 @@ export default function ScheduleEditor({
   // Used to restore original state if admin cancels an edit (vs new items which are removed entirely).
   const [editSnapshots, setEditSnapshots] = useState<Map<string, ScheduleItem>>(new Map())
 
-  // variantIds of non-Subpackage items shared across 2+ groups.
-  // Used by ItemRow picker: Shared rows show these + Subpackage.
+  // variantIds that belong to the explicit Shared document_group.
+  // Used by ItemRow picker: Shared schedule rows show only these variants.
   const sharedVariantIds = useMemo(() => {
-    const byVariant = new Map<string, Set<string>>() // variantId → Set<groupId>
-    for (const cp of caseProducts) {
-      if (cp.isSubpackage) continue
-      if (!byVariant.has(cp.variantId)) byVariant.set(cp.variantId, new Set())
-      byVariant.get(cp.variantId)!.add(cp.groupId)
-    }
     const shared = new Set<string>()
-    for (const [vid, groups] of byVariant) {
-      if (groups.size > 1) shared.add(vid)
+    for (const cp of caseProducts) {
+      if (cp.isSharedGroup) shared.add(cp.variantId)
     }
     return shared
   }, [caseProducts])
@@ -587,6 +585,11 @@ export default function ScheduleEditor({
                 {pendingItemIds.size} item{pendingItemIds.size !== 1 ? 's' : ''} still in draft — Save or Cancel each before sending.
               </p>
             )}
+            {readOnly ? (
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-right">
+                You are not the assigned admin for this case. Contact the assigned admin to save changes.
+              </p>
+            ) : (
             <div className="flex items-center justify-end gap-2">
               <button
                 onClick={() => void saveDraft(items)}
@@ -604,6 +607,7 @@ export default function ScheduleEditor({
                 {saving ? 'Saving…' : `Save v${nextVersion} & Send to Agent`}
               </button>
             </div>
+            )}
           </div>
         )
       })()}

@@ -139,7 +139,7 @@ export default function AgentSidebar() {
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={collapsed ? '/tiktak-logo-short.png' : '/tiktak-logo-long.png'}
-          alt="Tiktak"
+          alt="TikkTakk"
           className={collapsed ? 'h-10 w-auto -mt-1' : 'h-11 w-auto -mt-1'}
         />
         <button onClick={() => setOpen(false)} aria-label="Close menu" className="md:hidden text-gray-400 hover:text-gray-700 p-1 rounded-lg hover:bg-gray-100">

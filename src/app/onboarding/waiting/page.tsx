@@ -131,7 +131,7 @@ export default function OnboardingWaitingPage() {
         </button>
 
         <p className="text-[11px] text-gray-500 text-center">
-          If you believe this is a mistake, please contact your Tiktak admin directly.
+          If you believe this is a mistake, please contact your TikkTakk admin directly.
         </p>
       </div>
     )

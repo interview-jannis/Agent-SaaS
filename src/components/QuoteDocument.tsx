@@ -18,6 +18,7 @@ type QuoteGroup = {
   name: string
   order: number
   member_count: number
+  document_group_members: { case_member_id: string }[]
   document_items: QuoteItem[]
 }
 
@@ -55,10 +56,12 @@ export default async function QuoteDocument({
   slug,
   mode,
   preview,
+  filterMemberId,
 }: {
   slug: string
   mode: 'quotation' | 'invoice'
   preview: boolean
+  filterMemberId?: string
 }) {
   const isInvoice = mode === 'invoice'
   const supabase = createServerClient()
@@ -75,10 +78,11 @@ export default async function QuoteDocument({
         id, agent_id, status, created_at,
         schedules(status),
         agents!cases_agent_id_fkey(name, email, phone, bank_info, stamp_url),
-        case_members(is_lead, clients(name, nationality, needs_muslim_friendly))
+        case_members(id, is_lead, clients(name, nationality, needs_muslim_friendly))
       ),
       document_groups(
         id, name, order, member_count,
+        document_group_members(case_member_id),
         document_items(id, base_price, final_price, variant_label_snapshot, removed_at, origin, products(name, description))
       )
     `)
@@ -178,13 +182,19 @@ export default async function QuoteDocument({
     created_at: string | null
     schedules: { status: string }[] | null
     agents: { name: string; email: string | null; phone: string | null; bank_info: BankDetails | null; stamp_url: string | null } | null
-    case_members: { is_lead: boolean; clients: { name: string; nationality: string | null; needs_muslim_friendly: boolean | null } | null }[]
+    case_members: { id: string; is_lead: boolean; clients: { name: string; nationality: string | null; needs_muslim_friendly: boolean | null } | null }[]
   } | null
 
   // Before schedule is confirmed, the quotation must show only the original
   // items the agent added — admin may have staged additions for the confirmed
   // schedule that the client should not see until then.
   const scheduleConfirmed = (caseData?.schedules ?? []).some(s => s.status === 'confirmed')
+
+  // Per-member filter: resolve client name for the filtered member
+  const filterMember = filterMemberId
+    ? (caseData?.case_members ?? []).find(m => m.id === filterMemberId) ?? null
+    : null
+  const filterClientName = filterMember?.clients?.name ?? null
 
   // Issuer-aware rendering: agent-issued documents show agent's bank + name as
   // signer; admin-issued use system settings + signer_snapshot.
@@ -205,8 +215,13 @@ export default async function QuoteDocument({
   const agentName = caseData?.agents?.name ?? '—'
   const leadClient = caseData?.case_members?.find((m) => m.is_lead)?.clients ?? null
 
-  const groups = ((quote.document_groups as unknown as QuoteGroup[]) ?? [])
+  const allGroups = ((quote.document_groups as unknown as QuoteGroup[]) ?? [])
     .sort((a, b) => a.order - b.order)
+
+  // Per-member mode: only show groups that contain this member
+  const groups = filterMemberId
+    ? allGroups.filter(g => (g.document_group_members ?? []).some(m => m.case_member_id === filterMemberId))
+    : allGroups
 
   // Also fetch any items NOT attached to a group (used for deposit / commission /
   // additional invoices that don't model family groupings).
@@ -223,7 +238,9 @@ export default async function QuoteDocument({
   type LineItem = { no: number; group: string; description: string; qty: number; unitUSD: number; amtUSD: number }
   const lineItems: LineItem[] = []
   let no = 1
-  groups.forEach((group, gi) => {
+  // allGroups used only for global group index (gi) so group numbers stay consistent
+  groups.forEach((group) => {
+    const gi = allGroups.findIndex(g => g.id === group.id)
     const memberCount = Math.max(group.member_count ?? 1, 1)
     const autoName = `Group ${gi + 1}`
     const customName = group.name?.trim() ?? ''
@@ -236,8 +253,11 @@ export default async function QuoteDocument({
       if (scheduleConfirmed || isInvoice) return !it.removed_at
       return it.origin === 'original' || it.origin == null
     })) {
-      const amtUSD = item.final_price / exchangeRate
-      const unitUSD = amtUSD / memberCount
+      const groupAmtUSD = item.final_price / exchangeRate
+      const unitUSD = groupAmtUSD / memberCount
+      // Per-member mode: show only this person's share (qty=1, amt=unitUSD)
+      const amtUSD = filterMemberId ? unitUSD : groupAmtUSD
+      const qty = filterMemberId ? 1 : memberCount
       const baseName = item.products?.name ?? 'Service'
       const desc = item.variant_label_snapshot
         ? `${baseName} — ${item.variant_label_snapshot}`
@@ -246,7 +266,7 @@ export default async function QuoteDocument({
         no: no++,
         group: groupLabel,
         description: desc,
-        qty: memberCount,
+        qty,
         unitUSD,
         amtUSD,
       })
@@ -294,7 +314,7 @@ export default async function QuoteDocument({
           <div className="flex items-center justify-between mb-8">
             <div className="flex items-center gap-3">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/tiktak-logo-long.png" alt="Tiktak" className="h-10 w-auto" />
+              <img src="/tiktak-logo-long.png" alt="TikkTakk" className="h-10 w-auto" />
               <p className="text-xs text-gray-400">by Interview Co., Ltd</p>
             </div>
             <div className="text-right">
@@ -304,6 +324,50 @@ export default async function QuoteDocument({
               )}
             </div>
           </div>
+
+          {/* Per-member tabs — only when 2+ members exist; sticky on scroll */}
+          {(caseData?.case_members ?? []).length > 1 && (
+            <div className="mb-5 -mx-4 md:-mx-12 px-4 md:px-12 sticky top-0 z-10 bg-white border-b border-gray-200 print:hidden">
+              <div className="flex items-center gap-1 overflow-x-auto no-scrollbar py-2">
+                <a
+                  href="?"
+                  className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                    !filterMemberId
+                      ? 'bg-[#0f4c35] text-white'
+                      : 'text-gray-500 hover:text-gray-800 hover:bg-gray-100'
+                  }`}
+                >
+                  All Members
+                </a>
+                {(caseData?.case_members ?? []).map((m) => (
+                  <a
+                    key={m.id}
+                    href={`?member=${m.id}`}
+                    className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                      filterMemberId === m.id
+                        ? 'bg-[#0f4c35] text-white'
+                        : 'text-gray-500 hover:text-gray-800 hover:bg-gray-100'
+                    }`}
+                  >
+                    {m.clients?.name ?? '—'}
+                    {m.is_lead && <span className="ml-1 opacity-60 text-[10px]">★</span>}
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Per-member indicator — shown when document is filtered to one person */}
+          {filterClientName && (
+            <div className="mb-5 flex items-center gap-2 border border-[#0f4c35]/30 bg-[#0f4c35]/5 rounded px-4 py-2.5 print:mb-4">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-[#0f4c35] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
+              <p className="text-sm text-[#0f4c35] font-medium">
+                Individual {docTitle} for: <span className="font-bold">{filterClientName}</span>
+              </p>
+            </div>
+          )}
 
           {/* Quotation disclaimer banner — only for non-invoice */}
           {!isInvoice && (

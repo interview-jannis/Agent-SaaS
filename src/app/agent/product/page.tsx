@@ -46,9 +46,12 @@ type Client = {
   nationality: string
 }
 
-// Cart item: which variant of which product. Variant resolves price + label;
-// product holds shared metadata.
+// Non-Subpackage products go into a Group (or Shared).
 type CartItem = { productId: string; variantId: string }
+
+// Subpackage products (interpreter, car, hotel, concierge…) go into Trip Services.
+// days: user-set number of days/nights. Hotel auto-syncs to nightsBetween on render.
+type TripServiceItem = { productId: string; variantId: string; days: number }
 
 type Group = {
   id: string
@@ -72,6 +75,8 @@ type ClientForm = {
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
+
+const CART_VERSION = 3  // bump to invalidate old localStorage carts
 
 const GROUP_PALETTE = Array(8).fill({
   border: 'border-gray-200',
@@ -136,19 +141,25 @@ export default function AgentProductPage() {
   const [search, setSearch] = useState('')
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('')
   const [selectedSubcategoryName, setSelectedSubcategoryName] = useState<string>('')
-  // Snapshot of cart product IDs at the moment of entering section view — used to pin
-  // already-selected products to the front of each section so they stay visible after
-  // un-filtering. Updated only when transitioning into section view, not on every add.
   const [pinnedProductIds, setPinnedProductIds] = useState<Set<string>>(new Set())
   const [filterPrayerRoom, setFilterPrayerRoom] = useState(false)
   const [filterDietary, setFilterDietary] = useState<string[]>([])
   const [filterFemaleMedical, setFilterFemaleMedical] = useState(false)
 
-  // Cart
+  // Trip identity
+  const [tripName, setTripName] = useState('')
+
+  // Cart — 'shared' group is permanent (index 0), user groups follow.
+  // Shared items apply to ALL members (× total pax).
   const [groups, setGroups] = useState<Group[]>([
+    { id: 'shared', name: 'Shared', memberCount: 0, items: [] },
     { id: 'g1', name: 'Group 1', memberCount: 1, items: [] },
   ])
   const [activeGroupId, setActiveGroupId] = useState('g1')
+
+  // Trip Services — Subpackage products only. Separate from group-based cart.
+  // Hotel items use nightsBetween(dateStart, dateEnd) at render; other services use item.days.
+  const [tripServices, setTripServices] = useState<TripServiceItem[]>([])
 
   // UI
   const [showClientModal, setShowClientModal] = useState(false)
@@ -160,45 +171,55 @@ export default function AgentProductPage() {
   const [renameValue, setRenameValue] = useState('')
   const [imageIndexes, setImageIndexes] = useState<Record<string, number>>({})
   const [detailProduct, setDetailProduct] = useState<Product | null>(null)
-  // Tracks which variant prefix-groups are expanded inside the detail modal.
-  // Key: `${productId}::${groupIndex}`. Defaults to expanded if any child is
-  // already in cart (computed at render time).
   const [expandedVariantGroup, setExpandedVariantGroup] = useState<Record<string, boolean>>({})
   const [modalImageIndex, setModalImageIndex] = useState(0)
+  const [cartRestoredBanner, setCartRestoredBanner] = useState(false)
 
   function openDetail(product: Product) {
     setModalImageIndex(imageIndexes[product.id] ?? 0)
     setDetailProduct(product)
   }
 
-  // Restore cart only when returning from Review via the Edit button (which sets the flag).
-  // Any other entry to Product (from another tab, fresh login, etc.) starts with an empty cart.
+  function isSubpackageProduct(p: Product): boolean {
+    return p.product_categories?.name === 'Subpackage'
+  }
+
+  // ── Cart restore ───────────────────────────────────────────────────────────
+
   useEffect(() => {
-    const shouldRestore = sessionStorage.getItem('agent-cart-restore') === '1'
     sessionStorage.removeItem('agent-cart-restore')
-    if (!shouldRestore) {
-      localStorage.removeItem('agent-cart')
-      return
-    }
     try {
       const raw = localStorage.getItem('agent-cart')
       if (!raw) return
-      const cart = JSON.parse(raw) as { clientId?: string; dateStart?: string; dateEnd?: string; groups?: Array<{id: string; name: string; memberCount: number; items?: CartItem[]; productIds?: string[]}> }
+      const cart = JSON.parse(raw) as {
+        version?: number
+        clientId?: string; dateStart?: string; dateEnd?: string; tripName?: string
+        groups?: Array<{id: string; name: string; memberCount: number; items?: CartItem[]}>
+        tripServices?: TripServiceItem[]
+      }
+      // Invalidate old cart formats
+      if (!cart.version || cart.version < CART_VERSION) {
+        localStorage.removeItem('agent-cart')
+        return
+      }
       if (cart.clientId) setSelectedClientId(cart.clientId)
       if (cart.dateStart) setDateStart(cart.dateStart)
       if (cart.dateEnd) setDateEnd(cart.dateEnd)
+      if (cart.tripName) setTripName(cart.tripName)
+      if (cart.tripServices) setTripServices(cart.tripServices)
       if (cart.groups && cart.groups.length > 0) {
-        // Migration: drop pre-variant cart shape (productIds without variantId)
         const valid = cart.groups.every(g => Array.isArray(g.items))
-        if (!valid) {
-          localStorage.removeItem('agent-cart')
-          return
-        }
+        if (!valid) { localStorage.removeItem('agent-cart'); return }
         const restored: Group[] = cart.groups.map(g => ({
           id: g.id, name: g.name, memberCount: g.memberCount, items: g.items as CartItem[],
         }))
+        if (!restored.find(g => g.id === 'shared')) {
+          restored.unshift({ id: 'shared', name: 'Shared', memberCount: 0, items: [] })
+        }
         setGroups(restored)
-        setActiveGroupId(restored[0].id)
+        setActiveGroupId(restored.find(g => g.id !== 'shared')?.id ?? restored[0].id)
+        const hasItems = restored.some(g => g.items.length > 0) || (cart.tripServices ?? []).length > 0
+        if (hasItems) setCartRestoredBanner(true)
       }
     } catch { /* ignore malformed cart */ }
   }, [])
@@ -259,7 +280,6 @@ export default function AgentProductPage() {
 
   // ── Derived ────────────────────────────────────────────────────────────────
 
-  // Cross-category filters (everything except the category itself)
   function passesCrossFilters(p: Product): boolean {
     if (search && !p.name.toLowerCase().includes(search.toLowerCase())) return false
     if (filterPrayerRoom && !p.has_prayer_room) return false
@@ -269,23 +289,21 @@ export default function AgentProductPage() {
   }
 
   const marginMult = (1 + companyMargin) * (1 + agentMargin)
+  const nights = useMemo(() => nightsBetween(dateStart, dateEnd), [dateStart, dateEnd])
 
-  // Sort key: max active-variant price in USD (with margin rule applied).
-  // Drives "most expensive first" catalog ordering — we want agents leading
-  // with the high-ticket items. Future: swap/blend with popularity (case count)
-  // once we have ≥5–10 cases of signal.
+  // Total pax across all non-shared groups — Shared group's price multiplier.
+  const sharedMemberCount = groups.filter(g => g.id !== 'shared').reduce((s, g) => s + g.memberCount, 0)
+
   function priceSortKey(p: Product): number {
     const variants = (p.product_variants ?? []).filter(v => v.is_active)
     if (variants.length === 0) return -1
     const cat = p.product_categories?.name
     const sub = p.product_subcategories?.name
-    const isSubpkg = cat === 'Subpackage' && !isHotelItem(cat, sub)
+    const isSubpkg = cat === 'Subpackage'
     let max = 0
     for (const v of variants) {
       const usd = variantPriceUsd({
-        basePrice: v.base_price,
-        priceCurrency: v.price_currency,
-        exchangeRate,
+        basePrice: v.base_price, priceCurrency: v.price_currency, exchangeRate,
         marginMult: isSubpkg ? subpackageMult(subpkgConfig) : marginMult,
         applyMargin: isSubpkg ? true : appliesMargin(cat, sub),
       })
@@ -304,22 +322,17 @@ export default function AgentProductPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [products, search, selectedCategoryId, selectedSubcategoryName, filterPrayerRoom, filterDietary, filterFemaleMedical, exchangeRate, marginMult])
 
-  // Subcategories present within the currently selected category, ordered by sort_order.
   const availableSubcategories = useMemo(() => {
     if (!selectedCategoryId) return [] as string[]
     const productSubIds = new Set(
-      products
-        .filter(p => p.category_id === selectedCategoryId && p.subcategory_id)
-        .map(p => p.subcategory_id)
+      products.filter(p => p.category_id === selectedCategoryId && p.subcategory_id).map(p => p.subcategory_id)
     )
     return subcategories
       .filter(s => s.category_id === selectedCategoryId && productSubIds.has(s.id))
       .map(s => s.name)
   }, [products, subcategories, selectedCategoryId])
 
-  // Products grouped by category, with cart-pinned items first. Used in section view.
   const productsByCategory = useMemo(() => {
-    const cartIds = new Set(groups.flatMap((g) => g.items.map(it => it.productId)))
     const map = new Map<string, Product[]>()
     for (const cat of categories) map.set(cat.id, [])
     for (const p of products) {
@@ -327,9 +340,6 @@ export default function AgentProductPage() {
       const bucket = map.get(p.category_id)
       if (bucket) bucket.push(p)
     }
-    // Sort each bucket: pinned (was in cart at snapshot time) first, then by
-    // price desc so high-ticket items lead. Items added to cart AFTER snapshot
-    // are NOT re-pinned (prevents cards jumping while user clicks).
     for (const bucket of map.values()) {
       bucket.sort((a, b) => {
         const ap = pinnedProductIds.has(a.id) ? 0 : 1
@@ -337,138 +347,155 @@ export default function AgentProductPage() {
         if (ap !== bp) return ap - bp
         return priceSortKey(b) - priceSortKey(a)
       })
-      void cartIds
     }
     return map
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [products, categories, search, filterPrayerRoom, filterDietary, filterFemaleMedical, pinnedProductIds, exchangeRate, marginMult])
 
-  // When entering section view (selectedCategoryId cleared), snapshot current cart.
   useEffect(() => {
     if (selectedCategoryId === '') {
-      setPinnedProductIds(new Set(groups.flatMap((g) => g.items.map(it => it.productId))))
+      setPinnedProductIds(new Set([
+        ...groups.flatMap(g => g.items.map(it => it.productId)),
+        ...tripServices.map(it => it.productId),
+      ]))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCategoryId])
 
-  const productGroupIndex = useMemo(() => {
-    const map = new Map<string, number>()
-    groups.forEach((g, idx) => g.items.forEach((it) => map.set(it.productId, idx)))
-    return map
-  }, [groups])
-
-  const nights = useMemo(() => nightsBetween(dateStart, dateEnd), [dateStart, dateEnd])
+  const activeGroupIndex = groups.findIndex((g) => g.id === activeGroupId)
 
   const totalUSD = useMemo(() => {
-    return groups.reduce((total, g) => {
+    // Group items (non-Subpackage)
+    const groupTotal = groups.reduce((total, g) => {
       return total + g.items.reduce((sum, it) => {
-        const p = products.find((x) => x.id === it.productId)
-        const v = p?.product_variants?.find((x) => x.id === it.variantId)
+        const p = products.find(x => x.id === it.productId)
+        const v = p?.product_variants?.find(x => x.id === it.variantId)
         if (!p || !v) return sum
         const cat = p.product_categories?.name
         const sub = p.product_subcategories?.name
-        const isSubpkg = cat === 'Subpackage' && !isHotelItem(cat, sub)
         const usd = variantPriceUsd({
-          basePrice: v.base_price,
-          priceCurrency: v.price_currency,
-          exchangeRate,
-          marginMult: isSubpkg ? subpackageMult(subpkgConfig) : marginMult,
-          applyMargin: isSubpkg ? true : appliesMargin(cat, sub),
+          basePrice: v.base_price, priceCurrency: v.price_currency, exchangeRate,
+          marginMult, applyMargin: appliesMargin(cat, sub),
         })
-        // Hotels price by room × nights (no memberCount). Everything else
-        // multiplies by group memberCount.
-        const multiplier = isHotelItem(cat, sub) ? nights : g.memberCount
-        return sum + usd * multiplier
+        const memberCount = g.id === 'shared' ? sharedMemberCount : g.memberCount
+        return sum + usd * memberCount
       }, 0)
     }, 0)
-  }, [groups, products, exchangeRate, marginMult, subpkgConfig, nights])
 
-  const activeGroupIndex = groups.findIndex((g) => g.id === activeGroupId)
+    // Trip Services (Subpackage — interpreter, car, hotel, concierge…)
+    const servicesTotal = tripServices.reduce((sum, it) => {
+      const p = products.find(x => x.id === it.productId)
+      const v = p?.product_variants?.find(x => x.id === it.variantId)
+      if (!p || !v) return sum
+      const cat = p.product_categories?.name
+      const sub = p.product_subcategories?.name
+      const usd = variantPriceUsd({
+        basePrice: v.base_price, priceCurrency: v.price_currency, exchangeRate,
+        marginMult: subpackageMult(subpkgConfig), applyMargin: true,
+      })
+      const days = isHotelItem(cat, sub) ? nights : it.days
+      return sum + usd * days
+    }, 0)
 
-  // ── Cart handlers ──────────────────────────────────────────────────────────
+    return groupTotal + servicesTotal
+  }, [groups, tripServices, products, exchangeRate, marginMult, subpkgConfig, nights, sharedMemberCount])
+
+  // ── Cart handlers — groups ─────────────────────────────────────────────────
 
   function defaultVariantId(p: Product): string | null {
     const active = (p.product_variants ?? []).filter(v => v.is_active)
-    const sorted = [...active].sort((a, b) => a.sort_order - b.sort_order)
-    return sorted[0]?.id ?? null
+    return [...active].sort((a, b) => a.sort_order - b.sort_order)[0]?.id ?? null
   }
 
-  // Toggle the default variant of a product. For products with multiple
-  // variants the agent should open the detail modal to choose explicitly,
-  // but the quick + button still works using the first variant.
   function toggleProduct(productId: string) {
     const p = products.find(x => x.id === productId)
-    const variantId = p ? defaultVariantId(p) : null
+    if (!p) return
+    if (isSubpackageProduct(p)) {
+      const variantId = defaultVariantId(p)
+      if (variantId) toggleServiceItem(productId, variantId)
+      return
+    }
+    const variantId = defaultVariantId(p)
     if (!variantId) return
     toggleItem(productId, variantId)
   }
 
   function toggleItem(productId: string, variantId: string) {
-    setGroups((prev) =>
-      prev.map((g) => {
+    setGroups(prev =>
+      prev.map(g => {
         if (g.id !== activeGroupId) return g
-        const isIn = g.items.some(it => it.productId === productId && it.variantId === variantId)
-        return {
-          ...g,
-          items: isIn
-            ? g.items.filter(it => !(it.productId === productId && it.variantId === variantId))
-            : [...g.items, { productId, variantId }],
-        }
+        const idx = g.items.findIndex(it => it.productId === productId && it.variantId === variantId)
+        if (idx >= 0) return { ...g, items: g.items.filter((_, i) => i !== idx) }
+        return { ...g, items: [...g.items, { productId, variantId }] }
       })
     )
   }
 
+  // ── Cart handlers — trip services ──────────────────────────────────────────
+
+  function toggleServiceItem(productId: string, variantId: string) {
+    setTripServices(prev => {
+      const idx = prev.findIndex(it => it.productId === productId && it.variantId === variantId)
+      if (idx >= 0) return prev.filter((_, i) => i !== idx)
+      const p = products.find(x => x.id === productId)
+      const defaultDays = isHotelItem(p?.product_categories?.name, p?.product_subcategories?.name) ? Math.max(nights, 1) : 1
+      return [...prev, { productId, variantId, days: defaultDays }]
+    })
+  }
+
+  function setServiceDays(productId: string, variantId: string, days: number) {
+    setTripServices(prev => prev.map(it =>
+      it.productId === productId && it.variantId === variantId ? { ...it, days: Math.max(1, days) } : it
+    ))
+  }
+
+  // ── Group management ───────────────────────────────────────────────────────
+
   function addGroup() {
-    if (groups.length >= GROUP_PALETTE.length) return
+    const nonShared = groups.filter(g => g.id !== 'shared')
+    if (nonShared.length >= GROUP_PALETTE.length - 1) return
     const newGroup: Group = {
       id: `g-${Date.now()}`,
-      name: `Group ${groups.length + 1}`,
+      name: `Group ${nonShared.length + 1}`,
       memberCount: 1,
       items: [],
     }
-    setGroups((prev) => [...prev, newGroup])
+    setGroups(prev => [...prev, newGroup])
     setActiveGroupId(newGroup.id)
   }
 
   function removeGroup(groupId: string) {
-    if (groups.length === 1) return
-    setGroups((prev) => prev.filter((g) => g.id !== groupId))
-    if (activeGroupId === groupId) {
-      setActiveGroupId(groups.find((g) => g.id !== groupId)?.id ?? '')
-    }
+    if (groupId === 'shared') return
+    const nonShared = groups.filter(g => g.id !== 'shared')
+    if (nonShared.length <= 1) return
+    setGroups(prev => prev.filter(g => g.id !== groupId))
+    if (activeGroupId === groupId) setActiveGroupId(groups.find(g => g.id !== groupId)?.id ?? '')
   }
 
   function setMemberCount(groupId: string, delta: number) {
-    setGroups((prev) =>
-      prev.map((g) => g.id === groupId ? { ...g, memberCount: Math.max(1, g.memberCount + delta) } : g)
-    )
+    if (groupId === 'shared') return
+    setGroups(prev => prev.map(g => g.id === groupId ? { ...g, memberCount: Math.max(1, g.memberCount + delta) } : g))
   }
 
   function commitRename() {
     if (!renamingGroupId) return
     const trimmed = renameValue.trim()
-    if (trimmed) {
-      setGroups((prev) => prev.map((g) => g.id === renamingGroupId ? { ...g, name: trimmed } : g))
-    }
+    if (trimmed) setGroups(prev => prev.map(g => g.id === renamingGroupId ? { ...g, name: trimmed } : g))
     setRenamingGroupId(null)
   }
 
   // ── Quote flow ─────────────────────────────────────────────────────────────
 
   function handleCreateQuote() {
-    const hasProducts = groups.some((g) => g.items.length > 0)
+    const hasProducts = groups.some(g => g.items.length > 0) || tripServices.length > 0
     if (!hasProducts) return
     if (!dateStart || !dateEnd) return
-
-    if (!selectedClientId) {
-      setShowClientModal(true)
-      return
-    }
+    if (!selectedClientId) { setShowClientModal(true); return }
     goToReview(selectedClientId)
   }
 
   function goToReview(clientId: string) {
-    const cart = { clientId, dateStart, dateEnd, groups }
+    const cart = { version: CART_VERSION, clientId, dateStart, dateEnd, tripName, groups, tripServices }
     localStorage.setItem('agent-cart', JSON.stringify(cart))
     router.push('/agent/product/review')
   }
@@ -485,26 +512,17 @@ export default function AgentProductPage() {
     if (!f.phone.trim()) missing.push('Phone')
     if (!f.email.trim()) missing.push('Email')
     if (missing.length > 0) { setClientError(`Required: ${missing.join(', ')}`); return }
-    if (!agentId) {
-      setClientError('Agent profile not loaded. Please refresh the page and try again.')
-      return
-    }
-    setSavingClient(true)
-    setClientError('')
+    if (!agentId) { setClientError('Agent profile not loaded. Please refresh.'); return }
+    setSavingClient(true); setClientError('')
     try {
       const { count } = await supabase.from('clients').select('*', { count: 'exact', head: true })
-      const next = (count ?? 0) + 1
       const { data, error } = await supabase
         .from('clients')
         .insert({
-          client_number: `#CL-${String(next).padStart(3, '0')}`,
+          client_number: `#CL-${String((count ?? 0) + 1).padStart(3, '0')}`,
           agent_id: agentId,
-          name: f.name.trim(),
-          nationality: f.nationality.trim(),
-          gender: f.gender,
-          date_of_birth: f.date_of_birth,
-          phone: f.phone.trim(),
-          email: f.email.trim(),
+          name: f.name.trim(), nationality: f.nationality.trim(), gender: f.gender,
+          date_of_birth: f.date_of_birth, phone: f.phone.trim(), email: f.email.trim(),
           needs_muslim_friendly: f.needs_muslim_friendly,
           dietary_restriction: f.dietary_restriction,
           special_requests: f.special_requests || null,
@@ -512,84 +530,76 @@ export default function AgentProductPage() {
         .select('id, client_number, name, nationality')
         .single()
       if (error) throw error
-      setClients((prev) => [...prev, data])
+      setClients(prev => [...prev, data])
       setSelectedClientId(data.id)
       setShowClientModal(false)
       setClientForm(DEFAULT_CLIENT_FORM)
       goToReview(data.id)
     } catch (e: unknown) {
       setClientError((e as { message?: string })?.message ?? 'Failed to register client.')
-    } finally {
-      setSavingClient(false)
-    }
+    } finally { setSavingClient(false) }
   }
 
   function setField<K extends keyof ClientForm>(key: K, val: ClientForm[K]) {
-    setClientForm((prev) => ({ ...prev, [key]: val }))
+    setClientForm(prev => ({ ...prev, [key]: val }))
   }
 
-  // ── Price helper ───────────────────────────────────────────────────────────
+  // ── Price helpers ──────────────────────────────────────────────────────────
 
-  // Catalog card price. Single variant: that variant's price. Multi-variant:
-  // "min – max" range so the agent sees the spread before opening the detail
-  // modal (real per-variant price revealed on selection).
   function priceLabel(p: Product): string {
     const variants = (p.product_variants ?? []).filter(v => v.is_active)
     if (variants.length === 0) return '—'
     const cat = p.product_categories?.name
     const sub = p.product_subcategories?.name
-    const isSubpkg = cat === 'Subpackage' && !isHotelItem(cat, sub)
+    const isSubpkg = cat === 'Subpackage'
     const prices = variants.map(v => variantPriceUsd({
-      basePrice: v.base_price,
-      priceCurrency: v.price_currency,
-      exchangeRate,
+      basePrice: v.base_price, priceCurrency: v.price_currency, exchangeRate,
       marginMult: isSubpkg ? subpackageMult(subpkgConfig) : marginMult,
       applyMargin: isSubpkg ? true : appliesMargin(cat, sub),
     }))
-    const min = Math.min(...prices)
-    const max = Math.max(...prices)
-    // Subpackage with margin disabled → admin set all subpackages to "Free" (무상 제공)
+    const min = Math.min(...prices), max = Math.max(...prices)
     if (isSubpkg && subpackageMult(subpkgConfig) === 0) return 'Free'
-    // Price not set / on-request items (e.g. Sofitel ROYAL, Noble Klasse)
     if (min === 0 && max === 0) return 'Price on request'
     const fmt = (n: number) => `$${n.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
     if (min === max) return `$${min.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
     return `${fmt(min)} – ${fmt(max)}`
   }
-  // Kept for backwards compat in modal etc.
-  function toUSD(p: Product): string {
-    return priceLabel(p)
-  }
+
+  function toUSD(p: Product): string { return priceLabel(p) }
+
+  // ── Product card ───────────────────────────────────────────────────────────
 
   function renderProductCard(product: Product, compact = false) {
+    const isSubpkg = isSubpackageProduct(product)
+    const inServices = isSubpkg && tripServices.some(it => it.productId === product.id)
     const activeGroup = groups[activeGroupIndex]
-    const inActiveGroup = activeGroup?.items.some(it => it.productId === product.id) ?? false
-    // Groups other than active that already contain this product
-    const otherGroupsWithProduct = groups.filter(
+    const inActiveGroup = !isSubpkg && (activeGroup?.items.some(it => it.productId === product.id) ?? false)
+    const otherGroupsWithProduct = isSubpkg ? [] : groups.filter(
       g => g.id !== activeGroupId && g.items.some(it => it.productId === product.id)
     )
     const inOtherGroup = otherGroupsWithProduct.length > 0
     const variantCount = (product.product_variants ?? []).filter(v => v.is_active).length
     const activePalette = GROUP_PALETTE[activeGroupIndex]
-    const imgs = product.product_images ?? []
-    const sortedImgs = [...imgs].sort((a, b) => (b.is_primary ? 1 : 0) - (a.is_primary ? 1 : 0))
+    const imgs = [...(product.product_images ?? [])].sort((a, b) => (b.is_primary ? 1 : 0) - (a.is_primary ? 1 : 0))
     const imgIdx = imageIndexes[product.id] ?? 0
-    const currentImg = sortedImgs[imgIdx]
+    const currentImg = imgs[imgIdx]
+
+    const isSelected = isSubpkg ? inServices : inActiveGroup
 
     return (
       <div
         key={product.id}
         className={`bg-white rounded-2xl border-2 overflow-hidden flex flex-col transition-all ${
-          inActiveGroup
+          isSelected
             ? 'border-[#0f4c35]'
             : inOtherGroup
             ? 'border-[#0f4c35] border-dashed'
             : 'border-gray-100'
         }`}
       >
-        {/* Image with carousel */}
+        {/* Image */}
         <div
-          className={`${compact ? 'aspect-[16/10]' : 'aspect-[16/10]'} bg-gray-100 overflow-hidden relative group/img cursor-pointer`}
+          className="aspect-[16/10] bg-gray-100 overflow-hidden relative group/img cursor-pointer"
           onClick={() => openDetail(product)}
         >
           {currentImg ? (
@@ -602,176 +612,167 @@ export default function AgentProductPage() {
               </svg>
             </div>
           )}
-          {sortedImgs.length > 1 && (
+          {imgs.length > 1 && (
             <>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  setImageIndexes((prev) => ({ ...prev, [product.id]: (imgIdx - 1 + sortedImgs.length) % sortedImgs.length }))
-                }}
-                className="absolute left-1.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-black/40 text-white flex items-center justify-center opacity-0 group-hover/img:opacity-100 transition-opacity text-xs"
-              >‹</button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  setImageIndexes((prev) => ({ ...prev, [product.id]: (imgIdx + 1) % sortedImgs.length }))
-                }}
-                className="absolute right-1.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-black/40 text-white flex items-center justify-center opacity-0 group-hover/img:opacity-100 transition-opacity text-xs"
-              >›</button>
+              <button onClick={(e) => { e.stopPropagation(); setImageIndexes(prev => ({ ...prev, [product.id]: (imgIdx - 1 + imgs.length) % imgs.length })) }}
+                className="absolute left-1.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-black/40 text-white flex items-center justify-center opacity-0 group-hover/img:opacity-100 transition-opacity text-xs">‹</button>
+              <button onClick={(e) => { e.stopPropagation(); setImageIndexes(prev => ({ ...prev, [product.id]: (imgIdx + 1) % imgs.length })) }}
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-black/40 text-white flex items-center justify-center opacity-0 group-hover/img:opacity-100 transition-opacity text-xs">›</button>
               <div className="absolute bottom-1.5 left-1/2 -translate-x-1/2 flex gap-1">
-                {sortedImgs.map((_, i) => (
-                  <div key={i} className={`w-1.5 h-1.5 rounded-full transition-all ${i === imgIdx ? 'bg-white' : 'bg-white/40'}`} />
-                ))}
+                {imgs.map((_, i) => <div key={i} className={`w-1.5 h-1.5 rounded-full ${i === imgIdx ? 'bg-white' : 'bg-white/40'}`} />)}
               </div>
             </>
           )}
-          {/* Other-group badge — inside the relative image div so absolute positioning is correct */}
           {inOtherGroup && !inActiveGroup && (
             <div className="absolute top-1.5 left-1.5 flex gap-1 z-10">
               {otherGroupsWithProduct.map(g => {
                 const gIdx = groups.findIndex(x => x.id === g.id)
                 const label = g.name.length <= 6 ? g.name : `G${gIdx + 1}`
-                return (
-                  <span key={g.id} className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-[#0f4c35] text-white leading-tight">
-                    {label}
-                  </span>
-                )
+                return <span key={g.id} className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-[#0f4c35] text-white">{label}</span>
               })}
+            </div>
+          )}
+          {/* Trip Services badge */}
+          {inServices && (
+            <div className="absolute top-1.5 right-1.5 z-10">
+              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-[#0f4c35] text-white">Services</span>
             </div>
           )}
         </div>
 
-        {/* Content — compact: subcategory tag + name + price/duration row + tag row + add button */}
+        {/* Content */}
         <div className="p-2.5 flex flex-col flex-1 gap-1">
           {product.product_subcategories?.name && (
-            <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide truncate leading-tight">
-              {product.product_subcategories.name}
-            </p>
+            <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide truncate">{product.product_subcategories.name}</p>
           )}
           {product.partner_name && (
-            <p className="text-[10px] text-gray-500 truncate leading-tight">
-              {product.partner_name}
-            </p>
+            <p className="text-[10px] text-gray-500 truncate">{product.partner_name}</p>
           )}
-          <button
-            onClick={() => openDetail(product)}
-            className="text-xs font-semibold text-gray-900 leading-tight text-left hover:text-[#0f4c35] transition-colors line-clamp-1"
-          >
+          <button onClick={() => openDetail(product)}
+            className="text-sm font-semibold text-gray-900 leading-tight text-left hover:text-[#0f4c35] transition-colors line-clamp-1">
             {product.name}
           </button>
 
           <div className="mt-auto min-w-0">
             <p className={`text-sm font-bold leading-tight truncate ${priceLabel(product) === 'Price on request' ? 'text-amber-600' : 'text-gray-900'}`}>{priceLabel(product)}</p>
             {product.duration_value && (
-              <p className="text-[10px] text-gray-400 leading-tight">{product.duration_value} {product.duration_unit}</p>
+              <p className="text-[10px] text-gray-400">{product.duration_value} {product.duration_unit}</p>
             )}
           </div>
 
           {(product.has_female_doctor || product.has_prayer_room) && (
-            <div className="flex flex-wrap gap-x-2 gap-y-0 text-[10px] text-gray-500">
-              {product.has_female_doctor && (
-                <span title="Female medical staff" className="inline-flex items-center gap-0.5 whitespace-nowrap">
-                  <svg className="w-3 h-3 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                  </svg>
-                  Female
-                </span>
-              )}
-              {product.has_prayer_room && (
-                <span title="Prayer room" className="inline-flex items-center gap-0.5 whitespace-nowrap">
-                  <svg className="w-3 h-3 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                  </svg>
-                  Prayer
-                </span>
-              )}
+            <div className="flex flex-wrap gap-x-2 text-[10px] text-gray-500">
+              {product.has_female_doctor && <span className="inline-flex items-center gap-0.5"><svg className="w-3 h-3 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>Female</span>}
+              {product.has_prayer_room && <span className="inline-flex items-center gap-0.5"><svg className="w-3 h-3 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>Prayer</span>}
             </div>
           )}
 
-          {variantCount > 1 ? (
-            // Multi-variant: open detail modal to pick which variant
-            <button
-              onClick={() => openDetail(product)}
-              className={`mt-1 w-full py-1 rounded-lg text-[11px] font-medium transition-all ${
-                inActiveGroup ? activePalette.btn : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
-            >
-              {inActiveGroup
-                ? `✓ in ${groups[activeGroupIndex]?.name} · pick more`
-                : `Choose · ${variantCount} options`}
-            </button>
+          {/* Action button */}
+          {isSubpkg ? (
+            // Subpackage → Trip Services
+            variantCount > 1 ? (
+              <button onClick={() => openDetail(product)}
+                className={`mt-1 w-full py-1 rounded-lg text-[11px] font-medium transition-all ${
+                  inServices ? 'bg-[#0f4c35] hover:bg-[#0a3526] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}>
+                {inServices ? '✓ In Services · pick more' : `Choose · ${variantCount} options`}
+              </button>
+            ) : (
+              <button onClick={() => toggleProduct(product.id)}
+                className={`mt-1 w-full py-1 rounded-lg text-[11px] font-medium transition-all ${
+                  inServices ? 'bg-[#0f4c35] hover:bg-[#0a3526] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}>
+                {inServices ? '✓ In Services' : '+ Add to Services'}
+              </button>
+            )
           ) : (
-            <button
-              onClick={() => toggleProduct(product.id)}
-              className={`mt-1 w-full py-1 rounded-lg text-[11px] font-medium transition-all ${
-                inActiveGroup ? activePalette.btn : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
-            >
-              {inActiveGroup ? `✓ ${groups[activeGroupIndex]?.name}` : `+ ${groups[activeGroupIndex]?.name ?? 'Group'}`}
-            </button>
+            // Non-Subpackage → Group
+            variantCount > 1 ? (
+              <button onClick={() => openDetail(product)}
+                className={`mt-1 w-full py-1 rounded-lg text-[11px] font-medium transition-all ${
+                  inActiveGroup ? activePalette.btn : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}>
+                {inActiveGroup ? `✓ in ${groups[activeGroupIndex]?.name} · pick more` : `Choose · ${variantCount} options`}
+              </button>
+            ) : (
+              <button onClick={() => toggleProduct(product.id)}
+                className={`mt-1 w-full py-1 rounded-lg text-[11px] font-medium transition-all ${
+                  inActiveGroup ? activePalette.btn : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}>
+                {inActiveGroup ? `✓ ${groups[activeGroupIndex]?.name}` : `+ ${groups[activeGroupIndex]?.name ?? 'Group'}`}
+              </button>
+            )
           )}
         </div>
       </div>
     )
+    void compact
   }
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
-  if (loading) {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <p className="text-sm text-gray-400">Loading...</p>
-      </div>
-    )
-  }
+  if (loading) return (
+    <div className="flex h-full items-center justify-center">
+      <p className="text-sm text-gray-400">Loading...</p>
+    </div>
+  )
+
+  const selectedCategoryName = categories.find(c => c.id === selectedCategoryId)?.name ?? ''
+  const isSubpackageCategoryActive = selectedCategoryName === 'Subpackage'
 
   return (
     <div className="flex flex-col h-full">
 
+      {/* Cart restored banner */}
+      {cartRestoredBanner && (
+        <div className="shrink-0 flex items-center justify-between gap-3 px-4 py-2 bg-green-50 border-b border-green-200">
+          <p className="text-xs text-green-800">In-progress cart restored.</p>
+          <button
+            onClick={() => {
+              localStorage.removeItem('agent-cart')
+              setGroups([{ id: 'shared', name: 'Shared', memberCount: 0, items: [] }, { id: 'g1', name: 'Group 1', memberCount: 1, items: [] }])
+              setTripServices([])
+              setActiveGroupId('g1')
+              setSelectedClientId(''); setDateStart(''); setDateEnd(''); setTripName('')
+              setCartRestoredBanner(false)
+            }}
+            className="text-xs font-medium text-green-700 hover:text-green-900 underline shrink-0">
+            Clear &amp; start fresh
+          </button>
+        </div>
+      )}
+
       {/* ── Top Bar ── */}
       <div className="shrink-0 bg-white border-b border-gray-100 flex flex-col md:flex-row md:items-center md:h-14 gap-2 md:gap-4 px-4 md:px-6 py-3 md:py-0">
-        {/* Client */}
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-xs text-gray-400 whitespace-nowrap">Trip Name</span>
+          <input type="text" value={tripName} onChange={e => setTripName(e.target.value)}
+            placeholder="e.g. Al-Rashid's Family"
+            className="flex-1 md:flex-none text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:border-[#0f4c35] text-gray-900 md:w-48" />
+        </div>
+        <div className="hidden md:block h-4 w-px bg-gray-200" />
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-xs text-gray-400 whitespace-nowrap">Client</span>
-          <select
-            value={selectedClientId}
-            onChange={(e) => setSelectedClientId(e.target.value)}
-            className="flex-1 md:flex-none text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:border-[#0f4c35] bg-white text-gray-700 md:max-w-[180px]"
-          >
+          <select value={selectedClientId} onChange={e => setSelectedClientId(e.target.value)}
+            className="flex-1 md:flex-none text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:border-[#0f4c35] bg-white text-gray-700 md:max-w-[180px]">
             <option value="">Select client</option>
-            {clients.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
+            {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </div>
-
         <div className="hidden md:block h-4 w-px bg-gray-200" />
-
-        {/* Date range */}
         {(() => {
           const today = new Date().toISOString().slice(0, 10)
           return (
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="text-xs text-gray-400 whitespace-nowrap">Date *</span>
-          <input
-            type="date"
-            value={dateStart}
-            min={today}
-            onChange={(e) => {
-              setDateStart(e.target.value)
-              if (dateEnd && e.target.value > dateEnd) setDateEnd(e.target.value)
-            }}
-            className="flex-1 md:flex-none min-w-0 text-sm border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-[#0f4c35] text-gray-700"
-          />
-          <span className="text-xs text-gray-300">~</span>
-          <input
-            type="date"
-            value={dateEnd}
-            min={dateStart || today}
-            onChange={(e) => setDateEnd(e.target.value)}
-            className="flex-1 md:flex-none min-w-0 text-sm border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-[#0f4c35] text-gray-700"
-          />
-        </div>
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-xs text-gray-400 whitespace-nowrap">Date *</span>
+              <input type="date" value={dateStart} min={today}
+                onChange={e => { setDateStart(e.target.value); if (dateEnd && e.target.value > dateEnd) setDateEnd(e.target.value) }}
+                className="flex-1 md:flex-none min-w-0 text-sm border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-[#0f4c35] text-gray-700" />
+              <span className="text-xs text-gray-300">~</span>
+              <input type="date" value={dateEnd} min={dateStart || today}
+                onChange={e => setDateEnd(e.target.value)}
+                className="flex-1 md:flex-none min-w-0 text-sm border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-[#0f4c35] text-gray-700" />
+            </div>
           )
         })()}
       </div>
@@ -779,140 +780,106 @@ export default function AgentProductPage() {
       {/* ── Main ── */}
       <div className="flex flex-col flex-1 overflow-hidden">
 
-        {/* ── Top Filter Bar ── horizontal toolbar replaces the old left sidebar
-            so the product grid can use the full window width. Categories are
-            pills inline, Muslim/dietary filters are tucked behind a popover
-            so they don't crowd the bar. */}
+        {/* Filter Bar */}
         <div className="shrink-0 bg-white border-b border-gray-100 px-4 md:px-6 py-2.5 flex flex-col gap-2.5">
-          {/* Row 1: Search (left) + Muslim Friendly (right) */}
           <div className="flex items-center gap-3">
-          <div className="relative flex-1 min-w-[180px] max-w-xs">
-            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
-            </svg>
-            <input
-              type="text"
-              placeholder="Search"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-[#0f4c35] bg-white"
-            />
-          </div>
-
-          {/* Muslim/Dietary filters — popover (right side of row 1) */}
-          {(() => {
-            const activeCount = (filterPrayerRoom ? 1 : 0) + (filterFemaleMedical ? 1 : 0) + filterDietary.length
-            return (
-              <div className="relative ml-auto shrink-0">
-                <button
-                  onClick={() => setFilterOpen(v => !v)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${activeCount > 0
-                    ? 'border-[#0f4c35] text-[#0f4c35] bg-[#0f4c35]/5'
-                    : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 4.5h18M6 12h12M10 19.5h4" />
-                  </svg>
-                  Muslim Friendly{activeCount > 0 ? ` · ${activeCount}` : ''}
-                  <svg className={`w-3 h-3 transition-transform ${filterOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-                  </svg>
-                </button>
-                {filterOpen && (
-                  <>
-                    <div className="fixed inset-0 z-10" onClick={() => setFilterOpen(false)} />
-                    <div className="absolute right-0 top-full mt-1.5 z-20 bg-white border border-gray-200 rounded-xl shadow-lg p-4 space-y-3 w-60">
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" checked={filterPrayerRoom} onChange={(e) => setFilterPrayerRoom(e.target.checked)}
-                          className="accent-[#0f4c35] w-3.5 h-3.5" />
-                        <span className="text-xs text-gray-700">Prayer room</span>
-                      </label>
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" checked={filterFemaleMedical} onChange={(e) => setFilterFemaleMedical(e.target.checked)}
-                          className="accent-[#0f4c35] w-3.5 h-3.5" />
-                        <span className="text-xs text-gray-700">Female medical staff</span>
-                      </label>
-                      <div className="border-t border-gray-100 pt-2">
-                        <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Dietary</p>
-                        <div className="space-y-1.5">
-                          {DIETARY_FILTER_OPTIONS.map(opt => (
-                            <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
-                              <input type="checkbox" checked={filterDietary.includes(opt.value)}
-                                onChange={(e) => setFilterDietary(prev => e.target.checked ? [...prev, opt.value] : prev.filter(v => v !== opt.value))}
-                                className="accent-[#0f4c35] w-3.5 h-3.5" />
-                              <span className="text-xs text-gray-700">{opt.label}</span>
-                            </label>
-                          ))}
-                        </div>
-                      </div>
-                      {activeCount > 0 && (
-                        <button onClick={() => { setFilterPrayerRoom(false); setFilterFemaleMedical(false); setFilterDietary([]) }}
-                          className="text-[11px] text-gray-500 hover:text-gray-800 underline">
-                          Clear all
-                        </button>
-                      )}
-                    </div>
-                  </>
-                )}
-              </div>
-            )
-          })()}
-          </div>
-
-          {/* Row 2: Category pills (horizontal scroll on narrow widths) */}
-          <div className="flex items-center gap-1.5 overflow-x-auto -mx-1 px-1">
-            {[{ id: '', name: 'All' }, ...categories].map(cat => {
-              const active = selectedCategoryId === cat.id
+            <div className="relative flex-1 min-w-[180px] max-w-xs">
+              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+              </svg>
+              <input type="text" placeholder="Search" value={search} onChange={e => setSearch(e.target.value)}
+                className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-[#0f4c35] bg-white" />
+            </div>
+            {(() => {
+              const activeCount = (filterPrayerRoom ? 1 : 0) + (filterFemaleMedical ? 1 : 0) + filterDietary.length
               return (
-                <button
-                  key={cat.id || 'all'}
-                  onClick={() => { setSelectedCategoryId(cat.id); setSelectedSubcategoryName('') }}
-                  className={`shrink-0 px-3 py-1.5 text-xs rounded-full border transition-colors ${active
-                    ? 'bg-[#0f4c35] border-[#0f4c35] text-white'
-                    : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'}`}
-                >
-                  {cat.name}
-                </button>
+                <div className="relative ml-auto shrink-0">
+                  <button onClick={() => setFilterOpen(v => !v)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${activeCount > 0 ? 'border-[#0f4c35] text-[#0f4c35] bg-[#0f4c35]/5' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 4.5h18M6 12h12M10 19.5h4" /></svg>
+                    Muslim Friendly{activeCount > 0 ? ` · ${activeCount}` : ''}
+                    <svg className={`w-3 h-3 transition-transform ${filterOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg>
+                  </button>
+                  {filterOpen && (
+                    <>
+                      <div className="fixed inset-0 z-10" onClick={() => setFilterOpen(false)} />
+                      <div className="absolute right-0 top-full mt-1.5 z-20 bg-white border border-gray-200 rounded-xl shadow-lg p-4 space-y-3 w-60">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input type="checkbox" checked={filterPrayerRoom} onChange={e => setFilterPrayerRoom(e.target.checked)} className="accent-[#0f4c35] w-3.5 h-3.5" />
+                          <span className="text-xs text-gray-700">Prayer room</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input type="checkbox" checked={filterFemaleMedical} onChange={e => setFilterFemaleMedical(e.target.checked)} className="accent-[#0f4c35] w-3.5 h-3.5" />
+                          <span className="text-xs text-gray-700">Female medical staff</span>
+                        </label>
+                        <div className="border-t border-gray-100 pt-2">
+                          <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Dietary</p>
+                          <div className="space-y-1.5">
+                            {DIETARY_FILTER_OPTIONS.map(opt => (
+                              <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" checked={filterDietary.includes(opt.value)}
+                                  onChange={e => setFilterDietary(prev => e.target.checked ? [...prev, opt.value] : prev.filter(v => v !== opt.value))}
+                                  className="accent-[#0f4c35] w-3.5 h-3.5" />
+                                <span className="text-xs text-gray-700">{opt.label}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                        {activeCount > 0 && (
+                          <button onClick={() => { setFilterPrayerRoom(false); setFilterFemaleMedical(false); setFilterDietary([]) }}
+                            className="text-[11px] text-gray-500 hover:text-gray-800 underline">Clear all</button>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
               )
-            })}
+            })()}
+          </div>
+
+          {/* Category pills */}
+          <div className="flex items-center gap-1.5 overflow-x-auto -mx-1 px-1">
+            {[{ id: '', name: 'All' }, ...categories].map(cat => (
+              <button key={cat.id || 'all'}
+                onClick={() => { setSelectedCategoryId(cat.id); setSelectedSubcategoryName('') }}
+                className={`shrink-0 px-3 py-1.5 text-xs rounded-full border transition-colors ${selectedCategoryId === cat.id ? 'bg-[#0f4c35] border-[#0f4c35] text-white' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+                {cat.name}
+              </button>
+            ))}
           </div>
         </div>
 
-        {/* Subcategory pill row — shown when a parent category is selected and has subcategories. */}
+        {/* Subcategory pills */}
         {selectedCategoryId && availableSubcategories.length > 0 && (
           <div className="shrink-0 bg-white border-b border-gray-100 px-4 md:px-6 py-2 flex items-center gap-1.5 overflow-x-auto">
-            <button
-              onClick={() => setSelectedSubcategoryName('')}
-              className={`shrink-0 px-2.5 py-1 text-[11px] rounded-full border transition-colors ${selectedSubcategoryName === ''
-                ? 'bg-gray-800 border-gray-800 text-white'
-                : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'}`}>
+            <button onClick={() => setSelectedSubcategoryName('')}
+              className={`shrink-0 px-2.5 py-1 text-[11px] rounded-full border transition-colors ${selectedSubcategoryName === '' ? 'bg-gray-800 border-gray-800 text-white' : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'}`}>
               All
             </button>
-            {availableSubcategories.map(sub => {
-              const active = selectedSubcategoryName === sub
-              return (
-                <button key={sub}
-                  onClick={() => setSelectedSubcategoryName(sub)}
-                  className={`shrink-0 px-2.5 py-1 text-[11px] rounded-full border transition-colors ${active
-                    ? 'bg-gray-800 border-gray-800 text-white'
-                    : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'}`}>
-                  {sub}
-                </button>
-              )
-            })}
+            {availableSubcategories.map(sub => (
+              <button key={sub} onClick={() => setSelectedSubcategoryName(sub)}
+                className={`shrink-0 px-2.5 py-1 text-[11px] rounded-full border transition-colors ${selectedSubcategoryName === sub ? 'bg-gray-800 border-gray-800 text-white' : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'}`}>
+                {sub}
+              </button>
+            ))}
           </div>
         )}
 
-        {/* ── Product Area: sections (no category filter) OR flat grid (category selected) ── */}
+        {/* Subpackage context banner */}
+        {isSubpackageCategoryActive && (
+          <div className="shrink-0 bg-[#0f4c35]/5 border-b border-[#0f4c35]/10 px-4 md:px-6 py-2">
+            <p className="text-xs text-[#0f4c35]">These items go to <strong>Trip Services</strong> — priced by days or nights, not per person.</p>
+          </div>
+        )}
+
+        {/* Product grid */}
         <div className="flex-1 bg-gray-50 p-4 md:p-6 overflow-y-auto">
           {selectedCategoryId === '' ? (
-            Array.from(productsByCategory.values()).every((arr) => arr.length === 0) ? (
-              <div className="flex items-center justify-center h-48">
-                <p className="text-sm text-gray-400">No products found</p>
-              </div>
+            Array.from(productsByCategory.values()).every(arr => arr.length === 0) ? (
+              <div className="flex items-center justify-center h-48"><p className="text-sm text-gray-400">No products found</p></div>
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                {categories.map((cat) => {
+                {categories.map(cat => {
                   const items = productsByCategory.get(cat.id) ?? []
                   if (items.length === 0) return null
                   const PREVIEW = 3
@@ -922,15 +889,12 @@ export default function AgentProductPage() {
                     <section key={cat.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex flex-col">
                       <div className="flex items-center justify-between mb-3 pb-2 border-b border-gray-100">
                         <h2 className="text-sm font-semibold text-gray-800">{cat.name}</h2>
-                        <button
-                          onClick={() => setSelectedCategoryId(cat.id)}
-                          className="text-xs text-[#0f4c35] font-medium hover:underline"
-                        >
+                        <button onClick={() => setSelectedCategoryId(cat.id)} className="text-xs text-[#0f4c35] font-medium hover:underline">
                           {hasMore ? `See all (${items.length}) →` : 'See all →'}
                         </button>
                       </div>
                       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                        {preview.map((product) => renderProductCard(product, true))}
+                        {preview.map(p => renderProductCard(p, true))}
                       </div>
                     </section>
                   )
@@ -938,16 +902,53 @@ export default function AgentProductPage() {
               </div>
             )
           ) : filteredProducts.length === 0 ? (
-            <div className="flex items-center justify-center h-48">
-              <p className="text-sm text-gray-400">No products found</p>
-            </div>
+            <div className="flex items-center justify-center h-48"><p className="text-sm text-gray-400">No products found</p></div>
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-              {filteredProducts.map((product) => renderProductCard(product))}
+              {filteredProducts.map(p => renderProductCard(p))}
             </div>
           )}
         </div>
       </div>
+
+      {/* ── Trip Services Row ── shown when Subpackage is active OR services exist */}
+      {(isSubpackageCategoryActive || tripServices.length > 0) && (
+        <div className="shrink-0 bg-white border-t border-gray-100 px-4 md:px-6 py-2 flex items-center gap-2 overflow-x-auto">
+          <span className="text-xs font-semibold text-gray-500 whitespace-nowrap shrink-0">Trip Services</span>
+          {tripServices.length === 0 ? (
+            <span className="text-xs text-gray-400">Select from Subpackage category above</span>
+          ) : (
+            tripServices.map(it => {
+              const p = products.find(x => x.id === it.productId)
+              const v = p?.product_variants?.find(x => x.id === it.variantId)
+              if (!p || !v) return null
+              const isHotel = isHotelItem(p.product_categories?.name, p.product_subcategories?.name)
+              const displayNights = isHotel ? nights : it.days
+              const label = v.variant_label ? `${p.name} · ${v.variant_label}` : p.name
+              return (
+                <div key={`${it.productId}:${it.variantId}`}
+                  className="flex items-center gap-1 px-2.5 py-1 bg-[#0f4c35]/5 border border-[#0f4c35]/20 rounded-lg text-xs text-[#0f4c35] whitespace-nowrap shrink-0">
+                  <span className="truncate max-w-[120px]">{label}</span>
+                  <span className="mx-0.5 opacity-40">·</span>
+                  {isHotel ? (
+                    <span className="opacity-70">{displayNights}{displayNights === 1 ? 'n' : 'n'} <span className="opacity-50">(auto)</span></span>
+                  ) : (
+                    <>
+                      <button onClick={() => setServiceDays(it.productId, it.variantId, it.days - 1)}
+                        className="opacity-60 hover:opacity-100 font-bold px-0.5">−</button>
+                      <span className="min-w-[20px] text-center">{it.days}d</span>
+                      <button onClick={() => setServiceDays(it.productId, it.variantId, it.days + 1)}
+                        className="opacity-60 hover:opacity-100 font-bold px-0.5">+</button>
+                    </>
+                  )}
+                  <button onClick={() => toggleServiceItem(it.productId, it.variantId)}
+                    className="ml-1 opacity-50 hover:opacity-100 text-base leading-none">×</button>
+                </div>
+              )
+            })
+          )}
+        </div>
+      )}
 
       {/* ── Bottom Bar ── */}
       <div className="shrink-0 bg-white border-t border-gray-100 flex flex-col md:flex-row md:items-center md:h-14 gap-2 md:gap-3 px-4 md:px-6 py-3 md:py-0">
@@ -956,46 +957,32 @@ export default function AgentProductPage() {
           {groups.map((group, idx) => {
             const palette = GROUP_PALETTE[idx]
             const isActive = group.id === activeGroupId
-
             return (
-              <div
-                key={group.id}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-all shrink-0 ${
-                  isActive ? palette.tab : palette.tabOff
-                }`}
-                onClick={() => setActiveGroupId(group.id)}
-              >
+              <div key={group.id}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-all shrink-0 ${isActive ? palette.tab : palette.tabOff}`}
+                onClick={() => setActiveGroupId(group.id)}>
                 {renamingGroupId === group.id ? (
-                  <input
-                    autoFocus
-                    value={renameValue}
-                    onChange={(e) => setRenameValue(e.target.value)}
+                  <input autoFocus value={renameValue}
+                    onChange={e => setRenameValue(e.target.value)}
                     onBlur={commitRename}
-                    onKeyDown={(e) => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') setRenamingGroupId(null) }}
-                    onClick={(e) => e.stopPropagation()}
-                    className="w-28 bg-transparent border-b border-current outline-none text-xs"
-                  />
+                    onKeyDown={e => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') setRenamingGroupId(null) }}
+                    onClick={e => e.stopPropagation()}
+                    className="w-28 bg-transparent border-b border-current outline-none text-xs" />
                 ) : (
                   <>
                     <span
-                      onDoubleClick={(e) => {
+                      onDoubleClick={e => {
+                        // Shared group is not renameable — its name is used as a convention
+                        if (group.id === 'shared') return
                         e.stopPropagation()
                         setRenamingGroupId(group.id)
                         setRenameValue(group.name)
-                      }}
-                    >
+                      }}>
                       {group.name}
                     </span>
-                    {isActive && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setRenamingGroupId(group.id)
-                          setRenameValue(group.name)
-                        }}
-                        title="Rename group"
-                        className="opacity-60 hover:opacity-100 ml-0.5"
-                      >
+                    {isActive && group.id !== 'shared' && (
+                      <button onClick={e => { e.stopPropagation(); setRenamingGroupId(group.id); setRenameValue(group.name) }}
+                        title="Rename group" className="opacity-60 hover:opacity-100 ml-0.5">
                         <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
                         </svg>
@@ -1003,36 +990,25 @@ export default function AgentProductPage() {
                     )}
                   </>
                 )}
-
-                {/* Member count */}
-                <div className="flex items-center gap-0.5 ml-1">
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setMemberCount(group.id, -1) }}
-                    className="w-4 h-4 flex items-center justify-center rounded opacity-70 hover:opacity-100"
-                  >−</button>
-                  <span className="min-w-[14px] text-center">{group.memberCount}</span>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setMemberCount(group.id, 1) }}
-                    className="w-4 h-4 flex items-center justify-center rounded opacity-70 hover:opacity-100"
-                  >+</button>
-                </div>
-
-                {/* Remove group */}
-                {groups.length > 1 && isActive && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); removeGroup(group.id) }}
-                    className="ml-0.5 opacity-60 hover:opacity-100"
-                  >×</button>
+                {/* Member count — Shared auto-sums; others are editable */}
+                {group.id === 'shared' ? (
+                  <span className="ml-1 text-[10px] opacity-70">{sharedMemberCount} pax</span>
+                ) : (
+                  <div className="flex items-center gap-0.5 ml-1">
+                    <button onClick={e => { e.stopPropagation(); setMemberCount(group.id, -1) }} className="w-4 h-4 flex items-center justify-center rounded opacity-70 hover:opacity-100">−</button>
+                    <span className="min-w-[14px] text-center">{group.memberCount}</span>
+                    <button onClick={e => { e.stopPropagation(); setMemberCount(group.id, 1) }} className="w-4 h-4 flex items-center justify-center rounded opacity-70 hover:opacity-100">+</button>
+                  </div>
+                )}
+                {group.id !== 'shared' && groups.filter(g => g.id !== 'shared').length > 1 && isActive && (
+                  <button onClick={e => { e.stopPropagation(); removeGroup(group.id) }} className="ml-0.5 opacity-60 hover:opacity-100">×</button>
                 )}
               </div>
             )
           })}
-
           {groups.length < GROUP_PALETTE.length && (
-            <button
-              onClick={addGroup}
-              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-400 border border-dashed border-gray-300 hover:border-gray-400 hover:text-gray-600 transition-all shrink-0"
-            >
+            <button onClick={addGroup}
+              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-400 border border-dashed border-gray-300 hover:border-gray-400 hover:text-gray-600 transition-all shrink-0">
               + Add Group
             </button>
           )}
@@ -1040,31 +1016,23 @@ export default function AgentProductPage() {
 
         {/* Total + CTA */}
         {(() => {
-          const hasProducts = groups.some((g) => g.items.length > 0)
+          const hasProducts = groups.some(g => g.items.length > 0) || tripServices.length > 0
           const missingDates = !dateStart || !dateEnd
           const hint = !hasProducts ? 'Add at least one product to continue'
             : missingDates ? 'Select travel dates to continue'
             : ''
           return (
-        <div className="flex items-center gap-3 md:gap-4 shrink-0">
-          {hint && (
-            <p className="hidden md:block text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1">
-              {hint}
-            </p>
-          )}
-          <div className="text-left md:text-right flex-1 md:flex-none">
-            <p className="text-[10px] text-gray-400">Total</p>
-            <p className="text-sm font-bold text-gray-900">${totalUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-          </div>
-          <button
-            onClick={handleCreateQuote}
-            disabled={!hasProducts || missingDates}
-            title={hint}
-            className="px-5 py-2 bg-[#0f4c35] text-white text-sm font-medium rounded-xl hover:bg-[#0a3828] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-          >
-            Create Quote
-          </button>
-        </div>
+            <div className="flex items-center gap-3 md:gap-4 shrink-0">
+              {hint && <p className="hidden md:block text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1">{hint}</p>}
+              <div className="text-left md:text-right flex-1 md:flex-none">
+                <p className="text-[10px] text-gray-400">Total</p>
+                <p className="text-sm font-bold text-gray-900">${totalUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+              </div>
+              <button onClick={handleCreateQuote} disabled={!hasProducts || missingDates} title={hint}
+                className="px-5 py-2 bg-[#0f4c35] text-white text-sm font-medium rounded-xl hover:bg-[#0a3828] disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                Create Quote
+              </button>
+            </div>
           )
         })()}
       </div>
@@ -1072,7 +1040,7 @@ export default function AgentProductPage() {
       {/* ── Product Detail Modal ── */}
       {detailProduct && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setDetailProduct(null)}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             {/* Images */}
             {(() => {
               const imgs = [...(detailProduct.product_images ?? [])].sort((a, b) => (b.is_primary ? 1 : 0) - (a.is_primary ? 1 : 0))
@@ -1083,10 +1051,8 @@ export default function AgentProductPage() {
                   <img src={imgs[idx].image_url} alt="" className="w-full h-full object-cover" />
                   {imgs.length > 1 && (
                     <>
-                      <button onClick={() => setModalImageIndex((idx - 1 + imgs.length) % imgs.length)}
-                        className="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/40 text-white flex items-center justify-center text-lg">‹</button>
-                      <button onClick={() => setModalImageIndex((idx + 1) % imgs.length)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/40 text-white flex items-center justify-center text-lg">›</button>
+                      <button onClick={() => setModalImageIndex((idx - 1 + imgs.length) % imgs.length)} className="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/40 text-white flex items-center justify-center text-lg">‹</button>
+                      <button onClick={() => setModalImageIndex((idx + 1) % imgs.length)} className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/40 text-white flex items-center justify-center text-lg">›</button>
                       <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1.5">
                         {imgs.map((_, i) => <div key={i} className={`w-2 h-2 rounded-full ${i === idx ? 'bg-white' : 'bg-white/40'}`} />)}
                       </div>
@@ -1105,40 +1071,34 @@ export default function AgentProductPage() {
                     {detailProduct.product_subcategories?.name && ` · ${detailProduct.product_subcategories.name}`}
                   </p>
                   <h2 className="text-lg font-semibold text-gray-900">{detailProduct.name}</h2>
-                  {detailProduct.partner_name && (
-                    <p className="text-xs text-gray-500 mt-0.5">{detailProduct.partner_name}</p>
-                  )}
+                  {detailProduct.partner_name && <p className="text-xs text-gray-500 mt-0.5">{detailProduct.partner_name}</p>}
                 </div>
                 <button onClick={() => setDetailProduct(null)} className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 shrink-0">
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>
               </div>
 
-              {/* Variant picker — groups variants by the prefix before the last
-                  " · " separator. Multiple groups → 2-level accordion (click
-                  group header to expand its options). Single group → flat list
-                  (current behavior). Single variant → just the price box. */}
+              {/* Variant picker */}
               {(() => {
+                const isSubpkg = isSubpackageProduct(detailProduct)
                 const detailCat = detailProduct.product_categories?.name
                 const detailSub = detailProduct.product_subcategories?.name
-                const detailIsSubpkg = detailCat === 'Subpackage' && !isHotelItem(detailCat, detailSub)
+                const detailIsSubpkg = isSubpkg
                 const variantUsd = (v: Variant) => variantPriceUsd({
-                  basePrice: v.base_price, priceCurrency: v.price_currency,
-                  exchangeRate,
+                  basePrice: v.base_price, priceCurrency: v.price_currency, exchangeRate,
                   marginMult: detailIsSubpkg ? subpackageMult(subpkgConfig) : marginMult,
                   applyMargin: detailIsSubpkg ? true : appliesMargin(detailCat, detailSub),
                 })
-                // Sort by price desc (high → low) so VIP-tier rooms / packages
-                // surface first. Ties fall back to original sort_order.
                 const variants = (detailProduct.product_variants ?? [])
                   .filter(v => v.is_active)
                   .sort((a, b) => variantUsd(b) - variantUsd(a) || a.sort_order - b.sort_order)
+
                 if (variants.length <= 1) {
                   return (
                     <div className="flex items-center gap-4">
                       <div className="bg-gray-50 rounded-xl px-4 py-2.5 text-center">
                         <p className={`text-lg font-bold ${toUSD(detailProduct) === 'Price on request' ? 'text-amber-600' : 'text-gray-900'}`}>{toUSD(detailProduct)}</p>
-                        <p className="text-xs text-gray-400">{toUSD(detailProduct) === 'Price on request' ? 'contact us' : 'per person'}</p>
+                        <p className="text-xs text-gray-400">{toUSD(detailProduct) === 'Price on request' ? 'contact us' : isSubpkg ? 'per day / unit' : 'per person'}</p>
                       </div>
                       <div className="bg-gray-50 rounded-xl px-4 py-2.5 text-center">
                         <p className="text-base font-semibold text-gray-900">{detailProduct.duration_value} {detailProduct.duration_unit}</p>
@@ -1147,40 +1107,32 @@ export default function AgentProductPage() {
                     </div>
                   )
                 }
-                const activeGroup = groups[activeGroupIndex]
-                const usdFor = (v: typeof variants[number]) => variantPriceUsd({
-                  basePrice: v.base_price, priceCurrency: v.price_currency,
-                  exchangeRate,
-                  marginMult: detailIsSubpkg ? subpackageMult(subpkgConfig) : marginMult,
-                  applyMargin: detailIsSubpkg ? true : appliesMargin(detailCat, detailSub),
-                })
 
-                // Group by prefix (everything before the LAST " · "). Variants
-                // without a separator form a singleton group keyed by full label.
+                const activeGroup = groups[activeGroupIndex]
+                const usdFor = (v: typeof variants[number]) => variantUsd(v)
+
                 const groupsByPrefix: { prefix: string; items: typeof variants }[] = []
                 const prefixIdx = new Map<string, number>()
                 for (const v of variants) {
                   const label = v.variant_label || 'Default'
                   const sepIdx = label.lastIndexOf(' · ')
                   const prefix = sepIdx >= 0 ? label.slice(0, sepIdx) : label
-                  if (!prefixIdx.has(prefix)) {
-                    prefixIdx.set(prefix, groupsByPrefix.length)
-                    groupsByPrefix.push({ prefix, items: [] })
-                  }
+                  if (!prefixIdx.has(prefix)) { prefixIdx.set(prefix, groupsByPrefix.length); groupsByPrefix.push({ prefix, items: [] }) }
                   groupsByPrefix[prefixIdx.get(prefix)!].items.push(v)
                 }
-
-                // If only one prefix group exists, flat render.
                 const useTwoLevel = groupsByPrefix.length >= 2
+
                 const renderVariantRow = (v: typeof variants[number], showFullLabel: boolean) => {
-                  const inCart = activeGroup?.items.some(it => it.productId === detailProduct.id && it.variantId === v.id) ?? false
+                  const inCart = isSubpkg
+                    ? tripServices.some(it => it.productId === detailProduct.id && it.variantId === v.id)
+                    : (activeGroup?.items.some(it => it.productId === detailProduct.id && it.variantId === v.id) ?? false)
                   const usd = usdFor(v)
                   const label = v.variant_label || 'Default'
                   const sepIdx = label.lastIndexOf(' · ')
                   const display = showFullLabel || sepIdx < 0 ? label : label.slice(sepIdx + 3)
                   return (
                     <button key={v.id}
-                      onClick={() => toggleItem(detailProduct.id, v.id)}
+                      onClick={() => isSubpkg ? toggleServiceItem(detailProduct.id, v.id) : toggleItem(detailProduct.id, v.id)}
                       className={`w-full flex items-center justify-between px-4 py-2.5 rounded-xl border transition-colors ${inCart ? 'border-[#0f4c35] bg-[#0f4c35]/5' : 'border-gray-200 hover:border-gray-300'}`}>
                       <div className="text-left">
                         <p className="text-sm font-medium text-gray-900">{display}</p>
@@ -1198,53 +1150,42 @@ export default function AgentProductPage() {
                   )
                 }
 
-                if (!useTwoLevel) {
-                  return (
-                    <div className="space-y-2">
-                      <p className="text-xs font-medium text-gray-500">Choose option</p>
-                      {variants.map(v => renderVariantRow(v, true))}
-                    </div>
-                  )
-                }
+                if (!useTwoLevel) return (
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-gray-500">Choose option</p>
+                    {variants.map(v => renderVariantRow(v, true))}
+                  </div>
+                )
 
                 return (
                   <div className="space-y-2">
                     <p className="text-xs font-medium text-gray-500">Choose option</p>
                     {groupsByPrefix.map((g, gi) => {
-                      // Singleton group → render directly as a row (full label).
                       if (g.items.length === 1) return renderVariantRow(g.items[0], true)
-                      // Multi-item group → expandable. Auto-expand if any child is in cart.
                       const anyInCart = g.items.some(v =>
-                        activeGroup?.items.some(it => it.productId === detailProduct.id && it.variantId === v.id) ?? false)
+                        isSubpkg
+                          ? tripServices.some(it => it.productId === detailProduct.id && it.variantId === v.id)
+                          : (activeGroup?.items.some(it => it.productId === detailProduct.id && it.variantId === v.id) ?? false)
+                      )
                       const expanded = expandedVariantGroup[`${detailProduct.id}::${gi}`] ?? anyInCart
                       const prices = g.items.map(usdFor)
                       const min = Math.min(...prices), max = Math.max(...prices)
-                      const range = (detailIsSubpkg && subpackageMult(subpkgConfig) === 0)
-                        ? 'Free'
-                        : (min === 0 && max === 0)
-                          ? 'Price on request'
-                          : min === max
-                            ? `$${min.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
-                            : `$${min.toLocaleString('en-US', { maximumFractionDigits: 0 })} – $${max.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
+                      const range = (detailIsSubpkg && subpackageMult(subpkgConfig) === 0) ? 'Free'
+                        : (min === 0 && max === 0) ? 'Price on request'
+                        : min === max ? `$${min.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
+                        : `$${min.toLocaleString('en-US', { maximumFractionDigits: 0 })} – $${max.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
                       return (
                         <div key={g.prefix} className="space-y-2">
-                          <button
-                            onClick={() => setExpandedVariantGroup(s => ({ ...s, [`${detailProduct.id}::${gi}`]: !expanded }))}
+                          <button onClick={() => setExpandedVariantGroup(s => ({ ...s, [`${detailProduct.id}::${gi}`]: !expanded }))}
                             className={`w-full flex items-center justify-between px-4 py-2.5 rounded-xl border transition-colors ${anyInCart ? 'border-[#0f4c35] bg-[#0f4c35]/5' : 'border-gray-200 hover:border-gray-300'}`}>
                             <div className="text-left flex items-center gap-2">
-                              <svg className={`w-3.5 h-3.5 text-gray-400 transition-transform ${expanded ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                              </svg>
+                              <svg className={`w-3.5 h-3.5 text-gray-400 transition-transform ${expanded ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
                               <p className="text-sm font-medium text-gray-900">{g.prefix}</p>
                               <span className="text-[10px] text-gray-400">({g.items.length})</span>
                             </div>
                             <p className="text-sm font-semibold text-gray-700">{range}</p>
                           </button>
-                          {expanded && (
-                            <div className="pl-6 space-y-2">
-                              {g.items.map(v => renderVariantRow(v, false))}
-                            </div>
-                          )}
+                          {expanded && <div className="pl-6 space-y-2">{g.items.map(v => renderVariantRow(v, false))}</div>}
                         </div>
                       )
                     })}
@@ -1265,25 +1206,19 @@ export default function AgentProductPage() {
                   <div className="flex flex-wrap gap-2">
                     {detailProduct.has_prayer_room && (
                       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-700">
-                        <svg className="w-3 h-3 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                        </svg>
+                        <svg className="w-3 h-3 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
                         Prayer room
                       </span>
                     )}
                     {detailProduct.has_female_doctor && (
                       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-700">
-                        <svg className="w-3 h-3 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                        </svg>
+                        <svg className="w-3 h-3 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
                         Female medical staff
                       </span>
                     )}
                     {detailProduct.dietary_type !== 'none' && (
                       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-700">
-                        <svg className="w-3 h-3 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                        </svg>
+                        <svg className="w-3 h-3 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
                         {DIETARY_FILTER_OPTIONS.find(o => o.value === detailProduct.dietary_type)?.label ?? detailProduct.dietary_type}
                       </span>
                     )}
@@ -1291,25 +1226,24 @@ export default function AgentProductPage() {
                 </div>
               )}
 
-              {/* Add button — only for single-variant products. Multi-variant
-                  uses per-row toggle above. */}
-              {((detailProduct.product_variants ?? []).filter(v => v.is_active).length <= 1) && (
-                <button
-                  onClick={() => { toggleProduct(detailProduct.id); setDetailProduct(null) }}
-                  className={`w-full py-2.5 rounded-xl text-sm font-medium transition-all ${
-                    groups[activeGroupIndex]?.items.some(it => it.productId === detailProduct.id)
-                      ? GROUP_PALETTE[activeGroupIndex].btn
-                      : 'bg-[#0f4c35] hover:bg-[#0a3828] text-white'
-                  }`}
-                >
-                  {groups[activeGroupIndex]?.items.some(it => it.productId === detailProduct.id)
-                    ? '✓ Added to ' + groups[activeGroupIndex]?.name
-                    : 'Add to ' + (groups[activeGroupIndex]?.name ?? 'Group')}
-                </button>
-              )}
+              {/* Bottom button */}
+              {((detailProduct.product_variants ?? []).filter(v => v.is_active).length <= 1) && (() => {
+                const isSubpkg = isSubpackageProduct(detailProduct)
+                const inCart = isSubpkg
+                  ? tripServices.some(it => it.productId === detailProduct.id)
+                  : (groups[activeGroupIndex]?.items.some(it => it.productId === detailProduct.id) ?? false)
+                const label = isSubpkg
+                  ? (inCart ? '✓ In Trip Services' : 'Add to Trip Services')
+                  : (inCart ? '✓ Added to ' + groups[activeGroupIndex]?.name : 'Add to ' + (groups[activeGroupIndex]?.name ?? 'Group'))
+                return (
+                  <button onClick={() => { toggleProduct(detailProduct.id); setDetailProduct(null) }}
+                    className="w-full py-2.5 rounded-xl text-sm font-medium bg-[#0f4c35] hover:bg-[#0a3828] text-white transition-all">
+                    {label}
+                  </button>
+                )
+              })()}
               {((detailProduct.product_variants ?? []).filter(v => v.is_active).length > 1) && (
-                <button
-                  onClick={() => setDetailProduct(null)}
+                <button onClick={() => setDetailProduct(null)}
                   className="w-full py-2.5 rounded-xl text-sm font-medium border border-gray-200 text-gray-700 hover:bg-gray-50">
                   Done
                 </button>
@@ -1322,38 +1256,31 @@ export default function AgentProductPage() {
       {/* ── Client Registration Modal ── */}
       {showClientModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => !savingClient && setShowClientModal(false)}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="p-6 border-b border-gray-100 flex items-center justify-between">
               <h2 className="text-base font-semibold text-gray-900">New Client</h2>
               <button onClick={() => !savingClient && setShowClientModal(false)} className="text-gray-400 hover:text-gray-600">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
-
             <div className="p-6 space-y-3">
-              {/* Name */}
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Name *</label>
-                <input value={clientForm.name} onChange={(e) => setField('name', e.target.value)}
+                <input value={clientForm.name} onChange={e => setField('name', e.target.value)}
                   className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
               </div>
-
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">Nationality *</label>
-                  <input value={clientForm.nationality} onChange={(e) => setField('nationality', e.target.value)}
+                  <input value={clientForm.nationality} onChange={e => setField('nationality', e.target.value)}
                     className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
                 </div>
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">Gender *</label>
                   <div className="flex gap-3 pt-1">
-                    {(['male', 'female'] as const).map((g) => (
+                    {(['male', 'female'] as const).map(g => (
                       <label key={g} className="flex items-center gap-1.5 cursor-pointer">
-                        <input type="radio" checked={clientForm.gender === g}
-                          onChange={() => setField('gender', g)}
-                          className="accent-[#0f4c35]" />
+                        <input type="radio" checked={clientForm.gender === g} onChange={() => setField('gender', g)} className="accent-[#0f4c35]" />
                         <span className="text-sm text-gray-700 capitalize">{g}</span>
                       </label>
                     ))}
@@ -1365,71 +1292,53 @@ export default function AgentProductPage() {
                 </div>
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">Phone *</label>
-                  <input value={clientForm.phone} onChange={(e) => setField('phone', e.target.value)}
+                  <input value={clientForm.phone} onChange={e => setField('phone', e.target.value)}
                     className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
                 </div>
                 <div className="sm:col-span-2">
                   <label className="block text-xs text-gray-500 mb-1">Email *</label>
-                  <input type="email" value={clientForm.email} onChange={(e) => setField('email', e.target.value)}
+                  <input type="email" value={clientForm.email} onChange={e => setField('email', e.target.value)}
                     className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
                 </div>
               </div>
-
-              {/* Muslim? */}
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Muslim?</label>
                 <div className="flex gap-4">
-                  {([true, false] as const).map((v) => (
+                  {([true, false] as const).map(v => (
                     <label key={String(v)} className="flex items-center gap-1.5 cursor-pointer">
                       <input type="radio" checked={clientForm.needs_muslim_friendly === v}
-                        onChange={() => setClientForm((p) => ({
-                          ...p,
-                          needs_muslim_friendly: v,
-                          // Reset Muslim-specific fields when switching to No
-                          ...(v ? {} : { dietary_restriction: 'none' as DietaryRestriction }),
-                        }))}
+                        onChange={() => setClientForm(p => ({ ...p, needs_muslim_friendly: v, ...(v ? {} : { dietary_restriction: 'none' as DietaryRestriction }) }))}
                         className="accent-[#0f4c35]" />
                       <span className="text-sm text-gray-700">{v ? 'Yes' : 'No'}</span>
                     </label>
                   ))}
                 </div>
               </div>
-
-              {/* Conditional: only shown when Muslim = Yes */}
               {clientForm.needs_muslim_friendly && (
                 <div className="space-y-3 rounded-xl border border-[#0f4c35]/15 bg-[#0f4c35]/[0.03] p-3">
                   <div>
                     <label className="block text-xs text-gray-500 mb-1">Dietary Restriction</label>
-                    <select value={clientForm.dietary_restriction}
-                      onChange={(e) => setField('dietary_restriction', e.target.value as DietaryRestriction)}
+                    <select value={clientForm.dietary_restriction} onChange={e => setField('dietary_restriction', e.target.value as DietaryRestriction)}
                       className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35] bg-white">
-                      {DIETARY_FORM_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      {DIETARY_FORM_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                     </select>
                   </div>
                   <p className="text-[11px] text-gray-500">Prayer preferences, medical info, and other details can be added on the client&apos;s detail page.</p>
                 </div>
               )}
-
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Special Requests</label>
-                <textarea value={clientForm.special_requests}
-                  onChange={(e) => setField('special_requests', e.target.value)}
-                  rows={2}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35] resize-none" />
+                <textarea value={clientForm.special_requests} onChange={e => setField('special_requests', e.target.value)}
+                  rows={2} className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35] resize-none" />
               </div>
-
               <p className="text-xs text-gray-400">* Travel details (passport, flights, etc.) can be added after payment.</p>
-
               {clientError && <p className="text-xs text-red-500">{clientError}</p>}
             </div>
-
             <div className="p-5 border-t border-gray-100 flex items-center justify-end gap-2">
               <button onClick={() => { setShowClientModal(false); setClientError('') }} disabled={savingClient}
-                className="px-4 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-                Cancel
-              </button>
+                className="px-4 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50">Cancel</button>
               <button onClick={handleRegisterClient} disabled={savingClient}
-                className="px-4 py-1.5 text-sm bg-[#0f4c35] text-white font-medium rounded-lg hover:bg-[#0a3828] disabled:opacity-50 transition-colors">
+                className="px-4 py-1.5 text-sm bg-[#0f4c35] text-white font-medium rounded-lg hover:bg-[#0a3828] disabled:opacity-50">
                 {savingClient ? 'Saving...' : 'Register & Review Quote'}
               </button>
             </div>

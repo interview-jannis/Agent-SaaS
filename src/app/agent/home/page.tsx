@@ -25,7 +25,7 @@ const STEPS = [
     number: '03',
     title: 'Sign & Confirm',
     description:
-      'Once you are happy with the proposal, a three-party agreement is signed by you, your agent, and Tiktak — ensuring complete alignment from day one.',
+      'Once you are happy with the proposal, a three-party agreement is signed by you, your agent, and TikkTakk — ensuring complete alignment from day one.',
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.6}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" />
@@ -70,7 +70,7 @@ const STEPS = [
 const WHY = [
   {
     title: 'VIP Concierge, End-to-End',
-    description: 'A dedicated agent and Tiktak operations team support you at every stage — from first consultation through to departure.',
+    description: 'A dedicated agent and TikkTakk operations team support you at every stage — from first consultation through to departure.',
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.6}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
@@ -113,21 +113,21 @@ export default function AgentHomePage() {
       {/* ── Hero ── */}
       <div className="bg-[#0f4c35] px-8 py-14 md:py-20 text-white">
         <div className="max-w-2xl">
-          <p className="text-xs font-semibold tracking-[0.2em] uppercase text-white/50 mb-4">Powered by Tiktak</p>
+          <p className="text-xs font-semibold tracking-[0.2em] uppercase text-white/50 mb-4">Powered by TikkTakk</p>
           <h1 className="text-3xl md:text-4xl font-bold leading-tight tracking-tight mb-4">
             Premium K-Travel,<br />Curated for You
           </h1>
           <p className="text-base text-white/70 leading-relaxed max-w-lg">
-            Tiktak is a white-glove medical tourism concierge connecting discerning clients with Korea&apos;s finest clinics, wellness destinations, and cultural experiences — seamlessly managed by your dedicated agent.
+            TikkTakk is a white-glove medical tourism concierge connecting discerning clients with Korea&apos;s finest clinics, wellness destinations, and cultural experiences — seamlessly managed by your dedicated agent.
           </p>
         </div>
       </div>
 
       <div className="px-8 py-12 md:py-16 space-y-16 max-w-3xl">
 
-        {/* ── Why Tiktak ── */}
+        {/* ── Why TikkTakk ── */}
         <section>
-          <p className="text-xs font-semibold tracking-[0.18em] uppercase text-[#0f4c35] mb-2">Why Tiktak</p>
+          <p className="text-xs font-semibold tracking-[0.18em] uppercase text-[#0f4c35] mb-2">Why TikkTakk</p>
           <h2 className="text-xl font-bold text-gray-900 mb-8">The difference is in the details</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
             {WHY.map((item) => (

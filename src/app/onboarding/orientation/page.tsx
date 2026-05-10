@@ -44,7 +44,7 @@ export default function OrientationPage() {
         ) : !pdfUrl ? (
           <div className="h-96 flex flex-col items-center justify-center gap-2 bg-gray-50">
             <p className="text-sm text-gray-500">Orientation material not available yet.</p>
-            <p className="text-xs text-gray-400">Please contact your Tiktak admin.</p>
+            <p className="text-xs text-gray-400">Please contact your TikkTakk admin.</p>
           </div>
         ) : (
           <>

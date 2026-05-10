@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* Tiktak is a light-only app — pin color scheme so OS/browser dark mode
+/* TikkTakk is a light-only app — pin color scheme so OS/browser dark mode
    doesn't repaint inputs/scrollbars/etc. into dark variants. */
 :root {
   color-scheme: light;

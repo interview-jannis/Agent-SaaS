@@ -22,9 +22,10 @@ type Props = {
   caseNumber: string
   caseStatus: string
   onChanged?: () => Promise<void> | void
+  readOnly?: boolean
 }
 
-export default function AdminCaseContractSection({ caseId, caseNumber, caseStatus, onChanged }: Props) {
+export default function AdminCaseContractSection({ caseId, caseNumber, caseStatus, onChanged, readOnly = false }: Props) {
   const [contract, setContract] = useState<CaseContractRow | null>(null)
   const [loading, setLoading] = useState(true)
   const [adminProfile, setAdminProfile] = useState<{ id: string; name: string; title: string | null } | null>(null)
@@ -97,7 +98,7 @@ export default function AdminCaseContractSection({ caseId, caseNumber, caseStatu
   // Order-independent: admin can counter-sign at any time. Status only advances
   // once all three sigs are collected (handled by case status checker), so the
   // signing order doesn't affect downstream flow.
-  const canAdminSign = !contract.admin_signed_at
+  const canAdminSign = !contract.admin_signed_at && !readOnly
   const showSignMode = canAdminSign && (signing || !contract.admin_signed_at) ? 'admin' : null
   const fullySigned = !!contract.admin_signed_at && !!contract.agent_signed_at && !!contract.client_signed_at
   // Auto-collapse when fully signed; stay expanded when admin needs to sign.

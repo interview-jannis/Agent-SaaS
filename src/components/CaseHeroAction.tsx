@@ -181,7 +181,7 @@ export function AgentCaseHero(p: AgentHeroProps) {
         <HeroShell
           tone="gray"
           eyebrow="In progress"
-          headline="Tiktak is preparing your schedule"
+          headline="TikkTakk is preparing your schedule"
           subline={<span>You&apos;ll be notified once the schedule is ready to review.</span>}
         />
       )
@@ -218,7 +218,7 @@ export function AgentCaseHero(p: AgentHeroProps) {
           tone="gray"
           eyebrow="In progress"
           headline="Final invoice in preparation"
-          subline={<span>Schedule confirmed. Tiktak is finalizing the pricing — you&apos;ll be notified once the invoice is ready to send.</span>}
+          subline={<span>Schedule confirmed. TikkTakk is finalizing the pricing — you&apos;ll be notified once the invoice is ready to send.</span>}
         />
       )
 

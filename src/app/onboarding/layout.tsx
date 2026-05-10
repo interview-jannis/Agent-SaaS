@@ -33,7 +33,7 @@ export default function OnboardingLayout({ children }: { children: React.ReactNo
       <header className="h-14 bg-white border-b border-gray-100 flex items-center px-6 print:hidden">
         <div className="flex items-center gap-3">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/tiktak-logo-long.png" alt="Tiktak" className="h-11 w-auto -mt-1" />
+          <img src="/tiktak-logo-long.png" alt="TikkTakk" className="h-11 w-auto -mt-1" />
           <span className="text-xs text-gray-400">Agent Onboarding</span>
         </div>
         <button onClick={() => supabase.auth.signOut().then(() => router.replace('/login'))}

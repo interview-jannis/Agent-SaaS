@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Tiktak",
+  title: "TikkTakk",
   description: "Global & Middle East VIP medical tourism agent platform",
 };
 

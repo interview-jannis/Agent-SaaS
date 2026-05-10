@@ -225,7 +225,7 @@ export default function ContractStep({ type, step, nextHref, nextLabel, isFinal 
         {loading ? (
           <p className="text-sm text-gray-400">Loading...</p>
         ) : !template ? (
-          <p className="text-sm text-amber-700">Agreement not available. Contact your Tiktak admin.</p>
+          <p className="text-sm text-amber-700">Agreement not available. Contact your TikkTakk admin.</p>
         ) : (
           <>
             <h2 className="text-lg font-bold text-gray-900">{template.title}</h2>

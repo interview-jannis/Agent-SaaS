@@ -159,33 +159,36 @@ export default function AdminAgentDetailPage() {
   const [rejectReason, setRejectReason] = useState('')
   const [rejecting, setRejecting] = useState(false)
 
+  // Approve modal
+  const [showApprove, setShowApprove] = useState(false)
+  const [assignToAdminId, setAssignToAdminId] = useState<string>('')
+
   async function approveAgent() {
     if (!agent) return
-    if (!window.confirm(`Approve ${agent.name} and activate their account?\n\nThey will be able to sign in and start using Tiktak immediately.`)) return
     setApproving(true); setError('')
     try {
       const now = new Date().toISOString()
       const { data: { session } } = await supabase.auth.getSession()
       const { data: adminRow } = await supabase.from('admins').select('id').eq('auth_user_id', session?.user?.id ?? '').maybeSingle()
-
       const approverAdminId = (adminRow as { id: string } | null)?.id ?? null
+
       const { error: aErr } = await supabase.from('agents')
         .update({
           onboarding_status: 'approved',
           is_active: true,
           rejection_reason: null,
           rejected_at: null,
-          assigned_admin_id: approverAdminId,
+          assigned_admin_id: assignToAdminId || approverAdminId,
         })
         .eq('id', agent.id)
       if (aErr) throw aErr
 
-      // Stamp approval on each contract
       await supabase.from('agent_contracts')
         .update({ approved_at: now, approved_by: approverAdminId })
         .eq('agent_id', agent.id)
 
       await logAsCurrentUser('agent.approved', { type: 'agent', id: agent.id, label: `${agent.name}${agent.agent_number ? ` · ${agent.agent_number}` : ''}` })
+      setShowApprove(false)
       await fetchData()
     } catch (e: unknown) {
       setError((e as { message?: string })?.message ?? 'Failed.')
@@ -575,12 +578,12 @@ export default function AdminAgentDetailPage() {
                 <h3 className="text-xs font-semibold text-amber-800 uppercase tracking-wide mb-1">Awaiting Approval</h3>
                 <p className="text-xs text-amber-800">Open each signed contract above and counter-sign it. Once every contract is counter-signed, you can approve to activate the account — or reject to send the agent back to onboarding.</p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <button onClick={() => { setShowReject(true); setError('') }} disabled={approving || rejecting}
                   className="px-4 py-2 text-xs font-medium border border-red-200 text-red-600 rounded-lg hover:bg-red-50 disabled:opacity-40">
                   Reject
                 </button>
-                {(() => {
+                {isSuperAdmin ? (() => {
                   const allAgentSigned = contracts.length >= 2
                   const allAdminSigned = contracts.length >= 2 && contracts.every(c => c.admin_signed_at)
                   const blocked = !allAgentSigned || !allAdminSigned
@@ -590,13 +593,24 @@ export default function AdminAgentDetailPage() {
                       ? 'Counter-sign every contract above before approving.'
                       : ''
                   return (
-                    <button onClick={approveAgent} disabled={approving || rejecting || blocked}
+                    <button
+                      onClick={() => {
+                        const me = admins.find(a => a.is_super_admin)
+                        setAssignToAdminId(me?.id ?? '')
+                        setShowApprove(true)
+                        setError('')
+                      }}
+                      disabled={approving || rejecting || blocked}
                       title={reason}
                       className="px-4 py-2 text-xs font-medium bg-[#0f4c35] text-white rounded-lg hover:bg-[#0a3828] disabled:opacity-40">
-                      {approving ? 'Approving...' : 'Approve & Activate'}
+                      Approve & Activate
                     </button>
                   )
-                })()}
+                })() : (
+                  <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                    Only super admins can approve agents.
+                  </p>
+                )}
               </div>
             </section>
           )}
@@ -624,6 +638,42 @@ export default function AdminAgentDetailPage() {
                   <button onClick={rejectAgent} disabled={rejecting || !rejectReason.trim()}
                     className="px-3 py-1.5 text-xs font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-40">
                     {rejecting ? 'Rejecting...' : 'Confirm Reject'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Approve modal */}
+          {showApprove && (
+            <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+              onClick={() => { if (!approving) setShowApprove(false) }}>
+              <div className="bg-white rounded-2xl max-w-md w-full p-5 space-y-4" onClick={e => e.stopPropagation()}>
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900">Approve & Activate — {agent?.name}</h3>
+                  <p className="text-xs text-gray-500 mt-1">Select the managing admin who will handle this agent&apos;s cases. They will receive case notifications and can perform all case operations.</p>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Assign to</label>
+                  <select
+                    value={assignToAdminId}
+                    onChange={e => setAssignToAdminId(e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]">
+                    <option value="">— Unassigned —</option>
+                    {admins.map(a => (
+                      <option key={a.id} value={a.id}>
+                        {a.name}{a.is_super_admin ? ' ★' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {error && <p className="text-xs text-red-500">{error}</p>}
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
+                  <button onClick={() => { setShowApprove(false); setError('') }} disabled={approving}
+                    className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-800">Cancel</button>
+                  <button onClick={approveAgent} disabled={approving}
+                    className="px-3 py-1.5 text-xs font-medium bg-[#0f4c35] text-white rounded-lg hover:bg-[#0a3828] disabled:opacity-40">
+                    {approving ? 'Approving...' : 'Confirm Approve'}
                   </button>
                 </div>
               </div>

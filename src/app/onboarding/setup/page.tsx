@@ -111,7 +111,7 @@ export default function SetupWizardPage() {
   return (
     <div className="space-y-5 max-w-2xl mx-auto">
       <div>
-        <h1 className="text-2xl font-semibold text-gray-900">Welcome to Tiktak, {name}!</h1>
+        <h1 className="text-2xl font-semibold text-gray-900">Welcome to TikkTakk, {name}!</h1>
         <p className="text-sm text-gray-500 mt-2">Your account has been approved. Let&apos;s finish setting it up — replace the temporary login and add your contact info.</p>
       </div>
 
@@ -278,7 +278,7 @@ export default function SetupWizardPage() {
 
       <button onClick={submit} disabled={saving}
         className="w-full py-3 text-sm font-medium bg-[#0f4c35] text-white rounded-xl hover:bg-[#0a3828] disabled:opacity-40 transition-colors">
-        {saving ? 'Setting up...' : 'Complete Setup & Enter Tiktak →'}
+        {saving ? 'Setting up...' : 'Complete Setup & Enter TikkTakk →'}
       </button>
     </div>
   )

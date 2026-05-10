@@ -40,7 +40,7 @@ export default function OnboardingEntryPage() {
   return (
     <div className="space-y-6 max-w-2xl mx-auto">
       <div>
-        <h1 className="text-2xl font-semibold text-gray-900">Welcome to Tiktak</h1>
+        <h1 className="text-2xl font-semibold text-gray-900">Welcome to TikkTakk</h1>
         <p className="text-sm text-gray-500 mt-2">Before you can start bringing in clients, we need to walk through a short onboarding.</p>
       </div>
 
@@ -48,10 +48,10 @@ export default function OnboardingEntryPage() {
         <div>
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">What to expect</p>
           <ol className="space-y-2 text-sm text-gray-700 list-decimal list-inside">
-            <li>Brief orientation covering Tiktak&apos;s platform and commission structure</li>
+            <li>Brief orientation covering TikkTakk&apos;s platform and commission structure</li>
             <li>Non-Disclosure Agreement (NDA) — provide your name, country, then sign</li>
             <li>Partnership Agreement — review and sign</li>
-            <li>Wait for admin approval, then start using Tiktak</li>
+            <li>Wait for admin approval, then start using TikkTakk</li>
           </ol>
         </div>
         <p className="text-xs text-gray-400">Estimated time: 10–15 minutes.</p>

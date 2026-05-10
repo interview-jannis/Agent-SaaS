@@ -109,7 +109,7 @@ export default function CaseContractViewer({
   return (
     <div className={`bg-white rounded-2xl border border-gray-200 p-6 md:p-8 space-y-6 ${className}`}>
       <div className="text-center pb-4 border-b-2 border-gray-800">
-        <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-widest">Interview Co., Ltd. · Tiktak Platform</p>
+        <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-widest">Interview Co., Ltd. · TikkTakk Platform</p>
         <h1 className="text-xl font-bold text-gray-900 mt-2">{contract.title_snapshot}</h1>
       </div>
 

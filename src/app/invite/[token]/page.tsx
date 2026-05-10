@@ -46,7 +46,7 @@ export default function InviteClaimPage() {
         </>
       ) : (
         <>
-          <h1 className="text-lg font-semibold text-gray-900 mb-2">Welcome to Tiktak</h1>
+          <h1 className="text-lg font-semibold text-gray-900 mb-2">Welcome to TikkTakk</h1>
           <p className="text-sm text-gray-500">Setting up your onboarding session…</p>
         </>
       )}

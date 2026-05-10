@@ -122,7 +122,7 @@ type Schedule = {
   concierge_phone: string | null
 }
 
-type Agent = { id: string; agent_number: string; name: string }
+type Agent = { id: string; agent_number: string; name: string; assigned_admin_id: string | null }
 
 type Case = {
   id: string
@@ -179,6 +179,8 @@ export default function AdminCaseDetailPage() {
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
   const [exchangeRate, setExchangeRate] = useState(1350)
+  const [currentAdminId, setCurrentAdminId] = useState<string | null>(null)
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false)
 
   // Partner payments — local edit state by partner_name
   const [partnerEdits, setPartnerEdits] = useState<Record<string, { amount: string; paid_at: string; note: string }>>({})
@@ -248,12 +250,11 @@ export default function AdminCaseDetailPage() {
   const [savingItems, setSavingItems] = useState(false)
   const [editingProducts, setEditingProducts] = useState(false)
 
-  // Trip Setup collapse — defaults to collapsed when all info is complete.
-  const [setupCollapsed, setSetupCollapsed] = useState(false)
+  // Sections start collapsed; user expands what they need.
+  const [setupCollapsed, setSetupCollapsed] = useState(true)
   const [setupCollapseInitialized, setSetupCollapseInitialized] = useState(false)
-  // Terminal collapse — schedule & financials auto-collapse in completed/awaiting_settlement
-  const [scheduleCollapsed, setScheduleCollapsed] = useState(false)
-  const [financialsCollapsed, setFinancialsCollapsed] = useState(false)
+  const [scheduleCollapsed, setScheduleCollapsed] = useState(true)
+  const [financialsCollapsed, setFinancialsCollapsed] = useState(true)
 
   // Attachments
   const [attachments, setAttachments] = useState<CaseAttachment[]>([])
@@ -275,7 +276,7 @@ export default function AdminCaseDetailPage() {
         id, case_number, status, agent_id, travel_start_date, travel_end_date,
         payment_date, payment_confirmed_at, created_at,
         concept, outbound_flight, inbound_flight, cancellation_reason, agent_notes, schedule_draft_items,
-        agents!cases_agent_id_fkey(id, agent_number, name),
+        agents!cases_agent_id_fkey(id, agent_number, name, assigned_admin_id),
         case_members(
           id, is_lead,
           clients(client_number, nationality, date_of_birth, phone, email, special_requests, ${CLIENT_INFO_COLUMNS})
@@ -332,12 +333,19 @@ export default function AdminCaseDetailPage() {
 
   useEffect(() => {
     async function init() {
-      const [, rateRes] = await Promise.all([
+      const [, rateRes, sessRes] = await Promise.all([
         fetchCase(),
         supabase.from('system_settings').select('value').eq('key', 'product_price_rate').single(),
+        supabase.auth.getSession(),
       ])
       const r = (rateRes.data?.value as { usd_krw?: number } | null)?.usd_krw
       if (r) setExchangeRate(r)
+      const uid = sessRes.data.session?.user?.id
+      if (uid) {
+        const { data: meRow } = await supabase.from('admins').select('id, is_super_admin').eq('auth_user_id', uid).maybeSingle()
+        const me = meRow as { id: string; is_super_admin: boolean | null } | null
+        if (me) { setCurrentAdminId(me.id); setIsSuperAdmin(!!me.is_super_admin) }
+      }
       setLoading(false)
     }
     init()
@@ -486,6 +494,9 @@ export default function AdminCaseDetailPage() {
     </div>
   )
 
+  const caseAgent = getAgent(caseData)
+  const canEdit = isSuperAdmin || (!!currentAdminId && caseAgent?.assigned_admin_id === currentAdminId)
+
   const lead = caseData.case_members?.find((m) => m.is_lead)
   const companions = caseData.case_members?.filter((m) => !m.is_lead) ?? []
   // Derive quotation + final_invoice from the unified documents array.
@@ -557,6 +568,16 @@ export default function AdminCaseDetailPage() {
                 <p className="text-xs text-rose-700"><span className="font-medium">Cancellation reason:</span> {caseData.cancellation_reason}</p>
               )}
               <p className="text-xs text-rose-700">Most actions are disabled. View-only.</p>
+            </div>
+          )}
+
+          {/* Non-assigned admin — view only notice */}
+          {!canEdit && !isSuperAdmin && (
+            <div className="border-l-4 border-amber-400 bg-amber-50 rounded-r-xl px-4 py-3">
+              <p className="text-xs font-semibold text-amber-800">View only</p>
+              <p className="text-xs text-amber-700 mt-0.5">
+                This case is assigned to {caseAgent?.assigned_admin_id ? 'another admin' : 'no admin yet'}. You can view all information but cannot make changes.
+              </p>
             </div>
           )}
 
@@ -837,13 +858,15 @@ export default function AdminCaseDetailPage() {
               caseNumber={caseData.case_number}
               caseStatus={caseData.status}
               onChanged={async () => { await fetchCase() }}
+              readOnly={!canEdit}
             />
           )}
 
           {/* Selected Products — unified view/edit section */}
           {(caseData.documents?.length ?? 0) > 0 && (() => {
             const canEditProducts =
-              caseData.status === 'awaiting_schedule'
+              canEdit
+              && caseData.status === 'awaiting_schedule'
               && !!latestQuote && !latestQuote.finalized_at
               && sortedGroups.length > 0
             const docList = (caseData.documents ?? [])
@@ -1355,12 +1378,10 @@ export default function AdminCaseDetailPage() {
                 <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Schedule History</p>
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] text-gray-400">{sortedSchedules.length} version{sortedSchedules.length > 1 ? 's' : ''}</span>
-                  {isTerminal && (
-                    <button onClick={() => setScheduleCollapsed(!scheduleCollapsed)}
-                      className="text-[11px] font-medium text-gray-500 hover:text-gray-800 px-2 py-1 rounded-lg border border-gray-200 hover:bg-white">
-                      {scheduleCollapsed ? '▼ Expand' : '▲ Collapse'}
-                    </button>
-                  )}
+                  <button onClick={() => setScheduleCollapsed(!scheduleCollapsed)}
+                    className="text-[11px] font-medium text-gray-500 hover:text-gray-800 px-2 py-1 rounded-lg border border-gray-200 hover:bg-white">
+                    {scheduleCollapsed ? '▼ Expand' : '▲ Collapse'}
+                  </button>
                 </div>
               </div>
               <div className="p-4 space-y-3">
@@ -1568,9 +1589,11 @@ export default function AdminCaseDetailPage() {
             const caseProducts: {
               variantId: string; productName: string; variantLabel: string | null
               partnerName: string | null; groupId: string; groupName: string; isSubpackage: boolean
+              isSharedGroup: boolean
               durationValue: number | null; durationUnit: string | null
             }[] = []
             for (const grp of sortedGroups) {
+              if (grp.name === 'Trip Services') continue
               for (const it of (grp.document_items ?? []).filter(x => !x.removed_at)) {
                 if (!it.variant_id) continue
                 const key = `${grp.id}:${it.variant_id}`
@@ -1585,6 +1608,7 @@ export default function AdminCaseDetailPage() {
                   groupId: grp.id,
                   groupName: grp.name,
                   isSubpackage: catName === 'Subpackage',
+                  isSharedGroup: grp.name === 'Shared',
                   durationValue: it.products?.duration_value ?? null,
                   durationUnit: it.products?.duration_unit ?? null,
                 })
@@ -1627,6 +1651,7 @@ export default function AdminCaseDetailPage() {
                   defaultDayCount={defaultDays}
                   caseProducts={caseProducts}
                   caseGroups={(latestQuote?.document_groups ?? [])
+                    .filter(g => g.name !== 'Trip Services')
                     .slice()
                     .sort((a, b) => a.order - b.order)
                     .map(g => ({ id: g.id, name: g.name }))}
@@ -1638,6 +1663,7 @@ export default function AdminCaseDetailPage() {
                   nextVersion={nextVersion}
                   initialConciergeName={latestSchedule?.concierge_name ?? null}
                   initialConciergePhone={latestSchedule?.concierge_phone ?? null}
+                  readOnly={!canEdit}
                 />
               </section>
             )
@@ -1758,7 +1784,7 @@ export default function AdminCaseDetailPage() {
                   })
                 const dueDateChanged = dueDateValue !== latestQuote.payment_due_date
                 const isFirstFinalize = !latestQuote.finalized_at
-                const buttonDisabled = savingPricing || (!isFirstFinalize && !hasPricingChanges && !dueDateChanged)
+                const buttonDisabled = !canEdit || savingPricing || (!isFirstFinalize && !hasPricingChanges && !dueDateChanged)
                 return (
               <button
                 disabled={buttonDisabled}
@@ -1943,12 +1969,10 @@ export default function AdminCaseDetailPage() {
                     <a href={`${baseUrl}/quote/${latestQuote.slug}?preview=1`} target="_blank" rel="noopener noreferrer"
                       className="text-xs text-gray-400 hover:text-[#0f4c35] transition-colors">Preview ↗</a>
                   )}
-                  {isTerminal && (
-                    <button onClick={() => setFinancialsCollapsed(!financialsCollapsed)}
-                      className="text-[11px] font-medium text-gray-500 hover:text-gray-800 px-2 py-1 rounded-lg border border-gray-200 hover:bg-white">
-                      {financialsCollapsed ? '▼ Expand' : '▲ Collapse'}
-                    </button>
-                  )}
+                  <button onClick={() => setFinancialsCollapsed(!financialsCollapsed)}
+                    className="text-[11px] font-medium text-gray-500 hover:text-gray-800 px-2 py-1 rounded-lg border border-gray-200 hover:bg-white">
+                    {financialsCollapsed ? '▼ Expand' : '▲ Collapse'}
+                  </button>
                 </div>
               </div>
               <div className="p-4 space-y-3">
@@ -2090,6 +2114,7 @@ export default function AdminCaseDetailPage() {
                 actor="admin"
                 caseStatus={caseData.status}
                 embedded
+                canEdit={canEdit}
                 quotation={latestQuote as unknown as DocumentRow}
                 finalInvoice={(finalInvoice ?? null) as unknown as DocumentRow | null}
                 documents={(caseData.documents ?? []) as unknown as DocumentRow[]}
@@ -2279,7 +2304,7 @@ export default function AdminCaseDetailPage() {
                               className="text-xs text-gray-400 hover:text-gray-700">Cancel</button>
                           )}
                           <button
-                            disabled={saving || !amount || Number(amount) <= 0 || !paid_at}
+                            disabled={!canEdit || saving || !amount || Number(amount) <= 0 || !paid_at}
                             onClick={async () => {
                               setSavingPartner(g.name); setPartnerError('')
                               try {
@@ -2477,24 +2502,14 @@ export default function AdminCaseDetailPage() {
                             {new Date(att.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                           </p>
                         </div>
-                        <div className="flex items-center gap-1 shrink-0">
+                        <div className="flex items-center gap-1.5 shrink-0">
                           <a href={att.file_url} target="_blank" rel="noopener noreferrer"
-                            className="p-1.5 rounded-lg text-gray-400 hover:text-[#0f4c35] hover:bg-gray-100 transition-colors" title="Open">
-                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
-                            </svg>
+                            className="px-2.5 py-1 text-xs font-medium rounded-lg border border-gray-200 text-gray-600 hover:text-[#0f4c35] hover:border-[#0f4c35] hover:bg-white transition-colors">
+                            Preview
                           </a>
                           <button onClick={async () => { await navigator.clipboard.writeText(att.file_url); setCopiedAttachId(att.id); setTimeout(() => setCopiedAttachId(null), 2000) }}
-                            className={`p-1.5 rounded-lg transition-colors ${copiedAttachId === att.id ? 'text-[#0f4c35] bg-green-50' : 'text-gray-400 hover:text-[#0f4c35] hover:bg-gray-100'}`} title="Copy link">
-                            {copiedAttachId === att.id ? (
-                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                              </svg>
-                            ) : (
-                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
-                              </svg>
-                            )}
+                            className={`px-2.5 py-1 text-xs font-medium rounded-lg border transition-colors ${copiedAttachId === att.id ? 'border-green-200 text-green-700 bg-green-50' : 'border-gray-200 text-gray-600 hover:text-[#0f4c35] hover:border-[#0f4c35] hover:bg-white'}`}>
+                            {copiedAttachId === att.id ? '✓ Copied' : 'Copy Link'}
                           </button>
                           {confirmDeleteAttachId === att.id ? (
                             <div className="flex items-center gap-1">

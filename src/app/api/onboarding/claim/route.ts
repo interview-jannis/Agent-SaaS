@@ -39,7 +39,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'This invite has already been used. Please sign in with your real credentials.' }, { status: 410 })
   }
   if (a.invite_expires_at && new Date(a.invite_expires_at) < new Date()) {
-    return NextResponse.json({ error: 'This invite has expired. Contact your Tiktak admin for a new link.' }, { status: 410 })
+    return NextResponse.json({ error: 'This invite has expired. Contact your TikkTakk admin for a new link.' }, { status: 410 })
   }
   if (!a.invite_secret) {
     return NextResponse.json({ error: 'Invite is no longer valid.' }, { status: 410 })

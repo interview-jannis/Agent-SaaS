@@ -98,7 +98,7 @@ export default function ContractViewerPage() {
   const [adminAgree, setAdminAgree] = useState(false)
   const [savingSig, setSavingSig] = useState(false)
   const [sigError, setSigError] = useState('')
-  const [adminProfile, setAdminProfile] = useState<{ id: string; name: string; title: string | null } | null>(null)
+  const [adminProfile, setAdminProfile] = useState<{ id: string; name: string; title: string | null; is_super_admin: boolean } | null>(null)
 
   async function load() {
     const [cRes, aRes, sessRes] = await Promise.all([
@@ -111,8 +111,8 @@ export default function ContractViewerPage() {
 
     const uid = sessRes.data.session?.user?.id
     if (uid) {
-      const { data: ad } = await supabase.from('admins').select('id, name, title').eq('auth_user_id', uid).maybeSingle()
-      if (ad) setAdminProfile(ad as { id: string; name: string; title: string | null })
+      const { data: ad } = await supabase.from('admins').select('id, name, title, is_super_admin').eq('auth_user_id', uid).maybeSingle()
+      if (ad) setAdminProfile(ad as { id: string; name: string; title: string | null; is_super_admin: boolean })
     }
     setLoading(false)
   }
@@ -190,7 +190,7 @@ export default function ContractViewerPage() {
         <div className="max-w-[750px] mx-auto px-12 py-10 print:p-0 print:max-w-none">
           {/* Header */}
           <div className="text-center mb-8 pb-6 border-b-2 border-gray-800">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest">Interview Co., Ltd. · Tiktak Platform</p>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest">Interview Co., Ltd. · TikkTakk Platform</p>
             <h1 className="text-2xl font-bold text-gray-900 mt-3">{contract.title_snapshot}</h1>
           </div>
 
@@ -290,12 +290,16 @@ export default function ContractViewerPage() {
               ) : (
                 <div className="print:hidden">
                   <p className="text-xs text-gray-400 italic mb-2">Awaiting admin counter-signature.</p>
-                  {adminProfile && (
+                  {adminProfile && adminProfile.is_super_admin ? (
                     <button onClick={() => setSigning(true)}
                       className="px-3 py-1.5 text-xs font-medium border border-[#0f4c35] text-[#0f4c35] rounded-lg hover:bg-[#0f4c35]/5">
                       Sign as {adminProfile.name}{adminProfile.title ? ` (${adminProfile.title})` : ''}
                     </button>
-                  )}
+                  ) : adminProfile ? (
+                    <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                      Only super admins can counter-sign onboarding contracts.
+                    </p>
+                  ) : null}
                 </div>
               )}
             </div>

@@ -19,7 +19,7 @@ export default function MobileTopBar({ homeHref }: { homeHref: string }) {
       </button>
       <Link href={homeHref} className="flex items-center">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/tiktak-logo-long.png" alt="Tiktak" className="h-11 w-auto -mt-1" />
+        <img src="/tiktak-logo-long.png" alt="TikkTakk" className="h-11 w-auto -mt-1" />
       </Link>
       <div className="ml-auto">
         <NotificationBell variant="inline" />

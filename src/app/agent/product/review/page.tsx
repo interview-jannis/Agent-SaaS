@@ -16,9 +16,10 @@ import { appliesMargin, isHotelItem, nightsBetween, variantPriceUsd, variantPric
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type CartItem = { productId: string; variantId: string }
+type CartItem = { productId: string; variantId: string; quantity?: number }
 type CartGroup = { id: string; name: string; memberCount: number; items: CartItem[] }
-type CartDraft = { clientId: string; dateStart: string; dateEnd: string; groups: CartGroup[] }
+type TripServiceItem = { productId: string; variantId: string; days: number }
+type CartDraft = { clientId: string; dateStart: string; dateEnd: string; tripName?: string; groups: CartGroup[]; tripServices?: TripServiceItem[] }
 
 type Client = {
   id: string
@@ -97,6 +98,7 @@ export default function QuoteReviewPage() {
   const [companyMargin, setCompanyMargin] = useState(0.5)
   const [agentMargin, setAgentMargin] = useState(0.15)
   const [subpkgConfig, setSubpkgConfig] = useState<SubpackageMarginConfig | null>(null)
+  const [tripServices, setTripServices] = useState<TripServiceItem[]>([])
   const [loading, setLoading] = useState(true)
 
   // Companions
@@ -126,8 +128,11 @@ export default function QuoteReviewPage() {
     if (!raw) { router.replace('/agent/product'); return }
     const draft: CartDraft = JSON.parse(raw)
     setCart(draft)
+    setTripServices(draft.tripServices ?? [])
 
-    const allProductIds = draft.groups.flatMap((g) => g.items.map(it => it.productId))
+    const groupProductIds = draft.groups.flatMap((g) => g.items.map(it => it.productId))
+    const serviceProductIds = (draft.tripServices ?? []).map(s => s.productId)
+    const allProductIds = [...new Set([...groupProductIds, ...serviceProductIds])]
 
     async function load() {
       const { data: { session } } = await supabase.auth.getSession()
@@ -211,9 +216,16 @@ export default function QuoteReviewPage() {
     })
   }
 
-  // Per-line multiplier — nights for hotels, memberCount otherwise.
+  const sharedMemberCount = (cart?.groups ?? [])
+    .filter(g => g.id !== 'shared')
+    .reduce((s, g) => s + g.memberCount, 0)
+
+  // Per-line multiplier — nights for hotels, stored quantity for interpreter
+  // products, shared group uses total pax, otherwise group memberCount.
   function itemMultiplier(item: CartItem, group: CartGroup): number {
-    return isHotel(item) ? nights : group.memberCount
+    if (isHotel(item)) return nights
+    if (item.quantity != null) return item.quantity
+    return group.id === 'shared' ? sharedMemberCount : group.memberCount
   }
 
   function fmtUSD(n: number): string {
@@ -224,7 +236,21 @@ export default function QuoteReviewPage() {
     return group.items.reduce((sum, it) => sum + itemUsd(it) * itemMultiplier(it, group), 0)
   }
 
-  const totalUSD = cart?.groups.reduce((s, g) => s + groupSubtotalUSD(g), 0) ?? 0
+  function serviceItemUsd(svc: TripServiceItem): number {
+    const found = findVariant(svc.productId, svc.variantId)
+    if (!found) return 0
+    return variantPriceUsd({
+      basePrice: found.variant.base_price,
+      priceCurrency: found.variant.price_currency,
+      exchangeRate,
+      marginMult: subpackageMult(subpkgConfig),
+      applyMargin: true,
+    })
+  }
+
+  const servicesTotalUSD = tripServices.reduce((sum, svc) => sum + serviceItemUsd(svc) * svc.days, 0)
+
+  const totalUSD = (cart?.groups.reduce((s, g) => s + groupSubtotalUSD(g), 0) ?? 0) + servicesTotalUSD
 
   const allCaseMembers = lead ? [lead, ...companions] : companions
   const unassignedMembers = allCaseMembers.filter((c) =>
@@ -345,6 +371,7 @@ export default function QuoteReviewPage() {
           status: 'awaiting_contract',
           travel_start_date: cart.dateStart || null,
           travel_end_date: cart.dateEnd || null,
+          concept: cart.tripName?.trim() || null,
           agent_notes: agentNotes.trim() || null,
         })
         .select('id').single()
@@ -364,7 +391,7 @@ export default function QuoteReviewPage() {
 
       // Create quote — totalKRW respects per-category margin rule (Subpackage
       // and non-Spa/Henna Wellness pass through at cost unless subpkgConfig enabled).
-      const totalKRW = cart.groups.reduce((sum, g) =>
+      const groupsKRW = cart.groups.reduce((sum, g) =>
         sum + g.items.reduce((gs, it) => {
           const found = findVariant(it.productId, it.variantId)
           if (!found) return gs
@@ -378,9 +405,25 @@ export default function QuoteReviewPage() {
             marginMult: isSubpkg ? subpackageMult(subpkgConfig) : marginMult,
             applyMargin: isSubpkg ? true : appliesMargin(cat, sub),
           })
-          const mult = isHotelItem(cat, sub) ? nights : g.memberCount
+          const gMemberCount = g.id === 'shared' ? sharedMemberCount : g.memberCount
+          const mult = isHotelItem(cat, sub) ? nights : gMemberCount
           return gs + krwPer * mult
         }, 0), 0)
+
+      const servicesKRW = tripServices.reduce((sum, svc) => {
+        const found = findVariant(svc.productId, svc.variantId)
+        if (!found) return sum
+        const krwPer = variantPriceKrw({
+          basePrice: found.variant.base_price,
+          priceCurrency: found.variant.price_currency,
+          exchangeRate,
+          marginMult: subpackageMult(subpkgConfig),
+          applyMargin: true,
+        })
+        return sum + krwPer * svc.days
+      }, 0)
+
+      const totalKRW = groupsKRW + servicesKRW
 
       const paymentDue = new Date(); paymentDue.setDate(paymentDue.getDate() + 7)
 
@@ -402,11 +445,12 @@ export default function QuoteReviewPage() {
         const group = cart.groups[i]
         if (group.items.length === 0) continue
 
-        const dg = await addDocumentGroup(quotation.id, group.name, i, group.memberCount)
+        const groupMemberCount = group.id === 'shared' ? sharedMemberCount : group.memberCount
+        const dg = await addDocumentGroup(quotation.id, group.name, i, groupMemberCount)
 
         // Items — one per cart variant, with margin per category rule.
-        // Hotels multiply by nights (room × nights); everything else
-        // multiplies by group memberCount (per-person × people).
+        // Hotels multiply by nights (room × nights); shared group uses total pax;
+        // interpreter items use their stored quantity; otherwise group memberCount.
         for (const it of group.items) {
           const found = findVariant(it.productId, it.variantId)
           if (!found) continue
@@ -416,7 +460,7 @@ export default function QuoteReviewPage() {
           const isSubpkg = cat === 'Subpackage' && !isHotelLine
           const apply = isSubpkg ? !!subpkgConfig?.enabled : appliesMargin(cat, sub)
           const effectiveMult = isSubpkg ? subpackageMult(subpkgConfig) : marginMult
-          const multiplier = isHotelLine ? nights : group.memberCount
+          const multiplier = isHotelLine ? nights : (it.quantity ?? groupMemberCount)
           const baseUnitKrw = found.variant.price_currency === 'USD'
             ? Math.round(found.variant.base_price * exchangeRate)
             : found.variant.base_price
@@ -453,6 +497,40 @@ export default function QuoteReviewPage() {
           if (caseMemberId) {
             await addDocumentGroupMember(dg.id, caseMemberId)
           }
+        }
+      }
+
+      // Trip Services group — member_count=0 (not per-person)
+      if (tripServices.length > 0) {
+        const tsDg = await addDocumentGroup(quotation.id, 'Trip Services', cart.groups.length, 0)
+        for (const svc of tripServices) {
+          const found = findVariant(svc.productId, svc.variantId)
+          if (!found) continue
+          const baseUnitKrw = found.variant.price_currency === 'USD'
+            ? Math.round(found.variant.base_price * exchangeRate)
+            : found.variant.base_price
+          const finalUnitKrw = variantPriceKrw({
+            basePrice: found.variant.base_price,
+            priceCurrency: found.variant.price_currency,
+            exchangeRate,
+            marginMult: subpackageMult(subpkgConfig),
+            applyMargin: true,
+          })
+          const labelBase = found.variant.variant_label ?? null
+          const labelWithDays = labelBase
+            ? `${labelBase} · ${svc.days} ${svc.days === 1 ? 'day' : 'days'}`
+            : `${svc.days} ${svc.days === 1 ? 'day' : 'days'}`
+          await addDocumentItem({
+            documentId: quotation.id,
+            groupId: tsDg.id,
+            productId: svc.productId,
+            productNameSnapshot: found.product.name,
+            basePrice: baseUnitKrw * svc.days,
+            finalPrice: finalUnitKrw * svc.days,
+            quantity: svc.days,
+            variantId: svc.variantId,
+            variantLabelSnapshot: labelWithDays,
+          })
         }
       }
 
@@ -690,6 +768,7 @@ export default function QuoteReviewPage() {
             </div>
 
             {cart.groups.filter((g) => g.items.length > 0).map((group, idx) => {
+              const isShared = group.id === 'shared'
               const assigned = (groupAssignments[group.id] ?? [])
                 .map((id) => allCaseMembers.find((c) => c.id === id))
                 .filter(Boolean) as Client[]
@@ -697,9 +776,12 @@ export default function QuoteReviewPage() {
 
               return (
                 <div key={group.id}>
-                  <div className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium border mb-2 ${GROUP_COLORS[idx % GROUP_COLORS.length]}`}>
+                  <div className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium border mb-2 ${isShared ? 'bg-[#0f4c35]/5 border-[#0f4c35]/30 text-[#0f4c35]' : GROUP_COLORS[(idx - 1 + GROUP_COLORS.length) % GROUP_COLORS.length]}`}>
                     {group.name}
                   </div>
+                  {isShared && (
+                    <p className="text-[11px] text-gray-400 mb-2">Applies to all members ({sharedMemberCount} pax)</p>
+                  )}
                   <div className="flex flex-wrap gap-2 min-h-[32px]">
                     {assigned.map((c) => (
                       <div key={c.id} className="flex items-center gap-1 px-2.5 py-1 bg-gray-100 rounded-lg text-xs text-gray-700">
@@ -731,11 +813,14 @@ export default function QuoteReviewPage() {
         <section className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-5">
           <h2 className="text-sm font-semibold text-gray-900">Quote Details</h2>
 
-          {cart.groups.filter((g) => g.items.length > 0).map((group, idx) => (
+          {cart.groups.filter((g) => g.items.length > 0).map((group, idx) => {
+            const isShared = group.id === 'shared'
+            const displayCount = isShared ? sharedMemberCount : group.memberCount
+            return (
             <div key={group.id}>
-              <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border mb-3 ${GROUP_COLORS[idx % GROUP_COLORS.length]}`}>
+              <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border mb-3 ${isShared ? 'bg-[#0f4c35]/5 border-[#0f4c35]/30 text-[#0f4c35]' : GROUP_COLORS[(idx - 1 + GROUP_COLORS.length) % GROUP_COLORS.length]}`}>
                 {group.name}
-                <span className="opacity-60">({group.memberCount} {group.memberCount === 1 ? 'person' : 'people'})</span>
+                <span className="opacity-60">({displayCount} {displayCount === 1 ? 'person' : 'people'}{isShared ? ' · all' : ''})</span>
               </div>
 
               {/* Table header */}
@@ -777,7 +862,48 @@ export default function QuoteReviewPage() {
                 <span className="text-sm font-semibold text-gray-900 tabular-nums">{fmtUSD(groupSubtotalUSD(group))}</span>
               </div>
             </div>
-          ))}
+          )})}
+
+
+          {/* Trip Services section */}
+          {tripServices.length > 0 && (
+            <div>
+              <div className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium border mb-3 bg-gray-50 border-gray-200 text-gray-600">
+                Trip Services
+              </div>
+              <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-4 text-[10px] font-medium text-gray-400 uppercase tracking-wide mb-1.5 px-1">
+                <span>Service</span>
+                <span className="text-right">Unit Price</span>
+                <span className="text-right">Days</span>
+                <span className="text-right">Amount</span>
+              </div>
+              <div className="space-y-1.5">
+                {tripServices.map((svc, idx) => {
+                  const found = findVariant(svc.productId, svc.variantId)
+                  if (!found) return null
+                  const unitUSD = serviceItemUsd(svc)
+                  const totalItemUSD = unitUSD * svc.days
+                  return (
+                    <div key={`svc:${svc.productId}:${svc.variantId}:${idx}`} className="grid grid-cols-[1fr_auto_auto_auto] gap-x-4 items-center py-2 px-3 bg-gray-50 rounded-xl">
+                      <div className="min-w-0">
+                        <p className="text-sm text-gray-800 truncate">{found.product.name}</p>
+                        {found.variant.variant_label && (
+                          <p className="text-[10px] text-gray-500 truncate">{found.variant.variant_label}</p>
+                        )}
+                      </div>
+                      <span className="text-sm text-gray-600 tabular-nums text-right">{fmtUSD(unitUSD)}</span>
+                      <span className="text-xs text-gray-400 text-center whitespace-nowrap">×{svc.days}d</span>
+                      <span className="text-sm font-semibold text-gray-900 tabular-nums text-right">{fmtUSD(totalItemUSD)}</span>
+                    </div>
+                  )
+                })}
+              </div>
+              <div className="flex items-center justify-between pt-2.5 mt-1 border-t border-gray-100">
+                <span className="text-xs text-gray-400">Services subtotal</span>
+                <span className="text-sm font-semibold text-gray-900 tabular-nums">{fmtUSD(servicesTotalUSD)}</span>
+              </div>
+            </div>
+          )}
 
           <div className="flex items-center justify-between pt-3 border-t-2 border-gray-200">
             <span className="text-sm font-bold text-gray-900">Total</span>
@@ -786,12 +912,12 @@ export default function QuoteReviewPage() {
           <p className="text-xs text-gray-400">Payment due within 7 days of quote creation.</p>
         </section>
 
-        {/* Notes for Tiktak admin — anything that should shape the schedule but
+        {/* Notes for TikkTakk admin — anything that should shape the schedule but
             isn't a line item: special requests, recovery preferences, blocked
             days, prayer routine quirks. Saved on the case; admin sees it
             while building the day-by-day itinerary. */}
         <section className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-2">
-          <h2 className="text-sm font-semibold text-gray-900">Notes for Tiktak <span className="text-xs font-normal text-gray-400">(optional)</span></h2>
+          <h2 className="text-sm font-semibold text-gray-900">Notes for TikkTakk <span className="text-xs font-normal text-gray-400">(optional)</span></h2>
           <p className="text-xs text-gray-500">
             Anything our concierge team should know when planning the schedule —
             e.g. &quot;Day 3 free per client request&quot;, &quot;prefers afternoon procedures&quot;,

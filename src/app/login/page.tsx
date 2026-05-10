@@ -79,9 +79,9 @@ function LoginForm() {
         {/* Logo */}
         <div className="mb-10 text-center">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/tiktak-logo-short.png" alt="Tiktak" className="h-32 w-auto mx-auto mb-6" />
+          <img src="/tiktak-logo-short.png" alt="TikkTakk" className="h-32 w-auto mx-auto mb-6" />
           <h1 className="text-2xl font-semibold text-gray-900">Welcome back</h1>
-          <p className="text-sm text-gray-400 mt-1">Sign in to your Tiktak account</p>
+          <p className="text-sm text-gray-400 mt-1">Sign in to your TikkTakk account</p>
         </div>
 
         {/* Form */}
@@ -154,7 +154,7 @@ function LoginForm() {
         </form>
 
         <p className="text-xs text-gray-400 text-center mt-6">
-          Agent accounts are provisioned by Tiktak staff.
+          Agent accounts are provisioned by TikkTakk staff.
         </p>
 
       </div>

@@ -115,8 +115,8 @@ export default function AdminInviteSetupPage() {
       <div className="w-full max-w-lg">
         <div className="text-center mb-6">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/tiktak-logo-short.png" alt="Tiktak" className="h-24 w-auto mx-auto mb-3" />
-          <h1 className="text-xl font-semibold text-gray-900">Welcome to Tiktak</h1>
+          <img src="/tiktak-logo-short.png" alt="TikkTakk" className="h-24 w-auto mx-auto mb-3" />
+          <h1 className="text-xl font-semibold text-gray-900">Welcome to TikkTakk</h1>
           <p className="text-sm text-gray-500 mt-1">Set up your admin account.</p>
         </div>
 

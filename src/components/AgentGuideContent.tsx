@@ -465,7 +465,7 @@ function AgentGuideContentInner({ edits, editMode, onEdit }: {
       <div>
         <span className="text-xs font-semibold uppercase tracking-wider text-[#0f4c35]">Your Role</span>
         <p className="mt-1 text-sm text-gray-600 leading-relaxed">
-          Agents are the client-facing backbone of Tiktak. You source clients, build quotes, collect payments, and coordinate with the admin team to deliver the full medical tourism experience. After travel is complete, you submit the post-trip survey and invoice your commission. Your earnings are calculated automatically based on your monthly completed patient count.
+          Agents are the client-facing backbone of TikkTakk. You source clients, build quotes, collect payments, and coordinate with the admin team to deliver the full medical tourism experience. After travel is complete, you submit the post-trip survey and invoice your commission. Your earnings are calculated automatically based on your monthly completed patient count.
         </p>
       </div>
 

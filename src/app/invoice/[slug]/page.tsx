@@ -7,9 +7,9 @@ export default async function InvoicePage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>
-  searchParams: Promise<{ preview?: string }>
+  searchParams: Promise<{ preview?: string; member?: string }>
 }) {
   const { slug } = await params
-  const { preview } = await searchParams
-  return <QuoteDocument slug={slug} mode="invoice" preview={!!preview} />
+  const { preview, member } = await searchParams
+  return <QuoteDocument slug={slug} mode="invoice" preview={!!preview} filterMemberId={member} />
 }

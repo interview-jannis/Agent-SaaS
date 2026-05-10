@@ -99,12 +99,17 @@ export type DocumentItemRow = {
   removed_at?: string | null
 }
 
+export type GroupType = 'regular' | 'shared' | 'trip_services'
+
 export type DocumentGroupRow = {
   id: string
   document_id: string
   name: string | null
   member_count: number
   order: number
+  // Name-based convention: 'Shared' → shared, 'Trip Services' → trip_services, else regular.
+  // Derived client-side; not a DB column.
+  group_type?: GroupType
 }
 
 export type DocumentGroupMemberRow = {
@@ -199,7 +204,7 @@ export async function getDocumentGroups(documentId: string): Promise<DocumentGro
     .select('*')
     .eq('document_id', documentId)
     .order('order', { ascending: true })
-  return (data ?? []) as DocumentGroupRow[]
+  return ((data ?? []) as DocumentGroupRow[]).map(g => ({ ...g, group_type: groupTypeFromName(g.name) }))
 }
 
 export async function getDocumentGroupMembers(documentId: string): Promise<DocumentGroupMemberRow[]> {
@@ -262,6 +267,12 @@ export async function createDocument(input: CreateDocumentInput): Promise<Docume
 // Groups
 // ────────────────────────────────────────────────────────────────────────────
 
+export function groupTypeFromName(name: string | null): GroupType {
+  if (name === 'Shared') return 'shared'
+  if (name === 'Trip Services') return 'trip_services'
+  return 'regular'
+}
+
 export async function addDocumentGroup(
   documentId: string,
   name: string | null,
@@ -274,7 +285,9 @@ export async function addDocumentGroup(
     .select('*')
     .single()
   if (error || !data) throw error ?? new Error('Failed to add document group')
-  return data as DocumentGroupRow
+  const row = data as DocumentGroupRow
+  row.group_type = groupTypeFromName(row.name)
+  return row
 }
 
 export async function updateDocumentGroup(

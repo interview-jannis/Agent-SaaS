@@ -43,7 +43,7 @@ export default function ResetPasswordPage() {
       <div className="w-full max-w-md bg-white rounded-2xl border border-gray-100 shadow-sm p-8 space-y-5">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">Reset Password</h1>
-          <p className="text-sm text-gray-500 mt-1">Choose a new password for your Tiktak account.</p>
+          <p className="text-sm text-gray-500 mt-1">Choose a new password for your TikkTakk account.</p>
         </div>
 
         {!ready ? (

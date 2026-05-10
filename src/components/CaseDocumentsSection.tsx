@@ -63,6 +63,8 @@ type Props = {
   onChanged: () => Promise<void> | void       // parent re-fetches
   /** Admin only — called after marking final_invoice paid to advance case status */
   onFinalPaymentConfirm?: (paidAt: string) => Promise<void>
+  /** When false, Mark Paid / Issue buttons are disabled (non-assigned admin) */
+  canEdit?: boolean
 }
 
 // Card styling — all white so no single invoice type dominates the section
@@ -99,7 +101,7 @@ async function captureSigner(): Promise<{ name: string | null; title: string | n
 }
 
 export default function CaseDocumentsSection({
-  caseId, caseNumber, agentId, actor, caseStatus, embedded, travelCompletedAt, quotation, finalInvoice, documents, exchangeRate, onChanged, onFinalPaymentConfirm,
+  caseId, caseNumber, agentId, actor, caseStatus, embedded, travelCompletedAt, quotation, finalInvoice, documents, exchangeRate, onChanged, onFinalPaymentConfirm, canEdit = true,
 }: Props) {
   const [products, setProducts] = useState<Product[]>([])
   const [items, setItems] = useState<Record<string, DocumentItemRow[]>>({})
@@ -429,14 +431,14 @@ export default function CaseDocumentsSection({
             </button>
           )}
           {actor === 'admin' && !has.depositToAgent && (
-            <button onClick={() => setIssuing('deposit_settlement')} disabled={!canIssue || !has.depositToClient || contractPending}
+            <button onClick={() => setIssuing('deposit_settlement')} disabled={!canEdit || !canIssue || !has.depositToClient || contractPending}
               className="text-xs font-medium px-2.5 py-1.5 rounded-lg bg-[#0f4c35] text-white hover:bg-[#0a3828] disabled:opacity-40"
               title={contractPending ? 'Available after the 3-party contract is signed' : (has.depositToClient ? 'Admin → Agent (record deposit forward owed)' : 'Available after agent issues the client-facing deposit invoice')}>
               + Deposit Settlement
             </button>
           )}
           {actor === 'admin' && caseStatus !== 'completed' && (
-            <button onClick={() => setIssuing('additional')} disabled={!canIssue || !finalInvoice}
+            <button onClick={() => setIssuing('additional')} disabled={!canEdit || !canIssue || !finalInvoice}
               className="text-xs font-medium px-2.5 py-1.5 rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-40"
               title={finalInvoice ? 'Admin → Client (mid-trip add-ons)' : 'Available after Balance Invoice is issued (Finalize Pricing)'}>
               + Additional
@@ -608,9 +610,12 @@ export default function CaseDocumentsSection({
         // Commission invoice (agent → admin): admin marks paid when they disburse.
         // Final invoice: admin confirms balance received from client.
         // All other invoices: issuer (from_party) confirms receipt.
-        const canEdit = (doc.type === 'commission_invoice' || doc.type === 'final_invoice')
-          ? actor === 'admin'
-          : actor === doc.from_party
+        // Also gates by the canEdit prop (assigned admin check).
+        const canMarkThisDoc = canEdit && (
+          (doc.type === 'commission_invoice' || doc.type === 'final_invoice')
+            ? actor === 'admin'
+            : actor === doc.from_party
+        )
         // Direction-specific label, since both deposit_invoice and final_invoice
         // can be admin → client; commission/deposit_invoice differ by from_party.
         const label = doc.type === 'deposit_invoice' && doc.to_party === 'agent'
@@ -621,9 +626,9 @@ export default function CaseDocumentsSection({
         // Settlement (admin → agent) gets a darker shade so it visually separates
         // from the agent-issued client-facing deposit on the same case.
         const isSettlement = doc.type === 'deposit_invoice' && doc.to_party === 'agent'
-        // Paid invoices recede visually so attention goes to pending actions.
+        // Paid invoices show green border; unpaid stay white to draw attention.
         const cardTone = paid
-          ? 'border-gray-200 bg-gray-50'
+          ? 'border-green-200 bg-green-50/30'
           : TYPE_TONE[doc.type]
         void isSettlement
         return (
@@ -638,11 +643,11 @@ export default function CaseDocumentsSection({
                 </span>
                 <span className="text-[10px] font-mono text-gray-500">{doc.document_number}</span>
                 {paid ? (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 font-medium">Paid {doc.payment_received_at?.slice(0, 10)}</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-50 text-green-800 border border-green-200 font-medium">✓ Paid {doc.payment_received_at?.slice(0, 10)}</span>
                 ) : overdue ? (
                   <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-100 text-red-700 font-medium">Overdue</span>
                 ) : (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">Pending</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">Pending</span>
                 )}
               </div>
               <div className="text-right">
@@ -669,7 +674,7 @@ export default function CaseDocumentsSection({
                       {fmtUSD(it.final_price / exchangeRate)}
                       {actor === 'admin' && <span className="text-gray-400 ml-1">({fmtKRW(it.final_price)})</span>}
                     </span>
-                    {!paid && canEdit && (
+                    {!paid && canMarkThisDoc && (
                       <button onClick={() => doRemoveItem(it.id, doc.id)} disabled={busy === it.id}
                         className="text-gray-300 hover:text-red-500 transition-colors disabled:opacity-40" title="Remove item">
                         <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -683,7 +688,7 @@ export default function CaseDocumentsSection({
             )}
 
             {/* Add item inline form — deposit/commission/final invoices are not editable here */}
-            {!paid && canEdit && doc.type !== 'deposit_invoice' && doc.type !== 'final_invoice' && doc.type !== 'commission_invoice' && (
+            {!paid && canMarkThisDoc && doc.type !== 'deposit_invoice' && doc.type !== 'final_invoice' && doc.type !== 'commission_invoice' && (
               addingItemTo === doc.id ? (
                 <div className="bg-white rounded-lg border border-gray-200 p-2.5 space-y-2">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
@@ -762,21 +767,22 @@ export default function CaseDocumentsSection({
                 ) : null}
               </div>
               <div className="min-h-[24px] flex items-center">
-                {!paid && canEdit && (
+                {!paid && canMarkThisDoc && (
                   paidAtEditingId === doc.id ? (
                     <div className="flex items-center gap-1.5">
                       <input type="date" value={paidAtValue} onChange={e => setPaidAtValue(e.target.value)}
                         className="border border-gray-200 rounded-lg px-2 py-1 text-[11px] text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
                       <button onClick={() => { setPaidAtEditingId(null); setPaidAtValue('') }}
                         className="text-[11px] font-medium text-gray-600 hover:text-gray-900 px-2 py-1 rounded-lg border border-gray-200 hover:bg-white">Cancel</button>
-                      <button onClick={() => doMarkPaid(doc.id)} disabled={busy === doc.id || !paidAtValue}
+                      <button onClick={() => doMarkPaid(doc.id)} disabled={!canMarkThisDoc || busy === doc.id || !paidAtValue}
                         className="text-[11px] font-medium bg-[#0f4c35] text-white hover:bg-[#0a3828] rounded-lg px-2.5 py-1 disabled:opacity-40">
                         {busy === doc.id ? 'Saving…' : 'Save'}
                       </button>
                     </div>
                   ) : (
                     <button onClick={() => { setPaidAtEditingId(doc.id); setPaidAtValue(new Date().toISOString().slice(0, 10)) }}
-                      className="text-[11px] font-semibold bg-[#0f4c35] text-white hover:bg-[#0a3828] px-3 py-1.5 rounded-lg transition-colors">
+                      disabled={!canMarkThisDoc}
+                      className="text-[11px] font-semibold bg-[#0f4c35] text-white hover:bg-[#0a3828] px-3 py-1.5 rounded-lg transition-colors disabled:opacity-40">
                       Mark Paid
                     </button>
                   )

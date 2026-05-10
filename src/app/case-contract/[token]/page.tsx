@@ -82,7 +82,7 @@ export default function CaseContractPublicPage({ params }: { params: Promise<{ t
     <div className="min-h-screen bg-gray-50 py-8 print:bg-white print:py-0">
       <div className="max-w-3xl mx-auto px-4 space-y-4 print:px-0 print:max-w-none">
         <div className="text-center print:hidden">
-          <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-widest">Tiktak · Case {caseNumber}</p>
+          <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-widest">TikkTakk · Case {caseNumber}</p>
           <h1 className="text-xl font-semibold text-gray-900 mt-1">{contract.title_snapshot}</h1>
         </div>
 

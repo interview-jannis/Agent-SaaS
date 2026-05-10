@@ -174,7 +174,7 @@ export default function CaseDetailPage() {
   const [exchangeRate, setExchangeRate] = useState(1350)
   const [loading, setLoading] = useState(true)
 
-  // Notes for Tiktak admin (edit anytime; saved on cases.agent_notes).
+  // Notes for TikkTakk admin (edit anytime; saved on cases.agent_notes).
   const [notesEditing, setNotesEditing] = useState(false)
   const [notesDraft, setNotesDraft] = useState('')
   const [savingNotes, setSavingNotes] = useState(false)
@@ -1764,7 +1764,7 @@ export default function CaseDetailPage() {
           {!isCanceled && (
             <section className={`rounded-2xl overflow-hidden ${caseData.status === 'completed' ? 'bg-white border border-gray-200' : 'bg-white border border-red-300'}`}>
               <div className={`flex items-center justify-between px-5 py-2.5 border-b ${caseData.status === 'completed' ? 'bg-gray-100 border-gray-200' : 'bg-red-50 border-red-200'}`}>
-                <h3 className={`text-xs font-semibold uppercase tracking-wide ${caseData.status === 'completed' ? 'text-gray-700' : 'text-red-600'}`}>Notes for Tiktak</h3>
+                <h3 className={`text-xs font-semibold uppercase tracking-wide ${caseData.status === 'completed' ? 'text-gray-700' : 'text-red-600'}`}>Notes for TikkTakk</h3>
                 {!notesEditing ? (
                   <button onClick={() => { setNotesDraft(caseData.agent_notes ?? ''); setNotesEditing(true) }}
                     className="text-xs font-medium text-[#0f4c35] hover:underline">
