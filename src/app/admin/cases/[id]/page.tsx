@@ -27,9 +27,7 @@ import {
   addDocumentItem,
   removeDocumentItem,
   recalcDocumentTotal,
-  issueInvoice,
-  syncFinalInvoiceFromQuotation,
-  getCaseFinalInvoice,
+  createDraftFinalInvoice,
 } from '@/lib/documents'
 
 type MemberClient = ClientInfo & {
@@ -249,6 +247,7 @@ export default function AdminCaseDetailPage() {
   const [stagedRemoves, setStagedRemoves] = useState<Set<string>>(new Set())
   const [savingItems, setSavingItems] = useState(false)
   const [editingProducts, setEditingProducts] = useState(false)
+  const [creatingDraft, setCreatingDraft] = useState(false)
 
   // Sections start collapsed; user expands what they need.
   const [setupCollapsed, setSetupCollapsed] = useState(true)
@@ -535,6 +534,9 @@ export default function AdminCaseDetailPage() {
       || (caseData.status === 'reviewing_schedule' && latestSchedule?.status === 'revision_requested')
     )
   const sortedGroups = latestQuote?.document_groups ? [...latestQuote.document_groups].sort((a, b) => a.order - b.order) : []
+  // editGroups: groups from finalInvoice (draft or finalized). Edit Selected Products
+  // and Finalize Pricing both target finalInvoice — quotation is immutable after creation.
+  const editGroups = finalInvoice?.document_groups ? [...finalInvoice.document_groups].sort((a, b) => a.order - b.order) : []
   const baseUrl = typeof window !== 'undefined' ? window.location.origin : ''
 
   return (
@@ -867,7 +869,7 @@ export default function AdminCaseDetailPage() {
             const canEditProducts =
               canEdit
               && caseData.status === 'awaiting_schedule'
-              && !!latestQuote && !latestQuote.finalized_at
+              && !!latestQuote && !finalInvoice?.finalized_at
               && sortedGroups.length > 0
             const docList = (caseData.documents ?? [])
               .filter(d => d.type === 'quotation' || d.type === 'additional_invoice')
@@ -897,18 +899,39 @@ export default function AdminCaseDetailPage() {
               all changes in one batch. Items lock once admin finalizes pricing.
               Rendered only when editingProducts=true (toggled by the Edit button
               in SelectedProductsSection header above). */}
-          {editingProducts && latestQuote && !latestQuote.finalized_at && sortedGroups.length > 0 && (() => {
+          {editingProducts && latestQuote && !finalInvoice?.finalized_at && sortedGroups.length > 0 && (() => {
+            // If finalInvoice doesn't exist yet, lazily create a draft by copying
+            // quotation items. All edits target finalInvoice — quotation is immutable.
+            if (!finalInvoice) {
+              if (!creatingDraft) {
+                setCreatingDraft(true)
+                createDraftFinalInvoice(caseData.id)
+                  .then(() => fetchCase())
+                  .catch(e => setActionError(e?.message ?? 'Failed to create draft invoice.'))
+                  .finally(() => setCreatingDraft(false))
+              }
+              return (
+                <section className="border border-gray-200 bg-white rounded-2xl p-4 flex items-center gap-2 text-sm text-gray-500">
+                  <svg className="w-4 h-4 animate-spin text-[#0f4c35] shrink-0" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+                  </svg>
+                  Preparing invoice draft…
+                </section>
+              )
+            }
+
             // Note: this section intentionally does NOT filter removed_at — we
             // want the removed rows visible as audit trail. All other consumers
             // filter for active rows so customer-facing surfaces stay clean.
-            const allItems = sortedGroups.flatMap(g => g.document_items.map(it => ({ ...it, groupName: g.name, groupId: g.id })))
+            const allItems = editGroups.flatMap(g => g.document_items.map(it => ({ ...it, groupName: g.name, groupId: g.id })))
             const dirty = stagedAdds.length > 0 || stagedRemoves.size > 0
             const activeCount = allItems.filter(it => !it.removed_at).length
 
             const cancelChanges = () => { setStagedAdds([]); setStagedRemoves(new Set()); setActionError('') }
 
             const saveChanges = async () => {
-              if (!latestQuote) return
+              if (!finalInvoice) return
               setSavingItems(true); setActionError('')
               try {
                 // Removals first (they don't depend on adds; ids stable)
@@ -921,7 +944,7 @@ export default function AdminCaseDetailPage() {
                 }
                 for (const add of stagedAdds) {
                   await addDocumentItem({
-                    documentId: latestQuote.id,
+                    documentId: finalInvoice.id,
                     groupId: add.groupId,
                     productId: add.productId,
                     productNameSnapshot: add.productName,
@@ -936,9 +959,8 @@ export default function AdminCaseDetailPage() {
                     { type: 'case', id: caseData.id, label: caseData.case_number },
                     { product: add.productName, group: add.groupName })
                 }
-                // Keep the document's stored total in sync with the new
-                // active-item sum so Estimated displays elsewhere are correct.
-                await recalcDocumentTotal(latestQuote.id)
+                // Keep the final_invoice stored total in sync.
+                await recalcDocumentTotal(finalInvoice.id)
                 setStagedAdds([])
                 setStagedRemoves(new Set())
                 await fetchCase()
@@ -971,7 +993,7 @@ export default function AdminCaseDetailPage() {
                   {activeCount === 0 && stagedAdds.length === 0 && allItems.length === 0 ? (
                     <p className="text-xs text-gray-400 italic px-3 py-4 text-center">No items yet — add from the picker below.</p>
                   ) : (
-                    sortedGroups.map((g, gi) => {
+                    editGroups.map((g, gi) => {
                       const groupExisting = allItems.filter(it => it.groupId === g.id)
                       const groupStaged = stagedAdds.filter(a => a.groupId === g.id)
                       if (groupExisting.length === 0 && groupStaged.length === 0) return null
@@ -1168,8 +1190,8 @@ export default function AdminCaseDetailPage() {
 
                 {(() => {
                   const q = pickerQuery.trim().toLowerCase()
-                  const targetGroupId = pickerGroupId || sortedGroups[0].id
-                  const targetGroup = sortedGroups.find(g => g.id === targetGroupId)
+                  const targetGroupId = pickerGroupId || editGroups[0]?.id
+                  const targetGroup = editGroups.find(g => g.id === targetGroupId)
                   // Hide products already in the target group, including ones
                   // staged for addition (avoid double-adds before save).
                   // Multi-variant products stay visible — admins may want to
@@ -1673,10 +1695,10 @@ export default function AdminCaseDetailPage() {
           {actionError && <p className="text-xs text-red-500 px-1">{actionError}</p>}
 
           {/* Finalize Pricing — admin adjusts final prices after agent confirms schedule */}
-          {((caseData.status === 'awaiting_pricing') || (caseData.status === 'awaiting_payment' && editingPricing)) && latestQuote && (() => {
+          {((caseData.status === 'awaiting_pricing') || (caseData.status === 'awaiting_payment' && editingPricing)) && latestQuote && finalInvoice && (() => {
             // Default due date: existing value, else today + 7 days
             const today = new Date().toISOString().slice(0, 10)
-            const defaultDue = latestQuote.payment_due_date ?? (() => {
+            const defaultDue = finalInvoice.payment_due_date ?? (() => {
               const d = new Date(); d.setDate(d.getDate() + 7); return d.toISOString().slice(0, 10)
             })()
             const dueDateValue = dueDateEdit || defaultDue
@@ -1684,15 +1706,15 @@ export default function AdminCaseDetailPage() {
             <section id="pricing" className="scroll-mt-20 border border-[#0f4c35] bg-white rounded-2xl p-4 space-y-3">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <p className="text-xs font-semibold text-[#0f4c35] uppercase tracking-wide">
-                  {latestQuote.finalized_at ? 'Edit Final Pricing' : 'Finalize Pricing'}
+                  {finalInvoice.finalized_at ? 'Edit Final Pricing' : 'Finalize Pricing'}
                 </p>
-                {latestQuote.finalized_at && (
+                {finalInvoice.finalized_at && (
                   <button onClick={() => { setEditingPricing(false); setPricingBaseEdits({}); setDueDateEdit(''); setPricingError('') }}
                     className="text-xs text-gray-500 hover:text-gray-800">Cancel</button>
                 )}
               </div>
               <p className="text-[11px] text-gray-600">
-                {latestQuote.finalized_at
+                {finalInvoice.finalized_at
                   ? 'Adjust line item prices. To add or remove items after finalize, issue an Additional Invoice.'
                   : 'Adjust line item prices. Items are locked at this stage — to add or remove, request a schedule revision.'}
               </p>
@@ -1700,7 +1722,7 @@ export default function AdminCaseDetailPage() {
               {pricingError && <p className="text-xs text-red-500">{pricingError}</p>}
 
               <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
-                {sortedGroups.flatMap(g => g.document_items.filter(it => !it.removed_at).map(item => {
+                {editGroups.flatMap(g => g.document_items.filter(it => !it.removed_at).map(item => {
                   // 원가(base_price) KRW 편집. final_price는 기존 base/final 비율로 자동 계산.
                   const baseDigits = pricingBaseEdits[item.id] ?? String(item.base_price)
                   const baseNum = Number(baseDigits) || 0
@@ -1739,7 +1761,7 @@ export default function AdminCaseDetailPage() {
               </div>
 
               {(() => {
-                const liveSum = sortedGroups
+                const liveSum = editGroups
                   .flatMap(g => g.document_items.filter(it => !it.removed_at))
                   .reduce((s, item) => {
                     const baseNum = Number(pricingBaseEdits[item.id] ?? String(item.base_price)) || 0
@@ -1747,7 +1769,7 @@ export default function AdminCaseDetailPage() {
                     return s + Math.round(baseNum * mult)
                   }, 0)
                 const newTotal = liveSum
-                const diff = newTotal - latestQuote.total_price
+                const diff = newTotal - finalInvoice.total_price
                 return (
                   <div className="flex items-baseline justify-between bg-white rounded-xl border border-gray-200 px-3 py-2">
                     <span className="text-xs text-gray-500">New Total</span>
@@ -1776,23 +1798,23 @@ export default function AdminCaseDetailPage() {
               </div>
 
               {(() => {
-                const hasPricingChanges = sortedGroups
+                const hasPricingChanges = editGroups
                   .flatMap(g => g.document_items.filter(it => !it.removed_at))
                   .some(item => {
                     const v = pricingBaseEdits[item.id]
                     return v !== undefined && Number(v) !== item.base_price
                   })
-                const dueDateChanged = dueDateValue !== latestQuote.payment_due_date
-                const isFirstFinalize = !latestQuote.finalized_at
+                const dueDateChanged = dueDateValue !== finalInvoice.payment_due_date
+                const isFirstFinalize = !finalInvoice.finalized_at
                 const buttonDisabled = !canEdit || savingPricing || (!isFirstFinalize && !hasPricingChanges && !dueDateChanged)
                 return (
               <button
                 disabled={buttonDisabled}
                 onClick={async () => {
-                  if (!latestQuote) return
+                  if (!finalInvoice) return
                   setSavingPricing(true); setPricingError('')
                   try {
-                    const items = sortedGroups.flatMap(g => g.document_items.filter(it => !it.removed_at))
+                    const items = editGroups.flatMap(g => g.document_items.filter(it => !it.removed_at))
                     const liveSum = items.reduce((s, item) => {
                       const baseNum = Number(pricingBaseEdits[item.id] ?? String(item.base_price)) || 0
                       const mult = item.base_price > 0 ? item.final_price / item.base_price : 1
@@ -1801,7 +1823,7 @@ export default function AdminCaseDetailPage() {
                     const newTotal = liveSum
                     const newDueDate = dueDateValue
 
-                    // Update each quotation item whose base_price changed
+                    // Update each final_invoice item whose base_price changed
                     for (const item of items) {
                       const newBase = Number(pricingBaseEdits[item.id] ?? String(item.base_price)) || 0
                       if (newBase !== item.base_price) {
@@ -1811,8 +1833,8 @@ export default function AdminCaseDetailPage() {
                       }
                     }
 
-                    const isFirstFinalize = !latestQuote.finalized_at
-                    const totalChanged = newTotal !== latestQuote.total_price
+                    const isFirstFinalize = !finalInvoice.finalized_at
+                    const totalChanged = newTotal !== finalInvoice.total_price
 
                     // Capture current admin as signer snapshot
                     let signerSnapshot: { name: string | null; title: string | null } | null = null
@@ -1831,53 +1853,34 @@ export default function AdminCaseDetailPage() {
                       }
                     }
 
-                    // Update quotation: lock pricing, record signer
+                    // Finalize or reprice the draft final_invoice.
+                    // Quotation is immutable — final_invoice is the live document.
                     if (isFirstFinalize) {
                       await finalizeDocument({
-                        documentId: latestQuote.id,
+                        documentId: finalInvoice.id,
                         totalPrice: newTotal,
                         paymentDueDate: newDueDate,
                         signerSnapshot,
                       })
                     } else {
-                      await repriceDocument(latestQuote.id, newTotal, newDueDate)
-                      if (signerSnapshot) {
+                      await repriceDocument(finalInvoice.id, newTotal, newDueDate)
+                      if (signerSnapshot || totalChanged) {
                         await supabase.from('documents')
-                          .update({ signer_snapshot: signerSnapshot })
-                          .eq('id', latestQuote.id)
+                          .update({
+                            ...(signerSnapshot ? { signer_snapshot: signerSnapshot } : {}),
+                            // Re-arm "invoice opened" notification when repriced
+                            ...(totalChanged ? { first_opened_at: null } : {}),
+                          })
+                          .eq('id', finalInvoice.id)
                       }
                     }
 
-                    // First finalize: issue final_invoice mirroring quotation.
-                    // Subsequent: sync existing final_invoice from quotation.
-                    let invoiceNumber: string
-                    if (isFirstFinalize) {
-                      const inv = await issueInvoice({
-                        caseId: caseData.id,
-                        type: 'final_invoice',
-                        copyItemsFromQuotation: true,
-                        paymentDueDate: newDueDate,
-                        signerSnapshot,
-                      })
-                      invoiceNumber = inv.document_number
-                    } else {
-                      await syncFinalInvoiceFromQuotation(caseData.id)
-                      const inv = await getCaseFinalInvoice(caseData.id)
-                      invoiceNumber = inv?.document_number ?? caseData.case_number
-                      // Reprice with real change → re-arm "invoice opened" notification
-                      if (totalChanged && inv) {
-                        await supabase.from('documents')
-                          .update({ first_opened_at: null, signer_snapshot: signerSnapshot ?? inv.signer_snapshot })
-                          .eq('id', inv.id)
-                      }
-                    }
-
-                    // First finalize → bump case to awaiting_payment so confirm-payment block opens.
+                    // First finalize → bump case to awaiting_payment
                     if (isFirstFinalize) {
                       await supabase.from('cases').update({ status: 'awaiting_payment' }).eq('id', caseData.id)
                     }
 
-                    const ref = invoiceNumber ?? caseData.case_number
+                    const ref = finalInvoice.document_number ?? caseData.case_number
                     let notifyMessage: string
                     if (isFirstFinalize) {
                       notifyMessage = `${ref} Pricing finalized — invoice ready to send`
@@ -1887,12 +1890,12 @@ export default function AdminCaseDetailPage() {
                         const v = pricingBaseEdits[item.id]
                         return v !== undefined && Number(v) !== item.base_price
                       }).length
-                      const dueChanged = newDueDate !== latestQuote.payment_due_date
+                      const dueChanged = newDueDate !== finalInvoice.payment_due_date
                       const fmtKRWshort = (n: number) => `₩${n.toLocaleString('en-US')}`
                       const parts: string[] = []
-                      if (totalChanged) parts.push(`Total ${fmtKRWshort(latestQuote.total_price)} → ${fmtKRWshort(newTotal)}`)
+                      if (totalChanged) parts.push(`Total ${fmtKRWshort(finalInvoice.total_price)} → ${fmtKRWshort(newTotal)}`)
                       if (changedItems > 0) parts.push(`${changedItems} item${changedItems > 1 ? 's' : ''} repriced`)
-                      if (dueChanged) parts.push(`Due ${latestQuote.payment_due_date ?? '—'} → ${newDueDate}`)
+                      if (dueChanged) parts.push(`Due ${finalInvoice.payment_due_date ?? '—'} → ${newDueDate}`)
                       const header = `${ref} Invoice updated`
                       notifyMessage = parts.length === 0
                         ? header
@@ -1903,7 +1906,7 @@ export default function AdminCaseDetailPage() {
                       { type: 'case', id: caseData.id, label: caseData.case_number },
                       {
                         total_krw: newTotal,
-                        ...(totalChanged && !isFirstFinalize ? { previous_total_krw: latestQuote.total_price } : {}),
+                        ...(totalChanged && !isFirstFinalize ? { previous_total_krw: finalInvoice.total_price } : {}),
                       })
                     setPricingBaseEdits({})
                     setDueDateEdit('')
@@ -1914,7 +1917,7 @@ export default function AdminCaseDetailPage() {
                   } finally { setSavingPricing(false) }
                 }}
                 className="w-full py-2.5 text-sm font-medium bg-[#0f4c35] text-white rounded-xl hover:bg-[#0a3828] disabled:opacity-40 transition-colors">
-                {savingPricing ? 'Saving...' : latestQuote.finalized_at ? 'Save Pricing Changes' : 'Finalize Pricing & Issue Invoice'}
+                {savingPricing ? 'Saving...' : finalInvoice.finalized_at ? 'Save Pricing Changes' : 'Finalize Pricing & Issue Invoice'}
               </button>
                 )
               })()}
@@ -1944,7 +1947,7 @@ export default function AdminCaseDetailPage() {
               <div className={headerClass}>
                 <div className="flex items-center gap-2">
                   <p className={labelClass}>Financials</p>
-                  {!latestQuote.finalized_at && (
+                  {!finalInvoice?.finalized_at && (
                     <span className="text-[10px] font-semibold text-gray-500 bg-gray-100 border border-gray-200 rounded-full px-2 py-0.5 uppercase tracking-wide">
                       Estimated
                     </span>
@@ -1956,14 +1959,12 @@ export default function AdminCaseDetailPage() {
                     {finalInvoice?.document_number && <span className="ml-1.5 text-gray-300">·</span>}
                     {finalInvoice?.document_number && <span className="ml-1.5 text-[#0f4c35]">{finalInvoice.document_number}</span>}
                   </span>
-                  {latestQuote.finalized_at ? (
+                  {finalInvoice?.finalized_at ? (
                     <>
                       <a href={`${baseUrl}/quote/${latestQuote.slug}?preview=1`} target="_blank" rel="noopener noreferrer"
                         className="text-xs text-gray-400 hover:text-[#0f4c35] transition-colors">Quotation ↗</a>
-                      {finalInvoice && (
-                        <a href={`${baseUrl}/invoice/${finalInvoice.slug}?preview=1`} target="_blank" rel="noopener noreferrer"
-                          className="text-xs text-gray-400 hover:text-[#0f4c35] transition-colors">Invoice ↗</a>
-                      )}
+                      <a href={`${baseUrl}/invoice/${finalInvoice.slug}?preview=1`} target="_blank" rel="noopener noreferrer"
+                        className="text-xs text-gray-400 hover:text-[#0f4c35] transition-colors">Invoice ↗</a>
                     </>
                   ) : (
                     <a href={`${baseUrl}/quote/${latestQuote.slug}?preview=1`} target="_blank" rel="noopener noreferrer"
@@ -1978,30 +1979,30 @@ export default function AdminCaseDetailPage() {
               <div className="p-4 space-y-3">
               {financialsCollapsed ? (
                 <p className="text-xs text-gray-400">
-                  {latestQuote.finalized_at
-                    ? `Finalized · ${fmtKRW(latestQuote.total_price ?? 0)}`
+                  {finalInvoice?.finalized_at
+                    ? `Finalized · ${fmtKRW(finalInvoice.total_price ?? 0)}`
                     : `Estimated · ${fmtKRW(latestQuote.total_price ?? 0)}`}
                 </p>
               ) : (<>
               {(() => {
+                const isFinalized = !!finalInvoice?.finalized_at
                 const schedConfirmed = (caseData.schedules ?? []).some(s => s.status === 'confirmed')
-                const allItems = (latestQuote.document_groups ?? []).flatMap((g: { document_items: QuoteItem[] }) => g.document_items ?? [])
-                const originalTotal = allItems
-                  .filter((it: QuoteItem) => it.origin === 'original' || it.origin == null)
+                // Pending changes are tracked on the draft final_invoice (not quotation — quotation is immutable).
+                const draftItems = (finalInvoice?.document_groups ?? []).flatMap((g: { document_items: QuoteItem[] }) => g.document_items ?? [])
+                const pendingRemovals = draftItems
+                  .filter((it: QuoteItem) => it.removed_at)
                   .reduce((s: number, it: QuoteItem) => s + (it.final_price ?? 0), 0)
-                const pendingRemovals = allItems
-                  .filter((it: QuoteItem) => it.removed_at && (it.origin === 'original' || it.origin == null))
-                  .reduce((s: number, it: QuoteItem) => s + (it.final_price ?? 0), 0)
-                const pendingAdditions = allItems
+                const pendingAdditions = draftItems
                   .filter((it: QuoteItem) => !it.removed_at && it.origin === 'admin_added')
                   .reduce((s: number, it: QuoteItem) => s + (it.final_price ?? 0), 0)
-                const showPending = !latestQuote.finalized_at && !schedConfirmed && (pendingRemovals > 0 || pendingAdditions > 0)
-                const displayTotal = (latestQuote.finalized_at || schedConfirmed) ? latestQuote.total_price : originalTotal
+                const showPending = !isFinalized && finalInvoice && (pendingRemovals > 0 || pendingAdditions > 0)
+                // After finalize show final_invoice total; before finalize show quotation (original estimate).
+                const displayTotal = isFinalized ? (finalInvoice!.total_price ?? 0) : (latestQuote.total_price ?? 0)
                 return (
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div>
                   <p className="text-[10px] text-gray-400 mb-0.5">
-                    {latestQuote.finalized_at ? 'Total (KRW)' : 'Estimated (KRW)'}
+                    {isFinalized ? 'Total (KRW)' : 'Estimated (KRW)'}
                   </p>
                   <p className="font-semibold text-gray-900">{fmtKRW(displayTotal)}</p>
                   {showPending && (
@@ -2014,7 +2015,7 @@ export default function AdminCaseDetailPage() {
                       )}
                     </div>
                   )}
-                  {!latestQuote.finalized_at && !schedConfirmed && (
+                  {!isFinalized && !schedConfirmed && (
                     <p className="mt-1">
                       <span className="text-[10px] font-medium text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
                         May change after you finalize
@@ -2024,7 +2025,7 @@ export default function AdminCaseDetailPage() {
                 </div>
                 <div>
                   <p className="text-[10px] text-gray-400 mb-0.5">
-                    {latestQuote.finalized_at ? 'Total (USD)' : 'Estimated (USD)'}
+                    {isFinalized ? 'Total (USD)' : 'Estimated (USD)'}
                   </p>
                   <p className="font-semibold text-gray-900">{fmtUSD(displayTotal / exchangeRate)}</p>
                   {showPending && (
@@ -2037,7 +2038,7 @@ export default function AdminCaseDetailPage() {
                       )}
                     </div>
                   )}
-                  {!latestQuote.finalized_at && !schedConfirmed && (
+                  {!isFinalized && !schedConfirmed && (
                     <p className="mt-1">
                       <span className="text-[10px] font-medium text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
                         May change after you finalize
@@ -2047,9 +2048,9 @@ export default function AdminCaseDetailPage() {
                 </div>
                 <div>
                   <p className="text-[10px] text-gray-400 mb-0.5">Payment Due</p>
-                  {latestQuote.finalized_at && latestQuote.payment_due_date ? (
-                    <p className={`font-medium text-sm ${caseData.status === 'awaiting_payment' && new Date(latestQuote.payment_due_date) < new Date() ? 'text-red-500' : 'text-gray-800'}`}>
-                      {latestQuote.payment_due_date}
+                  {finalInvoice?.finalized_at && finalInvoice.payment_due_date ? (
+                    <p className={`font-medium text-sm ${caseData.status === 'awaiting_payment' && new Date(finalInvoice.payment_due_date) < new Date() ? 'text-red-500' : 'text-gray-800'}`}>
+                      {finalInvoice.payment_due_date}
                     </p>
                   ) : (
                     <p className="text-xs text-gray-400">Set on finalize</p>
@@ -2062,7 +2063,7 @@ export default function AdminCaseDetailPage() {
 
               {/* Revenue breakdown */}
               {(() => {
-                const total = latestQuote.total_price ?? 0
+                const total = (finalInvoice?.finalized_at ? finalInvoice.total_price : latestQuote.total_price) ?? 0
                 const co = latestQuote.company_margin_rate ?? 0
                 const ag = latestQuote.agent_margin_rate ?? 0
                 const denom = (1 + co) * (1 + ag)

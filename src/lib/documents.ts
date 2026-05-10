@@ -703,6 +703,18 @@ export async function issueCommissionInvoice(
   return doc
 }
 
+// Create a draft final_invoice document by copying groups + items + group_members
+// from the quotation. Called lazily when admin first opens "Edit Selected Products"
+// so that edits target the final_invoice (not the immutable quotation).
+// finalized_at remains null until admin explicitly hits "Finalize Pricing".
+export async function createDraftFinalInvoice(caseId: string): Promise<DocumentRow> {
+  return issueInvoice({
+    caseId,
+    type: 'final_invoice',
+    copyItemsFromQuotation: true,
+  })
+}
+
 // Recalculate document.total_price from current document_items sum (final_price).
 // Use after add/remove/update of items to keep header total in sync.
 // getDocumentItems already filters out soft-deleted rows.

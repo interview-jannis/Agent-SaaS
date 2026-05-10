@@ -1,11 +1,12 @@
 # Project Progress
 
 ## 현재 상태
-- **Phase**: 시뮬 직전 정합성 + 운영성. 3자 계약 evidentiary 강화 + 순서 무관 + 실시간 자동 새로고침, Overview 캐시베이시스 회계, Edit Selected Products audit trail (origin + soft delete), ScheduleEditor 대수술 (Free time / partner / block-time 범위 / group / internal note / pending row / coverage gate), agent → admin 메모. ScheduleEditor 2차 (draft save / edit button / group re-pick / cancel restore / delete confirm / multi-day product / ✓ indicator / duration / Shared color), ScheduleDocument 전면 재설계 (cover: flight+groups, day sections: group separation, variantTag chip).
-- **마지막 작업**: 2026-05-08 — 5/8 미팅 후 대규모 작업: Agent Home → 9단계 절차 소개 화면, Product 탭 분리, Finalize Pricing 원가 표시, 문서 금액 잠금(price_rate_snapshot), 1500원 고정환산, Case Attachments(drag&drop), Financials 섹션 고정 배치, 섹션 헤더 밴드 UI 통일. + v21 K-Beauty 오염 정정, "Free" vs "Price on request" UI, Agent 사업자 정보 등록, Guide 콘텐츠 편집, 상품 이미지 Bulk Upload.
-- **마지막 업데이트**: 2026-05-09 (시뮬레이션 5/11~15, 런칭 5/18)
+- **Phase**: 시뮬 직전 정합성 + 운영성. Quotation 불변성 모델(dual document) + Finalize Pricing 리팩터 + DB 트리거 + Agent 취소 여행명 확인 + Guide 전면 재작성 + Trip Services 분리 + Admin 권한 체계 + 인당 견적서 탭 방식.
+- **마지막 작업**: 2026-05-09-10 — TikkTakk 브랜드명 치환 / 인당 견적서 `?member=` 탭 / Admin 권한 체계(super admin 전용 서명 + canEdit 게이트) / UX 잔손질 6건 / Trip Services 분리 / 견적서 불변성 모델 + Finalize 리팩터 / DB 트리거 / Agent 취소 여행명 확인 / Guide 전면 재작성.
+- **마지막 업데이트**: 2026-05-11 (시뮬레이션 5/11~15, 런칭 5/18)
 - **SaaS 브랜드명**: **TikkTakk** (5/9 전역 치환 완료)
 
+> 2026-05-09-10 상세: `notes/26.05.09-10.md` (§1: TikkTakk 브랜드명 치환. §2: 인당 견적서 `?member=` 탭. §3: Admin 권한 체계 재설계. §4: UX 잔손질 6건. §5: Trip Services 분리. §6: 견적서 불변성 모델 + Finalize 리팩터 + DB 트리거. §7: Agent 취소 여행명 확인. §8: Guide 전면 재작성).
 > 2026-05-08 상세: `notes/26.05.08.md` (§1: 데이터 마스터 v21. §2: "Free" vs "Price on request" UI. §3: Agent 사업자 정보 등록. §4: Guide 콘텐츠 편집. §5: 상품 이미지 Bulk Upload. §6: Financials 섹션 고정 배치. §7: Case Attachments. §8: 섹션 헤더 밴드 + Confirm Payment 통합. §9: Agent Home → 9단계 절차 소개 + Product 탭 분리. §10: Finalize Pricing 원가 표시. §11: 문서 금액 잠금 + 1500원 고정환산).
 > 2026-05-07 상세: `notes/26.05.07.md` (§1–18: 모바일 대응 ScheduleDocument + invoice 표 + schedule 시각 계층 + Quotation admin 이름 + 빌드 오류 수정 + Subpackage 가격 로직 + awaiting_settlement 신규 상태 + commission invoice Mark Paid 통합 + Client Review 섹션 + pre-confirmation origin 필터 정합성. §19: Guide 페이지 구현. §20: 데이터 마스터 v20 — K-Wellness/K-Starcation 재구축 + 전수 감사. §21: UI 색상 3톤 통일 — Agent/Admin 전면 정리).
 > 2026-05-06 상세 (2차): `notes/26.05.06.md` §11–13 (ScheduleEditor 2차 개선 + ScheduleDocument 전면 재설계).
@@ -39,6 +40,11 @@
 - [ ] **Agent Home 사진 추가** — 9단계 절차 소개 화면에 이미지 삽입. 상품 사진 등록 완료 후 작업.
 
 #### 개발 (완료 확인됨)
+- [x] **견적서 불변성 모델 + Finalize Pricing 리팩터** — Quotation = 영구 snapshot, Final Invoice = 편집 draft. Edit Selected Products가 `final_invoice` 타겟으로 전환, `createDraftFinalInvoice` lazy 생성. `issueInvoice`/`syncFinalInvoiceFromQuotation` 제거, `finalizeDocument(finalInvoice.id)` 직접 호출. (5/10-11)
+- [x] **DB 트리거 `trg_quotation_items_immutable`** — quotation document_items에 INSERT/UPDATE/DELETE 차단. `supabase/migrations/quotation_items_immutable.sql`. Supabase SQL 에디터에서 수동 실행 필요. (5/10-11)
+- [x] **Agent 케이스 취소 여행명 확인** — 취소 모달에서 concept 또는 case_number 직접 입력 필수. 일치해야 취소 버튼 활성. (5/10-11)
+- [x] **Guide 전면 재작성** — CASE_STEPS 10단계 다단락 "왜" 설명, `\n\n` → `<p>` 렌더링 fix, 화면 안내 섹션 전면 보강 (Overview/Products/Agents/Clients/Settlement/Surveys/agent_home/agent_cases/client_quote/client_schedule/client_final_invoice). (5/10-11)
+- [x] **Trip Services 분리** — Subpackage 상품 전용 섹션 (`일 수 × 단가`). `groupTypeFromName()` name-based convention. CART_VERSION=3. (5/9-10)
 - [x] **장바구니 localStorage 영속화** — agent/product 탭 나갔다 와도 담던 상품 유지. sessionStorage flag 제거, mount마다 localStorage 복원. 복원 시 "In-progress cart restored" 배너 + Clear 버튼 (5/9 야간)
 - [x] **Product 카드 상품명 글자 크기 업** — `text-sm` → `text-base` (5/9 야간)
 - [x] **Cases 상세화면 섹션 기본 collapse** — Trip Setup / Schedule History / Financials 모두 `useState(true)`. Schedule expand 버튼 `isTerminal` 게이트 제거 (5/9 야간)
@@ -47,6 +53,7 @@
 - [x] **Commission Invoice canEdit 버그** — local `canEdit` 변수가 prop shadowing → `canMarkThisDoc`으로 rename, 담당 admin 게이트 정상 적용 (5/9 야간)
 - [x] **TikkTakk 브랜드명 전역 치환** — 코드베이스 전체 "Tiktak" → "TikkTakk" 텍스트 치환 (5/9, 30개 파일)
 - [x] **인당 견적서** — QuoteDocument `?member={id}` 탭 방식. 멤버 2명 이상 시 sticky 탭 노출, 그룹 필터 + 인당 금액 분할 (5/9)
+- [x] **Admin 권한 체계 재설계** — Onboarding counter-sign + Approve & Activate super admin 전용. 케이스 canEdit = assigned_admin 또는 super admin. ScheduleEditor/CaseDocumentsSection/AdminCaseContractSection readOnly/canEdit prop 추가. (5/9)
 - [x] **Agent Home → 9단계 절차 소개 화면** — home/page.tsx STEPS 배열 (5/8). 사진은 데이터 정리 후 추가 예정.
 - [x] **K-Medical 서브카테고리 순서 재정렬** — Health Screening → Dental → Eye → Women's Health → Korean Medical (완료)
 - [x] **Product 탭 분리** — agent/product/ 라우트 + 사이드바 탭 추가 (5/8)

@@ -40,61 +40,61 @@ const CASE_STEPS = [
     status: 'awaiting_contract',
     label: 'Awaiting Contract',
     isYourMove: true,
-    action: 'Send the quote link to your client. Coordinate the 3-party contract signature (client → you → admin).',
+    action: 'Send your client the quotation link from the case page. The quote is a permanent snapshot — the products and estimated prices your client sees are fixed at the moment you created the case. Even if products change later, the original quote stays as-is.\n\nAt the same time, coordinate the 3-party contract: your client signs first, then you, then admin counter-signs. All three signatures are required before moving on.',
   },
   {
     status: 'awaiting_deposit',
     label: 'Awaiting Deposit',
     isYourMove: true,
-    action: 'Collect the 50% deposit from your client. Complete all Trip Info and Client Info fields, then forward the deposit to admin.',
+    action: 'Collect 50% of the total as a deposit from your client and forward it to admin.\n\nWhile waiting, fill in all Trip Info (flights, accommodation, travel dates) and Client Info (passport, medical details, dietary needs) on the case page. Incomplete fields will block the case from moving to the schedule stage — so the more you fill in now, the smoother the process.\n\nIf the product selection needs any changes, raise it with admin now. Once the schedule stage starts, product changes become much harder.',
   },
   {
     status: 'awaiting_schedule',
     label: 'Awaiting Schedule',
     isYourMove: false,
-    action: 'Admin is building the itinerary. No action needed — you\'ll be notified when it\'s ready for review.',
+    action: 'Admin is reviewing the product selection and building the day-by-day itinerary. Nothing required from you right now — you\'ll get a notification as soon as the schedule is ready for your review.\n\nIf you recall a product change the client requested, message admin now while there\'s still time.',
   },
   {
     status: 'reviewing_schedule',
     label: 'Reviewing Schedule',
     isYourMove: true,
-    action: 'Review the schedule admin uploaded. Confirm it to proceed, or request a revision with notes.',
+    action: 'Review the schedule admin has prepared. Check that the dates, service names, clinics, and timing all match what your client is expecting.\n\nIf anything needs to change, click "Request Revision" and leave a clear, specific note for admin (e.g. "Move the facial treatment to Day 2 afternoon — client has a doctor appointment on Day 1"). Admin will revise and re-send for another round of review.\n\nWhen everything looks good, click "Confirm". This permanently locks the schedule — no further edits are possible after this point, so make sure your client is aligned before you confirm.',
   },
   {
     status: 'awaiting_pricing',
     label: 'Awaiting Final Pricing',
     isYourMove: false,
-    action: 'Admin is finalizing the balance invoice. No action needed.',
+    action: 'Admin is setting the final prices for the balance invoice. No action needed from you.\n\nNote: at this stage, the product list is locked. If you realise something needs to be added or removed, contact admin — they would need to revert the schedule to make structural changes, which takes extra time. Try to catch these issues during the schedule review.',
   },
   {
     status: 'awaiting_payment',
     label: 'Awaiting Balance Payment',
     isYourMove: true,
-    action: 'Send the final invoice link to your client. Collect the remaining 50% balance and confirm with admin.',
+    action: 'Send your client the final invoice link. You can copy it from the case page using the "Send" button next to the invoice.\n\nOnce your client pays the remaining 50%, notify admin so they can confirm receipt on their end. The case won\'t advance until admin confirms the payment.',
   },
   {
     status: 'awaiting_travel',
     label: 'Awaiting Travel',
     isYourMove: true,
-    action: 'Coordinate on-the-ground logistics. Once travel is complete, click "Mark Travel Complete".',
+    action: 'The payment is confirmed and the trip is on. Share the schedule link with your client so they have their itinerary on hand.\n\nCoordinate any on-the-ground logistics — transfers, clinic check-in times, hotel arrangements. Once the trip is fully complete, come back to the case and click "Mark Travel Complete". The timestamp is recorded and used as the basis for your commission.',
   },
   {
     status: 'awaiting_review',
     label: 'Awaiting Review',
     isYourMove: true,
-    action: 'Submit the post-trip survey and review on behalf of your client.',
+    action: 'Collect feedback from your client and submit the post-trip survey on their behalf. Ask them how the trip went, whether the services met their expectations, and if there\'s anything to improve.\n\nOnce you submit the review, the case unlocks the commission invoice step. The sooner you submit, the sooner your payout can be processed.',
   },
   {
     status: 'awaiting_settlement',
     label: 'Awaiting Settlement',
     isYourMove: true,
-    action: 'Issue your commission invoice to admin. Wait for the payout to be processed.',
+    action: 'Issue your commission invoice to admin using the "Issue Commission Invoice" button on the case page. Your commission rate (15–25%) is automatically applied based on your completed patient count for the month.\n\nOnce admin processes the payout and clicks "Mark Paid", a settlement record is created automatically and the case moves to Completed. You can view all your payouts under the Payouts tab.',
   },
   {
     status: 'completed',
     label: 'Completed',
     isYourMove: false,
-    action: 'Case is fully closed. Commission has been paid.',
+    action: 'The case is fully closed — contract signed, trip completed, review submitted, commission paid. All documents and records remain accessible on the case page for future reference.\n\nCheck your Payouts tab to confirm the settlement entry is recorded correctly.',
   },
 ]
 
@@ -118,11 +118,12 @@ const AGENT_SECTIONS = [
       </svg>
     ),
     title: 'Home',
-    desc: 'Your daily starting point. Surfaces cases that need your immediate action and shows a summary of your activity this month.',
+    desc: 'Your daily starting point. Surfaces cases that need your immediate action and shows a summary of your month at a glance.',
     details: [
-      'Action Required — cases where you must act to advance the pipeline',
-      'Monthly stats: active cases, completed trips, revenue generated',
-      'Quick case creation — select products and build a quote in one flow',
+      'Action Required — only cases where your action is blocking progress are listed here. Start your day by clearing this list',
+      'Monthly stats: active cases, completed trips, revenue generated, and your current commission rate tier',
+      'Quick case creation — pick a client, select services by category, configure groups (Shared vs individual), and a quotation is created instantly',
+      'Notification bell — real-time alerts when admin uploads a schedule, confirms a payment, or takes any action on your cases',
     ],
   },
   {
@@ -138,7 +139,11 @@ const AGENT_SECTIONS = [
       'Status tabs separate cases that need your action from cases that are waiting on admin',
       'Case detail: enter client info, send document links, confirm schedules, mark travel complete',
       'Copy quote / invoice / schedule links to send directly to your client',
-      'Cancel a case (before balance payment) — log a cancellation reason',
+      'Building a quote: select services per group (Shared group = activities all members share; individual groups = services per person). The Quotation is a permanent, uneditable snapshot once created — your client sees exactly what was agreed',
+      'Trip Name — the case label shown on the schedule cover. Set this when creating the case',
+      'Schedule: once you confirm the itinerary, it is locked and cannot be changed. If revisions are needed, use "Request Revision" before confirming',
+      'Commission invoice: after travel is complete and the review is submitted, issue your commission invoice to admin. When admin marks it paid, a settlement record is automatically created and the case moves to Completed',
+      'Cancel a case (before balance payment) — you must type the trip name exactly to confirm cancellation. This action cannot be undone',
       'Agent Notes — internal memo visible only to admin, not to your client',
     ],
   },
@@ -150,12 +155,15 @@ const AGENT_SECTIONS = [
       </svg>
     ),
     title: 'Clients',
-    desc: 'Your client database. Profiles include travel preferences, medical history, and Muslim-friendly requirements.',
+    desc: 'Your client database. Each profile stores everything needed to plan a personalised medical tourism trip.',
     details: [
-      'Create client profiles directly or they are auto-created when you build a case',
-      'All required fields must be filled before a case can advance past the deposit stage',
-      'Passport, emergency contact, medical history, dietary restrictions, Muslim-friendly preferences',
-      'A single client can be linked to multiple cases (returning clients)',
+      'Profiles are created when you build a new case, or can be added here in advance for returning clients',
+      'Completeness indicator — a yellow warning shows which required fields are still missing. All must be filled before the case can advance past the deposit stage',
+      'Basic info: passport number, nationality, date of birth, emergency contact, blood type',
+      'Medical info: allergies, current medications, health conditions, height/weight, prior aesthetic procedures',
+      'Muslim-friendly settings: dietary restriction grade (halal certified / halal friendly / etc.), prayer frequency and location preference, same-gender doctor/therapist request, mixed-gender activity comfort level',
+      'Lifestyle: pregnancy status, smoking and alcohol habits — important for pre-procedure screening',
+      'One client can appear across multiple cases — useful for returning clients or family groups',
     ],
   },
   {
@@ -411,7 +419,11 @@ function CasePipeline({ edits, editMode, onEdit }: {
               </button>
               {isOpen && (
                 <div className="mx-1 px-4 py-3 rounded-b-xl border border-t-0 border-gray-200 bg-gray-50">
-                  <p className="text-sm text-gray-700 leading-relaxed">{actionText}</p>
+                  <div className="space-y-2">
+                    {actionText.split('\n\n').map((para, pi) => (
+                      <p key={pi} className="text-sm text-gray-700 leading-relaxed">{para}</p>
+                    ))}
+                  </div>
                   {screenshot && !editMode && <BrowserFrame src={screenshot} alt={`${step.label} screen`} />}
                   {editMode && onEdit && (
                     <div className="mt-3 p-3 rounded-lg border border-[#0f4c35]/15 bg-[#0f4c35]/3 space-y-1">

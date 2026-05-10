@@ -220,6 +220,7 @@ export default function CaseDetailPage() {
   const [markingTravelComplete, setMarkingTravelComplete] = useState(false)
   const [showCancel, setShowCancel] = useState(false)
   const [cancelReason, setCancelReason] = useState('')
+  const [cancelConfirmName, setCancelConfirmName] = useState('')
   const [cancelling, setCancelling] = useState(false)
   const [cancelError, setCancelError] = useState('')
   const [showRevisionModal, setShowRevisionModal] = useState(false)
@@ -450,6 +451,10 @@ export default function CaseDetailPage() {
     if (!caseData) return
     if (!CANCELLABLE_STATUSES.includes(caseData.status)) {
       setCancelError('Case can only be cancelled before payment is confirmed.'); return
+    }
+    const expectedName = (caseData.concept || caseData.case_number).toLowerCase()
+    if (cancelConfirmName.trim().toLowerCase() !== expectedName) {
+      setCancelError('Trip name does not match. Please type it exactly to confirm.'); return
     }
     if (!cancelReason.trim()) { setCancelError('Please enter a reason.'); return }
     setCancelling(true); setCancelError('')
@@ -2112,13 +2117,28 @@ export default function CaseDetailPage() {
           )}
 
           {/* Cancel confirmation modal */}
-          {showCancel && (
+          {showCancel && (() => {
+            const tripLabel = caseData.concept || caseData.case_number
+            const nameMatches = cancelConfirmName.trim().toLowerCase() === tripLabel.toLowerCase()
+            const canSubmit = nameMatches && cancelReason.trim()
+            return (
             <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
-              onClick={() => { if (!cancelling) setShowCancel(false) }}>
+              onClick={() => { if (!cancelling) { setShowCancel(false); setCancelConfirmName(''); setCancelReason(''); setCancelError('') } }}>
               <div className="bg-white rounded-2xl max-w-md w-full p-5 space-y-4" onClick={e => e.stopPropagation()}>
                 <div>
-                  <h3 className="text-sm font-semibold text-gray-900">Cancel Case {caseData.case_number}?</h3>
-                  <p className="text-xs text-gray-500 mt-1">This will permanently remove the case and its quote. The admin will be notified with your reason. This action cannot be undone.</p>
+                  <h3 className="text-sm font-semibold text-gray-900">Cancel Case?</h3>
+                  <p className="text-xs text-gray-500 mt-1">This cannot be undone. The admin will be notified. All documents associated with this case will be locked.</p>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">
+                    Type the trip name to confirm: <span className="font-semibold text-gray-800">{tripLabel}</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={cancelConfirmName}
+                    onChange={e => { setCancelConfirmName(e.target.value); setCancelError('') }}
+                    placeholder={tripLabel}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-rose-400 resize-none" />
                 </div>
                 <div>
                   <label className="block text-xs text-gray-600 mb-1">Reason *</label>
@@ -2128,17 +2148,18 @@ export default function CaseDetailPage() {
                 </div>
                 {cancelError && <p className="text-xs text-red-500">{cancelError}</p>}
                 <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
-                  <button onClick={() => { setShowCancel(false); setCancelReason(''); setCancelError('') }}
+                  <button onClick={() => { setShowCancel(false); setCancelConfirmName(''); setCancelReason(''); setCancelError('') }}
                     disabled={cancelling}
                     className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-800">Keep Case</button>
-                  <button onClick={cancelCase} disabled={cancelling || !cancelReason.trim()}
+                  <button onClick={cancelCase} disabled={cancelling || !canSubmit}
                     className="px-3 py-1.5 text-xs font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-40">
                     {cancelling ? 'Cancelling...' : 'Confirm Cancel'}
                   </button>
                 </div>
               </div>
             </div>
-          )}
+            )
+          })()}
 
         </div>
       </div>
