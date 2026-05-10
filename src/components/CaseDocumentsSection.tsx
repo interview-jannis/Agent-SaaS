@@ -11,7 +11,6 @@ import {
   type AdditionalItemDraft,
   DOCUMENT_LABELS,
   customerRouteFor,
-  issueDepositInvoice,
   issueDepositSettlement,
   issueAdditionalInvoice,
   issueCommissionInvoice,
@@ -23,13 +22,11 @@ import {
 
 // Issue intents — labels exposed in the UI map 1:1 to invoice flows in 4/30 SOP.
 type IssueIntent =
-  | 'deposit_to_client'        // agent → client
   | 'deposit_settlement'       // admin → agent
   | 'additional'               // admin → client
   | 'commission'               // agent → admin
 
 const INTENT_LABEL: Record<IssueIntent, string> = {
-  deposit_to_client: 'Deposit Invoice (to Client)',
   deposit_settlement: 'Deposit Settlement (to Agent)',
   additional: 'Additional Invoice (to Client)',
   commission: 'Commission Invoice (to Admin)',
@@ -177,7 +174,6 @@ export default function CaseDocumentsSection({
 
   // Existing-doc detection — direction-aware
   const has = {
-    depositToClient: documents.some(d => d.type === 'deposit_invoice' && d.to_party === 'client'),
     depositToAgent: documents.some(d => d.type === 'deposit_invoice' && d.to_party === 'agent'),
     commission: documents.some(d => d.type === 'commission_invoice'),
   }
@@ -188,11 +184,7 @@ export default function CaseDocumentsSection({
       const signer = await captureSigner()
       let issued: DocumentRow | null = null
 
-      if (intent === 'deposit_to_client') {
-        const pct = Math.max(1, Math.min(100, Number(depositPercent) || 50))
-        // Agent → Client: signer not captured from current admin (caller is agent)
-        issued = await issueDepositInvoice(caseId, { percent: pct, dueDate: issueDueDate })
-      } else if (intent === 'deposit_settlement') {
+      if (intent === 'deposit_settlement') {
         const pct = Math.max(1, Math.min(100, Number(depositPercent) || 50))
         issued = await issueDepositSettlement(caseId, { percent: pct, dueDate: issueDueDate, signerSnapshot: signer })
       } else if (intent === 'additional') {
@@ -224,15 +216,10 @@ export default function CaseDocumentsSection({
           // Admin issued deposit settlement → notify agent
           await notifyAgent(agentId, `${caseNumber} ${label} issued (${issued.document_number}) — please review`, `/agent/cases/${caseId}`)
         } else if (recipient === 'client') {
-          // Client doesn't have notifications. Notify the OTHER party so they
-          // know the document was issued and the money flow is in motion.
+          // Client doesn't have notifications. Admin issued additional → notify
+          // agent so they coordinate with the client.
           if (actor === 'admin' && agentId) {
-            // Admin issued additional → notify agent (they coordinate with client)
             await notifyAgent(agentId, `${caseNumber} ${label} issued (${issued.document_number}) — please send to client`, `/agent/cases/${caseId}`)
-          } else if (actor === 'agent') {
-            // Agent issued deposit (to client, after 3-way contract signed) →
-            // notify admins so they know money flow has started
-            await notifyAssignedAdmin({ case_id: caseId }, `${caseNumber} ${label} issued by agent (${issued.document_number}) — client should pay agent`, `/admin/cases/${caseId}`)
           }
         }
       }
@@ -353,10 +340,7 @@ export default function CaseDocumentsSection({
       )
       if (doc) {
         const docNumber = doc.document_number ?? ''
-        if (doc.type === 'deposit_invoice' && doc.from_party === 'agent' && doc.to_party === 'client') {
-          // Agent confirmed client paid them → admins should know money flow started
-          await notifyAssignedAdmin({ case_id: caseId }, `${caseNumber} Deposit received by agent (${docNumber}) — agent should forward to admin`, `/admin/cases/${caseId}`)
-        } else if (doc.type === 'deposit_invoice' && doc.from_party === 'admin' && doc.to_party === 'agent') {
+        if (doc.type === 'deposit_invoice' && doc.from_party === 'admin' && doc.to_party === 'agent') {
           // Admin received deposit forward from agent → notify agent
           if (agentId) await notifyAgent(agentId, `${caseNumber} Deposit forward confirmed by admin (${docNumber})`, `/agent/cases/${caseId}`)
         } else if (doc.type === 'final_invoice') {
@@ -423,17 +407,10 @@ export default function CaseDocumentsSection({
       <div className="flex items-center justify-between flex-wrap gap-2">
         <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Invoices</p>
         <div className="flex items-center gap-2 flex-wrap">
-          {actor === 'agent' && !has.depositToClient && (
-            <button onClick={() => setIssuing('deposit_to_client')} disabled={!canIssue || contractPending}
-              className="text-xs font-medium px-2.5 py-1.5 rounded-lg bg-[#0f4c35] text-white hover:bg-[#0a3828] disabled:opacity-40"
-              title={contractPending ? 'Available after the 3-party contract is signed' : 'Agent → Client (collect deposit from client)'}>
-              + Deposit
-            </button>
-          )}
           {actor === 'admin' && !has.depositToAgent && (
-            <button onClick={() => setIssuing('deposit_settlement')} disabled={!canEdit || !canIssue || !has.depositToClient || contractPending}
+            <button onClick={() => setIssuing('deposit_settlement')} disabled={!canEdit || !canIssue || contractPending}
               className="text-xs font-medium px-2.5 py-1.5 rounded-lg bg-[#0f4c35] text-white hover:bg-[#0a3828] disabled:opacity-40"
-              title={contractPending ? 'Available after the 3-party contract is signed' : (has.depositToClient ? 'Admin → Agent (record deposit forward owed)' : 'Available after agent issues the client-facing deposit invoice')}>
+              title={contractPending ? 'Available after the 3-party contract is signed' : 'Admin → Agent (deposit owed to admin)'}>
               + Deposit Settlement
             </button>
           )}
@@ -456,12 +433,26 @@ export default function CaseDocumentsSection({
       {!canIssue && (
         <p className="text-[11px] text-gray-500">Issue Quotation first via Home flow.</p>
       )}
-      {ctaHighlight && actor === 'agent' && (
-        <p className="text-[11px] text-green-800">3-party contract signed — issue the deposit invoice to start collecting from the client.</p>
-      )}
       {ctaHighlight && actor === 'admin' && (
-        <p className="text-[11px] text-green-800">Awaiting deposit. After the agent issues the client deposit invoice, record the settlement here.</p>
+        <p className="text-[11px] text-green-800">3-party contract signed — issue the deposit settlement invoice to the agent.</p>
       )}
+      {caseStatus === 'awaiting_deposit' && actor === 'agent' && quotation?.total_price ? (() => {
+        const settlement = documents.find(d => d.type === 'deposit_invoice' && d.from_party === 'admin' && d.to_party === 'agent')
+        const krw = settlement?.total_price
+          ?? Math.round((quotation.total_price ?? 0) * (Number(depositPercentDefault) / 100))
+        const usd = fmtUSD(krw / exchangeRate)
+        return (
+          <div className="text-[11px] text-green-900 bg-green-100/60 border border-green-200 rounded-lg px-3 py-2">
+            <span className="font-semibold">Deposit to collect from client: {usd}</span>
+            <span className="text-green-800/80"> ({fmtKRW(krw)})</span>
+            <span className="block text-green-800/70 mt-0.5">
+              {settlement
+                ? 'Admin has issued the settlement — collect this amount from the client, then forward to admin.'
+                : `Estimated at ${depositPercentDefault}% of the quotation. Final amount will be set when admin issues the deposit settlement.`}
+            </span>
+          </div>
+        )
+      })() : null}
       {error && <p className="text-xs text-red-500">{error}</p>}
 
       {/* Issue modal */}
@@ -471,7 +462,7 @@ export default function CaseDocumentsSection({
             <h3 className="text-sm font-semibold text-gray-900">
               Issue {INTENT_LABEL[issuing]}
             </h3>
-            {(issuing === 'deposit_to_client' || issuing === 'deposit_settlement') && (
+            {issuing === 'deposit_settlement' && (
               <div>
                 <label className="block text-[11px] text-gray-500 mb-1">Deposit percent (%)</label>
                 <input type="text" inputMode="numeric" value={depositPercent}

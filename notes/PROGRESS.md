@@ -1,11 +1,12 @@
 # Project Progress
 
 ## 현재 상태
-- **Phase**: 시뮬 직전 정합성 + 운영성. Quotation 불변성 모델(dual document) + Finalize Pricing 리팩터 + DB 트리거 + Agent 취소 여행명 확인 + Guide 전면 재작성 + Trip Services 분리 + Admin 권한 체계 + 인당 견적서 탭 방식.
-- **마지막 작업**: 2026-05-09-10 — TikkTakk 브랜드명 치환 / 인당 견적서 `?member=` 탭 / Admin 권한 체계(super admin 전용 서명 + canEdit 게이트) / UX 잔손질 6건 / Trip Services 분리 / 견적서 불변성 모델 + Finalize 리팩터 / DB 트리거 / Agent 취소 여행명 확인 / Guide 전면 재작성.
+- **Phase**: 시뮬 진입(5/11). Deposit 플로우 단순화 + Agent Contact 필수화 + Shared Activities 자동 적용 + "Group" 용어 정리.
+- **마지막 작업**: 2026-05-11 — Deposit Agent→Client 발행 제거(admin→agent settlement 일원화) / Agent Phone·Country 필수 / Shared Activities 인원 자동 적용(배정 UI/카운터 제외) / "Shared"→"Shared Activities" 명칭 / `price_rate_snapshot` 마이그레이션 안내.
 - **마지막 업데이트**: 2026-05-11 (시뮬레이션 5/11~15, 런칭 5/18)
 - **SaaS 브랜드명**: **TikkTakk** (5/9 전역 치환 완료)
 
+> 2026-05-11 상세: `notes/26.05.11.md` (§1: price_rate_snapshot 마이그레이션. §2: Deposit 플로우 단순화. §3: Agent Contact Info 필수화. §4: Group Assignment 정합성. §5: Shared Activities 명칭 정리).
 > 2026-05-09-10 상세: `notes/26.05.09-10.md` (§1: TikkTakk 브랜드명 치환. §2: 인당 견적서 `?member=` 탭. §3: Admin 권한 체계 재설계. §4: UX 잔손질 6건. §5: Trip Services 분리. §6: 견적서 불변성 모델 + Finalize 리팩터 + DB 트리거. §7: Agent 취소 여행명 확인. §8: Guide 전면 재작성).
 > 2026-05-08 상세: `notes/26.05.08.md` (§1: 데이터 마스터 v21. §2: "Free" vs "Price on request" UI. §3: Agent 사업자 정보 등록. §4: Guide 콘텐츠 편집. §5: 상품 이미지 Bulk Upload. §6: Financials 섹션 고정 배치. §7: Case Attachments. §8: 섹션 헤더 밴드 + Confirm Payment 통합. §9: Agent Home → 9단계 절차 소개 + Product 탭 분리. §10: Finalize Pricing 원가 표시. §11: 문서 금액 잠금 + 1500원 고정환산).
 > 2026-05-07 상세: `notes/26.05.07.md` (§1–18: 모바일 대응 ScheduleDocument + invoice 표 + schedule 시각 계층 + Quotation admin 이름 + 빌드 오류 수정 + Subpackage 가격 로직 + awaiting_settlement 신규 상태 + commission invoice Mark Paid 통합 + Client Review 섹션 + pre-confirmation origin 필터 정합성. §19: Guide 페이지 구현. §20: 데이터 마스터 v20 — K-Wellness/K-Starcation 재구축 + 전수 감사. §21: UI 색상 3톤 통일 — Agent/Admin 전면 정리).

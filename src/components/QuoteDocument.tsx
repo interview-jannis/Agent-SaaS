@@ -103,9 +103,9 @@ export default async function QuoteDocument({
     quotationRef = (qdata as { document_number?: string } | null)?.document_number ?? null
   }
 
-  // For final_invoice (Balance Invoice), fetch the agent→client deposit if any —
-  // we'll show it as a deduction at the top of the items table so the customer
-  // sees they only owe the balance.
+  // For final_invoice (Balance Invoice), fetch the admin→agent deposit
+  // settlement if any — we'll show it as a deduction at the top of the items
+  // table so the customer sees they only owe the balance.
   type DepositInfo = { amount: number; paidAt: string | null; documentNumber: string }
   let depositInfo: DepositInfo | null = null
   const docType = (quote as { type: string }).type
@@ -115,8 +115,8 @@ export default async function QuoteDocument({
       .select('document_number, total_price, payment_received_at, from_party, to_party')
       .eq('case_id', (quote as { case_id: string }).case_id)
       .eq('type', 'deposit_invoice')
-      .eq('from_party', 'agent')
-      .eq('to_party', 'client')
+      .eq('from_party', 'admin')
+      .eq('to_party', 'agent')
       .maybeSingle()
     const dep = depRow as { document_number: string; total_price: number | null; payment_received_at: string | null } | null
     if (dep && dep.total_price && dep.total_price > 0) {
@@ -242,13 +242,21 @@ export default async function QuoteDocument({
   groups.forEach((group) => {
     const gi = allGroups.findIndex(g => g.id === group.id)
     const memberCount = Math.max(group.member_count ?? 1, 1)
-    const autoName = `Group ${gi + 1}`
     const customName = group.name?.trim() ?? ''
+    // Shared Activities / Trip Services are not numbered "Group N" — they
+    // describe the activity category itself.
+    const isShared = customName === 'Shared' || customName === 'Shared Activities'
+    const isTripServices = customName === 'Trip Services'
+    const autoName = `Group ${gi + 1}`
     // Skip the prefix when no custom name is given (or the user just typed the
     // auto-name back) so the label doesn't repeat itself ("Group 1: Group 1 · 1 pax").
-    const groupLabel = !customName || customName === autoName
-      ? `${autoName} · ${memberCount} pax`
-      : `${autoName}: ${customName} · ${memberCount} pax`
+    const groupLabel = isShared
+      ? `Shared Activities · ${memberCount} pax`
+      : isTripServices
+        ? 'Trip Services'
+        : !customName || customName === autoName
+          ? `${autoName} · ${memberCount} pax`
+          : `${autoName}: ${customName} · ${memberCount} pax`
     for (const item of group.document_items.filter(it => {
       if (scheduleConfirmed || isInvoice) return !it.removed_at
       return it.origin === 'original' || it.origin == null

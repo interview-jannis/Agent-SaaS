@@ -347,6 +347,7 @@ export default function CaseDetailPage() {
     const tripOk = getMissingCaseFields(caseData).length === 0
     const groupsOk = !caseData.documents?.find(d => d.type === 'quotation')?.document_groups?.length
       || (caseData.documents?.find(d => d.type === 'quotation')?.document_groups ?? [])
+        .filter(g => g.name !== 'Shared' && g.name !== 'Shared Activities' && g.name !== 'Trip Services')
         .every(g => (g.document_group_members?.length ?? 0) === g.member_count)
     if (allMembersOk && tripOk && groupsOk && caseData.travel_start_date) {
       setSetupCollapsed(true)
@@ -701,7 +702,8 @@ export default function CaseDetailPage() {
 
     // Once status > awaiting_info, every group slot was filled — block saves that leave gaps.
     if (caseData.status !== 'awaiting_info') {
-      const groups = caseData.documents?.find(d => d.type === "quotation")?.document_groups ?? []
+      const groups = (caseData.documents?.find(d => d.type === "quotation")?.document_groups ?? [])
+        .filter(g => g.name !== 'Shared' && g.name !== 'Shared Activities' && g.name !== 'Trip Services')
       const shortfalls: string[] = []
       groups.forEach((g, gi) => {
         const assigned = activeMembers.filter(p => p.groupId === g.id).length
@@ -926,13 +928,21 @@ export default function CaseDetailPage() {
     ? [...caseData.schedules].sort((a, b) => b.version - a.version)[0]
     : null
 
-  const expectedMemberCount = quote?.document_groups?.reduce((s, g) => s + (g.member_count ?? 0), 0) ?? 0
+  // Shared Activities / Trip Services apply automatically — exclude from
+  // per-member assignment counters so they don't show as "incomplete".
+  const isAssignableGroup = (name: string | null) =>
+    name !== 'Shared' && name !== 'Shared Activities' && name !== 'Trip Services'
+  const expectedMemberCount = quote?.document_groups
+    ?.filter(g => isAssignableGroup(g.name))
+    .reduce((s, g) => s + (g.member_count ?? 0), 0) ?? 0
   const clientsMissingInfo = caseData.case_members
     .map(m => ({ member: m, missing: getMissingClientFields(m.clients) }))
     .filter(x => x.missing.length > 0)
   // Info-only completeness (member count shortfall is a group assignment concern, not an info concern)
   const allClientsComplete = caseData.case_members.length > 0 && clientsMissingInfo.length === 0
-  const groupsComplete = !quote || quote.document_groups.every(g => (g.document_group_members?.length ?? 0) === g.member_count)
+  const groupsComplete = !quote || quote.document_groups
+    .filter(g => isAssignableGroup(g.name))
+    .every(g => (g.document_group_members?.length ?? 0) === g.member_count)
   const missingCaseFields = getMissingCaseFields(caseData)
   const caseInfoComplete = missingCaseFields.length === 0
   const scheduleReady = allClientsComplete && groupsComplete && caseInfoComplete
@@ -946,6 +956,9 @@ export default function CaseDetailPage() {
     g.document_group_members?.forEach(gm => { memberGroupMap.set(gm.case_member_id, g.id) })
   })
   const sortedGroups = quote?.document_groups ? [...quote.document_groups].sort((a, b) => a.order - b.order) : []
+  // Per-member assignment only applies to regular groups. Shared Activities
+  // and Trip Services apply automatically (member_count = total pax / 0).
+  const assignableGroups = sortedGroups.filter(g => isAssignableGroup(g.name))
 
   const scheduleConfirmed = (caseData.schedules ?? []).some(s => s.status === 'confirmed')
 
@@ -1018,8 +1031,6 @@ export default function CaseDetailPage() {
             scheduleStatus={(schedule?.status as 'pending' | 'confirmed' | 'revision_requested' | undefined) ?? null}
             hasInvoice={!!quote?.finalized_at}
             paymentDueDate={quote?.payment_due_date ?? null}
-            depositInvoiceIssued={(caseData.documents ?? []).some((d: { type: string; from_party?: string; to_party?: string }) => d.type === 'deposit_invoice' && d.from_party === 'agent' && d.to_party === 'client')}
-            depositPaid={(caseData.documents ?? []).some((d: { type: string; from_party?: string; to_party?: string; payment_received_at?: string | null }) => d.type === 'deposit_invoice' && d.from_party === 'agent' && d.to_party === 'client' && !!d.payment_received_at)}
             depositSettlementPaid={(caseData.documents ?? []).some((d: { type: string; from_party?: string; to_party?: string; payment_received_at?: string | null }) => d.type === 'deposit_invoice' && d.from_party === 'admin' && d.to_party === 'agent' && !!d.payment_received_at)}
             travelStartDate={caseData.travel_start_date}
             travelCompletedAt={caseData.travel_completed_at}
@@ -1444,7 +1455,7 @@ export default function CaseDetailPage() {
           {/* Members & Groups — includes member-related readiness */}
           {(() => {
             const memberShortfall = expectedMemberCount > 0 && caseData.case_members.length < expectedMemberCount
-            const groupGaps = quote?.document_groups?.filter(g => (g.document_group_members?.length ?? 0) !== g.member_count) ?? []
+            const groupGaps = quote?.document_groups?.filter(g => isAssignableGroup(g.name) && (g.document_group_members?.length ?? 0) !== g.member_count) ?? []
             const memberIssueCount = (memberShortfall ? 1 : 0) + groupGaps.length + clientsMissingInfo.length
             const memberReady = memberIssueCount === 0 && caseData.case_members.length > 0
             return (
@@ -1471,10 +1482,10 @@ export default function CaseDetailPage() {
             </div>
 
             {/* Group slot overview — edit mode only (view-mode status handled by Case Readiness) */}
-            {editMembers && sortedGroups.length > 0 && (
+            {editMembers && assignableGroups.length > 0 && (
               <div className="flex items-center gap-2 flex-wrap text-[11px]">
                 <span className="text-gray-400">Group slots:</span>
-                {sortedGroups.map(g => {
+                {assignableGroups.map(g => {
                   const assigned = pendingMembers.filter(p => !p.isRemoved && p.groupId === g.id).length
                   const full = assigned === g.member_count
                   const over = assigned > g.member_count
@@ -1568,7 +1579,7 @@ export default function CaseDetailPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
                   {(() => {
                     // Group members by groupId; unassigned go last
-                    const groupedMembers = sortedGroups.map(g => ({
+                    const groupedMembers = assignableGroups.map(g => ({
                       group: g,
                       members: pendingMembers.filter(p => p.groupId === g.id)
                         .sort((a, b) => Number(b.isLead) - Number(a.isLead)),
@@ -1649,12 +1660,12 @@ export default function CaseDetailPage() {
                         </div>
                         {!p.isRemoved && (
                           <div className="flex items-center gap-2 flex-wrap">
-                            {sortedGroups.length > 0 && (
+                            {assignableGroups.length > 0 && (
                               <select value={p.groupId ?? ''}
                                 onChange={e => stageAssignGroup(p.id, e.target.value || null)}
                                 className="text-xs border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:border-[#0f4c35] bg-white flex-1 min-w-0">
                                 <option value="">— Unassigned —</option>
-                                {sortedGroups.map(g => {
+                                {assignableGroups.map(g => {
                                   const assigned = pendingMembers.filter(pp => !pp.isRemoved && pp.groupId === g.id).length
                                   const isCurrent = g.id === p.groupId
                                   const full = assigned >= g.member_count && !isCurrent

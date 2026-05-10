@@ -436,7 +436,9 @@ export default function AdminCaseDetailPage() {
     const tripOk = getMissingCaseFields(caseData).length === 0
     const quotation = caseData.documents?.find(d => d.type === 'quotation')
     const groupsOk = !quotation?.document_groups?.length
-      || quotation.document_groups.every(g => (g.document_group_members?.length ?? 0) === g.member_count)
+      || quotation.document_groups
+        .filter(g => g.name !== 'Shared' && g.name !== 'Shared Activities' && g.name !== 'Trip Services')
+        .every(g => (g.document_group_members?.length ?? 0) === g.member_count)
     if (allMembersOk && tripOk && groupsOk && caseData.travel_start_date) {
       setSetupCollapsed(true)
     }
@@ -504,13 +506,21 @@ export default function AdminCaseDetailPage() {
   const finalInvoice = caseData.documents?.find(d => d.type === 'final_invoice') ?? null
   const sortedSchedules = caseData.schedules ? [...caseData.schedules].sort((a, b) => b.version - a.version) : []
   const latestSchedule = sortedSchedules[0] ?? null
-  const expectedMemberCount = latestQuote?.document_groups?.reduce((s, g) => s + (g.member_count ?? 0), 0) ?? 0
+  // Shared Activities / Trip Services apply automatically — exclude from
+  // per-member assignment counters.
+  const isAssignableGroup = (name: string | null) =>
+    name !== 'Shared' && name !== 'Shared Activities' && name !== 'Trip Services'
+  const expectedMemberCount = latestQuote?.document_groups
+    ?.filter(g => isAssignableGroup(g.name))
+    .reduce((s, g) => s + (g.member_count ?? 0), 0) ?? 0
   const clientsMissingInfo = caseData.case_members
     .map(m => ({ member: m, missing: getMissingClientFields(m.clients) }))
     .filter(x => x.missing.length > 0)
   // Info-only completeness (member count shortfall handled by group assignment section)
   const allClientsComplete = caseData.case_members.length > 0 && clientsMissingInfo.length === 0
-  const groupsComplete = !latestQuote || latestQuote.document_groups.every(g => (g.document_group_members?.length ?? 0) === g.member_count)
+  const groupsComplete = !latestQuote || latestQuote.document_groups
+    .filter(g => isAssignableGroup(g.name))
+    .every(g => (g.document_group_members?.length ?? 0) === g.member_count)
   const missingCaseFields = getMissingCaseFields(caseData)
   const caseInfoComplete = missingCaseFields.length === 0
   // Info-missing warnings only matter while the case is still in awaiting_info
@@ -594,7 +604,6 @@ export default function AdminCaseDetailPage() {
             scheduleReady={scheduleReady}
             hasInvoice={!!latestQuote?.finalized_at}
             paymentDueDate={latestQuote?.payment_due_date ?? null}
-            depositPaid={(caseData.documents ?? []).some(d => d.type === 'deposit_invoice' && d.from_party === 'agent' && d.to_party === 'client' && !!d.payment_received_at)}
             depositSettlementPaid={(caseData.documents ?? []).some(d => d.type === 'deposit_invoice' && d.from_party === 'admin' && d.to_party === 'agent' && !!d.payment_received_at)}
             travelStartDate={caseData.travel_start_date}
             onScrollToScheduleUpload={() => document.getElementById('schedule-upload')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
@@ -721,7 +730,7 @@ export default function AdminCaseDetailPage() {
           {/* Members + Readiness (merged) */}
           {(() => {
             const memberShortfall = expectedMemberCount > 0 && caseData.case_members.length < expectedMemberCount
-            const groupGaps = latestQuote?.document_groups?.filter(g => (g.document_group_members?.length ?? 0) !== g.member_count) ?? []
+            const groupGaps = latestQuote?.document_groups?.filter(g => isAssignableGroup(g.name) && (g.document_group_members?.length ?? 0) !== g.member_count) ?? []
             const issueCount = (memberShortfall ? 1 : 0) + groupGaps.length + clientsMissingInfo.length
             const ready = issueCount === 0 && caseData.case_members.length > 0
             return (
@@ -1630,7 +1639,7 @@ export default function AdminCaseDetailPage() {
                   groupId: grp.id,
                   groupName: grp.name,
                   isSubpackage: catName === 'Subpackage',
-                  isSharedGroup: grp.name === 'Shared',
+                  isSharedGroup: grp.name === 'Shared' || grp.name === 'Shared Activities',
                   durationValue: it.products?.duration_value ?? null,
                   durationUnit: it.products?.duration_unit ?? null,
                 })

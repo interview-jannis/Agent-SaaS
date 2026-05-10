@@ -25,7 +25,7 @@ type DocumentRow = {
   from_party: string
   to_party: string
   payment_received_at: string | null
-  document_groups: { member_count: number; document_group_members: { id: string }[] | null }[] | null
+  document_groups: { name: string | null; member_count: number; document_group_members: { id: string }[] | null }[] | null
 }
 
 type CaseRow = {
@@ -53,36 +53,31 @@ function isInfoComplete(c: CaseRow): boolean {
   if (!members.every(m => hasCompleteClientInfo(m.clients))) return false
 
   const quotation = (c.documents ?? []).find(d => d.type === 'quotation')
-  const groups = quotation?.document_groups ?? []
+  // Shared Activities / Trip Services apply automatically — only regular
+  // groups need explicit member assignment.
+  const groups = (quotation?.document_groups ?? [])
+    .filter(g => g.name !== 'Shared' && g.name !== 'Shared Activities' && g.name !== 'Trip Services')
   if (groups.length === 0) return false
   return groups.every(g => (g.document_group_members?.length ?? 0) === g.member_count)
 }
 
-// "Deposit fully settled" — both legs of the deposit money flow are done:
-//   1. Agent → Client invoice marked paid (client paid agent)
-//   2. Admin → Agent settlement marked paid (agent forwarded the deposit to admin)
-// Only when both are confirmed does the case advance out of awaiting_deposit.
+// "Deposit settled" — admin → agent settlement invoice marked paid (agent
+// forwarded the deposit to admin). Agent no longer issues a separate invoice
+// to the client; client pays the agent off-platform, agent forwards to admin.
 function isDepositPaid(c: CaseRow): boolean {
   const docs = c.documents ?? []
-  const clientLeg = docs.some(d =>
-    d.type === 'deposit_invoice'
-    && d.from_party === 'agent'
-    && d.to_party === 'client'
-    && !!d.payment_received_at
-  )
-  const adminLeg = docs.some(d =>
+  return docs.some(d =>
     d.type === 'deposit_invoice'
     && d.from_party === 'admin'
     && d.to_party === 'agent'
     && !!d.payment_received_at
   )
-  return clientLeg && adminLeg
 }
 
 const SELECT = `id, case_number, status, concept, outbound_flight, inbound_flight,
                 case_members(clients(${CLIENT_INFO_COLUMNS})),
                 documents(type, from_party, to_party, payment_received_at,
-                          document_groups(member_count, document_group_members(id)))`
+                          document_groups(name, member_count, document_group_members(id)))`
 
 async function fetchCase(caseId: string): Promise<CaseRow | null> {
   const { data } = await supabase

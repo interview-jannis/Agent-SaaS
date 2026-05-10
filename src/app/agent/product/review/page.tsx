@@ -490,12 +490,16 @@ export default function QuoteReviewPage() {
           })
         }
 
-        // Group members
-        const assignedClientIds = groupAssignments[group.id] ?? []
-        for (const clientId of assignedClientIds) {
-          const caseMemberId = memberIdMap[clientId]
-          if (caseMemberId) {
-            await addDocumentGroupMember(dg.id, caseMemberId)
+        // Group members — Shared Activities applies to all members automatically;
+        // no per-member rows so the assignment UI on the case page doesn't
+        // surface it as a manual destination.
+        if (group.id !== 'shared') {
+          const assignedClientIds = groupAssignments[group.id] ?? []
+          for (const clientId of assignedClientIds) {
+            const caseMemberId = memberIdMap[clientId]
+            if (caseMemberId) {
+              await addDocumentGroupMember(dg.id, caseMemberId)
+            }
           }
         }
       }
@@ -779,30 +783,31 @@ export default function QuoteReviewPage() {
                   <div className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium border mb-2 ${isShared ? 'bg-[#0f4c35]/5 border-[#0f4c35]/30 text-[#0f4c35]' : GROUP_COLORS[(idx - 1 + GROUP_COLORS.length) % GROUP_COLORS.length]}`}>
                     {group.name}
                   </div>
-                  {isShared && (
-                    <p className="text-[11px] text-gray-400 mb-2">Applies to all members ({sharedMemberCount} pax)</p>
+                  {isShared ? (
+                    <p className="text-[11px] text-gray-400">Applies to all members automatically ({sharedMemberCount} pax) — no individual assignment needed.</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2 min-h-[32px]">
+                      {assigned.map((c) => (
+                        <div key={c.id} className="flex items-center gap-1 px-2.5 py-1 bg-gray-100 rounded-lg text-xs text-gray-700">
+                          <span>{c.name}</span>
+                          {c.id === lead?.id && <span className="text-gray-400">(Lead)</span>}
+                          <button onClick={() => removeFromGroup(c.id, group.id)} className="text-gray-400 hover:text-gray-600 ml-0.5">×</button>
+                        </div>
+                      ))}
+                      {unassigned.length > 0 && (
+                        <select
+                          value=""
+                          onChange={(e) => { if (e.target.value) assignToGroup(e.target.value, group.id) }}
+                          className="text-xs border border-dashed border-gray-300 rounded-lg px-2 py-1 focus:outline-none focus:border-[#0f4c35] bg-white text-gray-500 cursor-pointer"
+                        >
+                          <option value="">+ Assign member</option>
+                          {unassigned.map((c) => (
+                            <option key={c.id} value={c.id}>{c.name}{c.id === lead?.id ? ' (Lead)' : ''}</option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
                   )}
-                  <div className="flex flex-wrap gap-2 min-h-[32px]">
-                    {assigned.map((c) => (
-                      <div key={c.id} className="flex items-center gap-1 px-2.5 py-1 bg-gray-100 rounded-lg text-xs text-gray-700">
-                        <span>{c.name}</span>
-                        {c.id === lead?.id && <span className="text-gray-400">(Lead)</span>}
-                        <button onClick={() => removeFromGroup(c.id, group.id)} className="text-gray-400 hover:text-gray-600 ml-0.5">×</button>
-                      </div>
-                    ))}
-                    {unassigned.length > 0 && (
-                      <select
-                        value=""
-                        onChange={(e) => { if (e.target.value) assignToGroup(e.target.value, group.id) }}
-                        className="text-xs border border-dashed border-gray-300 rounded-lg px-2 py-1 focus:outline-none focus:border-[#0f4c35] bg-white text-gray-500 cursor-pointer"
-                      >
-                        <option value="">+ Assign member</option>
-                        {unassigned.map((c) => (
-                          <option key={c.id} value={c.id}>{c.name}{c.id === lead?.id ? ' (Lead)' : ''}</option>
-                        ))}
-                      </select>
-                    )}
-                  </div>
                 </div>
               )
             })}

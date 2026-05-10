@@ -76,7 +76,7 @@ type ClientForm = {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const CART_VERSION = 3  // bump to invalidate old localStorage carts
+const CART_VERSION = 4  // bump to invalidate old localStorage carts
 
 const GROUP_PALETTE = Array(8).fill({
   border: 'border-gray-200',
@@ -152,7 +152,7 @@ export default function AgentProductPage() {
   // Cart — 'shared' group is permanent (index 0), user groups follow.
   // Shared items apply to ALL members (× total pax).
   const [groups, setGroups] = useState<Group[]>([
-    { id: 'shared', name: 'Shared', memberCount: 0, items: [] },
+    { id: 'shared', name: 'Shared Activities', memberCount: 0, items: [] },
     { id: 'g1', name: 'Group 1', memberCount: 1, items: [] },
   ])
   const [activeGroupId, setActiveGroupId] = useState('g1')
@@ -214,7 +214,7 @@ export default function AgentProductPage() {
           id: g.id, name: g.name, memberCount: g.memberCount, items: g.items as CartItem[],
         }))
         if (!restored.find(g => g.id === 'shared')) {
-          restored.unshift({ id: 'shared', name: 'Shared', memberCount: 0, items: [] })
+          restored.unshift({ id: 'shared', name: 'Shared Activities', memberCount: 0, items: [] })
         }
         setGroups(restored)
         setActiveGroupId(restored.find(g => g.id !== 'shared')?.id ?? restored[0].id)
@@ -730,7 +730,7 @@ export default function AgentProductPage() {
           <button
             onClick={() => {
               localStorage.removeItem('agent-cart')
-              setGroups([{ id: 'shared', name: 'Shared', memberCount: 0, items: [] }, { id: 'g1', name: 'Group 1', memberCount: 1, items: [] }])
+              setGroups([{ id: 'shared', name: 'Shared Activities', memberCount: 0, items: [] }, { id: 'g1', name: 'Group 1', memberCount: 1, items: [] }])
               setTripServices([])
               setActiveGroupId('g1')
               setSelectedClientId(''); setDateStart(''); setDateEnd(''); setTripName('')

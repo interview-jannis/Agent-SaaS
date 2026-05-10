@@ -110,10 +110,12 @@ export default function AgentProfilePage() {
 
   async function saveContact() {
     if (!profile) return
+    if (!phone.trim()) { setError('Phone is required.'); return }
+    if (!country.trim()) { setError('Country is required.'); return }
     setSavingContact(true); setError('')
     try {
       const { error } = await supabase.from('agents')
-        .update({ phone: phone.trim() || null, country: country.trim() || null })
+        .update({ phone: phone.trim(), country: country.trim() })
         .eq('id', profile.id)
       if (error) throw error
       await fetchProfile()
@@ -202,12 +204,12 @@ export default function AgentProfilePage() {
             ) : (
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">Phone</label>
+                  <label className="block text-xs text-gray-500 mb-1">Phone *</label>
                   <input value={phone} onChange={e => setPhone(e.target.value)}
                     className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">Country</label>
+                  <label className="block text-xs text-gray-500 mb-1">Country *</label>
                   <input list={COUNTRY_DATALIST_ID} value={country} onChange={e => setCountry(e.target.value)}
                     className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
                   <datalist id={COUNTRY_DATALIST_ID}>

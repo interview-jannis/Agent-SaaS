@@ -68,9 +68,7 @@ export type AgentHeroProps = {
   // financials
   hasInvoice: boolean
   paymentDueDate: string | null
-  // deposit (new SOP) — both legs of the money flow
-  depositInvoiceIssued?: boolean
-  depositPaid?: boolean             // client → agent leg paid
+  // deposit (new SOP) — admin → agent settlement only
   depositSettlementPaid?: boolean   // agent → admin leg paid
   // travel
   travelStartDate: string | null
@@ -118,27 +116,18 @@ export function AgentCaseHero(p: AgentHeroProps) {
       )
 
     case 'awaiting_deposit': {
-      // SOP: deposit phase is ONLY about deposit settlement. Info collection
-      // happens in the next state (awaiting_info). Two legs:
-      //   1. Client → Agent paid
-      //   2. Agent → Admin (deposit settlement) paid
-      const subBits: string[] = []
-      subBits.push(p.depositInvoiceIssued ? 'Deposit invoice issued ✓' : 'Issue deposit invoice')
-      subBits.push(p.depositPaid ? 'Client paid agent ✓' : 'Awaiting client payment')
-      subBits.push(p.depositSettlementPaid ? 'Agent paid admin ✓' : 'Awaiting agent forward')
-      const headline = !p.depositInvoiceIssued
-        ? 'Issue deposit invoice to client'
-        : !p.depositPaid
-          ? 'Awaiting client deposit'
-          : !p.depositSettlementPaid
-            ? 'Forward deposit to admin'
-            : 'Deposit settled — moving to info phase'
+      // SOP: admin issues a settlement invoice to the agent. Agent collects
+      // deposit from client off-platform, then forwards to admin. Once the
+      // settlement is marked paid, status advances to the info phase.
+      const headline = p.depositSettlementPaid
+        ? 'Deposit settled — moving to info phase'
+        : 'Forward deposit to admin'
       return (
         <HeroShell
           tone="green"
           eyebrow="Action needed"
           headline={headline}
-          subline={<span>{subBits.join(' · ')}.</span>}
+          subline={<span>{p.depositSettlementPaid ? 'Settlement received by admin ✓' : 'Awaiting deposit settlement to admin'}.</span>}
         >
           {p.onScrollToDocuments && (
             <button onClick={p.onScrollToDocuments}
@@ -315,7 +304,6 @@ export type AdminHeroProps = {
   hasInvoice: boolean
   paymentDueDate: string | null
   // deposit (new SOP) — both legs
-  depositPaid?: boolean             // client → agent leg paid
   depositSettlementPaid?: boolean   // agent → admin leg paid
   // travel
   travelStartDate: string | null
@@ -355,9 +343,8 @@ export function AdminCaseHero(p: AdminHeroProps) {
           headline="Deposit settlement in progress"
           subline={
             <span>
-              Client → Agent {p.depositPaid ? '✓' : '✗'} ·
               Agent → Admin {p.depositSettlementPaid ? '✓' : '✗'}
-              {' '}— info collection starts once both legs are paid.
+              {' '}— info collection starts once settlement is paid.
             </span>
           }
         />

@@ -67,6 +67,7 @@ export default function SetupWizardPage() {
     if (!form.email.includes('@') || form.email.endsWith('@tiktak.temp')) { setError('Enter a valid personal email (not the temp address).'); return }
     if (form.password.length < 8) { setError('Password must be at least 8 characters.'); return }
     if (form.password !== form.confirmPassword) { setError('Passwords do not match.'); return }
+    if (!form.phone.trim()) { setError('Phone number is required.'); return }
     if (!bank.bank_name.trim() || !bank.account_number.trim() || !bank.beneficiary.trim() || !bank.swift_code.trim()) {
       setError('Bank Name, Account Number, Beneficiary, and Swift Code are required so we can pay your commissions.'); return
     }
@@ -157,11 +158,10 @@ export default function SetupWizardPage() {
         </div>
 
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1.5">Phone</label>
+          <label className="block text-xs font-medium text-gray-600 mb-1.5">Phone *</label>
           <input type="tel" value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))}
             placeholder="+971 50 123 4567"
             className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
-          <p className="text-[10px] text-gray-400 mt-1">Optional.</p>
         </div>
       </section>
 

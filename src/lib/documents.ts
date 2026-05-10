@@ -268,7 +268,8 @@ export async function createDocument(input: CreateDocumentInput): Promise<Docume
 // ────────────────────────────────────────────────────────────────────────────
 
 export function groupTypeFromName(name: string | null): GroupType {
-  if (name === 'Shared') return 'shared'
+  // 'Shared' is the legacy label; 'Shared Activities' is the current name.
+  if (name === 'Shared Activities' || name === 'Shared') return 'shared'
   if (name === 'Trip Services') return 'trip_services'
   return 'regular'
 }
