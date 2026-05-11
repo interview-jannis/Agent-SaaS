@@ -163,7 +163,7 @@ export default function AdminCasesPage() {
           case_members(id, is_lead, clients(id, client_number, name)),
           documents(id, type, total_price, document_groups(member_count, document_items(removed_at, products(partner_name))))
         `).order('created_at', { ascending: false }),
-        supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single(),
+        supabase.from('system_settings').select('value').eq('key', 'product_price_rate').single(),
         supabase.from('partner_payments').select('case_id, partner_name'),
         supabase.from('settlements').select('case_id').not('paid_at', 'is', null),
       ])

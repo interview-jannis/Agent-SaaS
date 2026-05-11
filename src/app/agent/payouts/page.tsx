@@ -80,7 +80,7 @@ export default function AgentPayoutsPage() {
     setAgentId(ag.id)
     setBankInfo((ag as { bank_info: BankInfo | null }).bank_info ?? null)
 
-    const { data: ss } = await supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single()
+    const { data: ss } = await supabase.from('system_settings').select('value').eq('key', 'product_price_rate').single()
     const r = (ss?.value as { usd_krw?: number } | null)?.usd_krw
     if (r) setExchangeRate(r)
 

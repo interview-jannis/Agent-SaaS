@@ -65,7 +65,7 @@ export default function AdminAgentsPage() {
       supabase.from('cases').select('id, agent_id, status, documents(type, total_price, agent_margin_rate)'),
       supabase.from('clients').select('id, agent_id'),
       supabase.from('settlements').select('id, agent_id, case_id, amount'),
-      supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single(),
+      supabase.from('system_settings').select('value').eq('key', 'product_price_rate').single(),
     ])
     setAgents((agentsRes.data as Agent[]) ?? [])
     setAdmins((adminsRes.data as AdminLite[]) ?? [])

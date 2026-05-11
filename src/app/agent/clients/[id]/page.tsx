@@ -274,7 +274,7 @@ export default function ClientDetailPage() {
 
   useEffect(() => {
     async function load() {
-      const { data: ss } = await supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single()
+      const { data: ss } = await supabase.from('system_settings').select('value').eq('key', 'product_price_rate').single()
       const rate = (ss?.value as { usd_krw?: number } | null)?.usd_krw
       if (typeof rate === 'number' && rate > 0) setExchangeRate(rate)
       await fetchData()

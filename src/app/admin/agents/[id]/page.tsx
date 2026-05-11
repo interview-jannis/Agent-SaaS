@@ -113,7 +113,7 @@ export default function AdminAgentDetailPage() {
         .select('id, contract_type, title_snapshot, signed_at, approved_at, admin_signed_at')
         .eq('agent_id', id)
         .order('contract_type', { ascending: true }),  // 'nda' < 'partnership' alphabetically
-      supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single(),
+      supabase.from('system_settings').select('value').eq('key', 'product_price_rate').single(),
       supabase.from('admins').select('id, name, is_super_admin').order('name'),
       supabase.auth.getSession(),
     ])

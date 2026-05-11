@@ -93,7 +93,7 @@ export default function AgentDashboardPage() {
           .eq('agent_id', ag.id)
           .order('created_at', { ascending: false }),
         supabase.from('settlements').select('id, amount, paid_at, case_id').eq('agent_id', ag.id),
-        supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single(),
+        supabase.from('system_settings').select('value').eq('key', 'product_price_rate').single(),
       ])
       setCases((casesRes.data as unknown as CaseRow[]) ?? [])
       setSettlements((settlementsRes.data as Settlement[]) ?? [])

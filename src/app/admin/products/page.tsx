@@ -95,7 +95,7 @@ export default function AdminProductsPage() {
         .select('id, product_number, name, description, partner_name, base_price, price_currency, is_active, category_id, subcategory_id, product_categories(name), product_subcategories(name), product_images(image_url, is_primary), product_variants(id, variant_label, base_price, price_currency, sort_order, is_active)')
         .order('product_number', { ascending: false }),
       supabase.from('system_settings').select('value').eq('key', 'company_margin_rate').single(),
-      supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single(),
+      supabase.from('system_settings').select('value').eq('key', 'product_price_rate').single(),
       supabase.from('system_settings').select('value').eq('key', 'subpackage_margin').maybeSingle(),
     ])
     setCategories(cats ?? [])

@@ -141,7 +141,7 @@ export default function AgentCasesPage() {
       if (!uid) return
       const { data: ag } = await supabase.from('agents').select('id').eq('auth_user_id', uid).single()
       const aid = ag?.id ?? ''
-      const { data: ss } = await supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single()
+      const { data: ss } = await supabase.from('system_settings').select('value').eq('key', 'product_price_rate').single()
       const rate = (ss?.value as { usd_krw?: number } | null)?.usd_krw
       if (typeof rate === 'number' && rate > 0) setExchangeRate(rate)
       if (aid) await fetchCases(aid)
