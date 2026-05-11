@@ -390,9 +390,10 @@ export default function CaseDocumentsSection({
 
   // Visible documents in this section: all invoice types. Quotation is
   // rendered separately in the Selected Products section.
-  const invoiceDocs = documents.filter(d =>
-    d.type === 'deposit_invoice' || d.type === 'final_invoice' || d.type === 'additional_invoice' || d.type === 'commission_invoice'
-  ).sort((a, b) => (a.created_at ?? '').localeCompare(b.created_at ?? ''))
+  const invoiceDocs = documents.filter(d => {
+    if (d.type === 'final_invoice') return !!d.finalized_at  // draft is admin-only until finalized
+    return d.type === 'deposit_invoice' || d.type === 'additional_invoice' || d.type === 'commission_invoice'
+  }).sort((a, b) => (a.created_at ?? '').localeCompare(b.created_at ?? ''))
 
   const canIssue = !!quotation  // need a quotation to base off
   // Pre-contract: nothing should be issued yet (3-party signing must finish first).
