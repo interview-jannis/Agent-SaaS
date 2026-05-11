@@ -17,6 +17,14 @@ import {
   formatDayHeader,
 } from '@/types/schedule'
 
+const TRANSPORT_MODE_LABEL: Record<string, string> = {
+  car:     'Private car',
+  shuttle: 'Shuttle',
+  taxi:    'Taxi',
+  bus:     'Bus',
+  walk:    'Walking',
+}
+
 type FlightData = {
   departure_airport?: string | null
   arrival_airport?: string | null
@@ -471,9 +479,24 @@ function ScheduleRow({
   const timeStr   = formatTimeRange(item.time, item.endTime)
   const groupCol  = item.groupId ? groupColorById[item.groupId] : null
   const isPrayer  = item.isPrayer === true
+  const itemType  = item.itemType ?? 'appointment'
   const showStripe = isMultiGroup && !!item.groupId && !!groupCol
-  const hasEyebrow = !!item.partner
   const hasInternalDetail = showInternalNotes && (item.address || item.partnerContact || item.driverInfo || item.location || item.internalNotes)
+
+  // Derived display values per type
+  const transferRoute = (item.fromLocation || item.toLocation)
+    ? `${item.fromLocation || '—'} → ${item.toLocation || '—'}`
+    : null
+  const transportLabel = item.transportMode ? TRANSPORT_MODE_LABEL[item.transportMode] : null
+  const eyebrow =
+    itemType === 'transfer'    ? null
+    : itemType === 'meal'      ? (item.restaurantName ?? item.partner ?? null)
+    : itemType === 'hotel'     ? null
+    : (item.partner ?? null)
+  const hotelPrefix =
+    itemType === 'hotel' && item.hotelCheckType === 'checkin'  ? 'Check-in'
+    : itemType === 'hotel' && item.hotelCheckType === 'checkout' ? 'Check-out'
+    : null
 
   return (
     <div className="sch-row" style={{
@@ -503,22 +526,35 @@ function ScheduleRow({
 
       {/* Content column */}
       <div style={{ paddingTop: '1px' }}>
-        {hasEyebrow && (
+        {/* Eyebrow — partner for appointments, restaurant for meals */}
+        {eyebrow && (
           <div style={{ marginBottom: '3px' }}>
             <span className="sch-sans" style={{ fontSize: '9.5px', letterSpacing: '0.2em', textTransform: 'uppercase', color: '#c0b8ae' }}>
-              {item.partner}
+              {eyebrow}
             </span>
           </div>
         )}
 
-        {/* Title */}
+        {/* Transfer route */}
+        {itemType === 'transfer' && transferRoute && (
+          <p className="sch-serif" style={{ fontSize: '17px', fontWeight: 400, lineHeight: 1.3, color: '#1a1a1a', marginBottom: '2px' }}>
+            {transferRoute}
+          </p>
+        )}
+
+        {/* Title row */}
         <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap' }}>
+          {hotelPrefix && (
+            <span className="sch-sans" style={{ fontSize: '10px', fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#9a9088' }}>
+              {hotelPrefix} ·
+            </span>
+          )}
           <p className="sch-serif sch-item-title" style={{
             fontSize: '19px', fontWeight: 400, lineHeight: 1.3,
             color: isPrayer ? '#c07830' : '#1a1a1a',
             fontStyle: isPrayer ? 'italic' : 'normal',
           }}>
-            {item.title || '—'}
+            {item.title || (itemType === 'transfer' && !transferRoute ? '—' : itemType === 'free' ? 'At leisure' : '—')}
           </p>
           {item.variantTag && (
             <span className="sch-sans" style={{
@@ -526,6 +562,24 @@ function ScheduleRow({
               border: '1px solid #ede9e3', borderRadius: '20px', padding: '1px 8px',
             }}>
               {item.variantTag}
+            </span>
+          )}
+          {/* Transport mode chip */}
+          {itemType === 'transfer' && transportLabel && (
+            <span className="sch-sans" style={{
+              fontSize: '10px', color: '#9a9088', background: '#f5f2ee',
+              border: '1px solid #ede9e3', borderRadius: '20px', padding: '1px 8px',
+            }}>
+              {transportLabel}
+            </span>
+          )}
+          {/* Cuisine chip */}
+          {itemType === 'meal' && item.cuisine && (
+            <span className="sch-sans" style={{
+              fontSize: '10px', color: '#9a9088', background: '#f5f2ee',
+              border: '1px solid #ede9e3', borderRadius: '20px', padding: '1px 8px',
+            }}>
+              {item.cuisine}
             </span>
           )}
         </div>

@@ -19,8 +19,11 @@ import { notifyAgent } from '@/lib/notifications'
 import {
   type ScheduleItem,
   type ScheduleItemBlock,
+  type ScheduleItemType,
   SCHEDULE_BLOCKS,
   SCHEDULE_BLOCK_LABEL,
+  SCHEDULE_ITEM_TYPES,
+  SCHEDULE_ITEM_TYPE_LABEL,
   compareScheduleItems,
   dateForDay,
   formatDayHeader,
@@ -796,8 +799,20 @@ function ItemRow({
 
   return (
     <div className={`px-4 py-3 space-y-2 border-l-4 ${tone.stripe} ${isPending ? 'bg-amber-50/40 border border-dashed border-amber-300 m-2 rounded-lg' : ''}`}>
-      {/* Top row: block (start–end) + time (start–end) + product + controls */}
+      {/* Top row: type + block (start–end) + time (start–end) + product + controls */}
       <div className="flex flex-wrap items-center gap-2">
+        <select
+          value={item.itemType ?? 'appointment'}
+          onChange={(e) => onUpdate({ itemType: e.target.value as ScheduleItemType })}
+          disabled={!isPending}
+          className="text-xs font-medium border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
+          title="Item type"
+        >
+          {SCHEDULE_ITEM_TYPES.map(t => (
+            <option key={t} value={t}>{SCHEDULE_ITEM_TYPE_LABEL[t]}</option>
+          ))}
+        </select>
+        <span className="text-gray-200 mx-0.5">|</span>
         <select
           value={item.block}
           onChange={(e) => onUpdate({ block: e.target.value as ScheduleItemBlock })}
@@ -951,6 +966,73 @@ function ItemRow({
           </span>
         )}
       </div>
+
+      {/* Type-specific fields */}
+      {(item.itemType === 'transfer' || !item.itemType && false) && (
+        <div className="grid grid-cols-2 gap-2">
+          <input
+            type="text"
+            value={item.fromLocation ?? ''}
+            onChange={(e) => onUpdate({ fromLocation: e.target.value || null })}
+            disabled={!isPending}
+            placeholder="From (e.g. Grand Hyatt)"
+            className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
+          />
+          <input
+            type="text"
+            value={item.toLocation ?? ''}
+            onChange={(e) => onUpdate({ toLocation: e.target.value || null })}
+            disabled={!isPending}
+            placeholder="To (e.g. Gil Hospital)"
+            className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
+          />
+          <select
+            value={item.transportMode ?? ''}
+            onChange={(e) => onUpdate({ transportMode: (e.target.value || null) as ScheduleItem['transportMode'] })}
+            disabled={!isPending}
+            className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
+          >
+            <option value="">— Transport mode —</option>
+            <option value="car">Private car</option>
+            <option value="shuttle">Shuttle</option>
+            <option value="taxi">Taxi</option>
+            <option value="bus">Bus</option>
+            <option value="walk">Walking</option>
+          </select>
+        </div>
+      )}
+      {item.itemType === 'meal' && (
+        <div className="grid grid-cols-2 gap-2">
+          <input
+            type="text"
+            value={item.restaurantName ?? ''}
+            onChange={(e) => onUpdate({ restaurantName: e.target.value || null })}
+            disabled={!isPending}
+            placeholder="Restaurant name"
+            className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
+          />
+          <input
+            type="text"
+            value={item.cuisine ?? ''}
+            onChange={(e) => onUpdate({ cuisine: e.target.value || null })}
+            disabled={!isPending}
+            placeholder="Cuisine (e.g. Korean BBQ)"
+            className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
+          />
+        </div>
+      )}
+      {item.itemType === 'hotel' && (
+        <select
+          value={item.hotelCheckType ?? ''}
+          onChange={(e) => onUpdate({ hotelCheckType: (e.target.value || null) as ScheduleItem['hotelCheckType'] })}
+          disabled={!isPending}
+          className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
+        >
+          <option value="">— Check-in / Check-out —</option>
+          <option value="checkin">Check-in</option>
+          <option value="checkout">Check-out</option>
+        </select>
+      )}
 
       {/* Notes — VIP-facing */}
       <input

@@ -5,6 +5,18 @@
 
 export type ScheduleItemBlock = 'morning' | 'afternoon' | 'evening'
 
+export type ScheduleItemType = 'appointment' | 'transfer' | 'meal' | 'hotel' | 'free'
+
+export const SCHEDULE_ITEM_TYPES: ScheduleItemType[] = ['appointment', 'transfer', 'meal', 'hotel', 'free']
+
+export const SCHEDULE_ITEM_TYPE_LABEL: Record<ScheduleItemType, string> = {
+  appointment: 'Appointment',
+  transfer:    'Transfer',
+  meal:        'Meal',
+  hotel:       'Hotel',
+  free:        'Free time',
+}
+
 export const SCHEDULE_BLOCKS: ScheduleItemBlock[] = ['morning', 'afternoon', 'evening']
 
 export const SCHEDULE_BLOCK_LABEL: Record<ScheduleItemBlock, string> = {
@@ -34,6 +46,16 @@ export type ScheduleItem = {
   partnerContact?: string | null   // partner contact person + phone
   driverInfo?: string | null       // driver name + phone + pickup instruction
   isPrayer?: boolean               // marks item as Islamic prayer time (orange italic styling)
+  itemType?: ScheduleItemType      // default: 'appointment'
+  // transfer-specific
+  fromLocation?: string | null
+  toLocation?: string | null
+  transportMode?: 'car' | 'shuttle' | 'taxi' | 'bus' | 'walk' | null
+  // meal-specific
+  restaurantName?: string | null
+  cuisine?: string | null
+  // hotel-specific
+  hotelCheckType?: 'checkin' | 'checkout' | null
   variantId: string | null         // optional ref to product_variants for context
   groupId?: string | null           // document_groups.id this item belongs to
                                     //   null = shared activity (visible to all groups)
