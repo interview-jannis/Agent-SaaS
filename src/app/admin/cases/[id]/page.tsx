@@ -944,8 +944,10 @@ export default function AdminCaseDetailPage() {
               setSavingItems(true); setActionError('')
               try {
                 // Removals first (they don't depend on adds; ids stable)
+                const removedVariantIds = new Set<string>()
                 for (const itemId of stagedRemoves) {
                   const removed = allItems.find(it => it.id === itemId)
+                  if (removed?.variant_id) removedVariantIds.add(removed.variant_id)
                   await removeDocumentItem(itemId)
                   await logAsCurrentUser('quote.item_removed',
                     { type: 'case', id: caseData.id, label: caseData.case_number },
@@ -970,9 +972,20 @@ export default function AdminCaseDetailPage() {
                 }
                 // Keep the final_invoice stored total in sync.
                 await recalcDocumentTotal(finalInvoice.id)
+                // Auto-remove deleted products from the active pending/revision schedule.
+                if (removedVariantIds.size > 0 && latestSchedule
+                  && (latestSchedule.status === 'pending' || latestSchedule.status === 'revision_requested')) {
+                  const filtered = (latestSchedule.items ?? []).filter(
+                    (si: import('@/types/schedule').ScheduleItem) => !si.variantId || !removedVariantIds.has(si.variantId)
+                  )
+                  if (filtered.length !== (latestSchedule.items ?? []).length) {
+                    await supabase.from('schedules').update({ items: filtered }).eq('id', latestSchedule.id)
+                  }
+                }
                 setStagedAdds([])
                 setStagedRemoves(new Set())
                 await fetchCase()
+                setEditingProducts(false)
               } catch (e: unknown) {
                 setActionError((e as { message?: string })?.message ?? 'Failed to save.')
               } finally { setSavingItems(false) }
