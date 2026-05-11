@@ -724,13 +724,12 @@ function PrayerMenu({ onPick }: { onPick: (prayer: string) => void }) {
 // ── Group multi-select ────────────────────────────────────────────────────────
 
 function GroupMultiSelect({
-  groupIds, caseGroups, isPending, isGroupUnset, tone, onChange, onGroupChosen,
+  groupIds, caseGroups, isPending, isGroupUnset, onChange, onGroupChosen,
 }: {
   groupIds: string[] | null
   caseGroups: Array<{ id: string; name: string }>
   isPending: boolean
   isGroupUnset: boolean
-  tone: { chip: string; chipText: string }
   onChange: (gids: string[] | null) => void
   onGroupChosen: () => void
 }) {
@@ -747,40 +746,58 @@ function GroupMultiSelect({
   }, [open])
 
   const isShared = groupIds === null
-  const label = isGroupUnset
-    ? '— Choose —'
-    : isShared
-    ? 'Shared'
-    : groupIds!.map(id => caseGroups.find(g => g.id === id)?.name ?? '?').join(' + ')
 
-  const chipClass = isGroupUnset
-    ? 'border-amber-300 bg-amber-50 text-amber-700'
-    : isShared
-    ? 'bg-white border-gray-800 text-gray-900'
-    : `${tone.chip} ${tone.chipText}`
-
-  if (!isPending) {
-    return (
-      <span className={`text-xs font-semibold px-2 py-0.5 rounded border ${chipClass}`}>
-        {label}
-      </span>
-    )
+  // Render individual colored chips for each assigned group ID.
+  function renderGroupChips(gids: string[]) {
+    return gids.map(gid => {
+      const group = caseGroups.find(g => g.id === gid)
+      const idx = caseGroups.findIndex(g => g.id === gid)
+      const t = idx >= 0 ? GROUP_TONES[idx % GROUP_TONES.length] : { chip: 'bg-gray-100 border-gray-300', chipText: 'text-gray-700' }
+      return (
+        <span key={gid} className={`text-xs font-semibold px-2 py-0.5 rounded border ${t.chip} ${t.chipText}`}>
+          {group?.name ?? '?'}
+        </span>
+      )
+    })
   }
+
+  // Committed (read-only) display
+  if (!isPending) {
+    if (isGroupUnset) {
+      return <span className="text-xs font-semibold px-2 py-0.5 rounded border border-amber-300 bg-amber-50 text-amber-700">— Choose —</span>
+    }
+    if (isShared || !groupIds || groupIds.length === 0) {
+      return <span className="text-xs font-semibold px-2 py-0.5 rounded border bg-white border-gray-800 text-gray-900">Shared</span>
+    }
+    return <span className="flex items-center gap-1">{renderGroupChips(groupIds)}</span>
+  }
+
+  // Pending state — button that opens dropdown.
+  // Shows chips inline so the visual matches committed state.
+  const buttonContent = isGroupUnset ? (
+    <span className="text-xs font-semibold text-amber-700">— Choose —</span>
+  ) : isShared ? (
+    <span className="text-xs font-semibold text-gray-900">Shared (all)</span>
+  ) : (
+    <span className="flex items-center gap-1">{renderGroupChips(groupIds!)}</span>
+  )
 
   return (
     <div ref={ref} className="relative">
       <button
         type="button"
         onClick={() => setOpen(v => !v)}
-        className={`text-xs font-semibold border rounded-lg px-2 py-1 inline-flex items-center gap-1 focus:outline-none ${chipClass}`}
+        className={`inline-flex items-center gap-1 border rounded-lg px-2 py-1 focus:outline-none ${
+          isGroupUnset ? 'border-amber-300 bg-amber-50' : 'border-gray-200 bg-white hover:border-gray-400'
+        }`}
       >
-        {label}
-        <svg className="w-3 h-3 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        {buttonContent}
+        <svg className="w-3 h-3 text-gray-400 ml-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7"/>
         </svg>
       </button>
       {open && (
-        <div className="absolute left-0 top-full mt-1 z-20 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[150px] py-1">
+        <div className="absolute left-0 top-full mt-1 z-20 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[160px] py-1">
           <label className="flex items-center gap-2.5 px-3 py-1.5 hover:bg-gray-50 cursor-pointer">
             <input
               type="radio"
@@ -791,8 +808,9 @@ function GroupMultiSelect({
             <span className="text-xs font-medium text-gray-700">Shared (all)</span>
           </label>
           <div className="border-t border-gray-100 my-0.5" />
-          {caseGroups.map(g => {
+          {caseGroups.map((g, idx) => {
             const checked = !isShared && !!(groupIds?.includes(g.id))
+            const t = GROUP_TONES[idx % GROUP_TONES.length]
             return (
               <label key={g.id} className="flex items-center gap-2.5 px-3 py-1.5 hover:bg-gray-50 cursor-pointer">
                 <input
@@ -808,7 +826,7 @@ function GroupMultiSelect({
                   }}
                   className="accent-[#0f4c35]"
                 />
-                <span className="text-xs text-gray-700">{g.name}</span>
+                <span className={`text-xs font-medium px-1.5 py-0.5 rounded border ${t.chip} ${t.chipText}`}>{g.name}</span>
               </label>
             )
           })}
@@ -1050,7 +1068,6 @@ function ItemRow({
                 caseGroups={caseGroups}
                 isPending={isPending}
                 isGroupUnset={isGroupUnset}
-                tone={tone}
                 onChange={(gids) => {
                   if (gids === null || gids.length === 0) {
                     onApplyVariant(null) // reset product when switching to shared
