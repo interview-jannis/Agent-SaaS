@@ -510,6 +510,11 @@ export default function CaseDetailPage() {
         .eq('id', schedule.id)
       if (se) throw se
       await supabase.from('cases').update({ status: 'awaiting_pricing' }).eq('id', caseData.id)
+      // Reset any previously finalized balance invoice so admin must re-confirm pricing.
+      await supabase.from('documents')
+        .update({ finalized_at: null, payment_due_date: null })
+        .eq('case_id', caseData.id)
+        .eq('type', 'final_invoice')
       await notifyAssignedAdmin({ case_id: caseData.id }, `${caseData.case_number} Schedule v${schedule.version} confirmed — finalize pricing to issue invoice`, `/admin/cases/${caseData.id}`)
       await logAsCurrentUser('schedule.confirmed', { type: 'case', id: caseData.id, label: caseData.case_number }, { version: schedule.version })
       await fetchCase()
