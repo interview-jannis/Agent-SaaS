@@ -720,7 +720,7 @@ export default function AdminCaseDetailPage() {
           />
 
           {/* Agent */}
-          <section className="bg-gray-50 rounded-2xl border border-gray-200 overflow-hidden">
+          <section className="bg-gray-50 rounded-2xl border border-gray-300 overflow-hidden">
             <div className="px-4 py-2.5 bg-gray-100 border-b border-gray-200">
               <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Agent</p>
             </div>
@@ -731,7 +731,7 @@ export default function AdminCaseDetailPage() {
           </section>
 
           {/* ─── TRIP SETUP — Travel + Trip Info + Lead Client + Members all-in-one ─── */}
-          <section className="bg-gray-50 rounded-2xl border border-gray-200 overflow-hidden">
+          <section className="bg-gray-50 rounded-2xl border border-gray-300 overflow-hidden">
             <div className="flex items-center justify-between flex-wrap gap-2 px-4 py-2.5 bg-gray-100 border-b border-gray-200">
               <div className="flex items-center gap-2">
                 <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Trip Setup</h3>
@@ -1525,9 +1525,19 @@ export default function AdminCaseDetailPage() {
 
           {/* Schedule History */}
           {sortedSchedules.length > 0 && (
-            <section className="bg-gray-50 rounded-2xl border border-gray-200 overflow-hidden">
+            <section className="bg-gray-50 rounded-2xl border border-gray-300 overflow-hidden">
               <div className="flex items-center justify-between px-4 py-2.5 bg-gray-100 border-b border-gray-200">
-                <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Schedule History</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Schedule History</p>
+                  {latestSchedule && (() => {
+                    const s = latestSchedule.status
+                    const cls = s === 'confirmed' ? 'text-green-700 bg-green-50 border-green-200' :
+                                s === 'revision_requested' ? 'text-rose-700 bg-rose-50 border-rose-200' :
+                                'text-gray-500 bg-white border-gray-200'
+                    const label = s === 'confirmed' ? 'Confirmed' : s === 'revision_requested' ? 'Revision Requested' : 'Pending Review'
+                    return <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded border ${cls}`}>{label}</span>
+                  })()}
+                </div>
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] text-gray-400">{sortedSchedules.length} version{sortedSchedules.length > 1 ? 's' : ''}</span>
                   <button onClick={() => setScheduleCollapsed(!scheduleCollapsed)}
@@ -1699,7 +1709,7 @@ export default function AdminCaseDetailPage() {
               Real upload UI / history sit lower in the page; once a schedule
               exists, this placeholder hides and the full UI takes over below. */}
           {sortedSchedules.length === 0 && (
-            <section className="bg-gray-50 rounded-2xl p-5">
+            <section className="bg-gray-50 rounded-2xl border border-gray-300 p-5">
               <div className="flex items-center justify-between mb-2">
                 <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Schedule</h3>
                 <span className="text-[10px] text-gray-400">not yet uploaded</span>
@@ -1716,7 +1726,7 @@ export default function AdminCaseDetailPage() {
           {!scheduleReady
             && (caseData.status === 'awaiting_info' || caseData.status === 'awaiting_schedule' || caseData.status === 'reviewing_schedule')
             && (latestSchedule === null || latestSchedule.status === 'revision_requested') && (
-            <section className="border border-gray-200 bg-gray-50 rounded-2xl p-4 space-y-2 opacity-80">
+            <section className="border border-gray-300 bg-gray-50 rounded-2xl p-4 space-y-2 opacity-80">
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Upload Schedule</p>
               <p className="text-xs text-gray-500">
                 {[
@@ -2098,7 +2108,7 @@ export default function AdminCaseDetailPage() {
             const isActionTarget = (caseData.status === 'awaiting_deposit' || caseData.status === 'awaiting_payment') && !isCompleted
             const sectionClass = isActionTarget
               ? 'bg-white border border-[#0f4c35] rounded-2xl overflow-hidden'
-              : 'bg-gray-50 rounded-2xl border border-gray-200 overflow-hidden'
+              : 'bg-gray-50 rounded-2xl border border-gray-300 overflow-hidden'
             const headerClass = isActionTarget
               ? 'flex items-center justify-between px-4 py-2.5 bg-green-50 border-b border-green-200'
               : 'flex items-center justify-between px-4 py-2.5 bg-gray-100 border-b border-gray-200'
@@ -2113,6 +2123,16 @@ export default function AdminCaseDetailPage() {
                   {!finalInvoice?.finalized_at && (
                     <span className="text-[10px] font-semibold text-gray-500 bg-gray-100 border border-gray-200 rounded-full px-2 py-0.5 uppercase tracking-wide">
                       Estimated
+                    </span>
+                  )}
+                  {finalInvoice?.finalized_at && !finalInvoice?.payment_received_at && (
+                    <span className="text-[10px] font-medium text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+                      Awaiting Payment
+                    </span>
+                  )}
+                  {finalInvoice?.payment_received_at && (
+                    <span className="text-[10px] font-medium text-green-700 bg-green-50 border border-green-200 px-1.5 py-0.5 rounded">
+                      Paid
                     </span>
                   )}
                 </div>
@@ -2324,9 +2344,17 @@ export default function AdminCaseDetailPage() {
             const paymentReceived = (caseData.schedules ?? []).some(s => s.status === 'confirmed')
 
             return (
-              <section className="bg-gray-50 rounded-2xl border border-gray-200 overflow-hidden">
+              <section className="bg-gray-50 rounded-2xl border border-gray-300 overflow-hidden">
                 <div className="flex items-center justify-between flex-wrap gap-2 px-4 py-2.5 bg-gray-100 border-b border-gray-200">
-                  <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Partner Payouts</p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Partner Payouts</p>
+                    {allPaid && paymentReceived && (
+                      <span className="text-[10px] font-medium text-green-700 bg-green-50 border border-green-200 px-1.5 py-0.5 rounded">All Settled</span>
+                    )}
+                    {!allPaid && paymentReceived && (
+                      <span className="text-[10px] font-medium text-gray-500 bg-white border border-gray-200 px-1.5 py-0.5 rounded">Pending</span>
+                    )}
+                  </div>
                   <div className="flex items-baseline gap-3 text-[10px] text-gray-500">
                     <span>Paid <span className="font-semibold tabular-nums text-gray-700">{fmtUSD(totalPaid / exchangeRate)}</span> of {fmtUSD(totalSuggested / exchangeRate)}</span>
                     {allPaid && <span className="text-[#0f4c35] font-medium">All settled ✓</span>}
