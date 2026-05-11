@@ -106,7 +106,7 @@ export default async function AdminOverviewPage() {
       .not('status', 'in', '(completed,canceled)'),
     // All paid cases ever — drives Hero (all-time totals) + 6mo sparkline trends
     supabase.from('cases')
-      .select('id, payment_date, agent_id, case_members(id), documents(type, total_price, company_margin_rate, agent_margin_rate, price_rate_snapshot)')
+      .select('id, payment_date, agent_id, case_members(id), documents(type, total_price, company_margin_rate, agent_margin_rate)')
       .not('payment_date', 'is', null),
     // All clients (used for total count + new clients per month for sparkline)
     supabase.from('clients').select('id, created_at'),
@@ -121,7 +121,7 @@ export default async function AdminOverviewPage() {
     // Deposit settlements (admin → agent invoices) marked received — admin
     // actually has the money. Drives cash-basis revenue recognition.
     supabase.from('documents')
-      .select('case_id, total_price, payment_received_at, exchange_rate_snapshot, price_rate_snapshot')
+      .select('case_id, total_price, payment_received_at')
       .eq('type', 'deposit_invoice')
       .eq('to_party', 'agent')
       .not('payment_received_at', 'is', null),
@@ -148,13 +148,13 @@ export default async function AdminOverviewPage() {
     payment_date: string | null
     agent_id: string | null
     case_members: { id: string }[]
-    documents: { type: string; total_price: number; company_margin_rate: number | null; agent_margin_rate: number | null; price_rate_snapshot: number | null }[]
+    documents: { type: string; total_price: number; company_margin_rate: number | null; agent_margin_rate: number | null }[]
   }
   const paidCasesAll = (allPaidCases as unknown as PaidCase[]) ?? []
   type CashPayment = { id: string; amount: number; paid_at: string }
   const partnerPaymentRows = (allPartnerPayments as unknown as CashPayment[]) ?? []
   const agentSettlementRows = (allAgentSettlements as unknown as CashPayment[]) ?? []
-  type DepositSettlement = { case_id: string; total_price: number; payment_received_at: string; exchange_rate_snapshot: number | null; price_rate_snapshot: number | null }
+  type DepositSettlement = { case_id: string; total_price: number; payment_received_at: string }
   const depositSettlementRows = (allDepositSettlements as unknown as DepositSettlement[]) ?? []
 
   // case_id -> deposit settlement amount received, used to net against
@@ -164,13 +164,10 @@ export default async function AdminOverviewPage() {
     depositReceivedByCase.set(s.case_id, (depositReceivedByCase.get(s.case_id) ?? 0) + (s.total_price ?? 0))
   }
 
-  type RevenueEvent = { caseId: string; amount: number; at: string; snapshotRate?: number }
+  type RevenueEvent = { caseId: string; amount: number; at: string }
   const revenueEvents: RevenueEvent[] = []
   for (const s of depositSettlementRows) {
-    revenueEvents.push({
-      caseId: s.case_id, amount: s.total_price ?? 0, at: s.payment_received_at,
-      snapshotRate: s.exchange_rate_snapshot ?? s.price_rate_snapshot ?? undefined,
-    })
+    revenueEvents.push({ caseId: s.case_id, amount: s.total_price ?? 0, at: s.payment_received_at })
   }
   for (const c of paidCasesAll) {
     if (!c.payment_date) continue
@@ -178,20 +175,15 @@ export default async function AdminOverviewPage() {
     const total = q?.total_price ?? 0
     const dep = depositReceivedByCase.get(c.id) ?? 0
     const balance = Math.max(0, total - dep)
-    if (balance > 0) revenueEvents.push({
-      caseId: c.id, amount: balance, at: c.payment_date,
-      snapshotRate: q?.price_rate_snapshot ?? undefined,
-    })
+    if (balance > 0) revenueEvents.push({ caseId: c.id, amount: balance, at: c.payment_date })
   }
 
   // All-time totals for Hero
   const revenueTotal = revenueEvents.reduce((s, e) => s + e.amount, 0)
-  const revenueUsdTotal = revenueEvents.reduce((s, e) => s + e.amount / (e.snapshotRate ?? exchangeRate), 0)
   const revenueCaseCount = new Set(revenueEvents.map(e => e.caseId)).size
   const partnerTotal = partnerPaymentRows.reduce((sum, p) => sum + (p.amount ?? 0), 0)
   const agentTotal = agentSettlementRows.reduce((sum, p) => sum + (p.amount ?? 0), 0)
   const earningsTotal = revenueTotal - partnerTotal - agentTotal
-  const earningsUsdTotal = revenueUsdTotal - partnerTotal / exchangeRate - agentTotal / exchangeRate
 
   // Monthly breakdown for sparklines
   const clientRows = (allClients as unknown as { id: string; created_at: string }[]) ?? []
@@ -292,15 +284,13 @@ export default async function AdminOverviewPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-2">Revenue · All Time</p>
-              <p className="text-4xl font-bold text-gray-900 tracking-tight leading-none">{fmtUSD(revenueUsdTotal)}</p>
-              <p className="text-xs text-gray-500 mt-2 tabular-nums">{fmtKRW(revenueTotal)}</p>
-              <p className="text-[11px] text-gray-500 mt-1">from {revenueCaseCount} case{revenueCaseCount !== 1 ? 's' : ''} with cash received</p>
+              <p className="text-4xl font-bold text-gray-900 tracking-tight leading-none">{fmtKRW(revenueTotal)}</p>
+              <p className="text-[11px] text-gray-500 mt-2">from {revenueCaseCount} case{revenueCaseCount !== 1 ? 's' : ''} with cash received</p>
             </div>
             <div className="md:border-l md:border-gray-200 md:pl-6">
               <p className="text-[10px] text-emerald-700 uppercase tracking-wide mb-2">Earnings · All Time</p>
-              <p className="text-4xl font-bold text-emerald-700 tracking-tight leading-none">{fmtUSD(earningsUsdTotal)}</p>
-              <p className="text-xs text-emerald-600 mt-2 tabular-nums">{fmtKRW(earningsTotal)}</p>
-              <p className="text-[11px] text-gray-500 mt-1">revenue minus partner & agent costs paid</p>
+              <p className="text-4xl font-bold text-emerald-700 tracking-tight leading-none">{fmtKRW(earningsTotal)}</p>
+              <p className="text-[11px] text-gray-500 mt-2">revenue minus partner & agent costs paid</p>
             </div>
           </div>
 
@@ -308,8 +298,8 @@ export default async function AdminOverviewPage() {
           <div className="mt-5 pt-5 border-t border-gray-200 grid grid-cols-2 md:grid-cols-4 gap-6">
             <div>
               <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-1">Partner Costs</p>
-              <p className="text-xl font-semibold text-gray-700 tracking-tight">{fmtUSD(partnerTotal / exchangeRate)}</p>
-              <p className="text-[11px] text-gray-500 mt-1 tabular-nums">{fmtKRW(partnerTotal)} · sent to partners</p>
+              <p className="text-xl font-semibold text-gray-700 tracking-tight">{fmtKRW(partnerTotal)}</p>
+              <p className="text-[11px] text-gray-500 mt-1">sent to partners</p>
             </div>
             <div className="md:border-l md:border-gray-200 md:pl-6">
               <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-1">Agent Payouts</p>
@@ -563,8 +553,7 @@ export default async function AdminOverviewPage() {
                     </div>
                     <span className="text-xs text-gray-400">{agent.count} case{agent.count !== 1 ? 's' : ''}</span>
                     <span className="flex flex-col items-end">
-                      <span className="text-sm font-semibold text-gray-800 tabular-nums">{fmtUSD(agent.revenue / exchangeRate)}</span>
-                      <span className="text-[10px] text-gray-400">{fmtKRW(agent.revenue)}</span>
+                      <span className="text-sm font-semibold text-gray-800 tabular-nums">{fmtKRW(agent.revenue)}</span>
                     </span>
                   </li>
                 ))}

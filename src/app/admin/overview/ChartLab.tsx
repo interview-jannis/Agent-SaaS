@@ -28,6 +28,14 @@ const COLORS = {
   activeAgents: COUNT_COLOR,
 }
 
+const fmtKRW = (n: number) => '₩' + Math.round(n).toLocaleString('ko-KR')
+const fmtKRWShort = (n: number): string => {
+  if (n === 0) return '₩0'
+  if (n >= 100_000_000) return `₩${(n / 100_000_000).toFixed(1).replace(/\.0$/, '')}억`
+  if (n >= 10_000) return `₩${Math.round(n / 10_000)}만`
+  return '₩' + Math.round(n).toLocaleString('ko-KR')
+}
+
 export default function ChartLab({
   monthly,
   exchangeRate,
@@ -41,9 +49,9 @@ export default function ChartLab({
   const labels = monthly.map(m => m.label)
 
   const moneyCards: SparklineCardProps[] = [
-    { label: 'Revenue', color: COLORS.revenue, kind: 'money', value: toUsd(current.revenue), prev: toUsd(prev?.revenue ?? 0), values: monthly.map(m => toUsd(m.revenue)), labels },
-    { label: 'Earnings', color: COLORS.earnings, kind: 'money', value: toUsd(current.earnings), prev: toUsd(prev?.earnings ?? 0), values: monthly.map(m => toUsd(m.earnings)), labels },
-    { label: 'Partner Cost', color: COLORS.partner, kind: 'money', value: toUsd(current.partner), prev: toUsd(prev?.partner ?? 0), values: monthly.map(m => toUsd(m.partner)), labels },
+    { label: 'Revenue', color: COLORS.revenue, kind: 'money', value: current.revenue, prev: prev?.revenue ?? 0, values: monthly.map(m => m.revenue), labels, fmtMoney: fmtKRW, fmtMoneyShort: fmtKRWShort },
+    { label: 'Earnings', color: COLORS.earnings, kind: 'money', value: current.earnings, prev: prev?.earnings ?? 0, values: monthly.map(m => m.earnings), labels, fmtMoney: fmtKRW, fmtMoneyShort: fmtKRWShort },
+    { label: 'Partner Cost', color: COLORS.partner, kind: 'money', value: current.partner, prev: prev?.partner ?? 0, values: monthly.map(m => m.partner), labels, fmtMoney: fmtKRW, fmtMoneyShort: fmtKRWShort },
     { label: 'Agent Payouts', color: COLORS.agent, kind: 'money', value: toUsd(current.agent), prev: toUsd(prev?.agent ?? 0), values: monthly.map(m => toUsd(m.agent)), labels },
   ]
 

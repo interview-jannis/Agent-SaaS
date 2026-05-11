@@ -275,16 +275,16 @@ export default function AdminSettlementPage() {
                 <div className="bg-gray-50 rounded-2xl p-4 grid grid-cols-3 gap-3">
                   <div>
                     <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">This Month</p>
-                    <p className="text-xl font-bold text-gray-900 tracking-tight leading-none">{fmtUSD(toUsd(partnerPaidThisMonthKrw))}</p>
+                    <p className="text-xl font-bold text-gray-900 tracking-tight leading-none">{fmtKRW(partnerPaidThisMonthKrw)}</p>
                   </div>
                   <div className="border-l border-gray-200 pl-3">
                     <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Pending</p>
-                    <p className="text-xl font-bold text-amber-700 tracking-tight leading-none">{fmtUSD(toUsd(partnerPendingKrw))}</p>
+                    <p className="text-xl font-bold text-amber-700 tracking-tight leading-none">{fmtKRW(partnerPendingKrw)}</p>
                     <p className="text-[10px] text-gray-500 mt-1">{partnerPendingCases.length} case{partnerPendingCases.length !== 1 ? 's' : ''}</p>
                   </div>
                   <div className="border-l border-gray-200 pl-3">
                     <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">All Time</p>
-                    <p className="text-xl font-bold text-gray-900 tracking-tight leading-none">{fmtUSD(toUsd(partnerTotalPaidKrw))}</p>
+                    <p className="text-xl font-bold text-gray-900 tracking-tight leading-none">{fmtKRW(partnerTotalPaidKrw)}</p>
                     <p className="text-[10px] text-gray-500 mt-1">{partnerPayments.length} payment{partnerPayments.length !== 1 ? 's' : ''}</p>
                   </div>
                 </div>
@@ -328,7 +328,7 @@ export default function AdminSettlementPage() {
                                   )}
                                 </td>
                                 <td className="py-3 px-2 md:px-4 tabular-nums">
-                                  <span className="text-sm font-semibold text-gray-900">{fmtUSD(toUsd(info.pendingKrw))}</span>
+                                  <span className="text-sm font-semibold text-gray-900">{fmtKRW(info.pendingKrw)}</span>
                                 </td>
                                 <td className="py-3 px-2 md:px-4 text-right hidden md:table-cell">
                                   <a href={`/admin/cases/${c.id}`} className="text-xs text-[#0f4c35] hover:underline">Open →</a>
@@ -383,7 +383,7 @@ export default function AdminSettlementPage() {
                                 </td>
                                 <td className="py-3 px-2 md:px-4 text-xs text-gray-500 truncate max-w-[200px] hidden md:table-cell">{p.note ?? '—'}</td>
                                 <td className="py-3 px-2 md:px-4 text-left">
-                                  <p className="text-sm font-semibold text-gray-900">{fmtUSD(toUsd(p.amount))}</p>
+                                  <p className="text-sm font-semibold text-gray-900">{fmtKRW(p.amount)}</p>
                                 </td>
                               </tr>
                             )
