@@ -247,6 +247,7 @@ export default function AdminCaseDetailPage() {
   const [stagedRemoves, setStagedRemoves] = useState<Set<string>>(new Set())
   const [savingItems, setSavingItems] = useState(false)
   const [editingProducts, setEditingProducts] = useState(false)
+  const [clientModalMember, setClientModalMember] = useState<CaseMember | null>(null)
   const [creatingDraft, setCreatingDraft] = useState(false)
 
   // Sections start collapsed; user expands what they need.
@@ -552,6 +553,111 @@ export default function AdminCaseDetailPage() {
   return (
     <div className="flex flex-col h-full overflow-hidden">
 
+      {/* Client info modal */}
+      {clientModalMember && (() => {
+        const c = clientModalMember.clients
+        const row = (label: string, value: string | number | null | undefined) =>
+          value != null && String(value).trim() ? (
+            <div key={label}>
+              <p className="text-[10px] text-gray-400 mb-0.5">{label}</p>
+              <p className="text-sm text-gray-800">{String(value)}</p>
+            </div>
+          ) : null
+        const badge = (label: string, shown: boolean, color = 'bg-[#0f4c35]/10 text-[#0f4c35]') =>
+          shown ? <span key={label} className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${color}`}>{label}</span> : null
+        const fmt = (v: string | null | undefined) => v?.replace(/_/g, ' ') ?? null
+        return (
+          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+            onClick={() => setClientModalMember(null)}>
+            <div className="bg-white rounded-2xl max-w-lg w-full max-h-[85vh] flex flex-col shadow-xl"
+              onClick={e => e.stopPropagation()}>
+              {/* Header */}
+              <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 shrink-0">
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">{c.name}</p>
+                  <p className="text-[10px] font-mono text-gray-400">{c.client_number}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {clientModalMember.is_lead && <span className="text-[9px] font-medium text-white bg-[#0f4c35] px-1.5 py-0.5 rounded">LEAD</span>}
+                  {badge('Muslim Friendly', !!c.needs_muslim_friendly)}
+                  <button onClick={() => setClientModalMember(null)} className="ml-2 text-gray-400 hover:text-gray-700">
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              {/* Body */}
+              <div className="overflow-y-auto px-5 py-4 space-y-5">
+                {/* Basic */}
+                <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+                  {row('Nationality', c.nationality)}
+                  {row('Gender', c.gender)}
+                  {row('Date of Birth', c.date_of_birth)}
+                  {row('Phone', c.phone)}
+                  {row('Email', c.email)}
+                  {row('Passport', c.passport_number)}
+                  {row('Preferred Language', c.preferred_language)}
+                  {row('Height', c.height_cm != null ? `${c.height_cm} cm` : null)}
+                  {row('Weight', c.weight_kg != null ? `${c.weight_kg} kg` : null)}
+                </div>
+                {/* Health */}
+                <div>
+                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-2">Health</p>
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+                    {row('Blood Type', c.blood_type)}
+                    {row('Allergies', c.allergies)}
+                    {row('Current Medications', c.current_medications)}
+                    {row('Health Conditions', c.health_conditions)}
+                    {row('Medical Restrictions', c.medical_restrictions)}
+                    {row('Mobility', c.mobility_limitations)}
+                    {row('Pregnancy Status', fmt(c.pregnancy_status))}
+                    {row('Smoking', fmt(c.smoking_status))}
+                    {row('Alcohol', fmt(c.alcohol_status))}
+                  </div>
+                </div>
+                {/* Muslim prefs */}
+                {c.needs_muslim_friendly && (
+                  <div>
+                    <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-2">Muslim Preferences</p>
+                    <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+                      {row('Dietary Restriction', fmt(c.dietary_restriction))}
+                      {row('Prayer Frequency', fmt(c.prayer_frequency))}
+                      {row('Prayer Location', fmt(c.prayer_location))}
+                      {row('Same-gender Doctor', fmt(c.same_gender_doctor))}
+                      {row('Same-gender Therapist', fmt(c.same_gender_therapist))}
+                      {row('Mixed-gender Activities', fmt(c.mixed_gender_activities))}
+                      {c.cultural_religious_notes && (
+                        <div className="col-span-2">{row('Cultural / Religious Notes', c.cultural_religious_notes)}</div>
+                      )}
+                    </div>
+                  </div>
+                )}
+                {/* Emergency contact */}
+                {(c.emergency_contact_name || c.emergency_contact_phone) && (
+                  <div>
+                    <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-2">Emergency Contact</p>
+                    <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+                      {row('Name', c.emergency_contact_name)}
+                      {row('Relation', c.emergency_contact_relation)}
+                      {row('Phone', c.emergency_contact_phone)}
+                    </div>
+                  </div>
+                )}
+                {/* Special requests */}
+                {c.special_requests && (
+                  <div>
+                    <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-2">Special Requests</p>
+                    <p className="text-sm text-gray-800 whitespace-pre-wrap">{c.special_requests}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
+
       {/* Header bar */}
       <div className="shrink-0 border-b border-gray-100 bg-white px-4 md:px-6 py-3 md:py-0 md:h-14 flex items-center gap-3 flex-wrap">
         <button onClick={() => router.push('/admin/cases')}
@@ -761,7 +867,7 @@ export default function AdminCaseDetailPage() {
 
                   const renderRow = (m: typeof caseData.case_members[number]) => (
                     <div key={m.id} className="flex items-center gap-2 py-1">
-                      <span className="text-sm text-gray-800 truncate">{m.clients?.name ?? '—'}</span>
+                      <button onClick={() => setClientModalMember(m)} className="text-sm text-gray-800 truncate hover:text-[#0f4c35] hover:underline text-left">{m.clients?.name ?? '—'}</button>
                       <span className="text-[10px] font-mono text-gray-400">{m.clients?.client_number}</span>
                       {m.is_lead && <span className="text-[9px] font-medium text-white bg-[#0f4c35] px-1.5 py-0.5 rounded">LEAD</span>}
                     </div>
@@ -1304,7 +1410,7 @@ export default function AdminCaseDetailPage() {
                           value={pickerGroupId || editGroups[0]?.id}
                           onChange={(e) => setPickerGroupId(e.target.value)}
                           className="border border-gray-200 rounded-lg px-2 py-1 text-xs text-gray-900 focus:outline-none focus:border-[#0f4c35] bg-white">
-                          {editGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                          {editGroups.filter(g => isAssignableGroup(g.name)).map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
                         </select>
                       )}
                       <select
