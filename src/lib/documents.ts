@@ -709,10 +709,17 @@ export async function issueCommissionInvoice(
 }
 
 // Create a draft final_invoice document by copying groups + items + group_members
-// from the quotation. Called lazily when admin first opens "Edit Selected Products"
-// so that edits target the final_invoice (not the immutable quotation).
+// from the quotation. Idempotent — if a final_invoice already exists for this case
+// (finalized or not), returns it rather than creating a duplicate.
 // finalized_at remains null until admin explicitly hits "Finalize Pricing".
 export async function createDraftFinalInvoice(caseId: string): Promise<DocumentRow> {
+  const { data: existing } = await supabase
+    .from('documents')
+    .select('*')
+    .eq('case_id', caseId)
+    .eq('type', 'final_invoice')
+    .maybeSingle()
+  if (existing) return existing as DocumentRow
   return issueInvoice({
     caseId,
     type: 'final_invoice',
