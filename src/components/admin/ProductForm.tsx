@@ -728,7 +728,7 @@ export default function ProductForm({ productId, productNumber, categories, init
               className="border-2 border-dashed border-gray-200 rounded-xl p-8 text-center cursor-pointer hover:border-[#0f4c35]/40 transition-colors"
             >
               <p className="text-sm text-gray-400">Add product images</p>
-              <p className="text-xs text-gray-300 mt-1">Click to select files</p>
+              <p className="text-xs text-gray-300 mt-1">Click to select files · multiple allowed</p>
             </div>
           ) : (
             <div className="flex flex-wrap gap-3">
@@ -757,9 +757,16 @@ export default function ProductForm({ productId, productNumber, categories, init
                   </button>
                 </div>
               ))}
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                className="w-24 h-24 rounded-xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center cursor-pointer hover:border-[#0f4c35]/40 transition-colors text-gray-300 hover:text-gray-400"
+              >
+                <span className="text-2xl leading-none">+</span>
+                <span className="text-[10px] mt-1">Add more</span>
+              </div>
             </div>
           )}
-          <p className="text-xs text-gray-400">Click ★ to set as primary image</p>
+          <p className="text-xs text-gray-400">Click ★ to set as primary · select multiple files at once</p>
         </section>
 
         {/* ── Partner Info ── */}

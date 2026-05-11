@@ -1286,12 +1286,12 @@ export default function AdminCaseDetailPage() {
                   return (
                     <div className="bg-white rounded-xl border border-gray-200 px-3 py-2 flex flex-wrap items-center gap-2 relative">
                       <span className="text-[10px] text-gray-500 shrink-0">Add to</span>
-                      {sortedGroups.length > 1 && (
+                      {editGroups.length > 1 && (
                         <select
-                          value={pickerGroupId || sortedGroups[0].id}
+                          value={pickerGroupId || editGroups[0]?.id}
                           onChange={(e) => setPickerGroupId(e.target.value)}
                           className="border border-gray-200 rounded-lg px-2 py-1 text-xs text-gray-900 focus:outline-none focus:border-[#0f4c35] bg-white">
-                          {sortedGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                          {editGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
                         </select>
                       )}
                       <select
@@ -1682,7 +1682,7 @@ export default function AdminCaseDetailPage() {
                   defaultDayCount={defaultDays}
                   caseProducts={caseProducts}
                   caseGroups={(latestQuote?.document_groups ?? [])
-                    .filter(g => g.name !== 'Trip Services')
+                    .filter(g => g.name !== 'Trip Services' && g.name !== 'Shared' && g.name !== 'Shared Activities')
                     .slice()
                     .sort((a, b) => a.order - b.order)
                     .map(g => ({ id: g.id, name: g.name }))}
