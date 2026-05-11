@@ -15,6 +15,7 @@ import {
   compareScheduleItems,
   dateForDay,
   formatDayHeader,
+  resolveGroupIds,
 } from '@/types/schedule'
 
 const TRANSPORT_MODE_LABEL: Record<string, string> = {
@@ -121,9 +122,12 @@ export default function ScheduleDocument({
   const isMultiGroup = groups.length > 1
   const showTabs = isMultiGroup
 
-  // Filter items by active tab: null = all, group id = that group + shared (groupId===null)
+  // Filter items by active tab: null = all, group id = that group + shared items
   const filtered = activeGroupId
-    ? items.filter(it => !it.groupId || it.groupId === activeGroupId)
+    ? items.filter(it => {
+        const gids = resolveGroupIds(it)
+        return gids === null || gids.includes(activeGroupId)
+      })
     : items
   const sorted = [...filtered].sort(compareScheduleItems)
 
@@ -477,10 +481,12 @@ function ScheduleRow({
   groupNameById: Record<string, string>
 }) {
   const timeStr   = formatTimeRange(item.time, item.endTime)
-  const groupCol  = item.groupId ? groupColorById[item.groupId] : null
+  const itemGroupIds = resolveGroupIds(item)
+  const firstGroupId = itemGroupIds?.[0] ?? null
+  const groupCol  = firstGroupId ? groupColorById[firstGroupId] : null
   const isPrayer  = item.isPrayer === true
   const itemType  = item.itemType ?? 'appointment'
-  const showStripe = isMultiGroup && !!item.groupId && !!groupCol
+  const showStripe = isMultiGroup && itemGroupIds !== null && !!groupCol
   const hasInternalDetail = showInternalNotes && (item.address || item.partnerContact || item.driverInfo || item.location || item.internalNotes)
 
   // Derived display values per type

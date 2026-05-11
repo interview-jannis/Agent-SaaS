@@ -11,7 +11,7 @@
 // Save creates a new `schedules` row (next version) with the items JSONB,
 // status='pending', and bumps cases.status to 'reviewing_schedule'.
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { logAsCurrentUser } from '@/lib/audit'
 import Time24Input from '@/components/Time24Input'
@@ -28,6 +28,7 @@ import {
   dateForDay,
   formatDayHeader,
   generateScheduleItemId,
+  resolveGroupIds,
 } from '@/types/schedule'
 
 type CaseProduct = {
@@ -130,7 +131,10 @@ export default function ScheduleEditor({
     for (const it of items) {
       if (pendingItemIds.has(it.id) || !it.variantId) continue
       if (!result.has(it.variantId)) result.set(it.variantId, new Set())
-      result.get(it.variantId)!.add(it.groupId ?? null)
+      const gids = resolveGroupIds(it)
+      const vid = it.variantId!
+      if (gids === null) result.get(vid)!.add(null)
+      else gids.forEach(gid => result.get(vid)!.add(gid))
     }
     return result
   }, [items, pendingItemIds])
@@ -237,6 +241,7 @@ export default function ScheduleEditor({
       sortOrder: items.filter(i => i.day === day).length,
     }
     setItems(prev => [...prev, newItem])
+    setPendingItemIds(prev => { const n = new Set(prev); n.add(newItem.id); return n })
   }
 
   function addFreeTime(day: number, kind: 'morning' | 'afternoon' | 'evening' | 'full') {
@@ -249,12 +254,14 @@ export default function ScheduleEditor({
         block: b,
         time: null,
         title: 'Free time',
+        itemType: 'free' as const,
         location: null,
         notes: null,
         variantId: null,
         sortOrder: baseSort + i,
       }))
       setItems(prev => [...prev, ...additions])
+      setPendingItemIds(prev => { const n = new Set(prev); additions.forEach(a => n.add(a.id)); return n })
     } else {
       const newItem: ScheduleItem = {
         id: generateScheduleItemId(),
@@ -262,12 +269,14 @@ export default function ScheduleEditor({
         block: kind,
         time: null,
         title: 'Free time',
+        itemType: 'free',
         location: null,
         notes: null,
         variantId: null,
         sortOrder: baseSort,
       }
       setItems(prev => [...prev, newItem])
+      setPendingItemIds(prev => { const n = new Set(prev); n.add(newItem.id); return n })
     }
   }
 
@@ -449,7 +458,7 @@ export default function ScheduleEditor({
               </div>
             </div>
             {!isCollapsed && (
-              <div className="divide-y divide-gray-100">
+              <div className="divide-y divide-gray-300">
                 {dayItems.length === 0 ? (
                   <p className="px-4 py-6 text-xs text-gray-400 text-center italic">No items yet — click &quot;Add Item&quot; to start.</p>
                 ) : (
@@ -465,7 +474,6 @@ export default function ScheduleEditor({
                       isEditSession={editSnapshots.has(it.id)}
                       isGroupUnset={unsetGroupItemIds.has(it.id)}
                       onGroupChosen={() => markGroupChosen(it.id)}
-                      onResetGroup={() => resetGroupChoice(it.id)}
                       canMoveUp={idx > 0 && dayItems[idx - 1].block === it.block}
                       canMoveDown={idx < dayItems.length - 1 && dayItems[idx + 1].block === it.block}
                       onUpdate={(patch) => updateItem(it.id, patch)}
@@ -563,13 +571,14 @@ export default function ScheduleEditor({
         for (const it of committedItems) {
           const v = it.variantId!
           coveredKeys.add(`sub:${v}`) // covers any Subpackage with this variantId
-          if (it.groupId === null) {
+          const gids = resolveGroupIds(it)
+          if (gids === null) {
             // Shared row covers all groups for this variant
             for (const cp of caseProducts) {
               if (cp.variantId === v) coveredKeys.add(`${cp.groupId}:${v}`)
             }
           } else {
-            coveredKeys.add(`${it.groupId}:${v}`)
+            gids.forEach(gid => coveredKeys.add(`${gid}:${v}`))
           }
         }
 
@@ -712,26 +721,124 @@ function PrayerMenu({ onPick }: { onPick: (prayer: string) => void }) {
   )
 }
 
+// ── Group multi-select ────────────────────────────────────────────────────────
+
+function GroupMultiSelect({
+  groupIds, caseGroups, isPending, isGroupUnset, tone, onChange, onGroupChosen,
+}: {
+  groupIds: string[] | null
+  caseGroups: Array<{ id: string; name: string }>
+  isPending: boolean
+  isGroupUnset: boolean
+  tone: { chip: string; chipText: string }
+  onChange: (gids: string[] | null) => void
+  onGroupChosen: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  const isShared = groupIds === null
+  const label = isGroupUnset
+    ? '— Choose —'
+    : isShared
+    ? 'Shared'
+    : groupIds!.map(id => caseGroups.find(g => g.id === id)?.name ?? '?').join(' + ')
+
+  const chipClass = isGroupUnset
+    ? 'border-amber-300 bg-amber-50 text-amber-700'
+    : isShared
+    ? 'bg-white border-gray-800 text-gray-900'
+    : `${tone.chip} ${tone.chipText}`
+
+  if (!isPending) {
+    return (
+      <span className={`text-xs font-semibold px-2 py-0.5 rounded border ${chipClass}`}>
+        {label}
+      </span>
+    )
+  }
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        className={`text-xs font-semibold border rounded-lg px-2 py-1 inline-flex items-center gap-1 focus:outline-none ${chipClass}`}
+      >
+        {label}
+        <svg className="w-3 h-3 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7"/>
+        </svg>
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full mt-1 z-20 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[150px] py-1">
+          <label className="flex items-center gap-2.5 px-3 py-1.5 hover:bg-gray-50 cursor-pointer">
+            <input
+              type="radio"
+              checked={isShared}
+              onChange={() => { onChange(null); onGroupChosen(); setOpen(false) }}
+              className="accent-[#0f4c35]"
+            />
+            <span className="text-xs font-medium text-gray-700">Shared (all)</span>
+          </label>
+          <div className="border-t border-gray-100 my-0.5" />
+          {caseGroups.map(g => {
+            const checked = !isShared && !!(groupIds?.includes(g.id))
+            return (
+              <label key={g.id} className="flex items-center gap-2.5 px-3 py-1.5 hover:bg-gray-50 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={(e) => {
+                    const current = isShared ? [] : (groupIds ?? [])
+                    const next = e.target.checked
+                      ? [...current, g.id]
+                      : current.filter(id => id !== g.id)
+                    onChange(next.length > 0 ? next : null)
+                    onGroupChosen()
+                  }}
+                  className="accent-[#0f4c35]"
+                />
+                <span className="text-xs text-gray-700">{g.name}</span>
+              </label>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Item row ──────────────────────────────────────────────────────────────────
 
 // Color palette for group accents — repeats if there are more groups.
 // Used as a left border stripe + select chip tint so admin can see at a
 // glance which group each row belongs to.
 // Matches agent home GROUP_PALETTE order (blue / emerald / orange / purple).
-const GROUP_TONES: Array<{ stripe: string; chip: string; chipText: string }> = [
-  { stripe: 'border-l-blue-400',    chip: 'bg-blue-50 border-blue-200',    chipText: 'text-blue-700' },
-  { stripe: 'border-l-emerald-400', chip: 'bg-emerald-50 border-emerald-200', chipText: 'text-emerald-700' },
-  { stripe: 'border-l-orange-400',  chip: 'bg-orange-50 border-orange-200',  chipText: 'text-orange-700' },
-  { stripe: 'border-l-purple-400',  chip: 'bg-purple-50 border-purple-200',  chipText: 'text-purple-700' },
+const GROUP_TONES: Array<{ hex: string; chip: string; chipText: string }> = [
+  { hex: '#60a5fa', chip: 'bg-blue-50 border-blue-200',    chipText: 'text-blue-700' },
+  { hex: '#34d399', chip: 'bg-emerald-50 border-emerald-200', chipText: 'text-emerald-700' },
+  { hex: '#fb923c', chip: 'bg-orange-50 border-orange-200',  chipText: 'text-orange-700' },
+  { hex: '#c084fc', chip: 'bg-purple-50 border-purple-200',  chipText: 'text-purple-700' },
 ]
-const SHARED_TONE = { stripe: 'border-l-gray-900', chip: 'bg-white border-gray-800', chipText: 'text-gray-900' }
+const SHARED_TONE = { hex: '#111827', chip: 'bg-white border-gray-800', chipText: 'text-gray-900' }
+const PRAYER_HEX = '#fb923c'
 
 function ItemRow({
   item, caseProducts, caseGroups, sharedVariantIds, committedVariantContexts,
   isPending, isEditSession, isGroupUnset,
   canMoveUp, canMoveDown,
   onUpdate, onApplyVariant, onRemove, onMove,
-  onEdit, onCommit, onCancelDraft, onGroupChosen, onResetGroup,
+  onEdit, onCommit, onCancelDraft, onGroupChosen,
 }: {
   item: ScheduleItem
   caseProducts: CaseProduct[]
@@ -751,30 +858,40 @@ function ItemRow({
   onCommit: () => void
   onCancelDraft: () => void
   onGroupChosen: () => void
-  onResetGroup: () => void
 }) {
-  // Resolve group tone for left stripe + chip background.
-  // Prayer items always use orange stripe regardless of group.
-  const groupIdx = item.groupId ? caseGroups.findIndex(g => g.id === item.groupId) : -1
+  // Resolve group tone and left border style.
+  const itemGroupIds = resolveGroupIds(item)
+  const firstGroupId = itemGroupIds?.[0] ?? null
+  const groupIdx = firstGroupId ? caseGroups.findIndex(g => g.id === firstGroupId) : -1
   const tone = item.isPrayer
-    ? { stripe: 'border-l-orange-400', chip: '', chipText: '' }
+    ? { hex: PRAYER_HEX, chip: '', chipText: '' }
     : groupIdx >= 0 ? GROUP_TONES[groupIdx % GROUP_TONES.length] : SHARED_TONE
+
+  // Left stripe: rendered as a 4px background strip so it never bleeds into
+  // the divide-y top/bottom borders (border-image would affect all sides).
+  const stripeStyle: React.CSSProperties = (() => {
+    const base = { backgroundSize: '4px 100%', backgroundRepeat: 'no-repeat', backgroundPosition: 'left' }
+    if (item.isPrayer) return { ...base, backgroundImage: `linear-gradient(${PRAYER_HEX}, ${PRAYER_HEX})` }
+    if (itemGroupIds === null || itemGroupIds.length <= 1) {
+      return { ...base, backgroundImage: `linear-gradient(${tone.hex}, ${tone.hex})` }
+    }
+    const hexColors = itemGroupIds.map(gid => {
+      const idx = caseGroups.findIndex(g => g.id === gid)
+      return idx >= 0 ? GROUP_TONES[idx % GROUP_TONES.length].hex : '#9ca3af'
+    })
+    const pct = 100 / hexColors.length
+    const stops = hexColors.map((c, i) => `${c} ${i * pct}% ${(i + 1) * pct}%`).join(', ')
+    return { ...base, backgroundImage: `linear-gradient(to bottom, ${stops})` }
+  })()
+
   const showGroupSelect = caseGroups.length > 1
 
-  // Picker scope: filter caseProducts based on the row's group context, then
-  // exclude variants already committed in an overlapping context (except the
-  // current row's own variant — always shown so admin can see/change it).
-  //   Shared row  → Subpackage + variants that appear in 2+ groups
-  //   Group G row → that group's non-Subpackage + Subpackage (for override)
   const pickerProducts = useMemo(() => {
-    // No group decided yet — hide all products until admin picks a group.
     if (isGroupUnset) return []
     const filtered = caseProducts.filter(cp => {
-      // Scope filter: Shared row shows Subpackage + cross-group variants;
-      // Group row shows that group's products + Subpackage.
-      const inScope = item.groupId === null
+      const inScope = itemGroupIds === null
         ? cp.isSubpackage || sharedVariantIds.has(cp.variantId)
-        : cp.groupId === item.groupId || cp.isSubpackage
+        : itemGroupIds.some(gid => cp.groupId === gid) || cp.isSubpackage
       return inScope
     })
     const seen = new Set<string>()
@@ -783,18 +900,19 @@ function ItemRow({
       seen.add(cp.variantId)
       return true
     })
-  }, [isGroupUnset, caseProducts, item.groupId, sharedVariantIds])
+  }, [isGroupUnset, caseProducts, itemGroupIds, sharedVariantIds])
 
-  // For Shared rows with a linked product: show which groups this row covers.
+  // For Shared rows: show which groups this row covers (via linked variant).
   const coversGroups = useMemo(() => {
-    if (item.groupId !== null || !item.variantId) return []
+    if (itemGroupIds !== null || !item.variantId) return []
     const names = caseProducts
       .filter(cp => cp.variantId === item.variantId && !cp.isSubpackage)
       .map(cp => cp.groupName)
     return [...new Set(names)]
-  }, [item.groupId, item.variantId, caseProducts])
+  }, [itemGroupIds, item.variantId, caseProducts])
 
   const itemType = item.itemType ?? 'appointment'
+  const [detailsOpen, setDetailsOpen] = useState(false)
   const canCommit =
     itemType === 'free'     ? true :
     itemType === 'transfer' ? !!(item.fromLocation?.trim() && item.toLocation?.trim()) || item.title.trim().length > 0 :
@@ -802,157 +920,190 @@ function ItemRow({
     item.title.trim().length > 0
 
   return (
-    <div className={`px-4 py-3 space-y-2 border-l-4 ${tone.stripe} ${isPending ? 'bg-amber-50/40 border border-dashed border-amber-300 m-2 rounded-lg' : ''}`}>
-      {/* Top row: type + block (start–end) + time (start–end) + product + controls */}
-      <div className="flex flex-wrap items-center gap-2">
-        <select
-          value={item.itemType ?? 'appointment'}
-          onChange={(e) => {
-            const t = e.target.value as ScheduleItemType
-            const updates: Partial<ScheduleItem> = { itemType: t }
-            if (t === 'free' && !item.title.trim()) updates.title = 'Free time'
-            if (t === 'hotel' && item.hotelCheckType && !item.title.trim())
-              updates.title = item.hotelCheckType === 'checkin' ? 'Hotel Check-in' : 'Hotel Check-out'
-            onUpdate(updates)
-          }}
-          disabled={!isPending}
-          className="text-xs font-medium border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
-          title="Item type"
-        >
-          {SCHEDULE_ITEM_TYPES.map(t => (
-            <option key={t} value={t}>{SCHEDULE_ITEM_TYPE_LABEL[t]}</option>
-          ))}
-        </select>
-        <span className="text-gray-200 mx-0.5">|</span>
-        <select
-          value={item.block}
-          onChange={(e) => onUpdate({ block: e.target.value as ScheduleItemBlock })}
-          disabled={!isPending}
-          className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
-          title="Start block"
-        >
-          {SCHEDULE_BLOCKS.map(b => (
-            <option key={b} value={b}>{SCHEDULE_BLOCK_LABEL[b]}</option>
-          ))}
-        </select>
-        <span className="text-xs text-gray-400">→</span>
-        <select
-          value={item.endBlock ?? ''}
-          onChange={(e) => {
-            const v = e.target.value as ScheduleItemBlock | ''
-            onUpdate({ endBlock: v ? (v as ScheduleItemBlock) : null })
-          }}
-          disabled={!isPending}
-          className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
-          title="End block (optional — only set if the activity spans into a later block)"
-        >
-          <option value="">Same</option>
-          {SCHEDULE_BLOCKS.map(b => (
-            <option key={b} value={b}>{SCHEDULE_BLOCK_LABEL[b]}</option>
-          ))}
-        </select>
-        <span className="text-gray-200 mx-1">|</span>
-        <Time24Input
-          value={item.time ?? null}
-          onChange={(v) => onUpdate({ time: v })}
-          disabled={!isPending}
-        />
-        <span className="text-xs text-gray-400">–</span>
-        <Time24Input
-          value={item.endTime ?? null}
-          onChange={(v) => onUpdate({ endTime: v })}
-          disabled={!isPending}
-        />
-        {showGroupSelect && (
-          <span className="inline-flex items-center gap-1 shrink-0">
-            <span className="text-[9px] font-semibold text-gray-400 uppercase tracking-wider">For</span>
+    <div
+      className={`px-4 py-4 space-y-2 ${isPending ? 'bg-amber-50/40 border border-dashed border-amber-300 m-2 rounded-lg' : ''}`}
+      style={stripeStyle}
+    >
+      {/* Row 1: committed = compact text labels; pending = full selects */}
+      <div className="flex items-center gap-2">
+        {isPending ? (
+          /* Pending: full select inputs */
+          <div className="flex items-center gap-1.5">
             <select
-              value={isGroupUnset ? '__choose__' : (item.groupId ?? '')}
+              value={item.itemType ?? 'appointment'}
               onChange={(e) => {
-                const v = e.target.value
-                if (v === '__choose__') {
-                  onApplyVariant(null)
-                  onUpdate({ groupId: null })
-                  onResetGroup()
-                  return
-                }
-                onUpdate({ groupId: v || null })
-                onGroupChosen()
+                const t = e.target.value as ScheduleItemType
+                const updates: Partial<ScheduleItem> = { itemType: t }
+                if (t === 'free' && !item.title.trim()) updates.title = 'Free time'
+                if (t === 'hotel' && item.hotelCheckType && !item.title.trim())
+                  updates.title = item.hotelCheckType === 'checkin' ? 'Hotel Check-in' : 'Hotel Check-out'
+                onUpdate(updates)
               }}
-              disabled={!isPending}
-              className={`text-xs font-semibold border rounded-lg px-2 py-1 focus:outline-none focus:border-[#0f4c35] disabled:cursor-default disabled:opacity-75 ${tone.chip} ${tone.chipText}`}
-              title="Which group sees this item. Shared = visible to everyone (e.g. hotel check-in, meals)."
+              className="text-xs font-medium border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-900 focus:outline-none focus:border-[#0f4c35]"
+              title="Item type"
             >
-              {isPending && <option value="__choose__">— Choose group —</option>}
-              <option value="">Shared</option>
-              {caseGroups.map(g => (
-                <option key={g.id} value={g.id}>{g.name}</option>
+              {SCHEDULE_ITEM_TYPES.map(t => (
+                <option key={t} value={t}>{SCHEDULE_ITEM_TYPE_LABEL[t]}</option>
               ))}
             </select>
-          </span>
+            <span className="text-gray-200">|</span>
+            <select
+              value={item.block}
+              onChange={(e) => onUpdate({ block: e.target.value as ScheduleItemBlock })}
+              className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-900 focus:outline-none focus:border-[#0f4c35]"
+            >
+              {SCHEDULE_BLOCKS.map(b => (
+                <option key={b} value={b}>{SCHEDULE_BLOCK_LABEL[b]}</option>
+              ))}
+            </select>
+            <span className="text-xs text-gray-400">→</span>
+            <select
+              value={item.endBlock ?? ''}
+              onChange={(e) => {
+                const v = e.target.value as ScheduleItemBlock | ''
+                onUpdate({ endBlock: v ? (v as ScheduleItemBlock) : null })
+              }}
+              className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-900 focus:outline-none focus:border-[#0f4c35]"
+              title="End block"
+            >
+              <option value="">Same</option>
+              {SCHEDULE_BLOCKS.map(b => (
+                <option key={b} value={b}>{SCHEDULE_BLOCK_LABEL[b]}</option>
+              ))}
+            </select>
+            <span className="text-gray-200">|</span>
+            <Time24Input value={item.time ?? null} onChange={(v) => onUpdate({ time: v })} />
+            <span className="text-xs text-gray-400">–</span>
+            <Time24Input value={item.endTime ?? null} onChange={(v) => onUpdate({ endTime: v })} />
+          </div>
+        ) : (
+          /* Committed: compact read-only text */
+          <div className="flex items-center gap-2 text-xs text-gray-600">
+            <span className="font-medium text-gray-700">
+              {SCHEDULE_ITEM_TYPE_LABEL[itemType]}
+            </span>
+            <span className="text-gray-300">·</span>
+            <span>
+              {SCHEDULE_BLOCK_LABEL[item.block]}
+              {item.endBlock && item.endBlock !== item.block && ` → ${SCHEDULE_BLOCK_LABEL[item.endBlock]}`}
+            </span>
+            {item.time && (
+              <>
+                <span className="text-gray-300">·</span>
+                <span className="tabular-nums">
+                  {item.time}{item.endTime ? ` – ${item.endTime}` : ''}
+                </span>
+              </>
+            )}
+          </div>
         )}
-        <select
-          value={item.variantId ?? ''}
-          onChange={(e) => onApplyVariant(e.target.value || null)}
-          disabled={!isPending}
-          className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-900 focus:outline-none focus:border-[#0f4c35] flex-1 min-w-[180px] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
-        >
-          <option value="">— Choose a product —</option>
-          {pickerProducts.map(cp => {
-            const isCommitted = cp.variantId !== item.variantId && committedVariantContexts.has(cp.variantId)
-            const label = `${cp.partnerName ? `${cp.partnerName} · ` : ''}${cp.productName}${cp.variantLabel ? ` · ${cp.variantLabel}` : ''}`
-            const dur = cp.durationValue && cp.durationUnit ? ` (${cp.durationValue}${cp.durationUnit})` : ''
-            return (
-              <option key={cp.variantId} value={cp.variantId}>
-                {isCommitted ? `✓ ${label}${dur}` : `${label}${dur}`}
-              </option>
-            )
-          })}
-        </select>
-        {coversGroups.length > 1 && (
-          <span className="text-[10px] font-medium text-gray-400 bg-gray-100 rounded px-1.5 py-0.5 shrink-0">
-            Covers {coversGroups.join(', ')}
-          </span>
+        {/* Spacer */}
+        <div className="flex-1" />
+        {/* Right cluster — always pinned to far right */}
+        {!isPending && (
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              onClick={() => onMove(-1)}
+              disabled={!canMoveUp}
+              className="text-gray-500 hover:text-gray-900 disabled:opacity-20 disabled:hover:text-gray-500 w-6 h-6 flex items-center justify-center"
+              title="Move up"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" /></svg>
+            </button>
+            <button
+              onClick={() => onMove(1)}
+              disabled={!canMoveDown}
+              className="text-gray-500 hover:text-gray-900 disabled:opacity-20 disabled:hover:text-gray-500 w-6 h-6 flex items-center justify-center"
+              title="Move down"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+            </button>
+            <button
+              onClick={onEdit}
+              className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-[#0f4c35] hover:bg-gray-50 px-2 py-1 rounded-lg border border-gray-200 hover:border-[#0f4c35] transition-colors"
+              title="Edit row"
+            >
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536M9 11l6.071-6.071a2 2 0 112.828 2.829L11.828 13.83a2 2 0 01-.707.464l-3.535 1.06 1.06-3.535A2 2 0 019 11z" /></svg>
+              Edit
+            </button>
+            <button
+              onClick={() => {
+                if (window.confirm('Remove this item from the schedule?')) onRemove()
+              }}
+              className="text-gray-300 hover:text-red-500 w-6 h-6 flex items-center justify-center"
+              title="Remove item"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+          </div>
         )}
-        <div className="flex items-center gap-1 ml-auto">
-          {!isPending && (
-            <>
-              <button
-                onClick={() => onMove(-1)}
-                disabled={!canMoveUp}
-                className="text-gray-300 hover:text-gray-700 disabled:opacity-30 disabled:hover:text-gray-300 w-6 h-6 flex items-center justify-center"
-                title="Move up"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" /></svg>
-              </button>
-              <button
-                onClick={() => onMove(1)}
-                disabled={!canMoveDown}
-                className="text-gray-300 hover:text-gray-700 disabled:opacity-30 disabled:hover:text-gray-300 w-6 h-6 flex items-center justify-center"
-                title="Move down"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
-              </button>
-              <button
-                onClick={onEdit}
-                className="text-gray-300 hover:text-[#0f4c35] w-6 h-6 flex items-center justify-center"
-                title="Edit row"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536M9 11l6.071-6.071a2 2 0 112.828 2.829L11.828 13.83a2 2 0 01-.707.464l-3.535 1.06 1.06-3.535A2 2 0 019 11z" /></svg>
-              </button>
-              <button
-                onClick={() => {
-                  if (window.confirm('Remove this item from the schedule?')) onRemove()
+      </div>
+
+      {/* Row 2: FOR group + hotel check-in/out + product picker + covers chip */}
+      {(showGroupSelect || itemType === 'hotel' || (itemType === 'appointment' && !item.isPrayer) || coversGroups.length > 1) && (
+        <div className="flex flex-wrap items-center gap-2">
+          {showGroupSelect && (
+            <span className="inline-flex items-center gap-1 shrink-0">
+              <span className="text-[9px] font-semibold text-gray-400 uppercase tracking-wider">For</span>
+              <GroupMultiSelect
+                groupIds={itemGroupIds}
+                caseGroups={caseGroups}
+                isPending={isPending}
+                isGroupUnset={isGroupUnset}
+                tone={tone}
+                onChange={(gids) => {
+                  if (gids === null || gids.length === 0) {
+                    onApplyVariant(null) // reset product when switching to shared
+                  }
+                  onUpdate({ groupIds: gids, groupId: gids === null ? null : (gids[0] ?? null) })
                 }}
-                className="text-gray-300 hover:text-red-500 w-6 h-6 flex items-center justify-center"
-                title="Remove item"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-              </button>
-            </>
+                onGroupChosen={onGroupChosen}
+              />
+            </span>
+          )}
+          {itemType === 'hotel' && (
+            <select value={item.hotelCheckType ?? ''}
+              onChange={(e) => {
+                const v = (e.target.value || null) as ScheduleItem['hotelCheckType']
+                const prevAuto = item.hotelCheckType === 'checkin' ? 'Hotel Check-in' : item.hotelCheckType === 'checkout' ? 'Hotel Check-out' : ''
+                const updates: Partial<ScheduleItem> = { hotelCheckType: v }
+                if (!item.title.trim() || item.title === prevAuto)
+                  updates.title = v === 'checkin' ? 'Hotel Check-in' : v === 'checkout' ? 'Hotel Check-out' : ''
+                onUpdate(updates)
+              }}
+              disabled={!isPending}
+              className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
+            >
+              <option value="">— Check-in / Check-out —</option>
+              <option value="checkin">Check-in</option>
+              <option value="checkout">Check-out</option>
+            </select>
+          )}
+          {itemType === 'appointment' && !item.isPrayer && <select
+            value={item.variantId ?? ''}
+            onChange={(e) => onApplyVariant(e.target.value || null)}
+            disabled={!isPending}
+            className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-900 focus:outline-none focus:border-[#0f4c35] flex-1 min-w-[180px] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
+          >
+            <option value="">— Choose a product —</option>
+            {pickerProducts.map(cp => {
+              const isCommitted = cp.variantId !== item.variantId && committedVariantContexts.has(cp.variantId)
+              const label = `${cp.partnerName ? `${cp.partnerName} · ` : ''}${cp.productName}${cp.variantLabel ? ` · ${cp.variantLabel}` : ''}`
+              const dur = cp.durationValue && cp.durationUnit ? ` (${cp.durationValue}${cp.durationUnit})` : ''
+              return (
+                <option key={cp.variantId} value={cp.variantId}>
+                  {isCommitted ? `✓ ${label}${dur}` : `${label}${dur}`}
+                </option>
+              )
+            })}
+          </select>}
+          {coversGroups.length > 1 && (
+            <span className="text-[10px] font-medium text-gray-400 bg-gray-100 rounded px-1.5 py-0.5 shrink-0">
+              Covers {coversGroups.join(', ')}
+            </span>
           )}
         </div>
-      </div>
+      )}
 
       {/* Partner eyebrow + title — appointment/free only (other types handle title above) */}
       {(itemType === 'appointment' || itemType === 'free') && (
@@ -979,66 +1130,58 @@ function ItemRow({
         </>
       )}
 
-      {/* Type-specific fields — shown BEFORE title for types where they define the content */}
+      {/* Type-specific fields */}
       {itemType === 'transfer' && (
-        <div className="grid grid-cols-2 gap-2">
-          <input type="text" value={item.fromLocation ?? ''}
-            onChange={(e) => onUpdate({ fromLocation: e.target.value || null })}
-            disabled={!isPending} placeholder="From (e.g. Grand Hyatt)"
-            className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
-          />
-          <input type="text" value={item.toLocation ?? ''}
-            onChange={(e) => onUpdate({ toLocation: e.target.value || null })}
-            disabled={!isPending} placeholder="To (e.g. Gil Hospital)"
-            className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
-          />
-          <select value={item.transportMode ?? ''}
-            onChange={(e) => onUpdate({ transportMode: (e.target.value || null) as ScheduleItem['transportMode'] })}
-            disabled={!isPending}
-            className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
-          >
-            <option value="">— Transport mode —</option>
-            <option value="car">Private car</option>
-            <option value="shuttle">Shuttle</option>
-            <option value="taxi">Taxi</option>
-            <option value="bus">Bus</option>
-            <option value="walk">Walking</option>
-          </select>
-          <input type="text" value={item.title}
-            onChange={(e) => onUpdate({ title: e.target.value })}
-            disabled={!isPending}
-            placeholder="Label override (optional)"
-            className="text-xs border border-dashed border-gray-300 rounded-lg px-2 py-1.5 text-gray-700 bg-gray-50 focus:outline-none focus:border-[#0f4c35] placeholder:text-gray-400 disabled:cursor-default"
-          />
-        </div>
+        <>
+          {/* From / To — always visible (core summary) */}
+          <div className="grid grid-cols-2 gap-2">
+            <input type="text" value={item.fromLocation ?? ''}
+              onChange={(e) => onUpdate({ fromLocation: e.target.value || null })}
+              disabled={!isPending} placeholder="From (e.g. Grand Hyatt)"
+              className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
+            />
+            <input type="text" value={item.toLocation ?? ''}
+              onChange={(e) => onUpdate({ toLocation: e.target.value || null })}
+              disabled={!isPending} placeholder="To (e.g. Gil Hospital)"
+              className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
+            />
+          </div>
+          {/* Transport mode + label override — in Details for committed rows */}
+          {(isPending || detailsOpen) && (
+            <div className="grid grid-cols-2 gap-2">
+              <select value={item.transportMode ?? ''}
+                onChange={(e) => onUpdate({ transportMode: (e.target.value || null) as ScheduleItem['transportMode'] })}
+                disabled={!isPending}
+                className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
+              >
+                <option value="">— Transport mode —</option>
+                <option value="car">Private car</option>
+                <option value="shuttle">Shuttle</option>
+                <option value="taxi">Taxi</option>
+                <option value="bus">Bus</option>
+                <option value="walk">Walking</option>
+              </select>
+              <input type="text" value={item.title}
+                onChange={(e) => onUpdate({ title: e.target.value })}
+                disabled={!isPending}
+                placeholder="Label override (optional)"
+                className="text-xs border border-dashed border-gray-300 rounded-lg px-2 py-1.5 text-gray-700 bg-gray-50 focus:outline-none focus:border-[#0f4c35] placeholder:text-gray-400 disabled:cursor-default"
+              />
+            </div>
+          )}
+        </>
       )}
-      {itemType === 'hotel' && (
-        <div className="flex items-center gap-2 flex-wrap">
-          <select value={item.hotelCheckType ?? ''}
-            onChange={(e) => {
-              const v = (e.target.value || null) as ScheduleItem['hotelCheckType']
-              const prevAuto = item.hotelCheckType === 'checkin' ? 'Hotel Check-in' : item.hotelCheckType === 'checkout' ? 'Hotel Check-out' : ''
-              const updates: Partial<ScheduleItem> = { hotelCheckType: v }
-              if (!item.title.trim() || item.title === prevAuto)
-                updates.title = v === 'checkin' ? 'Hotel Check-in' : v === 'checkout' ? 'Hotel Check-out' : ''
-              onUpdate(updates)
-            }}
-            disabled={!isPending}
-            className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
-          >
-            <option value="">— Check-in / Check-out —</option>
-            <option value="checkin">Check-in</option>
-            <option value="checkout">Check-out</option>
-          </select>
-          <input type="text" value={item.title}
-            onChange={(e) => onUpdate({ title: e.target.value })}
-            disabled={!isPending} placeholder="Label override (optional)"
-            className="flex-1 text-xs border border-dashed border-gray-300 rounded-lg px-2 py-1.5 text-gray-700 bg-gray-50 focus:outline-none focus:border-[#0f4c35] placeholder:text-gray-400 disabled:cursor-default"
-          />
-        </div>
+      {/* Hotel label override — only in Details for committed rows (check-in/out is already in row 2) */}
+      {itemType === 'hotel' && (isPending || detailsOpen) && (
+        <input type="text" value={item.title}
+          onChange={(e) => onUpdate({ title: e.target.value })}
+          disabled={!isPending} placeholder="Label override (optional)"
+          className="text-xs border border-dashed border-gray-300 rounded-lg px-2 py-1.5 text-gray-700 bg-gray-50 focus:outline-none focus:border-[#0f4c35] placeholder:text-gray-400 disabled:cursor-default w-full"
+        />
       )}
       {itemType === 'meal' && (
-        <div className="grid grid-cols-2 gap-2">
+        <>
+          {/* Meal type — always visible */}
           <select value={item.title}
             onChange={(e) => onUpdate({ title: e.target.value })}
             disabled={!isPending}
@@ -1051,73 +1194,109 @@ function ItemRow({
             <option value="Brunch">Brunch</option>
             <option value="Snack">Snack / Café</option>
           </select>
-          <input type="text" value={item.restaurantName ?? ''}
-            onChange={(e) => onUpdate({ restaurantName: e.target.value || null })}
-            disabled={!isPending} placeholder="Restaurant name (optional)"
-            className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
-          />
-          <input type="text" value={item.cuisine ?? ''}
-            onChange={(e) => onUpdate({ cuisine: e.target.value || null })}
-            disabled={!isPending} placeholder="Cuisine (e.g. Korean BBQ)"
-            className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
-          />
-        </div>
+          {/* Restaurant + cuisine — in Details for committed rows */}
+          {(isPending || detailsOpen) && (
+            <div className="grid grid-cols-2 gap-2">
+              <input type="text" value={item.restaurantName ?? ''}
+                onChange={(e) => onUpdate({ restaurantName: e.target.value || null })}
+                disabled={!isPending} placeholder="Restaurant name (optional)"
+                className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
+              />
+              <input type="text" value={item.cuisine ?? ''}
+                onChange={(e) => onUpdate({ cuisine: e.target.value || null })}
+                disabled={!isPending} placeholder="Cuisine (e.g. Korean BBQ)"
+                className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
+              />
+            </div>
+          )}
+        </>
       )}
 
-      {/* Title — shown for appointment only; other types handle title above */}
-      {/* Notes — VIP-facing */}
-      <input
-        type="text"
-        value={item.notes ?? ''}
-        onChange={(e) => onUpdate({ notes: e.target.value || null })}
-        disabled={!isPending}
-        placeholder="Notes — visible to client (optional)"
-        className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
-      />
+      {/* Expand/collapse toggle for optional detail fields — only shown on committed rows */}
+      {!isPending && (
+        <button
+          type="button"
+          onClick={() => setDetailsOpen(v => !v)}
+          className="flex items-center gap-1 text-[10px] text-gray-500 hover:text-gray-800 py-0.5 font-medium"
+        >
+          <svg className={`w-3 h-3 transition-transform ${detailsOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+          {detailsOpen ? 'Hide details' : 'Details'}
+          {!detailsOpen && (() => {
+            const filledCount = [
+              item.notes, item.location, item.internalNotes, item.address, item.partnerContact, item.driverInfo,
+              item.transportMode, item.restaurantName, item.cuisine,
+              itemType === 'hotel' && item.title,
+              itemType === 'transfer' && item.title,
+            ].filter(Boolean).length
+            return filledCount > 0 ? (
+              <span className="ml-1 text-[9px] bg-gray-200 text-gray-500 rounded-full px-1.5 py-0.5">
+                {filledCount} filled
+              </span>
+            ) : null
+          })()}
+        </button>
+      )}
 
-      {/* Internal-only fields */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-        <input
-          type="text"
-          value={item.location ?? ''}
-          onChange={(e) => onUpdate({ location: e.target.value || null })}
-          disabled={!isPending}
-          placeholder="Location"
-          className="text-xs border border-dashed border-gray-300 rounded-lg px-2 py-1.5 text-gray-700 bg-gray-50 focus:outline-none focus:border-[#0f4c35] placeholder:text-gray-400 disabled:cursor-default"
-        />
-        <input
-          type="text"
-          value={item.internalNotes ?? ''}
-          onChange={(e) => onUpdate({ internalNotes: e.target.value || null })}
-          disabled={!isPending}
-          placeholder="Internal note"
-          className="text-xs border border-dashed border-gray-300 rounded-lg px-2 py-1.5 text-gray-700 bg-gray-50 focus:outline-none focus:border-[#0f4c35] placeholder:text-gray-400 disabled:cursor-default"
-        />
-        <input
-          type="text"
-          value={item.address ?? ''}
-          onChange={(e) => onUpdate({ address: e.target.value || null })}
-          disabled={!isPending}
-          placeholder="Full address"
-          className="text-xs border border-dashed border-gray-300 rounded-lg px-2 py-1.5 text-gray-700 bg-gray-50 focus:outline-none focus:border-[#0f4c35] placeholder:text-gray-400 disabled:cursor-default"
-        />
-        <input
-          type="text"
-          value={item.partnerContact ?? ''}
-          onChange={(e) => onUpdate({ partnerContact: e.target.value || null })}
-          disabled={!isPending}
-          placeholder="Partner contact"
-          className="text-xs border border-dashed border-gray-300 rounded-lg px-2 py-1.5 text-gray-700 bg-gray-50 focus:outline-none focus:border-[#0f4c35] placeholder:text-gray-400 disabled:cursor-default"
-        />
-        <input
-          type="text"
-          value={item.driverInfo ?? ''}
-          onChange={(e) => onUpdate({ driverInfo: e.target.value || null })}
-          disabled={!isPending}
-          placeholder="Driver details"
-          className="md:col-span-2 text-xs border border-dashed border-gray-300 rounded-lg px-2 py-1.5 text-gray-700 bg-gray-50 focus:outline-none focus:border-[#0f4c35] placeholder:text-gray-400 disabled:cursor-default"
-        />
-      </div>
+      {/* Notes + internal fields — always visible when editing (isPending), collapsible when committed */}
+      {(isPending || detailsOpen) && (
+        <>
+          {/* Notes — VIP-facing */}
+          <input
+            type="text"
+            value={item.notes ?? ''}
+            onChange={(e) => onUpdate({ notes: e.target.value || null })}
+            disabled={!isPending}
+            placeholder="Notes — visible to client (optional)"
+            className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
+          />
+
+          {/* Internal-only fields */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            <input
+              type="text"
+              value={item.location ?? ''}
+              onChange={(e) => onUpdate({ location: e.target.value || null })}
+              disabled={!isPending}
+              placeholder="Location"
+              className="text-xs border border-dashed border-gray-300 rounded-lg px-2 py-1.5 text-gray-700 bg-gray-50 focus:outline-none focus:border-[#0f4c35] placeholder:text-gray-400 disabled:cursor-default"
+            />
+            <input
+              type="text"
+              value={item.internalNotes ?? ''}
+              onChange={(e) => onUpdate({ internalNotes: e.target.value || null })}
+              disabled={!isPending}
+              placeholder="Internal note"
+              className="text-xs border border-dashed border-gray-300 rounded-lg px-2 py-1.5 text-gray-700 bg-gray-50 focus:outline-none focus:border-[#0f4c35] placeholder:text-gray-400 disabled:cursor-default"
+            />
+            <input
+              type="text"
+              value={item.address ?? ''}
+              onChange={(e) => onUpdate({ address: e.target.value || null })}
+              disabled={!isPending}
+              placeholder="Full address"
+              className="text-xs border border-dashed border-gray-300 rounded-lg px-2 py-1.5 text-gray-700 bg-gray-50 focus:outline-none focus:border-[#0f4c35] placeholder:text-gray-400 disabled:cursor-default"
+            />
+            <input
+              type="text"
+              value={item.partnerContact ?? ''}
+              onChange={(e) => onUpdate({ partnerContact: e.target.value || null })}
+              disabled={!isPending}
+              placeholder="Partner contact"
+              className="text-xs border border-dashed border-gray-300 rounded-lg px-2 py-1.5 text-gray-700 bg-gray-50 focus:outline-none focus:border-[#0f4c35] placeholder:text-gray-400 disabled:cursor-default"
+            />
+            <input
+              type="text"
+              value={item.driverInfo ?? ''}
+              onChange={(e) => onUpdate({ driverInfo: e.target.value || null })}
+              disabled={!isPending}
+              placeholder="Driver details"
+              className="md:col-span-2 text-xs border border-dashed border-gray-300 rounded-lg px-2 py-1.5 text-gray-700 bg-gray-50 focus:outline-none focus:border-[#0f4c35] placeholder:text-gray-400 disabled:cursor-default"
+            />
+          </div>
+        </>
+      )}
 
       {isPending && (
         <div className="flex items-center justify-end gap-2 pt-1">

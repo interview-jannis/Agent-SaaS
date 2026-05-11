@@ -7,7 +7,7 @@ export type ScheduleItemBlock = 'morning' | 'afternoon' | 'evening'
 
 export type ScheduleItemType = 'appointment' | 'transfer' | 'meal' | 'hotel' | 'free'
 
-export const SCHEDULE_ITEM_TYPES: ScheduleItemType[] = ['appointment', 'transfer', 'meal', 'hotel', 'free']
+export const SCHEDULE_ITEM_TYPES: ScheduleItemType[] = ['appointment', 'transfer', 'meal', 'hotel']
 
 export const SCHEDULE_ITEM_TYPE_LABEL: Record<ScheduleItemType, string> = {
   appointment: 'Appointment',
@@ -57,10 +57,19 @@ export type ScheduleItem = {
   // hotel-specific
   hotelCheckType?: 'checkin' | 'checkout' | null
   variantId: string | null         // optional ref to product_variants for context
-  groupId?: string | null           // document_groups.id this item belongs to
-                                    //   null = shared activity (visible to all groups)
-                                    //   set  = only that group's lead client sees it
+  groupId?: string | null           // legacy single-group field — kept for backward compat
+  groupIds?: string[] | null        // null = shared (all groups), string[] = subset of groups
+                                    // groupIds takes precedence over groupId when both present
   sortOrder: number                // within (day, block, time) ties
+}
+
+// Resolve which groups an item is assigned to.
+// null = shared (visible to all groups); string[] = specific groups.
+// Handles backward-compat with old single-groupId items.
+export function resolveGroupIds(item: Pick<ScheduleItem, 'groupId' | 'groupIds'>): string[] | null {
+  if (item.groupIds !== undefined) return item.groupIds   // new multi-group field
+  if (item.groupId) return [item.groupId]                 // legacy single-group
+  return null                                             // shared
 }
 
 // Compare two items for stable ordering within a day.
