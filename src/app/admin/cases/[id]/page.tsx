@@ -720,7 +720,7 @@ export default function AdminCaseDetailPage() {
           />
 
           {/* Agent */}
-          <section className="bg-gray-50 rounded-2xl border border-gray-300 overflow-hidden">
+          <section className="bg-gray-50 rounded-2xl border-2 border-gray-300 overflow-hidden">
             <div className="px-4 py-2.5 bg-gray-100 border-b border-gray-200">
               <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Agent</p>
             </div>
@@ -731,7 +731,7 @@ export default function AdminCaseDetailPage() {
           </section>
 
           {/* ─── TRIP SETUP — Travel + Trip Info + Lead Client + Members all-in-one ─── */}
-          <section className="bg-gray-50 rounded-2xl border border-gray-300 overflow-hidden">
+          <section className="bg-gray-50 rounded-2xl border-2 border-gray-300 overflow-hidden">
             <div className="flex items-center justify-between flex-wrap gap-2 px-4 py-2.5 bg-gray-100 border-b border-gray-200">
               <div className="flex items-center gap-2">
                 <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Trip Setup</h3>
@@ -1525,7 +1525,7 @@ export default function AdminCaseDetailPage() {
 
           {/* Schedule History */}
           {sortedSchedules.length > 0 && (
-            <section className="bg-gray-50 rounded-2xl border border-gray-300 overflow-hidden">
+            <section className="bg-gray-50 rounded-2xl border-2 border-gray-300 overflow-hidden">
               <div className="flex items-center justify-between px-4 py-2.5 bg-gray-100 border-b border-gray-200">
                 <div className="flex items-center gap-2">
                   <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Schedule History</p>
@@ -1709,7 +1709,7 @@ export default function AdminCaseDetailPage() {
               Real upload UI / history sit lower in the page; once a schedule
               exists, this placeholder hides and the full UI takes over below. */}
           {sortedSchedules.length === 0 && (
-            <section className="bg-gray-50 rounded-2xl border border-gray-300 p-5">
+            <section className="bg-gray-50 rounded-2xl border-2 border-gray-300 p-5">
               <div className="flex items-center justify-between mb-2">
                 <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Schedule</h3>
                 <span className="text-[10px] text-gray-400">not yet uploaded</span>
@@ -1726,7 +1726,7 @@ export default function AdminCaseDetailPage() {
           {!scheduleReady
             && (caseData.status === 'awaiting_info' || caseData.status === 'awaiting_schedule' || caseData.status === 'reviewing_schedule')
             && (latestSchedule === null || latestSchedule.status === 'revision_requested') && (
-            <section className="border border-gray-300 bg-gray-50 rounded-2xl p-4 space-y-2 opacity-80">
+            <section className="border-2 border-gray-300 bg-gray-50 rounded-2xl p-4 space-y-2 opacity-80">
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Upload Schedule</p>
               <p className="text-xs text-gray-500">
                 {[
@@ -2107,8 +2107,8 @@ export default function AdminCaseDetailPage() {
             const isCompleted = caseData.status === 'completed'
             const isActionTarget = (caseData.status === 'awaiting_deposit' || caseData.status === 'awaiting_payment') && !isCompleted
             const sectionClass = isActionTarget
-              ? 'bg-white border border-[#0f4c35] rounded-2xl overflow-hidden'
-              : 'bg-gray-50 rounded-2xl border border-gray-300 overflow-hidden'
+              ? 'bg-white border-2 border-[#0f4c35] rounded-2xl overflow-hidden'
+              : 'bg-gray-50 rounded-2xl border-2 border-gray-300 overflow-hidden'
             const headerClass = isActionTarget
               ? 'flex items-center justify-between px-4 py-2.5 bg-green-50 border-b border-green-200'
               : 'flex items-center justify-between px-4 py-2.5 bg-gray-100 border-b border-gray-200'
@@ -2344,7 +2344,7 @@ export default function AdminCaseDetailPage() {
             const paymentReceived = (caseData.schedules ?? []).some(s => s.status === 'confirmed')
 
             return (
-              <section className="bg-gray-50 rounded-2xl border border-gray-300 overflow-hidden">
+              <section className="bg-gray-50 rounded-2xl border-2 border-gray-300 overflow-hidden">
                 <div className="flex items-center justify-between flex-wrap gap-2 px-4 py-2.5 bg-gray-100 border-b border-gray-200">
                   <div className="flex items-center gap-2">
                     <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Partner Payouts</p>
