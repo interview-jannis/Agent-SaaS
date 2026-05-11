@@ -256,7 +256,7 @@ export default function AdminCaseDetailPage() {
   const [setupCollapsed, setSetupCollapsed] = useState(true)
   const [setupCollapseInitialized, setSetupCollapseInitialized] = useState(false)
   const [scheduleCollapsed, setScheduleCollapsed] = useState(true)
-  const [financialsCollapsed, setFinancialsCollapsed] = useState(true)
+  const [financialsCollapsed] = useState(false)
 
   // Attachments
   const [attachments, setAttachments] = useState<CaseAttachment[]>([])
@@ -425,7 +425,6 @@ export default function AdminCaseDetailPage() {
     if (!caseData) return
     if (isTerminal) {
       setScheduleCollapsed(true)
-      setFinancialsCollapsed(true)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [caseData?.status])
@@ -2134,20 +2133,10 @@ export default function AdminCaseDetailPage() {
                     <a href={`${baseUrl}/quote/${latestQuote.slug}?preview=1`} target="_blank" rel="noopener noreferrer"
                       className="text-xs text-gray-400 hover:text-[#0f4c35] transition-colors">Preview ↗</a>
                   )}
-                  <button onClick={() => setFinancialsCollapsed(!financialsCollapsed)}
-                    className="text-[11px] font-medium text-gray-500 hover:text-gray-800 px-2 py-1 rounded-lg border border-gray-200 hover:bg-white">
-                    {financialsCollapsed ? '▼ Expand' : '▲ Collapse'}
-                  </button>
                 </div>
               </div>
               <div className="p-4 space-y-3">
-              {financialsCollapsed ? (
-                <p className="text-xs text-gray-400">
-                  {finalInvoice?.finalized_at
-                    ? `Finalized · ${fmtKRW(finalInvoice.total_price ?? 0)}`
-                    : `Estimated · ${fmtKRW(latestQuote.total_price ?? 0)}`}
-                </p>
-              ) : (<>
+              {(<>
               {(() => {
                 const isFinalized = !!finalInvoice?.finalized_at
                 const schedConfirmed = (caseData.schedules ?? []).some(s => s.status === 'confirmed')
