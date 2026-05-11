@@ -30,8 +30,10 @@ export default function AdminAdminsPage() {
   const [createdInvite, setCreatedInvite] = useState<{ url: string; expires_at: string } | null>(null)
   const [copied, setCopied] = useState(false)
 
-  // Delete confirm
+  // Delete modal
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<AdminRow | null>(null)
+  const [deleteConfirmName, setDeleteConfirmName] = useState('')
 
   const fetchAdmins = useCallback(async () => {
     const { data } = await supabase.from('admins')
@@ -183,12 +185,8 @@ export default function AdminAdminsPage() {
                       )}
                     </div>
                     {!isSelf && !isProtected && (
-                      <button onClick={() => {
-                        const label = isPendingInvite ? 'this pending invite' : `admin "${a.name}"`
-                        if (window.confirm(`Delete ${label}? This removes their login and admin record. This cannot be undone.`)) {
-                          deleteAdmin(a.id)
-                        }
-                      }} disabled={deletingId === a.id}
+                      <button onClick={() => { setDeleteTarget(a); setDeleteConfirmName('') }}
+                        disabled={deletingId === a.id}
                         className="shrink-0 text-xs text-gray-400 hover:text-red-500 disabled:opacity-40 transition-colors">
                         {deletingId === a.id ? 'Deleting…' : isPendingInvite ? 'Cancel' : 'Delete'}
                       </button>
@@ -200,6 +198,48 @@ export default function AdminAdminsPage() {
           )}
         </div>
       </div>
+
+      {/* Delete modal */}
+      {deleteTarget && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+          onClick={() => { if (!deletingId) { setDeleteTarget(null); setDeleteConfirmName('') } }}>
+          <div className="bg-white rounded-2xl max-w-md w-full p-5 space-y-4" onClick={e => e.stopPropagation()}>
+            <div>
+              <h3 className="text-sm font-semibold text-red-700">Delete Admin</h3>
+              <p className="text-xs text-gray-600 mt-1">
+                {deleteTarget.invite_token
+                  ? 'Cancel this pending invite? The invite link will be invalidated.'
+                  : <>This will permanently remove <span className="font-semibold">{deleteTarget.name}</span>, their login, and admin record. This cannot be undone.</>
+                }
+              </p>
+            </div>
+            {!deleteTarget.invite_token && (
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">
+                  Type <span className="font-semibold text-gray-800">{deleteTarget.name}</span> to confirm
+                </label>
+                <input
+                  type="text"
+                  value={deleteConfirmName}
+                  onChange={e => setDeleteConfirmName(e.target.value)}
+                  placeholder={deleteTarget.name}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-red-400"
+                />
+              </div>
+            )}
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
+              <button onClick={() => { setDeleteTarget(null); setDeleteConfirmName('') }} disabled={!!deletingId}
+                className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-800 disabled:opacity-40">Cancel</button>
+              <button
+                onClick={() => { deleteAdmin(deleteTarget.id); setDeleteTarget(null); setDeleteConfirmName('') }}
+                disabled={!!deletingId || (!deleteTarget.invite_token && deleteConfirmName.trim() !== deleteTarget.name.trim())}
+                className="px-3 py-1.5 text-xs font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-40">
+                {deleteTarget.invite_token ? 'Cancel Invite' : 'Confirm Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Invite modal */}
       {showInvite && (

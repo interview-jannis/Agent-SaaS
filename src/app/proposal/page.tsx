@@ -106,27 +106,19 @@ const WHY = [
   },
 ]
 
-'use client'
-
-import { useState } from 'react'
-
-export default function AgentHomePage() {
-  const [copied, setCopied] = useState(false)
-
-  function copyProposalLink() {
-    const url = typeof window !== 'undefined' ? `${window.location.origin}/proposal` : '/proposal'
-    navigator.clipboard.writeText(url).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    })
-  }
-
+export default function ProposalPage() {
   return (
-    <div className="h-full overflow-y-auto bg-white">
+    <div className="min-h-screen bg-white">
 
-      {/* ── Hero ── */}
-      <div className="bg-[#0f4c35] px-8 py-14 md:py-20 text-white">
-        <div className="max-w-2xl">
+      {/* Header */}
+      <header className="h-14 border-b border-gray-100 flex items-center px-6 md:px-10">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/tiktak-logo-long.png" alt="TikkTakk" className="h-11 w-auto -mt-1" />
+      </header>
+
+      {/* Hero */}
+      <div className="bg-[#0f4c35] px-8 md:px-10 py-14 md:py-20 text-white">
+        <div className="max-w-2xl mx-auto">
           <p className="text-xs font-semibold tracking-[0.2em] uppercase text-white/50 mb-4">Powered by TikkTakk</p>
           <h1 className="text-3xl md:text-4xl font-bold leading-tight tracking-tight mb-4">
             Premium K-Travel,<br />Curated for You
@@ -134,20 +126,12 @@ export default function AgentHomePage() {
           <p className="text-base text-white/70 leading-relaxed max-w-lg">
             TikkTakk is a white-glove medical tourism concierge connecting discerning clients with Korea&apos;s finest clinics, wellness destinations, and cultural experiences — seamlessly managed by your dedicated agent.
           </p>
-          <button
-            onClick={copyProposalLink}
-            className="mt-6 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-medium transition-colors border border-white/20">
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
-            </svg>
-            {copied ? 'Copied!' : 'Copy Proposal Link'}
-          </button>
         </div>
       </div>
 
-      <div className="px-8 py-12 md:py-16 space-y-16 max-w-3xl">
+      <div className="px-8 md:px-10 py-12 md:py-16 space-y-16 max-w-3xl mx-auto">
 
-        {/* ── Why TikkTakk ── */}
+        {/* Why TikkTakk */}
         <section>
           <p className="text-xs font-semibold tracking-[0.18em] uppercase text-[#0f4c35] mb-2">Why TikkTakk</p>
           <h2 className="text-xl font-bold text-gray-900 mb-8">The difference is in the details</h2>
@@ -166,14 +150,13 @@ export default function AgentHomePage() {
           </div>
         </section>
 
-        {/* ── How it works ── */}
+        {/* How it works */}
         <section>
           <p className="text-xs font-semibold tracking-[0.18em] uppercase text-[#0f4c35] mb-2">How It Works</p>
           <h2 className="text-xl font-bold text-gray-900 mb-8">Your journey, step by step</h2>
           <div className="space-y-0">
             {STEPS.map((step, idx) => (
               <div key={step.number} className="flex gap-5">
-                {/* Left: number + connector line */}
                 <div className="flex flex-col items-center">
                   <div className="w-9 h-9 rounded-full bg-[#0f4c35] text-white flex items-center justify-center shrink-0">
                     {step.icon}
@@ -182,7 +165,6 @@ export default function AgentHomePage() {
                     <div className="w-px flex-1 bg-gray-100 my-1" style={{ minHeight: '2rem' }} />
                   )}
                 </div>
-                {/* Right: content */}
                 <div className={`pb-8 min-w-0 flex-1 ${idx === STEPS.length - 1 ? 'pb-2' : ''}`}>
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-[10px] font-bold tracking-widest text-[#0f4c35]/50">{step.number}</span>
@@ -196,6 +178,12 @@ export default function AgentHomePage() {
         </section>
 
       </div>
+
+      {/* Footer */}
+      <footer className="border-t border-gray-100 px-8 md:px-10 py-6 text-center">
+        <p className="text-xs text-gray-400">&copy; {new Date().getFullYear()} TikkTakk · Interview Co., Ltd. · All rights reserved.</p>
+      </footer>
+
     </div>
   )
 }
