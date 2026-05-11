@@ -25,7 +25,7 @@ export default async function SchedulePage({
       id, pdf_url, items, version, created_at,
       first_opened_at, open_count,
       concierge_name, concierge_phone,
-      cases(id, agent_id, case_number, travel_start_date, travel_end_date,
+      cases(id, agent_id, case_number, concept, travel_start_date, travel_end_date,
         outbound_flight, inbound_flight,
         case_members(id, is_lead, clients(name)),
         documents(
@@ -63,6 +63,7 @@ export default async function SchedulePage({
     id: string
     agent_id: string | null
     case_number: string | null
+    concept: string | null
     travel_start_date: string | null
     travel_end_date: string | null
     outbound_flight: FlightData
@@ -182,10 +183,12 @@ export default async function SchedulePage({
     }
 
     // Build group data for multi-group layout
+    const EXCLUDED_GROUP_NAMES = new Set(['Shared Activities', 'Shared', 'Trip Services'])
     const groups: { id: string; name: string; members: string[] }[] = []
     const quotationDoc = caseRef?.documents?.find(d => d.type === 'quotation')
     for (const g of quotationDoc?.document_groups ?? []) {
       if (!g?.id || !g?.name) continue
+      if (EXCLUDED_GROUP_NAMES.has(g.name)) continue
       const members = (g.document_group_members ?? [])
         .map(m => {
           const cm = caseRef?.case_members?.find(cm => cm.id === m.case_member_id)
@@ -200,6 +203,7 @@ export default async function SchedulePage({
         <ScheduleDocument
           items={schedule.items}
           caseNumber={caseRef?.case_number ?? null}
+          tripName={caseRef?.concept ?? null}
           leadName={lead}
           travelStartDate={caseRef?.travel_start_date ?? null}
           travelEndDate={caseRef?.travel_end_date ?? null}

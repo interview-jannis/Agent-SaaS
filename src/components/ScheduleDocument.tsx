@@ -34,6 +34,7 @@ type GroupData = {
 type Props = {
   items: ScheduleItem[]
   caseNumber: string | null
+  tripName?: string | null
   leadName: string | null
   travelStartDate: string | null
   travelEndDate: string | null
@@ -88,7 +89,7 @@ function formatTimeRange(time: string | null, endTime: string | null | undefined
 }
 
 export default function ScheduleDocument({
-  items, caseNumber, leadName, travelStartDate, travelEndDate,
+  items, caseNumber, tripName, leadName, travelStartDate, travelEndDate,
   hotelName, concierge_name, concierge_phone,
   version, createdAt,
   showInternalNotes = false,
@@ -230,10 +231,13 @@ export default function ScheduleDocument({
               TikkTakk · Personal Itinerary
             </p>
             <h1 className="sch-serif sch-cover-title" style={{ fontSize: '56px', fontWeight: 400, lineHeight: 1.05, color: '#1a1a1a' }}>
-              {leadName || 'Guest'}
+              {tripName || leadName || 'Travel Itinerary'}
             </h1>
+            {leadName && (
+              <p className="sch-sans" style={{ fontSize: '13px', color: '#9a9088', marginTop: '8px', letterSpacing: '0.04em' }}>{leadName}</p>
+            )}
             {caseNumber && (
-              <p className="sch-sans" style={{ fontSize: '11px', color: '#c0b8ae', marginTop: '6px', letterSpacing: '0.06em' }}>{caseNumber}</p>
+              <p className="sch-sans" style={{ fontSize: '11px', color: '#c0b8ae', marginTop: '4px', letterSpacing: '0.06em' }}>{caseNumber}</p>
             )}
             {(travelStartDate || travelEndDate) && (
               <p className="sch-serif sch-cover-date" style={{ fontSize: '22px', color: '#9a9088', marginTop: '10px', fontStyle: 'italic' }}>
