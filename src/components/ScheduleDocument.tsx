@@ -489,6 +489,18 @@ function ScheduleRow({
   const showStripe = isMultiGroup && itemGroupIds !== null && !!groupCol
   const hasInternalDetail = showInternalNotes && (item.address || item.partnerContact || item.driverInfo || item.location || item.internalNotes)
 
+  // Stripe gradient (solid or top→bottom split for multi-group)
+  const stripeBackground = (() => {
+    if (!showStripe || !itemGroupIds) return 'transparent'
+    if (itemGroupIds.length <= 1) return groupCol?.accent ?? 'transparent'
+    const stops = itemGroupIds.map((gid, i) => {
+      const col = groupColorById[gid] ?? GROUP_COLORS[0]
+      const pct = 100 / itemGroupIds!.length
+      return `${col.accent} ${i * pct}% ${(i + 1) * pct}%`
+    }).join(', ')
+    return `linear-gradient(to bottom, ${stops})`
+  })()
+
   // Derived display values per type
   const transferRoute = (item.fromLocation || item.toLocation)
     ? `${item.fromLocation || '—'} → ${item.toLocation || '—'}`
@@ -506,16 +518,32 @@ function ScheduleRow({
     : null
 
   return (
-    <div className="sch-row" style={{
-      display: 'grid',
-      gridTemplateColumns: '118px 1fr',
-      gap: '0 20px',
-      padding: '11px 0',
-      paddingLeft: showStripe ? '12px' : '0',
-      borderBottom: 'none',
-      borderLeft: showStripe ? `2px solid ${groupCol!.accent}` : 'none',
-      alignItems: 'start',
-    }}>
+    <div style={{ display: 'flex', padding: '11px 0', alignItems: 'flex-start' }}>
+      {/* Left gutter: 2px stripe + vertical group name (multi-group only) */}
+      {showStripe && (
+        <div style={{ width: 38, flexShrink: 0, alignSelf: 'stretch', display: 'flex', marginRight: 16 }}>
+          <div style={{ width: 2, flexShrink: 0, background: stripeBackground }} />
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+            {itemGroupIds!.length === 1 ? (
+              <span style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', fontFamily: 'Inter, sans-serif', fontSize: 8, fontWeight: 700, letterSpacing: '0.18em', textTransform: 'uppercase', color: groupCol!.text }}>
+                {groupNameById[firstGroupId!] ?? '?'}
+              </span>
+            ) : (
+              itemGroupIds!.map(gid => {
+                const col = groupColorById[gid] ?? GROUP_COLORS[0]
+                return (
+                  <span key={gid} style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', fontFamily: 'Inter, sans-serif', fontSize: 8, fontWeight: 700, letterSpacing: '0.18em', textTransform: 'uppercase', color: col.text }}>
+                    {groupNameById[gid] ?? '?'}
+                  </span>
+                )
+              })
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Main grid: time | content */}
+      <div className="sch-row" style={{ flex: 1, display: 'grid', gridTemplateColumns: '118px 1fr', gap: '0 20px', alignItems: 'start' }}>
       {/* Time column */}
       <div className="sch-sans" style={{
         fontVariantNumeric: 'tabular-nums',
@@ -608,6 +636,7 @@ function ScheduleRow({
             {item.internalNotes && <InternalRow label="Note" value={item.internalNotes} />}
           </div>
         )}
+      </div>
       </div>
     </div>
   )

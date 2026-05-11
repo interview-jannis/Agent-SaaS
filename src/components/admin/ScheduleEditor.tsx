@@ -885,21 +885,17 @@ function ItemRow({
     ? { hex: PRAYER_HEX, chip: '', chipText: '' }
     : groupIdx >= 0 ? GROUP_TONES[groupIdx % GROUP_TONES.length] : SHARED_TONE
 
-  // Left stripe: rendered as a 4px background strip so it never bleeds into
-  // the divide-y top/bottom borders (border-image would affect all sides).
-  const stripeStyle: React.CSSProperties = (() => {
-    const base = { backgroundSize: '4px 100%', backgroundRepeat: 'no-repeat', backgroundPosition: 'left' }
-    if (item.isPrayer) return { ...base, backgroundImage: `linear-gradient(${PRAYER_HEX}, ${PRAYER_HEX})` }
-    if (itemGroupIds === null || itemGroupIds.length <= 1) {
-      return { ...base, backgroundImage: `linear-gradient(${tone.hex}, ${tone.hex})` }
-    }
+  // Left stripe: solid color or top→bottom gradient for multi-group.
+  const stripeBackground = (() => {
+    if (item.isPrayer) return PRAYER_HEX
+    if (itemGroupIds === null || itemGroupIds.length <= 1) return tone.hex
     const hexColors = itemGroupIds.map(gid => {
       const idx = caseGroups.findIndex(g => g.id === gid)
       return idx >= 0 ? GROUP_TONES[idx % GROUP_TONES.length].hex : '#9ca3af'
     })
     const pct = 100 / hexColors.length
     const stops = hexColors.map((c, i) => `${c} ${i * pct}% ${(i + 1) * pct}%`).join(', ')
-    return { ...base, backgroundImage: `linear-gradient(to bottom, ${stops})` }
+    return `linear-gradient(to bottom, ${stops})`
   })()
 
   const showGroupSelect = caseGroups.length > 1
@@ -938,10 +934,36 @@ function ItemRow({
     item.title.trim().length > 0
 
   return (
-    <div
-      className={`px-4 py-4 space-y-2 ${isPending ? 'bg-amber-50/40 border border-dashed border-amber-300 m-2 rounded-lg' : ''}`}
-      style={stripeStyle}
-    >
+    <div className={`flex ${isPending ? 'bg-amber-50/40 border border-dashed border-amber-300 m-2 rounded-lg overflow-hidden' : ''}`}>
+      {/* Left gutter: 4px stripe bar + vertical group name */}
+      <div style={{ width: 32, flexShrink: 0, display: 'flex', alignSelf: 'stretch' }}>
+        <div style={{ width: 4, flexShrink: 0, background: stripeBackground }} />
+        {showGroupSelect && !item.isPrayer && (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '4px 0', overflow: 'hidden' }}>
+            {itemGroupIds === null ? (
+              <span style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', fontSize: 8, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#9ca3af' }}>
+                Shared
+              </span>
+            ) : itemGroupIds.length === 1 ? (
+              <span style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', fontSize: 8, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: tone.hex }}>
+                {caseGroups.find(g => g.id === itemGroupIds[0])?.name ?? '?'}
+              </span>
+            ) : (
+              itemGroupIds.map(gid => {
+                const idx = caseGroups.findIndex(g => g.id === gid)
+                const t = idx >= 0 ? GROUP_TONES[idx % GROUP_TONES.length] : { hex: '#9ca3af' }
+                return (
+                  <span key={gid} style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', fontSize: 8, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: t.hex }}>
+                    {caseGroups.find(g => g.id === gid)?.name ?? '?'}
+                  </span>
+                )
+              })
+            )}
+          </div>
+        )}
+      </div>
+      {/* Main content */}
+      <div className="flex-1 py-4 pr-4 space-y-2 min-w-0">
       {/* Row 1: committed = compact text labels; pending = full selects */}
       <div className="flex items-center gap-2">
         {isPending ? (
@@ -1344,6 +1366,7 @@ function ItemRow({
           </button>
         </div>
       )}
+      </div>
     </div>
   )
 }
