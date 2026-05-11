@@ -82,6 +82,8 @@ export type DocumentRow = {
   // 문서 생성 시 product_price_rate 스냅샷. QuoteDocument가 이 값으로만 KRW→USD 변환하여
   // 이후 환율 설정 변경이 기존 문서에 영향을 주지 않음. null이면 1500 fallback.
   price_rate_snapshot: number | null
+  // 결제 확인(payment_received_at) 시점의 환율. overview USD 역산에 사용.
+  exchange_rate_snapshot: number | null
 }
 
 export type DocumentItemRow = {
@@ -441,10 +443,12 @@ export async function repriceDocument(
 // Payment
 // ────────────────────────────────────────────────────────────────────────────
 
-export async function markPaymentReceived(documentId: string, when: string): Promise<void> {
+export async function markPaymentReceived(documentId: string, when: string, exchangeRateSnapshot?: number): Promise<void> {
+  const patch: Record<string, unknown> = { payment_received_at: when }
+  if (exchangeRateSnapshot != null) patch.exchange_rate_snapshot = exchangeRateSnapshot
   const { error } = await supabase
     .from('documents')
-    .update({ payment_received_at: when })
+    .update(patch)
     .eq('id', documentId)
   if (error) throw error
 }

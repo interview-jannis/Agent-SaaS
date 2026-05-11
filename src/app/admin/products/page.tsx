@@ -395,9 +395,9 @@ export default function AdminProductsPage() {
             'Base Price': Number(p.base_price),
             'Currency': p.price_currency ?? 'KRW',
             'Base (USD)': Number(baseUSD.toFixed(2)),
-            'Tier 15% (USD)': Number((baseUSD * (1 + companyMargin) * 1.15).toFixed(2)),
-            'Tier 20% (USD)': Number((baseUSD * (1 + companyMargin) * 1.20).toFixed(2)),
-            'Tier 25% (USD)': Number((baseUSD * (1 + companyMargin) * 1.25).toFixed(2)),
+            'Tier 15% (USD)': Number((baseUSD * (1 + companyMargin + 0.15)).toFixed(2)),
+            'Tier 20% (USD)': Number((baseUSD * (1 + companyMargin + 0.20)).toFixed(2)),
+            'Tier 25% (USD)': Number((baseUSD * (1 + companyMargin + 0.25)).toFixed(2)),
             'Status': p.is_active ? 'Active' : 'Inactive',
             'Image Count': files.length,
             'Image Files': files.join(' | '),
@@ -1267,7 +1267,7 @@ export default function AdminProductsPage() {
                               {isSubpkg ? (
                                 subpkgConfig?.enabled ? (
                                   AGENT_TIERS.map((tier) => {
-                                    const finalKrw = Math.round(primaryKrwBase * (1 + (subpkgConfig.rate ?? 0)) * (1 + tier))
+                                    const finalKrw = Math.round(primaryKrwBase * (1 + (subpkgConfig.rate ?? 0) + tier))
                                     return (
                                       <div key={tier} className="text-xs text-gray-500">
                                         <span className="text-gray-400">Co{Math.round((subpkgConfig.rate ?? 0) * 100)}%+Ag{Math.round(tier * 100)}%</span>
@@ -1299,7 +1299,7 @@ export default function AdminProductsPage() {
                               ) : (
                                 AGENT_TIERS.map((tier) => {
                                   const baseUsd = toUSD(primary?.base_price ?? p.base_price, primary?.price_currency ?? p.price_currency)
-                                  const finalUSD = baseUsd * (1 + companyMargin) * (1 + tier)
+                                  const finalUSD = baseUsd * (1 + companyMargin + tier)
                                   return (
                                     <div key={tier} className="text-xs text-gray-500">
                                       <span className="text-gray-400">Co{Math.round(companyMargin * 100)}%+Ag{Math.round(tier * 100)}%</span>

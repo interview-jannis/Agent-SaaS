@@ -184,7 +184,7 @@ export default function QuoteReviewPage() {
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
-  const marginMult = (1 + companyMargin) * (1 + agentMargin)
+  const marginMult = 1 + companyMargin + agentMargin
   const nights = nightsBetween(cart?.dateStart, cart?.dateEnd)
 
   function findVariant(productId: string, variantId: string): { product: Product; variant: Variant } | null {

@@ -49,7 +49,7 @@ export function nightsBetween(dateStart: string | null | undefined, dateEnd: str
 }
 
 // Convert a base price (per single member) to USD applying the margin rule.
-// `marginMult` is `(1 + companyMargin) * (1 + agentMargin)`.
+// `marginMult` is `(1 + companyMargin + agentMargin)` — additive, not compound.
 export function variantPriceUsd({
   basePrice, priceCurrency, exchangeRate, marginMult, applyMargin,
 }: {

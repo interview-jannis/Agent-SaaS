@@ -288,7 +288,7 @@ export default function AgentProductPage() {
     return true
   }
 
-  const marginMult = (1 + companyMargin) * (1 + agentMargin)
+  const marginMult = 1 + companyMargin + agentMargin
   const nights = useMemo(() => nightsBetween(dateStart, dateEnd), [dateStart, dateEnd])
 
   // Total pax across all non-shared groups — Shared group's price multiplier.

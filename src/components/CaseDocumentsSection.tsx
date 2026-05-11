@@ -326,7 +326,7 @@ export default function CaseDocumentsSection({
     if (!paidAtValue) return
     setBusy(docId); setError('')
     try {
-      await markPaymentReceived(docId, new Date(paidAtValue).toISOString())
+      await markPaymentReceived(docId, new Date(paidAtValue).toISOString(), exchangeRate)
       setPaidAtEditingId(null); setPaidAtValue('')
 
       // Notify the counterparty that money was received. Issuer = receiver of

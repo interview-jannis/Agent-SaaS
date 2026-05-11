@@ -666,7 +666,7 @@ export default function ProductForm({ productId, productNumber, categories, init
                     <div className="grid grid-cols-3 gap-2 pt-1">
                       {[0.15, 0.20, 0.25].map((tier) => {
                         const n = Number(v.base_price)
-                        const mult = (1 + companyMargin) * (1 + tier)
+                        const mult = 1 + companyMargin + tier
                         const finalKrw = v.price_currency === 'USD'
                           ? Math.round(n * exchangeRate * mult)
                           : Math.round(n * mult)

@@ -39,9 +39,9 @@ const DEFAULT_SS: Record<string, string> = {
 
 // ─── Edit state type ──────────────────────────────────────────────────────────
 type GuideEdits = {
-  screenshots: Record<string, string>  // section key or case_{admin|agent}_{status}
-  descs:       Record<string, string>  // section key → custom desc
-  actions:     Record<string, string>  // {admin|agent|client}_{status} → action text
+  screenshots: Record<string, string[]>  // section key or case_{admin|agent}_{status}
+  descs:       Record<string, string>    // section key → custom desc
+  actions:     Record<string, string>    // {admin|agent|client}_{status} → action text
 }
 const EMPTY_EDITS: GuideEdits = { screenshots: {}, descs: {}, actions: {} }
 
@@ -202,14 +202,28 @@ const ONBOARDING_STEPS = [
 
 const AGENT_SECTIONS_BASE = [
   { key: 'agent_home', title: 'Home',
-    desc: '에이전트의 메인 대시보드입니다. 지금 당장 처리해야 할 케이스와 이번 달 활동 요약을 한눈에 보여줍니다.',
+    desc: 'A client-facing presentation page you can use during initial consultations. Shows TikkTakk\'s service offering and the full journey from first contact to completion.',
     details: [
-      'Action Required — 내 액션이 있어야 다음 단계로 넘어가는 케이스만 별도 표시. 매일 이 목록을 우선 처리',
-      '월별 통계: 활성 케이스 수, 이달 완료 여행, 발생 매출, 현재 커미션 요율 구간',
-      '신규 케이스 빠른 생성 — 카테고리별 상품을 선택하고 그룹(공유/개인)을 구성해 견적서를 즉시 생성',
-      '알림 벨 — 어드민 액션(스케줄 업로드, 결제 확인 등) 발생 시 실시간 알림',
+      '"Why TikkTakk" — VIP concierge service, Muslim-friendly by default, all-in-one programme, vetted partners with transparent pricing',
+      '"How It Works" — 6-step journey overview for clients: Choose Program → Receive Quotation → Sign & Confirm → Secure Booking → Get Schedule → Experience Korea',
+      'Useful to walk a new client through what to expect before building their quote',
+      'Notification bell (top right) — real-time alerts when admin uploads a schedule, confirms a payment, or takes any action on your cases',
     ],
     icon: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" /></svg> },
+  { key: 'agent_product', title: 'Product',
+    desc: 'The quote-building workspace. Browse the full product catalogue, configure client groups, and generate a quotation in one flow.',
+    details: [
+      'Top bar — set Trip Name, select Client, and travel dates (required before creating a quote)',
+      'Category pills — filter by K-Medical, K-Beauty, K-Wellness, K-Education, K-Starcation, or Subpackage',
+      'Muslim Friendly filter — narrow by prayer room, female medical staff, and dietary grade (Halal Certified / Friendly / etc.)',
+      'Groups — each group represents a set of clients who share the same services. "Shared Activities" auto-applies to all members across every group',
+      'Add Group — for trips with multiple clients needing different services (e.g. Group 1: procedures, Group 2: wellness only)',
+      'Member count per group (±) determines how the price multiplies for that group\'s items',
+      'Trip Services — Subpackage items (hotel, interpreter, car, concierge) are priced per day/night, not per person. Hotel nights auto-sync to travel dates',
+      'Product detail modal — view images, description, Muslim-friendly tags, and choose a specific variant (e.g. session count, room type)',
+      'Create Quote — takes you to the review page to confirm all line items and prices before saving. Cart is preserved in localStorage if you navigate away',
+    ],
+    icon: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m11.356-1.993l1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 01-1.12-1.243l1.264-12A1.125 1.125 0 015.513 7.5h12.974c.576 0 1.059.435 1.119 1.007z" /></svg> },
   { key: 'agent_cases', title: 'Cases',
     desc: '담당 케이스 전체 목록입니다. 상태별 탭으로 파이프라인을 관리하고, 케이스를 클릭해 상세 작업을 진행합니다.',
     details: [
@@ -289,9 +303,9 @@ function OwnerBadge({ owner, highlight }: { owner: 'agent' | 'admin' | 'none'; h
   return <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">{owner === 'admin' ? '어드민' : '에이전트'}</span>
 }
 
-// uploadKey는 Supabase Storage 저장 경로에 사용 (e.g. 'overview' → 'screenshots/guide-overview.png')
-function ImageUploadField({ label, value, onChange, uploadKey }: {
-  label: string; value: string; onChange: (v: string) => void; uploadKey: string
+// uploadKey는 Supabase Storage 저장 경로에 사용 (e.g. 'overview' → 'screenshots/guide-overview-{ts}.png')
+function MultiImageField({ label, values, onChange, uploadKey }: {
+  label: string; values: string[]; onChange: (urls: string[]) => void; uploadKey: string
 }) {
   const [uploading, setUploading] = useState(false)
   const ref = useRef<HTMLInputElement>(null)
@@ -299,7 +313,7 @@ function ImageUploadField({ label, value, onChange, uploadKey }: {
   async function upload(file: File) {
     setUploading(true)
     const ext = file.name.split('.').pop() ?? 'png'
-    const path = `screenshots/guide-${uploadKey}.${ext}`
+    const path = `screenshots/guide-${uploadKey}-${Date.now()}.${ext}`
     const { error } = await supabase.storage.from('guide').upload(path, file, {
       upsert: true, contentType: file.type,
     })
@@ -307,45 +321,68 @@ function ImageUploadField({ label, value, onChange, uploadKey }: {
       alert('업로드 실패: ' + error.message)
     } else {
       const { data } = supabase.storage.from('guide').getPublicUrl(path)
-      onChange(data.publicUrl)
+      onChange([...values, data.publicUrl])
     }
     setUploading(false)
   }
 
+  function remove(i: number) {
+    onChange(values.filter((_, idx) => idx !== i))
+  }
+
+  function updateUrl(i: number, url: string) {
+    const next = [...values]; next[i] = url; onChange(next)
+  }
+
   return (
     <div className="mt-3">
-      <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">{label}</p>
-      <div className="flex gap-2 items-center">
-        <input
-          type="url"
-          value={value}
-          onChange={e => onChange(e.target.value)}
-          placeholder="https://... (또는 아래에서 업로드)"
-          className="flex-1 min-w-0 text-xs font-mono border border-[#0f4c35]/30 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#0f4c35]/40 bg-white text-gray-800 placeholder-gray-300"
-        />
-        <button
-          type="button"
-          onClick={() => ref.current?.click()}
-          disabled={uploading}
-          className="shrink-0 flex items-center gap-1.5 text-xs font-medium text-white bg-[#0f4c35] hover:bg-[#0f4c35]/90 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-60"
-        >
-          {uploading ? (
-            <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
-            </svg>
-          ) : (
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
-            </svg>
-          )}
-          {uploading ? '업로드 중…' : '이미지 업로드'}
-        </button>
-        <input
-          ref={ref} type="file" accept="image/*" className="hidden"
-          onChange={e => { const f = e.target.files?.[0]; if (f) { upload(f); e.target.value = '' } }}
-        />
-      </div>
+      <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">{label}</p>
+      {values.length > 0 && (
+        <div className="space-y-1.5 mb-2">
+          {values.map((url, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <span className="text-[10px] text-gray-400 w-4 text-right shrink-0">{i + 1}</span>
+              <input
+                type="url"
+                value={url}
+                onChange={e => updateUrl(i, e.target.value)}
+                className="flex-1 min-w-0 text-xs font-mono border border-[#0f4c35]/30 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#0f4c35]/40 bg-white text-gray-800"
+              />
+              <button
+                type="button"
+                onClick={() => remove(i)}
+                className="shrink-0 w-7 h-7 flex items-center justify-center rounded-lg border border-rose-200 text-rose-400 hover:bg-rose-50 transition-colors"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={() => ref.current?.click()}
+        disabled={uploading}
+        className="flex items-center gap-1.5 text-xs font-medium text-white bg-[#0f4c35] hover:bg-[#0f4c35]/90 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-60"
+      >
+        {uploading ? (
+          <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+          </svg>
+        ) : (
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+          </svg>
+        )}
+        {uploading ? '업로드 중…' : '이미지 추가'}
+      </button>
+      <input
+        ref={ref} type="file" accept="image/*" className="hidden"
+        onChange={e => { const f = e.target.files?.[0]; if (f) { upload(f); e.target.value = '' } }}
+      />
     </div>
   )
 }
@@ -368,7 +405,7 @@ function BrowserFrame({ src, alt }: { src: string; alt: string }) {
   const [failed, setFailed] = useState(false)
   if (failed) return null
   return (
-    <div className="mt-3 rounded-lg overflow-hidden border border-gray-200 shadow-sm">
+    <div className="rounded-lg overflow-hidden border border-gray-200 shadow-sm">
       <div className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 border-b border-gray-200">
         <span className="w-2.5 h-2.5 rounded-full bg-red-400" />
         <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
@@ -381,15 +418,31 @@ function BrowserFrame({ src, alt }: { src: string; alt: string }) {
   )
 }
 
+function ImageGallery({ urls, alt }: { urls: string[]; alt: string }) {
+  if (urls.length === 0) return null
+  return (
+    <div className="mt-3 space-y-2">
+      {urls.map((url, i) => (
+        <div key={i}>
+          {urls.length > 1 && (
+            <p className="text-[10px] text-gray-400 mb-1">이미지 {i + 1}</p>
+          )}
+          <BrowserFrame src={url} alt={`${alt} ${i + 1}`} />
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // ─── SectionCard ──────────────────────────────────────────────────────────────
 function SectionCard({
-  icon, title, desc, details, screenshot,
-  editMode, uploadKey, onChangeScreenshot, onChangeDesc,
+  icon, title, desc, details, screenshots,
+  editMode, uploadKey, onChangeScreenshots, onChangeDesc,
 }: {
-  icon: React.ReactNode; title: string; desc: string; details: string[]; screenshot?: string
+  icon: React.ReactNode; title: string; desc: string; details: string[]; screenshots?: string[]
   editMode: boolean
   uploadKey: string
-  onChangeScreenshot: (v: string) => void
+  onChangeScreenshots: (v: string[]) => void
   onChangeDesc: (v: string) => void
 }) {
   const [open, setOpen] = useState(false)
@@ -417,20 +470,22 @@ function SectionCard({
               </li>
             ))}
           </ul>
-          {screenshot && !editMode && <BrowserFrame src={screenshot} alt={`${title} screen`} />}
+          {!editMode && screenshots && screenshots.length > 0 && (
+            <ImageGallery urls={screenshots} alt={`${title} screen`} />
+          )}
           {editMode && (
             <div className="mt-4 p-3 rounded-lg border border-[#0f4c35]/15 bg-[#0f4c35]/3">
               <EditTextarea label="설명 텍스트" value={desc} onChange={onChangeDesc} />
-              <ImageUploadField
+              <MultiImageField
                 label="스크린샷"
-                value={screenshot ?? ''}
-                onChange={onChangeScreenshot}
+                values={screenshots ?? []}
+                onChange={onChangeScreenshots}
                 uploadKey={uploadKey}
               />
-              {screenshot && (
-                <div className="mt-2">
+              {screenshots && screenshots.length > 0 && (
+                <div className="mt-3">
                   <p className="text-[10px] text-gray-400 mb-1">미리보기</p>
-                  <BrowserFrame src={screenshot} alt={`${title} screen`} />
+                  <ImageGallery urls={screenshots} alt={`${title} screen`} />
                 </div>
               )}
             </div>
@@ -448,13 +503,16 @@ function CasesFlow({
   perspective: Tab
   editMode: boolean
   edits: GuideEdits
-  onEdit: (type: keyof GuideEdits, key: string, value: string) => void
+  onEdit: (type: keyof GuideEdits, key: string, value: string | string[]) => void
 }) {
   const [expanded, setExpanded] = useState<string | null>(null)
 
-  function caseSS(status: string, p: 'admin' | 'agent'): string | undefined {
+  function caseSS(status: string, p: 'admin' | 'agent'): string[] {
     const k = `case_${p}_${status}`
-    return edits.screenshots[k] || DEFAULT_CASE_SS[status]?.[p]
+    const saved = edits.screenshots[k]
+    if (saved && saved.length > 0) return saved
+    const def = DEFAULT_CASE_SS[status]?.[p]
+    return def ? [def] : []
   }
   function caseAction(p: Tab, status: string): string {
     const k = `${p}_${status}`
@@ -478,9 +536,9 @@ function CasesFlow({
             (perspective === 'admin' && step.owner === 'admin') ||
             (perspective === 'agent' && step.owner === 'agent')
           const actionText = caseAction(perspective, step.status)
-          const screenshot = perspective !== 'client'
+          const screenshots = perspective !== 'client'
             ? caseSS(step.status, perspective as 'admin' | 'agent')
-            : undefined
+            : []
 
           return (
             <div key={step.status}>
@@ -511,7 +569,9 @@ function CasesFlow({
                       <p key={pi} className="text-sm text-gray-700 leading-relaxed">{para}</p>
                     ))}
                   </div>
-                  {screenshot && !editMode && <BrowserFrame src={screenshot} alt={`${step.label} screen`} />}
+                  {!editMode && screenshots.length > 0 && (
+                    <ImageGallery urls={screenshots} alt={`${step.label} screen`} />
+                  )}
 
                   {editMode && (
                     <div className="mt-3 p-3 rounded-lg border border-[#0f4c35]/15 bg-[#0f4c35]/3 space-y-1">
@@ -521,17 +581,17 @@ function CasesFlow({
                         onChange={v => onEdit('actions', `${perspective}_${step.status}`, v)}
                       />
                       {perspective !== 'client' && (
-                        <ImageUploadField
+                        <MultiImageField
                           label={`${perspective === 'admin' ? 'Admin' : 'Agent'} 스크린샷`}
-                          value={caseSS(step.status, perspective as 'admin' | 'agent') ?? ''}
+                          values={caseSS(step.status, perspective as 'admin' | 'agent')}
                           onChange={v => onEdit('screenshots', `case_${perspective}_${step.status}`, v)}
                           uploadKey={`case-${perspective}-${step.status}`}
                         />
                       )}
-                      {screenshot && (
+                      {screenshots.length > 0 && (
                         <div className="mt-2">
                           <p className="text-[10px] text-gray-400 mb-1">미리보기</p>
-                          <BrowserFrame src={screenshot} alt={`${step.label} screen`} />
+                          <ImageGallery urls={screenshots} alt={`${step.label} screen`} />
                         </div>
                       )}
                     </div>
@@ -567,11 +627,20 @@ export default function GuideContent({ defaultTab }: { defaultTab?: Tab }) {
       const { data: setting } = await supabase
         .from('system_settings').select('value').eq('key', 'guide_content').maybeSingle()
       if (setting?.value) {
-        const v = setting.value as Partial<GuideEdits>
+        const v = setting.value as Partial<{
+          screenshots: Record<string, string | string[]>
+          descs: Record<string, string>
+          actions: Record<string, string>
+        }>
+        // migrate: old data stored single strings, now arrays
+        const screenshots: Record<string, string[]> = {}
+        for (const [k, val] of Object.entries(v.screenshots ?? {})) {
+          screenshots[k] = Array.isArray(val) ? val : [val]
+        }
         const loaded: GuideEdits = {
-          screenshots: v.screenshots ?? {},
-          descs:       v.descs       ?? {},
-          actions:     v.actions     ?? {},
+          screenshots,
+          descs:   v.descs   ?? {},
+          actions: v.actions ?? {},
         }
         setEdits(loaded)
         setSavedEdits(loaded)
@@ -580,7 +649,7 @@ export default function GuideContent({ defaultTab }: { defaultTab?: Tab }) {
     init()
   }, [])
 
-  function setEdit(type: keyof GuideEdits, key: string, value: string) {
+  function setEdit(type: keyof GuideEdits, key: string, value: string | string[]) {
     setEdits(prev => ({ ...prev, [type]: { ...prev[type], [key]: value } }))
   }
 
@@ -598,8 +667,11 @@ export default function GuideContent({ defaultTab }: { defaultTab?: Tab }) {
   }
 
   // Merge helpers
-  function ss(key: string): string | undefined {
-    return edits.screenshots[key] || DEFAULT_SS[key]
+  function ss(key: string): string[] {
+    const saved = edits.screenshots[key]
+    if (saved && saved.length > 0) return saved
+    const def = DEFAULT_SS[key]
+    return def ? [def] : []
   }
   function desc(sectionKey: string, base: string): string {
     return edits.descs[sectionKey] || base
@@ -680,9 +752,9 @@ export default function GuideContent({ defaultTab }: { defaultTab?: Tab }) {
                   <SectionCard
                     key={s.key} icon={s.icon} title={s.title}
                     desc={desc(s.key, s.desc)} details={s.details}
-                    screenshot={ss(s.key)}
+                    screenshots={ss(s.key)}
                     editMode={editMode} uploadKey={s.key}
-                    onChangeScreenshot={v => setEdit('screenshots', s.key, v)}
+                    onChangeScreenshots={v => setEdit('screenshots', s.key, v)}
                     onChangeDesc={v => setEdit('descs', s.key, v)}
                   />
                 ))}
@@ -733,9 +805,9 @@ export default function GuideContent({ defaultTab }: { defaultTab?: Tab }) {
                   <SectionCard
                     key={s.key} icon={s.icon} title={s.title}
                     desc={s.desc} details={s.details}
-                    screenshot={undefined}
+                    screenshots={[]}
                     editMode={false} uploadKey={s.key}
-                    onChangeScreenshot={() => {}}
+                    onChangeScreenshots={() => {}}
                     onChangeDesc={() => {}}
                   />
                 ))}
@@ -800,9 +872,9 @@ export default function GuideContent({ defaultTab }: { defaultTab?: Tab }) {
                   <SectionCard
                     key={s.key} icon={s.icon} title={s.title}
                     desc={desc(s.key, s.desc)} details={s.details}
-                    screenshot={ss(s.key)}
+                    screenshots={ss(s.key)}
                     editMode={editMode} uploadKey={s.key}
-                    onChangeScreenshot={v => setEdit('screenshots', s.key, v)}
+                    onChangeScreenshots={v => setEdit('screenshots', s.key, v)}
                     onChangeDesc={v => setEdit('descs', s.key, v)}
                   />
                 ))}

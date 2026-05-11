@@ -601,7 +601,7 @@ export default function AdminSettingsPage() {
                     <span className="px-3 py-2 text-sm text-gray-600 bg-gray-50 border-l border-gray-200">%</span>
                   </div>
                   <p className="text-xs text-gray-500 mt-1.5">
-                    Customer price = base × (1 + {companyMargin || '?'}%) × (1 + agent margin%)
+                    Customer price = base × (1 + {companyMargin || '?'}% + agent margin%)
                   </p>
                 </div>
                 {marginError && <p className="text-xs text-red-500">{marginError}</p>}

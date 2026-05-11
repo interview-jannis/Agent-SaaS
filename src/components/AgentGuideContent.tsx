@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type GuideEdits = {
-  screenshots: Record<string, string>
+  screenshots: Record<string, string[]>
   descs: Record<string, string>
   actions: Record<string, string>
 }
@@ -118,12 +118,33 @@ const AGENT_SECTIONS = [
       </svg>
     ),
     title: 'Home',
-    desc: 'Your daily starting point. Surfaces cases that need your immediate action and shows a summary of your month at a glance.',
+    desc: 'A client-facing presentation page you can use during initial consultations. Shows TikkTakk\'s service offering and the full journey from first contact to completion.',
     details: [
-      'Action Required — only cases where your action is blocking progress are listed here. Start your day by clearing this list',
-      'Monthly stats: active cases, completed trips, revenue generated, and your current commission rate tier',
-      'Quick case creation — pick a client, select services by category, configure groups (Shared vs individual), and a quotation is created instantly',
-      'Notification bell — real-time alerts when admin uploads a schedule, confirms a payment, or takes any action on your cases',
+      '"Why TikkTakk" — VIP concierge service, Muslim-friendly by default, all-in-one programme, vetted partners with transparent pricing',
+      '"How It Works" — 6-step journey overview for clients: Choose Program → Receive Quotation → Sign & Confirm → Secure Booking → Get Schedule → Experience Korea',
+      'Useful to walk a new client through what to expect before building their quote',
+      'Notification bell (top right) — real-time alerts when admin uploads a schedule, confirms a payment, or takes any action on your cases',
+    ],
+  },
+  {
+    key: 'product',
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m11.356-1.993l1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 01-1.12-1.243l1.264-12A1.125 1.125 0 015.513 7.5h12.974c.576 0 1.059.435 1.119 1.007z" />
+      </svg>
+    ),
+    title: 'Product',
+    desc: 'The quote-building workspace. Browse the full product catalogue, configure client groups, and generate a quotation in one flow.',
+    details: [
+      'Top bar — set Trip Name, select Client, and travel dates (required before creating a quote)',
+      'Category pills — filter by K-Medical, K-Beauty, K-Wellness, K-Education, K-Starcation, or Subpackage',
+      'Muslim Friendly filter — narrow by prayer room, female medical staff, and dietary grade (Halal Certified / Friendly / etc.)',
+      'Groups — each group represents a set of clients who share the same services. "Shared Activities" auto-applies to all members across every group',
+      'Add Group — for trips with multiple clients needing different services (e.g. Group 1: procedures, Group 2: wellness only)',
+      'Member count per group (±) determines how the price multiplies for that group\'s items',
+      'Trip Services — Subpackage items (hotel, interpreter, car, concierge) are priced per day/night, not per person. Hotel nights auto-sync to travel dates',
+      'Product detail modal — view images, description, Muslim-friendly tags, and choose a specific variant (e.g. session count, room type)',
+      'Create Quote — takes you to the review page to confirm all line items and prices before saving. Cart is preserved in localStorage if you navigate away',
     ],
   },
   {
@@ -215,8 +236,8 @@ const AGENT_SECTIONS = [
 ]
 
 // ─── Edit UI components ───────────────────────────────────────────────────────
-function ImageUploadField({ label, value, onChange, uploadKey }: {
-  label: string; value: string; onChange: (v: string) => void; uploadKey: string
+function MultiImageField({ label, values, onChange, uploadKey }: {
+  label: string; values: string[]; onChange: (urls: string[]) => void; uploadKey: string
 }) {
   const [uploading, setUploading] = useState(false)
   const ref = useRef<HTMLInputElement>(null)
@@ -224,7 +245,7 @@ function ImageUploadField({ label, value, onChange, uploadKey }: {
   async function upload(file: File) {
     setUploading(true)
     const ext = file.name.split('.').pop() ?? 'png'
-    const path = `screenshots/guide-${uploadKey}.${ext}`
+    const path = `screenshots/guide-${uploadKey}-${Date.now()}.${ext}`
     const { error } = await supabase.storage.from('guide').upload(path, file, {
       upsert: true, contentType: file.type,
     })
@@ -232,45 +253,68 @@ function ImageUploadField({ label, value, onChange, uploadKey }: {
       alert('Upload failed: ' + error.message)
     } else {
       const { data } = supabase.storage.from('guide').getPublicUrl(path)
-      onChange(data.publicUrl)
+      onChange([...values, data.publicUrl])
     }
     setUploading(false)
   }
 
+  function remove(i: number) {
+    onChange(values.filter((_, idx) => idx !== i))
+  }
+
+  function updateUrl(i: number, url: string) {
+    const next = [...values]; next[i] = url; onChange(next)
+  }
+
   return (
     <div className="mt-3">
-      <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">{label}</p>
-      <div className="flex gap-2 items-center">
-        <input
-          type="url"
-          value={value}
-          onChange={e => onChange(e.target.value)}
-          placeholder="https://... or upload below"
-          className="flex-1 min-w-0 text-xs font-mono border border-[#0f4c35]/30 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#0f4c35]/40 bg-white text-gray-800 placeholder-gray-300"
-        />
-        <button
-          type="button"
-          onClick={() => ref.current?.click()}
-          disabled={uploading}
-          className="shrink-0 flex items-center gap-1.5 text-xs font-medium text-white bg-[#0f4c35] hover:bg-[#0f4c35]/90 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-60"
-        >
-          {uploading ? (
-            <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
-            </svg>
-          ) : (
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
-            </svg>
-          )}
-          {uploading ? 'Uploading…' : 'Upload Image'}
-        </button>
-        <input
-          ref={ref} type="file" accept="image/*" className="hidden"
-          onChange={e => { const f = e.target.files?.[0]; if (f) { upload(f); e.target.value = '' } }}
-        />
-      </div>
+      <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">{label}</p>
+      {values.length > 0 && (
+        <div className="space-y-1.5 mb-2">
+          {values.map((url, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <span className="text-[10px] text-gray-400 w-4 text-right shrink-0">{i + 1}</span>
+              <input
+                type="url"
+                value={url}
+                onChange={e => updateUrl(i, e.target.value)}
+                className="flex-1 min-w-0 text-xs font-mono border border-[#0f4c35]/30 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#0f4c35]/40 bg-white text-gray-800"
+              />
+              <button
+                type="button"
+                onClick={() => remove(i)}
+                className="shrink-0 w-7 h-7 flex items-center justify-center rounded-lg border border-rose-200 text-rose-400 hover:bg-rose-50 transition-colors"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={() => ref.current?.click()}
+        disabled={uploading}
+        className="flex items-center gap-1.5 text-xs font-medium text-white bg-[#0f4c35] hover:bg-[#0f4c35]/90 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-60"
+      >
+        {uploading ? (
+          <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+          </svg>
+        ) : (
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+          </svg>
+        )}
+        {uploading ? 'Uploading…' : 'Add Image'}
+      </button>
+      <input
+        ref={ref} type="file" accept="image/*" className="hidden"
+        onChange={e => { const f = e.target.files?.[0]; if (f) { upload(f); e.target.value = '' } }}
+      />
     </div>
   )
 }
@@ -294,7 +338,7 @@ function BrowserFrame({ src, alt }: { src: string; alt: string }) {
   const [failed, setFailed] = useState(false)
   if (failed) return null
   return (
-    <div className="mt-3 rounded-lg overflow-hidden border border-gray-200 shadow-sm">
+    <div className="rounded-lg overflow-hidden border border-gray-200 shadow-sm">
       <div className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 border-b border-gray-200">
         <span className="w-2.5 h-2.5 rounded-full bg-red-400" />
         <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
@@ -307,11 +351,27 @@ function BrowserFrame({ src, alt }: { src: string; alt: string }) {
   )
 }
 
+function ImageGallery({ urls, alt }: { urls: string[]; alt: string }) {
+  if (urls.length === 0) return null
+  return (
+    <div className="mt-3 space-y-2">
+      {urls.map((url, i) => (
+        <div key={i}>
+          {urls.length > 1 && (
+            <p className="text-[10px] text-gray-400 mb-1">Image {i + 1}</p>
+          )}
+          <BrowserFrame src={url} alt={`${alt} ${i + 1}`} />
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // ─── Section card ─────────────────────────────────────────────────────────────
-function SectionCard({ icon, title, desc, details, screenshot, editMode, uploadKey, onChangeScreenshot, onChangeDesc }: {
-  icon: React.ReactNode; title: string; desc: string; details: string[]; screenshot?: string
+function SectionCard({ icon, title, desc, details, screenshots, editMode, uploadKey, onChangeScreenshots, onChangeDesc }: {
+  icon: React.ReactNode; title: string; desc: string; details: string[]; screenshots?: string[]
   editMode?: boolean; uploadKey?: string
-  onChangeScreenshot?: (v: string) => void
+  onChangeScreenshots?: (v: string[]) => void
   onChangeDesc?: (v: string) => void
 }) {
   const [open, setOpen] = useState(false)
@@ -342,20 +402,22 @@ function SectionCard({ icon, title, desc, details, screenshot, editMode, uploadK
               </li>
             ))}
           </ul>
-          {screenshot && !editMode && <BrowserFrame src={screenshot} alt={`${title} screen`} />}
-          {editMode && uploadKey && onChangeScreenshot && onChangeDesc && (
+          {!editMode && screenshots && screenshots.length > 0 && (
+            <ImageGallery urls={screenshots} alt={`${title} screen`} />
+          )}
+          {editMode && uploadKey && onChangeScreenshots && onChangeDesc && (
             <div className="mt-4 p-3 rounded-lg border border-[#0f4c35]/15 bg-[#0f4c35]/3">
               <EditTextarea label="Description text" value={desc} onChange={onChangeDesc} />
-              <ImageUploadField
-                label="Screenshot"
-                value={screenshot ?? ''}
-                onChange={onChangeScreenshot}
+              <MultiImageField
+                label="Screenshots"
+                values={screenshots ?? []}
+                onChange={onChangeScreenshots}
                 uploadKey={uploadKey}
               />
-              {screenshot && (
-                <div className="mt-2">
+              {screenshots && screenshots.length > 0 && (
+                <div className="mt-3">
                   <p className="text-[10px] text-gray-400 mb-1">Preview</p>
-                  <BrowserFrame src={screenshot} alt={`${title} screen`} />
+                  <ImageGallery urls={screenshots} alt={`${title} screen`} />
                 </div>
               )}
             </div>
@@ -370,12 +432,15 @@ function SectionCard({ icon, title, desc, details, screenshot, editMode, uploadK
 function CasePipeline({ edits, editMode, onEdit }: {
   edits: GuideEdits
   editMode?: boolean
-  onEdit?: (type: keyof GuideEdits, key: string, value: string) => void
+  onEdit?: (type: keyof GuideEdits, key: string, value: string | string[]) => void
 }) {
   const [expanded, setExpanded] = useState<string | null>(null)
 
-  function getScreenshot(status: string): string | undefined {
-    return edits.screenshots[`case_agent_${status}`] || DEFAULT_CASE_SS[status]
+  function getScreenshots(status: string): string[] {
+    const saved = edits.screenshots[`case_agent_${status}`]
+    if (saved && saved.length > 0) return saved
+    const def = DEFAULT_CASE_SS[status]
+    return def ? [def] : []
   }
   function getAction(status: string, defaultAction: string): string {
     return edits.actions[`agent_${status}`] || defaultAction
@@ -391,7 +456,7 @@ function CasePipeline({ edits, editMode, onEdit }: {
       <div className="space-y-2">
         {CASE_STEPS.map((step, i) => {
           const isOpen = expanded === step.status
-          const screenshot = getScreenshot(step.status)
+          const screenshots = getScreenshots(step.status)
           const actionText = getAction(step.status, step.action)
           return (
             <div key={step.status}>
@@ -424,7 +489,9 @@ function CasePipeline({ edits, editMode, onEdit }: {
                       <p key={pi} className="text-sm text-gray-700 leading-relaxed">{para}</p>
                     ))}
                   </div>
-                  {screenshot && !editMode && <BrowserFrame src={screenshot} alt={`${step.label} screen`} />}
+                  {!editMode && screenshots.length > 0 && (
+                    <ImageGallery urls={screenshots} alt={`${step.label} screen`} />
+                  )}
                   {editMode && onEdit && (
                     <div className="mt-3 p-3 rounded-lg border border-[#0f4c35]/15 bg-[#0f4c35]/3 space-y-1">
                       <EditTextarea
@@ -432,16 +499,16 @@ function CasePipeline({ edits, editMode, onEdit }: {
                         value={actionText}
                         onChange={v => onEdit('actions', `agent_${step.status}`, v)}
                       />
-                      <ImageUploadField
-                        label="Agent screenshot"
-                        value={getScreenshot(step.status) ?? ''}
+                      <MultiImageField
+                        label="Agent screenshots"
+                        values={screenshots}
                         onChange={v => onEdit('screenshots', `case_agent_${step.status}`, v)}
                         uploadKey={`case-agent-${step.status}`}
                       />
-                      {screenshot && (
+                      {screenshots.length > 0 && (
                         <div className="mt-2">
                           <p className="text-[10px] text-gray-400 mb-1">Preview</p>
-                          <BrowserFrame src={screenshot} alt={`${step.label} screen`} />
+                          <ImageGallery urls={screenshots} alt={`${step.label} screen`} />
                         </div>
                       )}
                     </div>
@@ -461,10 +528,13 @@ function CasePipeline({ edits, editMode, onEdit }: {
 function AgentGuideContentInner({ edits, editMode, onEdit }: {
   edits: GuideEdits
   editMode?: boolean
-  onEdit?: (type: keyof GuideEdits, key: string, value: string) => void
+  onEdit?: (type: keyof GuideEdits, key: string, value: string | string[]) => void
 }) {
-  function getSS(key: string): string | undefined {
-    return edits.screenshots[`agent_${key}`] || DEFAULT_SS[key]
+  function getSS(key: string): string[] {
+    const saved = edits.screenshots[`agent_${key}`]
+    if (saved && saved.length > 0) return saved
+    const def = DEFAULT_SS[key]
+    return def ? [def] : []
   }
   function getDesc(key: string, base: string): string {
     return edits.descs[`agent_${key}`] || base
@@ -529,11 +599,11 @@ function AgentGuideContentInner({ edits, editMode, onEdit }: {
               title={s.title}
               desc={getDesc(s.key, s.desc)}
               details={s.details}
-              screenshot={getSS(s.key)}
+              screenshots={getSS(s.key)}
               editMode={editMode}
               uploadKey={`agent_${s.key}`}
-              onChangeScreenshot={onEdit ? v => onEdit('screenshots', `agent_${s.key}`, v) : undefined}
-              onChangeDesc={onEdit ? v => onEdit('descs', `agent_${s.key}`, v) : undefined}
+              onChangeScreenshots={onEdit ? v => onEdit('screenshots', `agent_${s.key}`, v) : undefined}
+              onChangeDesc={onEdit ? v => onEdit('descs', `agent_${s.key}`, v as string) : undefined}
             />
           ))}
         </div>
@@ -557,7 +627,7 @@ export default function AgentGuideContent({
 }: {
   editMode?: boolean
   edits?: GuideEdits
-  onEdit?: (type: keyof GuideEdits, key: string, value: string) => void
+  onEdit?: (type: keyof GuideEdits, key: string, value: string | string[]) => void
   embedded?: boolean
 } = {}) {
   const [overrides, setOverrides] = useState<GuideEdits>({ screenshots: {}, descs: {}, actions: {} })
@@ -568,8 +638,17 @@ export default function AgentGuideContent({
       supabase.from('system_settings').select('value').eq('key', 'guide_content').maybeSingle()
         .then(({ data }) => {
           if (data?.value) {
-            const v = data.value as Partial<GuideEdits>
-            setOverrides({ screenshots: v.screenshots ?? {}, descs: v.descs ?? {}, actions: v.actions ?? {} })
+            const v = data.value as Partial<{
+              screenshots: Record<string, string | string[]>
+              descs: Record<string, string>
+              actions: Record<string, string>
+            }>
+            // migrate: old data stored single strings, now arrays
+            const screenshots: Record<string, string[]> = {}
+            for (const [k, val] of Object.entries(v.screenshots ?? {})) {
+              screenshots[k] = Array.isArray(val) ? val : [val]
+            }
+            setOverrides({ screenshots, descs: v.descs ?? {}, actions: v.actions ?? {} })
           }
         })
     }
