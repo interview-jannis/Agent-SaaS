@@ -1,3 +1,7 @@
+'use client'
+
+import { useState } from 'react'
+
 const STEPS = [
   {
     number: '01',
@@ -105,10 +109,6 @@ const WHY = [
     ),
   },
 ]
-
-'use client'
-
-import { useState } from 'react'
 
 export default function AgentHomePage() {
   const [copied, setCopied] = useState(false)
