@@ -167,18 +167,23 @@ export default async function SchedulePage({
       }
     }
 
-    // Concierge footer: schedule override first, fall back to agent name/phone
+    // Concierge footer: schedule override first, fall back to assigned admin name
     let concierge_name:  string | null = schedule.concierge_name  ?? null
     let concierge_phone: string | null = schedule.concierge_phone ?? null
     if (!concierge_name && caseRef?.agent_id) {
       const { data: agent } = await supabase
         .from('agents')
-        .select('name, phone')
+        .select('assigned_admin_id')
         .eq('id', caseRef.agent_id)
         .single()
-      if (agent) {
-        concierge_name  = (agent as { name: string | null }).name   ?? null
-        concierge_phone = (agent as { phone: string | null }).phone ?? null
+      const adminId = (agent as { assigned_admin_id: string | null } | null)?.assigned_admin_id
+      if (adminId) {
+        const { data: admin } = await supabase
+          .from('admins')
+          .select('name')
+          .eq('id', adminId)
+          .single()
+        concierge_name = (admin as { name: string | null } | null)?.name ?? null
       }
     }
 

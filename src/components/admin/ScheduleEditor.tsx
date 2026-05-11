@@ -83,6 +83,7 @@ export default function ScheduleEditor({
   const [conciergeName, setConciergeName] = useState<string>(initialConciergeName ?? '')
   const [conciergePhone, setConciergePhone] = useState<string>(initialConciergePhone ?? '')
   const [revisionNote, setRevisionNote] = useState('')
+  const [adminNote, setAdminNote] = useState('')
   const [saving, setSaving] = useState(false)
   const [savingDraft, setSavingDraft] = useState(false)
   const [draftSaved, setDraftSaved] = useState(false)
@@ -364,6 +365,7 @@ export default function ScheduleEditor({
         items: normalized,
         pdf_url: null,
         revision_note: revisionNote.trim() || null,
+        admin_note: adminNote.trim() || null,
         concierge_name: conciergeName.trim() || null,
         concierge_phone: conciergePhone.trim() || null,
       })
@@ -503,6 +505,19 @@ export default function ScheduleEditor({
             />
           </div>
         </div>
+      </div>
+
+      <div className="bg-white rounded-xl border border-gray-100 p-3">
+        <label className="block text-[11px] text-gray-500 mb-1">
+          Note to agent / client <span className="text-gray-400">(optional — shown on schedule)</span>
+        </label>
+        <textarea
+          value={adminNote}
+          onChange={(e) => setAdminNote(e.target.value)}
+          placeholder="e.g. Please confirm dietary requirements before Day 2 lunch. Hotel check-in is at 15:00."
+          rows={2}
+          className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-900 focus:outline-none focus:border-[#0f4c35] resize-none"
+        />
       </div>
 
       {nextVersion > 1 && (
