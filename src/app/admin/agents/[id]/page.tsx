@@ -226,6 +226,7 @@ export default function AdminAgentDetailPage() {
 
   const [showDelete, setShowDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [deleteConfirmName, setDeleteConfirmName] = useState('')
   const [copiedInvite, setCopiedInvite] = useState(false)
 
   async function reassignAgent() {
@@ -676,27 +677,25 @@ export default function AdminAgentDetailPage() {
             </div>
           )}
 
-          {/* Danger Zone — only for non-approved agents (deletion of agents with cases is blocked server-side) */}
-          {agent.onboarding_status !== 'approved' && (
-            <section className="bg-white border border-red-200 rounded-2xl p-5 flex items-center justify-between flex-wrap gap-3">
-              <div>
-                <h3 className="text-xs font-semibold text-red-700 uppercase tracking-wide mb-1">Danger Zone</h3>
-                <p className="text-xs text-gray-600">
-                  Permanently delete this agent, their login, and any signed contracts.
-                  Cannot be undone. Only allowed when the agent has no cases.
-                </p>
-              </div>
-              <button onClick={() => { setShowDelete(true); setError('') }} disabled={deleting}
-                className="px-4 py-2 text-xs font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-40">
-                Delete Agent
-              </button>
-            </section>
-          )}
+          {/* Danger Zone — deletion blocked server-side if agent has cases */}
+          <section className="bg-white border border-red-200 rounded-2xl p-5 flex items-center justify-between flex-wrap gap-3">
+            <div>
+              <h3 className="text-xs font-semibold text-red-700 uppercase tracking-wide mb-1">Danger Zone</h3>
+              <p className="text-xs text-gray-600">
+                Permanently delete this agent, their login, and any signed contracts.
+                Cannot be undone. Only allowed when the agent has no cases.
+              </p>
+            </div>
+            <button onClick={() => { setShowDelete(true); setDeleteConfirmName(''); setError('') }} disabled={deleting}
+              className="px-4 py-2 text-xs font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-40">
+              Delete Agent
+            </button>
+          </section>
 
           {/* Delete modal */}
           {showDelete && (
             <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
-              onClick={() => { if (!deleting) setShowDelete(false) }}>
+              onClick={() => { if (!deleting) { setShowDelete(false); setDeleteConfirmName('') } }}>
               <div className="bg-white rounded-2xl max-w-md w-full p-5 space-y-4" onClick={e => e.stopPropagation()}>
                 <div>
                   <h3 className="text-sm font-semibold text-red-700">Delete Agent</h3>
@@ -706,11 +705,23 @@ export default function AdminAgentDetailPage() {
                     their login, and any signed contracts. This cannot be undone.
                   </p>
                 </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">
+                    Type <span className="font-semibold text-gray-800">{agent.name}</span> to confirm
+                  </label>
+                  <input
+                    type="text"
+                    value={deleteConfirmName}
+                    onChange={e => setDeleteConfirmName(e.target.value)}
+                    placeholder={agent.name}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-red-400"
+                  />
+                </div>
                 {error && <p className="text-xs text-red-500">{error}</p>}
                 <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
-                  <button onClick={() => { setShowDelete(false); setError('') }} disabled={deleting}
+                  <button onClick={() => { setShowDelete(false); setDeleteConfirmName(''); setError('') }} disabled={deleting}
                     className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-800 disabled:opacity-40">Cancel</button>
-                  <button onClick={deleteAgent} disabled={deleting}
+                  <button onClick={deleteAgent} disabled={deleting || deleteConfirmName.trim() !== agent.name.trim()}
                     className="px-3 py-1.5 text-xs font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-40">
                     {deleting ? 'Deleting...' : 'Confirm Delete'}
                   </button>

@@ -1,14 +1,16 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
 export default function OnboardingLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
+  const pathname = usePathname()
   const [ready, setReady] = useState(false)
 
   // Guard: allow onboarding flow (pre-approval) + setup wizard (post-approval, pre-setup)
+  // Exception: /onboarding/contract/* is accessible even after setup (agents can re-read their contracts)
   useEffect(() => {
     async function check() {
       const { data: { session } } = await supabase.auth.getSession()
@@ -19,12 +21,14 @@ export default function OnboardingLayout({ children }: { children: React.ReactNo
       const { data: agent } = await supabase.from('agents').select('onboarding_status, setup_completed_at').eq('auth_user_id', uid).maybeSingle()
       const row = agent as { onboarding_status?: string; setup_completed_at?: string | null } | null
       if (!row) { router.replace('/login'); return }
-      // Approved + setup completed → agent app
-      if (row.onboarding_status === 'approved' && row.setup_completed_at) { router.replace('/agent/home'); return }
+      // Approved + setup completed → agent app (except contract viewer)
+      if (row.onboarding_status === 'approved' && row.setup_completed_at) {
+        if (!pathname.startsWith('/onboarding/contract/')) { router.replace('/agent/home'); return }
+      }
       setReady(true)
     }
     check()
-  }, [router])
+  }, [router, pathname])
 
   if (!ready) return <div className="min-h-screen bg-white flex items-center justify-center"><p className="text-sm text-gray-400">Loading...</p></div>
 

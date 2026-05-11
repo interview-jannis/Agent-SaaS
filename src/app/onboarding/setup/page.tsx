@@ -7,6 +7,23 @@ import { logAsCurrentUser } from '@/lib/audit'
 
 type BusinessType = 'individual' | 'company'
 
+const LS_KEY = 'tiktak_setup_draft'
+
+function loadDraft() {
+  try {
+    const raw = localStorage.getItem(LS_KEY)
+    return raw ? JSON.parse(raw) : null
+  } catch { return null }
+}
+
+function saveDraft(data: object) {
+  try { localStorage.setItem(LS_KEY, JSON.stringify(data)) } catch { /* ignore */ }
+}
+
+function clearDraft() {
+  try { localStorage.removeItem(LS_KEY) } catch { /* ignore */ }
+}
+
 export default function SetupWizardPage() {
   const router = useRouter()
   const [authUserId, setAuthUserId] = useState<string | null>(null)
@@ -39,10 +56,23 @@ export default function SetupWizardPage() {
       setAuthUserId(session.user.id)
       setName(a.name ?? '')
       setCountry(a.country ?? '')
+      // Restore any previously saved draft (password fields intentionally excluded)
+      const draft = loadDraft()
+      if (draft) {
+        if (draft.form) setForm(p => ({ ...p, email: draft.form.email ?? '', phone: draft.form.phone ?? '' }))
+        if (draft.bank) setBank(draft.bank)
+        if (draft.business) setBusiness(draft.business)
+      }
       setLoading(false)
     }
     init()
   }, [router])
+
+  // Auto-save draft on every change (password excluded for security)
+  useEffect(() => {
+    if (!authUserId) return
+    saveDraft({ form: { email: form.email, phone: form.phone }, bank, business })
+  }, [form.email, form.phone, bank, business, authUserId])
 
   async function uploadBusinessDoc(file: File) {
     if (!authUserId) return
@@ -99,7 +129,7 @@ export default function SetupWizardPage() {
         throw new Error(data.error ?? 'Setup failed.')
       }
       await logAsCurrentUser('agent.setup_completed', null)
-      // Refresh the session so subsequent requests use the new email/password context
+      clearDraft()
       router.replace('/agent/home')
     } catch (e: unknown) {
       setError((e as { message?: string })?.message ?? 'Setup failed.')

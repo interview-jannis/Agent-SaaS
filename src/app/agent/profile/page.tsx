@@ -25,8 +25,17 @@ type AgentProfile = {
   business_info: BusinessInfo | null
 }
 
+type AgentContract = {
+  id: string
+  contract_type: 'nda' | 'partnership'
+  title_snapshot: string
+  signed_at: string
+  admin_signed_at: string | null
+}
+
 export default function AgentProfilePage() {
   const [profile, setProfile] = useState<AgentProfile | null>(null)
+  const [contracts, setContracts] = useState<AgentContract[]>([])
   const [monthlyPatients, setMonthlyPatients] = useState(0)
   const [loading, setLoading] = useState(true)
 
@@ -59,6 +68,13 @@ export default function AgentProfilePage() {
     if (!data) return
     const ag = data as AgentProfile
     setProfile(ag)
+
+    // Signed contracts
+    const { data: contractRows } = await supabase.from('agent_contracts')
+      .select('id, contract_type, title_snapshot, signed_at, admin_signed_at')
+      .eq('agent_id', ag.id)
+      .order('signed_at', { ascending: true })
+    setContracts((contractRows as AgentContract[]) ?? [])
 
     // Tier basis: patients on completed cases this month (case_members count)
     const now = new Date()
@@ -397,6 +413,35 @@ export default function AgentProfilePage() {
               </div>
             )}
           </section>
+
+          {/* Signed Contracts */}
+          {contracts.length > 0 && (
+            <section className="bg-gray-50 rounded-2xl p-5">
+              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-4">Signed Contracts</h3>
+              <ul className="space-y-2">
+                {contracts.map(c => (
+                  <li key={c.id} className="flex items-center gap-3 bg-white border border-gray-100 rounded-xl px-4 py-3">
+                    <svg className="w-4 h-4 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                    </svg>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-800 truncate">{c.title_snapshot}</p>
+                      <p className="text-[10px] text-gray-400 mt-0.5">
+                        Signed {new Date(c.signed_at).toLocaleDateString('en-US', { dateStyle: 'medium' })}
+                        {c.admin_signed_at
+                          ? ` · Counter-signed ${new Date(c.admin_signed_at).toLocaleDateString('en-US', { dateStyle: 'medium' })}`
+                          : ' · Awaiting counter-signature'}
+                      </p>
+                    </div>
+                    <a href={`/onboarding/contract/${c.id}`} target="_blank" rel="noopener noreferrer"
+                      className="text-xs font-medium text-[#0f4c35] hover:underline shrink-0">
+                      View ↗
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
 
           <ChangePasswordCard />
 

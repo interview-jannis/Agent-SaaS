@@ -45,7 +45,7 @@ export async function POST(req: Request) {
 
   // Verify this auth user is actually an agent (defence in depth)
   const { data: agent } = await supabase.from('agents')
-    .select('id, onboarding_status')
+    .select('id, name, agent_number, onboarding_status, assigned_admin_id')
     .eq('auth_user_id', authUserId).maybeSingle()
   if (!agent) return NextResponse.json({ error: 'Agent not found.' }, { status: 404 })
   if ((agent as { onboarding_status: string }).onboarding_status !== 'approved') {
@@ -120,6 +120,24 @@ export async function POST(req: Request) {
     invite_secret: null,
   }).eq('id', (agent as { id: string }).id)
   if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 })
+
+  // Notify assigned admin that the agent has completed setup
+  const ag = agent as { id: string; name: string | null; agent_number: string | null; assigned_admin_id: string | null }
+  if (ag.assigned_admin_id) {
+    const { data: adminRow } = await supabase.from('admins')
+      .select('auth_user_id').eq('id', ag.assigned_admin_id).maybeSingle()
+    if (adminRow) {
+      const label = ag.agent_number ? `${ag.agent_number} ${ag.name ?? ''}` : (ag.name ?? 'Agent')
+      await supabase.from('notifications').insert({
+        target_type: 'admin',
+        target_id: ag.assigned_admin_id,
+        auth_user_id: (adminRow as { auth_user_id: string }).auth_user_id,
+        message: `${label.trim()} completed account setup and is ready`,
+        link_url: `/admin/agents/${ag.id}`,
+        is_read: false,
+      })
+    }
+  }
 
   return NextResponse.json({ ok: true })
 }
