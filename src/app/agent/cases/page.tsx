@@ -99,7 +99,7 @@ type CaseRow = {
   travel_end_date: string | null
   created_at: string
   case_members: { is_lead: boolean; clients: { client_number: string; name: string } | null }[]
-  documents: { type: string; total_price: number; document_groups: { member_count: number }[] }[]
+  documents: { type: string; total_price: number; document_groups: { name: string | null; member_count: number }[] }[]
 }
 
 function sortByTravelImminent(a: CaseRow, b: CaseRow): number {
@@ -122,7 +122,7 @@ export default function AgentCasesPage() {
   const fetchCases = useCallback(async (aid: string) => {
     const [casesRes, settleRes] = await Promise.all([
       supabase.from('cases')
-        .select('id, case_number, status, travel_start_date, travel_end_date, created_at, case_members(is_lead, clients(client_number, name)), documents(type, total_price, document_groups(member_count))')
+        .select('id, case_number, status, travel_start_date, travel_end_date, created_at, case_members(is_lead, clients(client_number, name)), documents(type, total_price, document_groups(name, member_count))')
         .eq('agent_id', aid)
         .order('created_at', { ascending: false }),
       supabase.from('settlements')
@@ -266,7 +266,7 @@ export default function AgentCasesPage() {
                         {items.map((c) => {
                           const lead = c.case_members?.find(m => m.is_lead)
                           const quote = c.documents?.find(d => d.type === 'quotation')
-                          const members = quote?.document_groups?.reduce((s, g) => s + (g.member_count ?? 0), 0) ?? 0
+                          const members = quote?.document_groups?.filter(g => g.name !== 'Shared Activities' && g.name !== 'Shared' && g.name !== 'Trip Services').reduce((s, g) => s + (g.member_count ?? 0), 0) ?? 0
                           const amountUsd = quote ? quote.total_price / exchangeRate : null
                           return (
                             <tr key={c.id} onClick={() => router.push(`/agent/cases/${c.id}`)}

@@ -106,6 +106,7 @@ type Quote = {
   type: string
   total_price: number
   document_groups: {
+    name: string | null
     member_count: number
     document_items: { removed_at?: string | null; products: { partner_name: string | null } | null }[]
   }[]
@@ -161,7 +162,7 @@ export default function AdminCasesPage() {
           id, case_number, status, travel_start_date, travel_end_date, created_at,
           agents!cases_agent_id_fkey(id, agent_number, name),
           case_members(id, is_lead, clients(id, client_number, name)),
-          documents(id, type, total_price, document_groups(member_count, document_items(removed_at, products(partner_name))))
+          documents(id, type, total_price, document_groups(name, member_count, document_items(removed_at, products(partner_name))))
         `).order('created_at', { ascending: false }),
         supabase.from('system_settings').select('value').eq('key', 'product_price_rate').single(),
         supabase.from('partner_payments').select('case_id, partner_name'),
@@ -323,7 +324,7 @@ export default function AdminCasesPage() {
                         {items.map((c) => {
                           const caseLead = c.case_members?.find((m) => m.is_lead)
                           const quote = c.documents?.find(d => d.type === 'quotation')
-                          const memberCount = quote?.document_groups?.reduce((s, g) => s + (g.member_count ?? 0), 0) ?? 0
+                          const memberCount = quote?.document_groups?.filter(g => g.name !== 'Shared Activities' && g.name !== 'Shared' && g.name !== 'Trip Services').reduce((s, g) => s + (g.member_count ?? 0), 0) ?? 0
                           return (
                             <tr key={c.id} onClick={() => router.push(`/admin/cases/${c.id}`)}
                               className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors">
