@@ -248,6 +248,8 @@ export default function AdminCaseDetailPage() {
   const [savingItems, setSavingItems] = useState(false)
   const [editingProducts, setEditingProducts] = useState(false)
   const [clientModalMember, setClientModalMember] = useState<CaseMember | null>(null)
+  const [showClientPanel, setShowClientPanel] = useState(false)
+  const [expandedClientIds, setExpandedClientIds] = useState<Set<string>>(new Set())
   const [creatingDraft, setCreatingDraft] = useState(false)
 
   // Sections start collapsed; user expands what they need.
@@ -674,9 +676,10 @@ export default function AdminCaseDetailPage() {
         </span>
       </div>
 
-      {/* Single column scrollable body (matches agent layout) */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="max-w-3xl mx-auto px-4 md:px-6 py-4 md:py-6 space-y-5">
+      {/* Body — split when client panel is open */}
+      <div className="flex-1 flex min-h-0">
+        <div className="flex-1 overflow-y-auto">
+        <div className={`${showClientPanel ? '' : 'max-w-3xl'} mx-auto px-4 md:px-6 py-4 md:py-6 space-y-5`}>
 
           {/* Canceled banner */}
           {caseData.status === 'canceled' && (
@@ -1776,17 +1779,28 @@ export default function AdminCaseDetailPage() {
             const nextVersion = (latestSchedule?.version ?? 0) + 1
             return (
               <section id="schedule-upload" className={`scroll-mt-20 border border-[#0f4c35] bg-white rounded-2xl p-4 space-y-3`}>
-                <div className="flex items-baseline justify-between gap-2">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
                   <p className={`text-xs font-semibold uppercase tracking-wide text-[#0f4c35]`}>
                     {sortedSchedules.length === 0 ? 'Build Schedule' : `New Version (v${nextVersion})`}
                   </p>
-                  {latestSchedule?.slug && (
-                    <a href={`${baseUrl}/schedule/${latestSchedule.slug}?preview=1&internal=1&v=${latestSchedule.version}`}
-                      target="_blank" rel="noopener noreferrer"
-                      className="text-[11px] text-gray-500 hover:underline">
-                      Preview last version ↗
-                    </a>
-                  )}
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => setShowClientPanel(p => !p)}
+                      className={`text-[11px] flex items-center gap-1 transition-colors ${showClientPanel ? 'text-[#0f4c35] font-medium' : 'text-gray-500 hover:text-[#0f4c35]'}`}
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+                      </svg>
+                      {showClientPanel ? 'Hide client info' : 'View client info'}
+                    </button>
+                    {latestSchedule?.slug && (
+                      <a href={`${baseUrl}/schedule/${latestSchedule.slug}?preview=1&internal=1&v=${latestSchedule.version}`}
+                        target="_blank" rel="noopener noreferrer"
+                        className="text-[11px] text-gray-500 hover:underline">
+                        Preview last version ↗
+                      </a>
+                    )}
+                  </div>
                 </div>
                 {sortedSchedules.length === 0 && (
                   <p className="text-xs text-blue-700">Build day-by-day. Use &quot;Link a product&quot; to autofill titles from selected products.</p>
@@ -2694,6 +2708,152 @@ export default function AdminCaseDetailPage() {
           {/* ─── /ATTACHMENTS ─── */}
 
         </div>
+        </div>
+
+        {/* ── Client Info Side Panel ── */}
+        {showClientPanel && (() => {
+          const fmt = (v: string | null | undefined) => v?.replace(/_/g, ' ') ?? null
+          const row = (label: string, value: string | number | null | undefined) =>
+            value != null && String(value).trim() ? (
+              <div key={label}>
+                <p className="text-[9px] text-gray-400 mb-0.5 uppercase tracking-wide">{label}</p>
+                <p className="text-xs text-gray-800">{String(value)}</p>
+              </div>
+            ) : null
+
+          const members = caseData.case_members ?? []
+          return (
+            <div className="w-72 xl:w-80 shrink-0 border-l border-gray-100 bg-white flex flex-col min-h-0">
+              {/* Panel header */}
+              <div className="shrink-0 flex items-center justify-between px-4 py-3 border-b border-gray-100">
+                <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
+                  Client Info <span className="text-gray-400 font-normal normal-case">({members.length})</span>
+                </p>
+                <button
+                  onClick={() => setShowClientPanel(false)}
+                  className="text-gray-400 hover:text-gray-700 transition-colors"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              {/* Members list */}
+              <div className="flex-1 overflow-y-auto divide-y divide-gray-50">
+                {members.length === 0 ? (
+                  <p className="text-xs text-gray-400 px-4 py-6 text-center">No members yet</p>
+                ) : members.map(m => {
+                  const c = m.clients
+                  const isExpanded = expandedClientIds.has(m.id)
+                  const toggle = () => setExpandedClientIds(prev => {
+                    const next = new Set(prev)
+                    isExpanded ? next.delete(m.id) : next.add(m.id)
+                    return next
+                  })
+                  return (
+                    <div key={m.id}>
+                      {/* Member header row */}
+                      <button
+                        onClick={toggle}
+                        className="w-full flex items-center gap-2.5 px-4 py-3 text-left hover:bg-gray-50 transition-colors"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <p className="text-xs font-medium text-gray-900 truncate">{c.name}</p>
+                            {m.is_lead && (
+                              <span className="text-[9px] font-medium text-white bg-[#0f4c35] px-1.5 py-0.5 rounded shrink-0">LEAD</span>
+                            )}
+                            {c.needs_muslim_friendly && (
+                              <span className="text-[9px] font-medium text-[#0f4c35] bg-[#0f4c35]/10 px-1.5 py-0.5 rounded shrink-0">Muslim</span>
+                            )}
+                          </div>
+                          <p className="text-[10px] font-mono text-gray-400">{c.client_number}</p>
+                        </div>
+                        <svg
+                          className={`w-3.5 h-3.5 text-gray-400 shrink-0 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                          fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                        </svg>
+                      </button>
+
+                      {/* Expanded detail */}
+                      {isExpanded && (
+                        <div className="px-4 pb-4 space-y-4 bg-gray-50/60">
+                          {/* Basic */}
+                          <div className="grid grid-cols-2 gap-x-4 gap-y-2.5">
+                            {row('Nationality', c.nationality)}
+                            {row('Gender', c.gender)}
+                            {row('Date of Birth', c.date_of_birth)}
+                            {row('Phone', c.phone)}
+                            {row('Email', c.email)}
+                            {row('Passport', c.passport_number)}
+                            {row('Preferred Language', c.preferred_language)}
+                            {row('Height', c.height_cm != null ? `${c.height_cm} cm` : null)}
+                            {row('Weight', c.weight_kg != null ? `${c.weight_kg} kg` : null)}
+                          </div>
+                          {/* Health */}
+                          {(c.blood_type || c.allergies || c.current_medications || c.health_conditions || c.medical_restrictions || c.mobility_limitations || (c.pregnancy_status && c.pregnancy_status !== 'not_applicable') || (c.smoking_status && c.smoking_status !== 'not_applicable') || (c.alcohol_status && c.alcohol_status !== 'not_applicable')) && (
+                            <div>
+                              <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-wide mb-2">Health</p>
+                              <div className="grid grid-cols-2 gap-x-4 gap-y-2.5">
+                                {row('Blood Type', c.blood_type)}
+                                {row('Allergies', c.allergies)}
+                                {row('Medications', c.current_medications)}
+                                {row('Conditions', c.health_conditions)}
+                                {row('Restrictions', c.medical_restrictions)}
+                                {row('Mobility', c.mobility_limitations)}
+                                {row('Pregnancy', fmt(c.pregnancy_status))}
+                                {row('Smoking', fmt(c.smoking_status))}
+                                {row('Alcohol', fmt(c.alcohol_status))}
+                              </div>
+                            </div>
+                          )}
+                          {/* Muslim prefs */}
+                          {c.needs_muslim_friendly && (
+                            <div>
+                              <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-wide mb-2">Muslim Preferences</p>
+                              <div className="grid grid-cols-2 gap-x-4 gap-y-2.5">
+                                {row('Dietary', fmt(c.dietary_restriction))}
+                                {row('Prayer Freq.', fmt(c.prayer_frequency))}
+                                {row('Prayer Location', fmt(c.prayer_location))}
+                                {row('Same-gender Dr.', fmt(c.same_gender_doctor))}
+                                {row('Same-gender Th.', fmt(c.same_gender_therapist))}
+                                {row('Mixed Activities', fmt(c.mixed_gender_activities))}
+                                {c.cultural_religious_notes && (
+                                  <div className="col-span-2">{row('Cultural Notes', c.cultural_religious_notes)}</div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                          {/* Emergency */}
+                          {(c.emergency_contact_name || c.emergency_contact_phone) && (
+                            <div>
+                              <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-wide mb-2">Emergency Contact</p>
+                              <div className="grid grid-cols-2 gap-x-4 gap-y-2.5">
+                                {row('Name', c.emergency_contact_name)}
+                                {row('Relation', c.emergency_contact_relation)}
+                                {row('Phone', c.emergency_contact_phone)}
+                              </div>
+                            </div>
+                          )}
+                          {/* Special requests */}
+                          {c.special_requests && (
+                            <div>
+                              <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Special Requests</p>
+                              <p className="text-xs text-gray-800 whitespace-pre-wrap">{c.special_requests}</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )
+        })()}
+
       </div>
     </div>
   )
