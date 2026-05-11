@@ -2723,7 +2723,7 @@ export default function AdminCaseDetailPage() {
 
           const members = caseData.case_members ?? []
           return (
-            <div className="w-72 xl:w-80 shrink-0 border-l border-gray-100 bg-white flex flex-col min-h-0">
+            <div className="w-96 xl:w-[26rem] shrink-0 border-l border-gray-100 bg-white flex flex-col min-h-0">
               {/* Panel header */}
               <div className="shrink-0 flex items-center justify-between px-4 py-3 border-b border-gray-100">
                 <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
