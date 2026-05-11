@@ -583,7 +583,7 @@ export default function AdminAgentDetailPage() {
                   className="px-4 py-2 text-xs font-medium border border-red-200 text-red-600 rounded-lg hover:bg-red-50 disabled:opacity-40">
                   Reject
                 </button>
-                {isSuperAdmin ? (() => {
+                {(() => {
                   const allAgentSigned = contracts.length >= 2
                   const allAdminSigned = contracts.length >= 2 && contracts.every(c => c.admin_signed_at)
                   const blocked = !allAgentSigned || !allAdminSigned
@@ -595,7 +595,7 @@ export default function AdminAgentDetailPage() {
                   return (
                     <button
                       onClick={() => {
-                        const me = admins.find(a => a.is_super_admin)
+                        const me = admins.find(a => a.is_super_admin) ?? admins[0]
                         setAssignToAdminId(me?.id ?? '')
                         setShowApprove(true)
                         setError('')
@@ -606,11 +606,7 @@ export default function AdminAgentDetailPage() {
                       Approve & Activate
                     </button>
                   )
-                })() : (
-                  <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                    Only super admins can approve agents.
-                  </p>
-                )}
+                })()}
               </div>
             </section>
           )}
