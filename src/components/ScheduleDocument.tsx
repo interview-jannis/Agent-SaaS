@@ -489,9 +489,10 @@ function ScheduleRow({
     : null
   const transportLabel = item.transportMode ? TRANSPORT_MODE_LABEL[item.transportMode] : null
   const eyebrow =
-    itemType === 'transfer'    ? null
-    : itemType === 'meal'      ? (item.restaurantName ?? item.partner ?? null)
-    : itemType === 'hotel'     ? null
+    itemType === 'transfer' ? null
+    : itemType === 'meal'   ? (item.restaurantName ?? item.partner ?? null)
+    : itemType === 'hotel'  ? null
+    : itemType === 'free'   ? null
     : (item.partner ?? null)
   const hotelPrefix =
     itemType === 'hotel' && item.hotelCheckType === 'checkin'  ? 'Check-in'
@@ -554,7 +555,7 @@ function ScheduleRow({
             color: isPrayer ? '#c07830' : '#1a1a1a',
             fontStyle: isPrayer ? 'italic' : 'normal',
           }}>
-            {item.title || (itemType === 'transfer' && !transferRoute ? '—' : itemType === 'free' ? 'At leisure' : '—')}
+            {item.title || (itemType === 'free' ? 'At leisure' : itemType === 'transfer' && !transferRoute ? '—' : '—')}
           </p>
           {item.variantTag && (
             <span className="sch-sans" style={{

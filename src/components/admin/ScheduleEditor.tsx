@@ -794,8 +794,12 @@ function ItemRow({
     return [...new Set(names)]
   }, [item.groupId, item.variantId, caseProducts])
 
-  // Pending rows can't commit until they have at least a title.
-  const canCommit = item.title.trim().length > 0
+  const itemType = item.itemType ?? 'appointment'
+  const canCommit =
+    itemType === 'free'     ? true :
+    itemType === 'transfer' ? !!(item.fromLocation?.trim() && item.toLocation?.trim()) || item.title.trim().length > 0 :
+    itemType === 'hotel'    ? !!(item.hotelCheckType) || item.title.trim().length > 0 :
+    item.title.trim().length > 0
 
   return (
     <div className={`px-4 py-3 space-y-2 border-l-4 ${tone.stripe} ${isPending ? 'bg-amber-50/40 border border-dashed border-amber-300 m-2 rounded-lg' : ''}`}>
@@ -803,7 +807,14 @@ function ItemRow({
       <div className="flex flex-wrap items-center gap-2">
         <select
           value={item.itemType ?? 'appointment'}
-          onChange={(e) => onUpdate({ itemType: e.target.value as ScheduleItemType })}
+          onChange={(e) => {
+            const t = e.target.value as ScheduleItemType
+            const updates: Partial<ScheduleItem> = { itemType: t }
+            if (t === 'free' && !item.title.trim()) updates.title = 'Free time'
+            if (t === 'hotel' && item.hotelCheckType && !item.title.trim())
+              updates.title = item.hotelCheckType === 'checkin' ? 'Hotel Check-in' : 'Hotel Check-out'
+            onUpdate(updates)
+          }}
           disabled={!isPending}
           className="text-xs font-medium border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
           title="Item type"
@@ -943,51 +954,45 @@ function ItemRow({
         </div>
       </div>
 
-      {/* Partner eyebrow — auto-derived from product link, mirrors how the
-          rendered schedule will show it above the title. No edit affordance:
-          changing the product link is the only way to change partner. */}
-      {item.partner && (
-        <p className="text-[10px] tracking-[0.2em] text-gray-500 uppercase">
-          {item.partner}
-        </p>
+      {/* Partner eyebrow + title — appointment/free only (other types handle title above) */}
+      {(itemType === 'appointment' || itemType === 'free') && (
+        <>
+          {item.partner && (
+            <p className="text-[10px] tracking-[0.2em] text-gray-500 uppercase">{item.partner}</p>
+          )}
+          <div className="flex items-center gap-2">
+            {itemType === 'free' ? (
+              <p className="flex-1 text-sm text-gray-400 px-2.5 py-1.5">Free time</p>
+            ) : (
+              <input type="text" value={item.title}
+                onChange={(e) => onUpdate({ title: e.target.value })}
+                disabled={!isPending} placeholder="Title"
+                className="flex-1 text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-600 disabled:cursor-default"
+              />
+            )}
+            {item.variantTag && (
+              <span className="shrink-0 text-[11px] font-medium text-gray-500 bg-gray-100 border border-gray-200 rounded-full px-2.5 py-1">
+                {item.variantTag}
+              </span>
+            )}
+          </div>
+        </>
       )}
-      <div className="flex items-center gap-2">
-        <input
-          type="text"
-          value={item.title}
-          onChange={(e) => onUpdate({ title: e.target.value })}
-          disabled={!isPending}
-          placeholder="Title"
-          className="flex-1 text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-600 disabled:cursor-default"
-        />
-        {item.variantTag && (
-          <span className="shrink-0 text-[11px] font-medium text-gray-500 bg-gray-100 border border-gray-200 rounded-full px-2.5 py-1">
-            {item.variantTag}
-          </span>
-        )}
-      </div>
 
-      {/* Type-specific fields */}
-      {(item.itemType === 'transfer' || !item.itemType && false) && (
+      {/* Type-specific fields — shown BEFORE title for types where they define the content */}
+      {itemType === 'transfer' && (
         <div className="grid grid-cols-2 gap-2">
-          <input
-            type="text"
-            value={item.fromLocation ?? ''}
+          <input type="text" value={item.fromLocation ?? ''}
             onChange={(e) => onUpdate({ fromLocation: e.target.value || null })}
-            disabled={!isPending}
-            placeholder="From (e.g. Grand Hyatt)"
+            disabled={!isPending} placeholder="From (e.g. Grand Hyatt)"
             className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
           />
-          <input
-            type="text"
-            value={item.toLocation ?? ''}
+          <input type="text" value={item.toLocation ?? ''}
             onChange={(e) => onUpdate({ toLocation: e.target.value || null })}
-            disabled={!isPending}
-            placeholder="To (e.g. Gil Hospital)"
+            disabled={!isPending} placeholder="To (e.g. Gil Hospital)"
             className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
           />
-          <select
-            value={item.transportMode ?? ''}
+          <select value={item.transportMode ?? ''}
             onChange={(e) => onUpdate({ transportMode: (e.target.value || null) as ScheduleItem['transportMode'] })}
             disabled={!isPending}
             className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
@@ -999,41 +1004,67 @@ function ItemRow({
             <option value="bus">Bus</option>
             <option value="walk">Walking</option>
           </select>
+          <input type="text" value={item.title}
+            onChange={(e) => onUpdate({ title: e.target.value })}
+            disabled={!isPending}
+            placeholder="Label override (optional)"
+            className="text-xs border border-dashed border-gray-300 rounded-lg px-2 py-1.5 text-gray-700 bg-gray-50 focus:outline-none focus:border-[#0f4c35] placeholder:text-gray-400 disabled:cursor-default"
+          />
         </div>
       )}
-      {item.itemType === 'meal' && (
+      {itemType === 'hotel' && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <select value={item.hotelCheckType ?? ''}
+            onChange={(e) => {
+              const v = (e.target.value || null) as ScheduleItem['hotelCheckType']
+              const prevAuto = item.hotelCheckType === 'checkin' ? 'Hotel Check-in' : item.hotelCheckType === 'checkout' ? 'Hotel Check-out' : ''
+              const updates: Partial<ScheduleItem> = { hotelCheckType: v }
+              if (!item.title.trim() || item.title === prevAuto)
+                updates.title = v === 'checkin' ? 'Hotel Check-in' : v === 'checkout' ? 'Hotel Check-out' : ''
+              onUpdate(updates)
+            }}
+            disabled={!isPending}
+            className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
+          >
+            <option value="">— Check-in / Check-out —</option>
+            <option value="checkin">Check-in</option>
+            <option value="checkout">Check-out</option>
+          </select>
+          <input type="text" value={item.title}
+            onChange={(e) => onUpdate({ title: e.target.value })}
+            disabled={!isPending} placeholder="Label override (optional)"
+            className="flex-1 text-xs border border-dashed border-gray-300 rounded-lg px-2 py-1.5 text-gray-700 bg-gray-50 focus:outline-none focus:border-[#0f4c35] placeholder:text-gray-400 disabled:cursor-default"
+          />
+        </div>
+      )}
+      {itemType === 'meal' && (
         <div className="grid grid-cols-2 gap-2">
-          <input
-            type="text"
-            value={item.restaurantName ?? ''}
-            onChange={(e) => onUpdate({ restaurantName: e.target.value || null })}
+          <select value={item.title}
+            onChange={(e) => onUpdate({ title: e.target.value })}
             disabled={!isPending}
-            placeholder="Restaurant name"
+            className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
+          >
+            <option value="">— Meal type —</option>
+            <option value="Breakfast">Breakfast</option>
+            <option value="Lunch">Lunch</option>
+            <option value="Dinner">Dinner</option>
+            <option value="Brunch">Brunch</option>
+            <option value="Snack">Snack / Café</option>
+          </select>
+          <input type="text" value={item.restaurantName ?? ''}
+            onChange={(e) => onUpdate({ restaurantName: e.target.value || null })}
+            disabled={!isPending} placeholder="Restaurant name (optional)"
             className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
           />
-          <input
-            type="text"
-            value={item.cuisine ?? ''}
+          <input type="text" value={item.cuisine ?? ''}
             onChange={(e) => onUpdate({ cuisine: e.target.value || null })}
-            disabled={!isPending}
-            placeholder="Cuisine (e.g. Korean BBQ)"
+            disabled={!isPending} placeholder="Cuisine (e.g. Korean BBQ)"
             className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
           />
         </div>
-      )}
-      {item.itemType === 'hotel' && (
-        <select
-          value={item.hotelCheckType ?? ''}
-          onChange={(e) => onUpdate({ hotelCheckType: (e.target.value || null) as ScheduleItem['hotelCheckType'] })}
-          disabled={!isPending}
-          className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
-        >
-          <option value="">— Check-in / Check-out —</option>
-          <option value="checkin">Check-in</option>
-          <option value="checkout">Check-out</option>
-        </select>
       )}
 
+      {/* Title — shown for appointment only; other types handle title above */}
       {/* Notes — VIP-facing */}
       <input
         type="text"
