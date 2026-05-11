@@ -105,7 +105,7 @@ export default function AdminCaseContractSection({ caseId, caseNumber, caseStatu
   const isExpanded = expanded ?? !fullySigned
 
   return (
-    <section id="case-contract" className="scroll-mt-20 bg-gray-50 rounded-2xl border border-gray-200 overflow-hidden">
+    <section id="case-contract" className="scroll-mt-20 bg-gray-50 rounded-2xl border-2 border-gray-300 overflow-hidden">
       <div className="flex items-center justify-between gap-3 flex-wrap px-4 py-2.5 bg-gray-100 border-b border-gray-200">
         <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">3-Party Contract</h3>
         <div className="flex items-center gap-2 shrink-0">

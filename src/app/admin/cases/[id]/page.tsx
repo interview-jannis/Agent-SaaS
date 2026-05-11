@@ -1028,7 +1028,7 @@ export default function AdminCaseDetailPage() {
                   .finally(() => setCreatingDraft(false))
               }
               return (
-                <section className="border border-gray-200 bg-white rounded-2xl p-4 flex items-center gap-2 text-sm text-gray-500">
+                <section className="border-2 border-gray-300 bg-white rounded-2xl p-4 flex items-center gap-2 text-sm text-gray-500">
                   <svg className="w-4 h-4 animate-spin text-[#0f4c35] shrink-0" fill="none" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
@@ -1100,7 +1100,7 @@ export default function AdminCaseDetailPage() {
             }
 
             return (
-              <section className="border border-gray-200 bg-white rounded-2xl p-4 space-y-3">
+              <section className="border-2 border-gray-300 bg-white rounded-2xl p-4 space-y-3">
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <div className="flex items-baseline gap-3 min-w-0">
                     <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Edit Selected Products</p>
@@ -1787,7 +1787,7 @@ export default function AdminCaseDetailPage() {
               : (caseData.schedule_draft_items ?? [])
             const nextVersion = (latestSchedule?.version ?? 0) + 1
             return (
-              <section id="schedule-upload" className={`scroll-mt-20 border border-[#0f4c35] bg-white rounded-2xl p-4 space-y-3`}>
+              <section id="schedule-upload" className={`scroll-mt-20 border-2 border-[#0f4c35] bg-white rounded-2xl p-4 space-y-3`}>
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <p className={`text-xs font-semibold uppercase tracking-wide text-[#0f4c35]`}>
                     {sortedSchedules.length === 0 ? 'Build Schedule' : `New Version (v${nextVersion})`}
@@ -1857,7 +1857,7 @@ export default function AdminCaseDetailPage() {
                   .finally(() => setCreatingDraft(false))
               }
               return (
-                <section className="border border-[#0f4c35] bg-white rounded-2xl p-4 flex items-center gap-2 text-sm text-gray-500">
+                <section className="border-2 border-[#0f4c35] bg-white rounded-2xl p-4 flex items-center gap-2 text-sm text-gray-500">
                   <svg className="w-4 h-4 animate-spin text-[#0f4c35] shrink-0" fill="none" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
@@ -1876,7 +1876,7 @@ export default function AdminCaseDetailPage() {
             })()
             const dueDateValue = dueDateEdit || defaultDue
             return (
-            <section id="pricing" className="scroll-mt-20 border border-[#0f4c35] bg-white rounded-2xl p-4 space-y-3">
+            <section id="pricing" className="scroll-mt-20 border-2 border-[#0f4c35] bg-white rounded-2xl p-4 space-y-3">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <p className="text-xs font-semibold text-[#0f4c35] uppercase tracking-wide">
                   {finalInvoice.finalized_at ? 'Edit Final Pricing' : 'Finalize Pricing'}
@@ -2308,7 +2308,7 @@ export default function AdminCaseDetailPage() {
 
 
           {caseData.status === 'awaiting_travel' && (
-            <section className="border border-gray-200 bg-gray-50 rounded-2xl p-4">
+            <section className="border-2 border-gray-300 bg-gray-50 rounded-2xl p-4">
               <p className="text-xs text-gray-500">Agent will mark travel complete after the trip.</p>
             </section>
           )}

@@ -403,7 +403,7 @@ export default function CaseDocumentsSection({
   return (
     <section className={embedded
       ? 'pt-4 border-t border-gray-200 space-y-3'
-      : `${ctaHighlight ? 'bg-green-50 border border-green-200' : 'bg-gray-50'} rounded-2xl p-4 space-y-3`}>
+      : `${ctaHighlight ? 'bg-green-50 border-2 border-green-200' : 'bg-gray-50 border-2 border-gray-300'} rounded-2xl p-4 space-y-3`}>
       <div className="flex items-center justify-between flex-wrap gap-2">
         <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Invoices</p>
         <div className="flex items-center gap-2 flex-wrap">

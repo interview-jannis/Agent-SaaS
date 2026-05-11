@@ -208,7 +208,7 @@ export default function SelectedProductsSection({
   }
 
   return (
-    <section className="bg-gray-50 rounded-2xl border border-gray-200 overflow-hidden">
+    <section className="bg-gray-50 rounded-2xl border-2 border-gray-300 overflow-hidden">
       <div className="flex items-center gap-2 px-5 py-2.5 bg-gray-100 border-b border-gray-200">
         <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Selected Products</h3>
         {additions.length > 0 && (
