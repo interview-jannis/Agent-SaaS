@@ -290,16 +290,12 @@ export default function ContractViewerPage() {
               ) : (
                 <div className="print:hidden">
                   <p className="text-xs text-gray-400 italic mb-2">Awaiting admin counter-signature.</p>
-                  {adminProfile && adminProfile.is_super_admin ? (
+                  {adminProfile && (
                     <button onClick={() => setSigning(true)}
                       className="px-3 py-1.5 text-xs font-medium border border-[#0f4c35] text-[#0f4c35] rounded-lg hover:bg-[#0f4c35]/5">
                       Sign as {adminProfile.name}{adminProfile.title ? ` (${adminProfile.title})` : ''}
                     </button>
-                  ) : adminProfile ? (
-                    <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                      Only super admins can counter-sign onboarding contracts.
-                    </p>
-                  ) : null}
+                  )}
                 </div>
               )}
             </div>

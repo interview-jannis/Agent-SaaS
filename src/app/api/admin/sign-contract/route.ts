@@ -64,10 +64,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Admin record not found.' }, { status: 403 })
   }
   const adm = admin as { id: string; name: string; title: string | null; is_super_admin: boolean | null }
-  if (!adm.is_super_admin) {
-    return NextResponse.json({ error: 'Only super admins can counter-sign onboarding contracts.' }, { status: 403 })
-  }
-
   const typed = signed_typed_name.trim()
   if (typed.toLowerCase() !== adm.name.trim().toLowerCase()) {
     return NextResponse.json({
