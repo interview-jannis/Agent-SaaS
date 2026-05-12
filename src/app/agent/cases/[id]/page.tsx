@@ -33,6 +33,7 @@ import { getMissingClientFields, getMissingCaseFields, CLIENT_INFO_COLUMNS } fro
 type MemberClient = ClientInfo & {
   client_number: string
   nationality: string | null
+  email: string | null
 }
 
 type CaseMember = {
@@ -214,6 +215,8 @@ export default function CaseDetailPage() {
   // Invoice
   const [copied, setCopied] = useState(false)
   const [scheduleCopied, setScheduleCopied] = useState(false)
+  const [emailSendingFor, setEmailSendingFor] = useState<string | null>(null)
+  const [emailSentFor, setEmailSentFor] = useState<string | null>(null)
 
   // Schedule review actions
   const [confirmingSchedule, setConfirmingSchedule] = useState(false)
@@ -244,7 +247,7 @@ export default function CaseDetailPage() {
         concept, outbound_flight, inbound_flight, cancellation_reason, agent_notes,
         case_members(
           id, is_lead,
-          clients(client_number, nationality, ${CLIENT_INFO_COLUMNS})
+          clients(client_number, nationality, email, ${CLIENT_INFO_COLUMNS})
         ),
         documents(
           id, type, document_number, slug, total_price, payment_due_date, payment_received_at, agent_margin_rate, company_margin_rate, finalized_at, from_party, to_party, created_at,
@@ -446,6 +449,28 @@ export default function CaseDetailPage() {
       setScheduleCopied(true)
       setTimeout(() => setScheduleCopied(false), 2000)
     })
+  }
+
+  async function sendViaEmail(url: string, key: string, type: 'quotation' | 'invoice' | 'schedule') {
+    if (!caseData) return
+    const emails = caseData.case_members.map(m => m.clients?.email).filter(Boolean) as string[]
+    if (emails.length === 0) { alert('No client emails found.'); return }
+    setEmailSendingFor(key)
+    try {
+      const res = await fetch('/api/send-link-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ emails, url, type }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Failed to send.')
+      setEmailSentFor(key)
+      setTimeout(() => setEmailSentFor(null), 2500)
+    } catch (e: unknown) {
+      alert((e as { message?: string })?.message ?? 'Failed to send email.')
+    } finally {
+      setEmailSendingFor(null)
+    }
   }
 
   async function cancelCase() {
@@ -1112,26 +1137,44 @@ export default function CaseDetailPage() {
                     {!isCanceled && caseData.status !== 'awaiting_pricing' && (() => {
                       const isInvoiceStage = !!quote.finalized_at
                       const sendLabel = isInvoiceStage ? 'Send Invoice' : 'Send Quotation'
+                      const emailKey = isInvoiceStage ? 'invoice' : 'quotation'
+                      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || (typeof window !== 'undefined' ? window.location.origin : '')
+                      const finalInvoice = caseData?.documents?.find(d => d.type === 'final_invoice')
+                      const emailUrl = isInvoiceStage && finalInvoice?.slug
+                        ? `${baseUrl}/invoice/${finalInvoice.slug}`
+                        : `${baseUrl}/quote/${quote.slug}`
                       return (
-                        <button onClick={sendInvoice}
-                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors
-                            bg-[#0f4c35] text-white border-[#0f4c35] hover:bg-[#0a3828]">
-                          {copied ? (
-                            <>
-                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                              </svg>
-                              Copied!
-                            </>
-                          ) : (
-                            <>
-                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0 0a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186zm0-12.814a2.25 2.25 0 103.933-2.185 2.25 2.25 0 00-3.933 2.185z" />
-                              </svg>
-                              {sendLabel}
-                            </>
-                          )}
-                        </button>
+                        <div className="flex items-center gap-1">
+                          <button onClick={sendInvoice}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors
+                              bg-[#0f4c35] text-white border-[#0f4c35] hover:bg-[#0a3828]">
+                            {copied ? (
+                              <>
+                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                                </svg>
+                                Copied!
+                              </>
+                            ) : (
+                              <>
+                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0 0a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186zm0-12.814a2.25 2.25 0 103.933-2.185 2.25 2.25 0 00-3.933 2.185z" />
+                                </svg>
+                                {sendLabel}
+                              </>
+                            )}
+                          </button>
+                          <button
+                            onClick={() => sendViaEmail(emailUrl, emailKey, isInvoiceStage ? 'invoice' : 'quotation')}
+                            disabled={emailSendingFor === emailKey}
+                            title="Send via email"
+                            className="p-1.5 rounded-lg border border-gray-200 text-gray-400 hover:text-[#0f4c35] hover:border-[#0f4c35] transition-colors disabled:opacity-40">
+                            {emailSentFor === emailKey
+                              ? <svg className="w-3.5 h-3.5 text-[#0f4c35]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+                              : <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" /></svg>
+                            }
+                          </button>
+                        </div>
                       )
                     })()}
                   </div>
@@ -1907,24 +1950,39 @@ export default function CaseDetailPage() {
                     Preview
                   </a>
                   {/* Send — copy schedule URL */}
-                  <button onClick={sendSchedule}
-                    className="flex items-center gap-1.5 text-xs font-medium bg-[#0f4c35] text-white hover:bg-[#0a3828] transition-colors px-3 py-1.5 rounded-lg">
-                    {scheduleCopied ? (
-                      <>
-                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                        </svg>
-                        Copied!
-                      </>
-                    ) : (
-                      <>
-                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0 0a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186zm0-12.814a2.25 2.25 0 103.933-2.185 2.25 2.25 0 00-3.933 2.185z" />
-                        </svg>
-                        Send Schedule
-                      </>
-                    )}
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button onClick={sendSchedule}
+                      className="flex items-center gap-1.5 text-xs font-medium bg-[#0f4c35] text-white hover:bg-[#0a3828] transition-colors px-3 py-1.5 rounded-lg">
+                      {scheduleCopied ? (
+                        <>
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                          </svg>
+                          Copied!
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0 0a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186zm0-12.814a2.25 2.25 0 103.933-2.185 2.25 2.25 0 00-3.933 2.185z" />
+                          </svg>
+                          Send Schedule
+                        </>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => {
+                        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || (typeof window !== 'undefined' ? window.location.origin : '')
+                        sendViaEmail(`${baseUrl}/schedule/${schedule.slug}`, 'schedule', 'schedule')
+                      }}
+                      disabled={emailSendingFor === 'schedule'}
+                      title="Send via email"
+                      className="p-1.5 rounded-lg border border-gray-200 text-gray-400 hover:text-[#0f4c35] hover:border-[#0f4c35] transition-colors disabled:opacity-40">
+                      {emailSentFor === 'schedule'
+                        ? <svg className="w-3.5 h-3.5 text-[#0f4c35]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+                        : <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" /></svg>
+                      }
+                    </button>
+                  </div>
                 </div>
               )}
               </div>
