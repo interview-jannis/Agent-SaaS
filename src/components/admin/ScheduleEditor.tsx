@@ -951,8 +951,10 @@ function ItemRow({
     itemType === 'hotel'    ? !!(item.hotelCheckType) || item.title.trim().length > 0 :
     item.title.trim().length > 0
 
+  const showTitleAlert = highlightEmptyTitle && !item.title.trim() && itemType !== 'free'
+
   return (
-    <div className={`flex ${isPending ? 'bg-amber-50/40 border border-dashed border-amber-300 m-2 rounded-lg overflow-hidden' : ''}`}>
+    <div className={`flex ${isPending ? 'bg-amber-50/40 border border-dashed border-amber-300 m-2 rounded-lg overflow-hidden' : showTitleAlert ? 'bg-rose-50/60' : ''}`}>
       {/* Left gutter: 4px stripe bar */}
       <div style={{ width: 32, flexShrink: 0, display: 'flex', alignSelf: 'stretch' }}>
         <div style={{ width: 4, flexShrink: 0, background: stripeBackground }} />
@@ -1152,8 +1154,10 @@ function ItemRow({
               <input type="text" value={item.title}
                 onChange={(e) => onUpdate({ title: e.target.value })}
                 disabled={!isPending} placeholder="Title"
-                className={`flex-1 text-sm border rounded-lg px-2.5 py-1.5 text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-600 disabled:cursor-default ${
-                  highlightEmptyTitle && !item.title.trim() ? 'border-rose-400 bg-rose-50' : 'border-gray-200'
+                className={`flex-1 text-sm border rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-[#0f4c35] disabled:cursor-default ${
+                  highlightEmptyTitle && !item.title.trim()
+                    ? 'border-rose-400 bg-rose-100 text-rose-500 placeholder:text-rose-400'
+                    : 'border-gray-200 bg-white disabled:bg-gray-50 text-gray-900 disabled:text-gray-600'
                 }`}
               />
             )}
