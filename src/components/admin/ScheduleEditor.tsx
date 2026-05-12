@@ -935,9 +935,9 @@ function ItemRow({
 
   return (
     <div className={`flex ${isPending ? 'bg-amber-50/40 border border-dashed border-amber-300 m-2 rounded-lg overflow-hidden' : ''}`}>
-      {/* Left gutter: 4px stripe bar only */}
-      <div style={{ width: 8, flexShrink: 0, alignSelf: 'stretch' }}>
-        <div style={{ width: 4, height: '100%', background: stripeBackground }} />
+      {/* Left gutter: 4px stripe bar */}
+      <div style={{ width: 32, flexShrink: 0, display: 'flex', alignSelf: 'stretch' }}>
+        <div style={{ width: 4, flexShrink: 0, background: stripeBackground }} />
       </div>
       {/* Main content */}
       <div className="flex-1 py-4 pr-4 space-y-2 min-w-0">
