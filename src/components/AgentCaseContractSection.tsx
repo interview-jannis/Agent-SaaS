@@ -23,6 +23,7 @@ type Props = {
   agentName: string
   agentCountry: string | null
   clientName: string | null
+  clientEmail: string | null
   quoteNumber: string | null
   totalKrw: number | null
   caseStatus: string
@@ -30,7 +31,7 @@ type Props = {
 }
 
 export default function AgentCaseContractSection({
-  caseId, caseNumber, agentName, agentCountry, clientName,
+  caseId, caseNumber, agentName, agentCountry, clientName, clientEmail,
   quoteNumber, totalKrw, caseStatus, onChanged,
 }: Props) {
   const [contract, setContract] = useState<CaseContractRow | null>(null)
@@ -40,6 +41,8 @@ export default function AgentCaseContractSection({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
+  const [emailSending, setEmailSending] = useState(false)
+  const [emailSent, setEmailSent] = useState(false)
   // Offline signing — when client is physically present and the agent collects
   // the signature on this device instead of sending the link.
   const [clientSignMode, setClientSignMode] = useState(false)
@@ -144,6 +147,22 @@ export default function AgentCaseContractSection({
     setCopied(true); setTimeout(() => setCopied(false), 2000)
   }
 
+  async function sendContractEmail() {
+    if (!contract?.client_token || !clientEmail) return
+    const url = `${process.env.NEXT_PUBLIC_APP_URL || window.location.origin}/case-contract/${contract.client_token}`
+    setEmailSending(true)
+    try {
+      await fetch('/api/send-link-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ emails: [clientEmail], url, type: 'contract' }),
+      })
+      setEmailSent(true); setTimeout(() => setEmailSent(false), 2500)
+    } finally {
+      setEmailSending(false)
+    }
+  }
+
   // After admin signs, this section may still be visible briefly — try advance.
   useEffect(() => {
     if (contract?.agent_signed_at && contract?.client_signed_at && contract?.admin_signed_at && caseStatus === 'awaiting_contract') {
@@ -174,9 +193,15 @@ export default function AgentCaseContractSection({
           {contract && contract.client_token && !contract.client_signed_at && (
             <>
               <button onClick={copyClientLink}
-                className="flex-1 sm:flex-none text-xs font-medium px-3 py-1.5 rounded-lg bg-[#0f4c35] text-white hover:bg-[#0a3828]">
-                {copied ? '✓ Copied!' : 'Copy Client Link'}
+                className="flex-1 sm:flex-none text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50">
+                {copied ? '✓ Copied!' : 'Copy Link'}
               </button>
+              {clientEmail && (
+                <button onClick={sendContractEmail} disabled={emailSending}
+                  className="flex-1 sm:flex-none text-xs font-medium px-3 py-1.5 rounded-lg bg-[#0f4c35] text-white hover:bg-[#0a3828] disabled:opacity-40">
+                  {emailSent ? '✓ Sent!' : emailSending ? 'Sending…' : 'Send Contract'}
+                </button>
+              )}
               <button onClick={() => { setClientSignMode(v => !v); setError('') }}
                 className="flex-1 sm:flex-none text-xs font-medium px-3 py-1.5 rounded-lg border border-[#0f4c35] text-[#0f4c35] hover:bg-[#0f4c35]/5">
                 {clientSignMode ? 'Cancel' : 'Sign on this device'}

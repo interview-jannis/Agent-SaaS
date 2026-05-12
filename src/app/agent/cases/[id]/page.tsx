@@ -1282,6 +1282,7 @@ export default function CaseDetailPage() {
               agentName={agentName}
               agentCountry={agentCountry}
               clientName={lead?.clients?.name ?? null}
+              clientEmail={lead?.clients?.email ?? null}
               quoteNumber={quote?.document_number ?? null}
               totalKrw={quote?.total_price ?? null}
               caseStatus={caseData.status}
