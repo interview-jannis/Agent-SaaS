@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { sendEmailToAdmin } from '@/lib/email'
 
 // Called from the post-approval setup wizard. Uses the service role to update
 // auth.users (email + password) without triggering a confirmation flow, then
@@ -125,17 +126,23 @@ export async function POST(req: Request) {
   const ag = agent as { id: string; name: string | null; agent_number: string | null; assigned_admin_id: string | null }
   if (ag.assigned_admin_id) {
     const { data: adminRow } = await supabase.from('admins')
-      .select('auth_user_id').eq('id', ag.assigned_admin_id).maybeSingle()
+      .select('auth_user_id, email').eq('id', ag.assigned_admin_id).maybeSingle()
     if (adminRow) {
       const label = ag.agent_number ? `${ag.agent_number} ${ag.name ?? ''}` : (ag.name ?? 'Agent')
+      const notifMessage = `${label.trim()} completed account setup and is ready`
+      const notifLink = `/admin/agents/${ag.id}`
       await supabase.from('notifications').insert({
         target_type: 'admin',
         target_id: ag.assigned_admin_id,
-        auth_user_id: (adminRow as { auth_user_id: string }).auth_user_id,
-        message: `${label.trim()} completed account setup and is ready`,
-        link_url: `/admin/agents/${ag.id}`,
+        auth_user_id: (adminRow as { auth_user_id: string; email: string | null }).auth_user_id,
+        message: notifMessage,
+        link_url: notifLink,
         is_read: false,
       })
+      const adminEmail = (adminRow as { auth_user_id: string; email: string | null }).email
+      if (adminEmail) {
+        await sendEmailToAdmin(adminEmail, notifMessage, notifLink)
+      }
     }
   }
 

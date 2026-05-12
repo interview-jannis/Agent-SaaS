@@ -7,17 +7,26 @@ import { randomBytes } from 'crypto'
 // A placeholder auth.users row backs the session during onboarding;
 // it gets overwritten with real email/password in the Setup Wizard.
 
-export async function POST() {
+export async function POST(req: Request) {
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!serviceKey) {
     return NextResponse.json({ error: 'Service role key not configured on server.' }, { status: 500 })
   }
+
+  const body = await req.json().catch(() => ({})) as { inviting_auth_user_id?: string | null }
 
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     serviceKey,
     { auth: { autoRefreshToken: false, persistSession: false } }
   )
+
+  let invitingAdminId: string | null = null
+  if (body.inviting_auth_user_id) {
+    const { data: adminRow } = await supabase.from('admins')
+      .select('id').eq('auth_user_id', body.inviting_auth_user_id).maybeSingle()
+    invitingAdminId = (adminRow as { id: string } | null)?.id ?? null
+  }
 
   // Generate random token + random placeholder password
   const token = randomBytes(24).toString('base64url')
@@ -60,6 +69,7 @@ export async function POST() {
     invite_secret: placeholderPassword,
     invited_at: now.toISOString(),
     invite_expires_at: expiresAt.toISOString(),
+    invited_by_admin_id: invitingAdminId,
   })
 
   if (insertError) {

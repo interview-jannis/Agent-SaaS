@@ -87,7 +87,12 @@ export default function AdminAgentsPage() {
   async function createInvite() {
     setCreating(true); setCreateError('')
     try {
-      const res = await fetch('/api/admin/invite-agent', { method: 'POST' })
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch('/api/admin/invite-agent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inviting_auth_user_id: session?.user?.id ?? null }),
+      })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed')
       const origin = typeof window !== 'undefined' ? window.location.origin : ''

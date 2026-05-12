@@ -1,12 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-
-// Notify the admin assigned to a given agent (or, if caller passed case_id,
-// the admin assigned to that case's agent). If no admin is assigned, falls
-// back to broadcasting to all super_admins so the message isn't lost.
-//
-// Mirror of `/api/notifications/broadcast-admins`. Used by client code via
-// `notifyAssignedAdmin` in src/lib/notifications.ts.
+import { sendEmailToAdmin } from '@/lib/email'
 
 export async function POST(req: Request) {
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -23,7 +17,6 @@ export async function POST(req: Request) {
     { auth: { autoRefreshToken: false, persistSession: false } }
   )
 
-  // Resolve agent_id from case_id if needed
   let agentId = body.agent_id ?? null
   if (!agentId && body.case_id) {
     const { data: caseRow } = await supabase.from('cases').select('agent_id').eq('id', body.case_id).maybeSingle()
@@ -36,21 +29,22 @@ export async function POST(req: Request) {
     .eq('id', agentId).maybeSingle()
   const assignedAdminId = (agent as { assigned_admin_id: string | null } | null)?.assigned_admin_id ?? null
 
-  // Pick recipients: assigned admin, else all super admins (so nothing slips through)
-  let recipients: Array<{ id: string; auth_user_id: string | null }> = []
+  let recipients: Array<{ id: string; auth_user_id: string | null; email: string | null }> = []
   if (assignedAdminId) {
     const { data: a } = await supabase.from('admins')
-      .select('id, auth_user_id').eq('id', assignedAdminId).maybeSingle()
-    if (a) recipients = [a as { id: string; auth_user_id: string | null }]
+      .select('id, auth_user_id, email').eq('id', assignedAdminId).maybeSingle()
+    if (a) recipients = [a as { id: string; auth_user_id: string | null; email: string | null }]
   }
   if (recipients.length === 0) {
     const { data: supers } = await supabase.from('admins')
-      .select('id, auth_user_id').eq('is_super_admin', true)
-    recipients = (supers as Array<{ id: string; auth_user_id: string | null }>) ?? []
+      .select('id, auth_user_id, email').eq('is_super_admin', true)
+    recipients = (supers as Array<{ id: string; auth_user_id: string | null; email: string | null }>) ?? []
   }
 
   const seen = new Set<string>()
   const rows: Array<Record<string, unknown>> = []
+  const emailRecipients: string[] = []
+
   for (const r of recipients) {
     if (!r.auth_user_id || seen.has(r.auth_user_id)) continue
     seen.add(r.auth_user_id)
@@ -62,10 +56,15 @@ export async function POST(req: Request) {
       link_url: link_url ?? null,
       is_read: false,
     })
+    if (r.email) emailRecipients.push(r.email)
   }
+
   if (rows.length === 0) return NextResponse.json({ ok: true, count: 0 })
 
   const { error } = await supabase.from('notifications').insert(rows)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  await Promise.all(emailRecipients.map(email => sendEmailToAdmin(email, message, link_url ?? null)))
+
   return NextResponse.json({ ok: true, count: rows.length })
 }

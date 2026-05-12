@@ -364,7 +364,6 @@ export default function CaseDocumentsSection({
             .update({ status: 'completed' })
             .eq('id', caseId)
             .eq('status', 'awaiting_settlement')
-          if (agentId) await notifyAgent(agentId, `${caseNumber} Commission paid (${docNumber}) — ${fmtUSD(amount / exchangeRate)}`, `/agent/cases/${caseId}`)
         }
       }
 

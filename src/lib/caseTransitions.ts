@@ -18,7 +18,7 @@ import {
   type ClientInfo,
   type FlightInfo,
 } from './clientCompleteness'
-import { notifyAssignedAdmin } from './notifications'
+import { notifyAssignedAdmin, notifyAgent } from './notifications'
 
 type DocumentRow = {
   type: string
@@ -205,4 +205,9 @@ export async function markReviewSubmitted(caseId: string): Promise<void> {
     `${c.case_number} client review submitted — awaiting agent settlement`,
     `/admin/cases/${caseId}`,
   )
+  const { data: caseRow } = await supabase.from('cases').select('agent_id').eq('id', caseId).maybeSingle()
+  const agentId = (caseRow as { agent_id: string | null } | null)?.agent_id
+  if (agentId) {
+    await notifyAgent(agentId, `${c.case_number} Review submitted — please issue your commission invoice`, `/agent/cases/${caseId}`)
+  }
 }

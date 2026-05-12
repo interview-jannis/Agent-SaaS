@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
-// Hard-delete an agent and their auth.users row.
-// Blocked if the agent has any cases — preserves data integrity for historical work.
+// Hard-delete an agent, all their cases and related data, and their auth.users row.
 
 export async function POST(req: Request) {
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -24,19 +23,28 @@ export async function POST(req: Request) {
 
   const a = agent as { id: string; auth_user_id: string | null }
 
-  // Block if any cases exist (preserve operational history)
-  const { count: caseCount } = await supabase.from('cases')
-    .select('id', { count: 'exact', head: true })
-    .eq('agent_id', a.id)
-  if ((caseCount ?? 0) > 0) {
-    return NextResponse.json({ error: 'Cannot delete — this agent has existing cases. Deactivate instead.' }, { status: 409 })
+  // Gather all case IDs for this agent (needed for sub-table cleanup)
+  const { data: caseRows } = await supabase.from('cases')
+    .select('id').eq('agent_id', a.id)
+  const caseIds = (caseRows ?? []).map((r: { id: string }) => r.id)
+
+  if (caseIds.length > 0) {
+    // Delete case sub-tables in dependency order (deepest children first).
+    // documents.case_id has ON DELETE CASCADE → handles document_groups, document_items, document_group_members.
+    // case_members.case_id deleted before clients (case_members refs client_id).
+    await supabase.from('settlements').delete().in('case_id', caseIds)
+    await supabase.from('partner_payments').delete().in('case_id', caseIds)
+    await supabase.from('case_contracts').delete().in('case_id', caseIds)
+    await supabase.from('schedules').delete().in('case_id', caseIds)
+    await supabase.from('documents').delete().in('case_id', caseIds)
+    await supabase.from('case_members').delete().in('case_id', caseIds)
+    await supabase.from('cases').delete().eq('agent_id', a.id)
   }
 
-  // Delete contracts (no FK cascade assumed)
+  // Delete agent-level rows
   await supabase.from('agent_contracts').delete().eq('agent_id', a.id)
-  // Delete any clients the agent owns (should be empty if no cases, but cover edge)
   await supabase.from('clients').delete().eq('agent_id', a.id)
-  // Delete agents row
+
   const { error: delErr } = await supabase.from('agents').delete().eq('id', a.id)
   if (delErr) return NextResponse.json({ error: delErr.message }, { status: 500 })
 

@@ -17,6 +17,7 @@ type AgentState = {
   onboarding_status: string | null
   rejection_reason: string | null
   rejected_at: string | null
+  email: string | null
 }
 
 export default function OnboardingWaitingPage() {
@@ -25,6 +26,10 @@ export default function OnboardingWaitingPage() {
   const [agentState, setAgentState] = useState<AgentState | null>(null)
   const [loading, setLoading] = useState(true)
   const [restarting, setRestarting] = useState(false)
+  const [notifEmail, setNotifEmail] = useState('')
+  const [emailSaving, setEmailSaving] = useState(false)
+  const [emailSaved, setEmailSaved] = useState(false)
+  const [emailError, setEmailError] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -33,11 +38,14 @@ export default function OnboardingWaitingPage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session?.user?.id) return
       const { data: agent } = await supabase.from('agents')
-        .select('id, onboarding_status, rejection_reason, rejected_at')
+        .select('id, onboarding_status, rejection_reason, rejected_at, email')
         .eq('auth_user_id', session.user.id).maybeSingle()
       if (!agent) { setLoading(false); return }
       const a = agent as AgentState
       setAgentState(a)
+      const realEmail = a.email && !a.email.includes('@tiktak.temp') ? a.email : ''
+      setNotifEmail(realEmail)
+      if (realEmail) setEmailSaved(true)
       const { data } = await supabase.from('agent_contracts')
         .select('id, contract_type, title_snapshot, signed_at, admin_signed_at')
         .eq('agent_id', a.id)
@@ -62,12 +70,13 @@ export default function OnboardingWaitingPage() {
       }
       // Update reject state live so banner appears without manual refresh
       if (!cancelled) {
-        setAgentState({
+        setAgentState(prev => ({
+          ...prev,
           id: row.id,
           onboarding_status: row.onboarding_status ?? null,
           rejection_reason: row.rejection_reason,
           rejected_at: row.rejected_at,
-        })
+        } as AgentState))
       }
       // Refresh contracts so admin counter-signature status updates without reload
       const { data: cs } = await supabase.from('agent_contracts')
@@ -82,6 +91,24 @@ export default function OnboardingWaitingPage() {
     const id = setInterval(checkStatus, 15_000)
     return () => { cancelled = true; clearInterval(id) }
   }, [router])
+
+  async function saveNotifEmail() {
+    if (!agentState) return
+    if (!notifEmail.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(notifEmail.trim())) {
+      setEmailError('Please enter a valid email address.')
+      return
+    }
+    setEmailSaving(true); setEmailError('')
+    const { error } = await supabase.from('agents')
+      .update({ email: notifEmail.trim() })
+      .eq('id', agentState.id)
+    if (error) {
+      setEmailError('Failed to save. Please try again.')
+    } else {
+      setEmailSaved(true)
+    }
+    setEmailSaving(false)
+  }
 
   async function startOver() {
     if (!agentState) return
@@ -150,6 +177,37 @@ export default function OnboardingWaitingPage() {
           <p className="text-sm text-gray-500 mt-2">An admin will counter-sign your agreements and approve your account.<br />Once approved, you&apos;ll be taken in automatically — no need to refresh.</p>
         </div>
       </div>
+
+      <section className="bg-white rounded-2xl border border-gray-200 p-5 space-y-3">
+        <div>
+          <p className="text-sm font-semibold text-gray-900">Notification email</p>
+          <p className="text-[12px] text-gray-500 mt-0.5">We&apos;ll send you an email as soon as your account is approved.</p>
+        </div>
+        {emailSaved ? (
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm text-gray-700">{notifEmail}</p>
+            <button onClick={() => setEmailSaved(false)}
+              className="text-xs text-[#0f4c35] font-medium hover:underline shrink-0">
+              Change
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <input
+              type="email"
+              value={notifEmail}
+              onChange={e => { setNotifEmail(e.target.value); setEmailError('') }}
+              placeholder="your@email.com"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35] focus:ring-1 focus:ring-[#0f4c35]"
+            />
+            {emailError && <p className="text-xs text-rose-600">{emailError}</p>}
+            <button onClick={saveNotifEmail} disabled={emailSaving || !notifEmail.trim()}
+              className="w-full py-2 text-sm font-medium bg-[#0f4c35] text-white rounded-xl hover:bg-[#0a3828] disabled:opacity-40 transition-colors">
+              {emailSaving ? 'Saving...' : 'Save email'}
+            </button>
+          </div>
+        )}
+      </section>
 
       {contracts.length > 0 && (
         <section className="bg-white rounded-2xl border border-gray-200 p-5 space-y-3">

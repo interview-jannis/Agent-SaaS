@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
-import { notifyAssignedAdmin } from '@/lib/notifications'
+import { notifyAssignedAdmin, notifyAgent } from '@/lib/notifications'
 import { logAsCurrentUser } from '@/lib/audit'
 import DOBPicker from '@/components/DOBPicker'
 import DateTime24Picker from '@/components/DateTime24Picker'
@@ -492,6 +492,7 @@ export default function CaseDetailPage() {
       const { error } = await supabase.from('cases').update({ status: 'awaiting_review', travel_completed_at: new Date().toISOString() }).eq('id', caseData.id)
       if (error) throw error
       await notifyAssignedAdmin({ case_id: caseData.id }, `${caseData.case_number} Travel completed — agent submitting review`, `/admin/cases/${caseData.id}`)
+      if (caseData.agent_id) await notifyAgent(caseData.agent_id, `${caseData.case_number} Travel complete — please submit your client review`, `/agent/cases/${caseData.id}`)
       await logAsCurrentUser('case.travel_completed', { type: 'case', id: caseData.id, label: caseData.case_number })
       await fetchCase()
     } catch (e: unknown) {

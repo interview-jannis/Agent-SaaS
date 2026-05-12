@@ -1,9 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-
-// Server-side single-agent notify. Mirrors broadcast-admins for the agent
-// counterpart. Cross-user inserts (admin → agent's auth_user_id row) can
-// silently fail under some session setups; service role bypasses that.
+import { sendEmailToAgent } from '@/lib/email'
 
 export async function POST(req: Request) {
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -19,8 +16,8 @@ export async function POST(req: Request) {
     { auth: { autoRefreshToken: false, persistSession: false } }
   )
 
-  const { data: agent } = await supabase.from('agents').select('auth_user_id').eq('id', agent_id).single()
-  const authUserId = (agent as { auth_user_id: string | null } | null)?.auth_user_id
+  const { data: agent } = await supabase.from('agents').select('auth_user_id, email').eq('id', agent_id).single()
+  const authUserId = (agent as { auth_user_id: string | null; email: string | null } | null)?.auth_user_id
   if (!authUserId) return NextResponse.json({ error: 'Agent has no auth user.' }, { status: 404 })
 
   const { error } = await supabase.from('notifications').insert({
@@ -32,5 +29,11 @@ export async function POST(req: Request) {
     is_read: false,
   })
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  const agentEmail = (agent as { auth_user_id: string | null; email: string | null } | null)?.email
+  if (agentEmail && !agentEmail.includes('@tiktak.temp')) {
+    await sendEmailToAgent(agentEmail, message, link_url ?? null)
+  }
+
   return NextResponse.json({ ok: true })
 }

@@ -300,8 +300,8 @@ export default function ContractStep({ type, step, nextHref, nextLabel, isFinal 
             </label>
           </div>
 
-          <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">
+          <div className="border border-gray-300 rounded-xl p-4">
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
               Type your full legal name to confirm *
             </label>
             <input
@@ -309,9 +309,9 @@ export default function ContractStep({ type, step, nextHref, nextLabel, isFinal 
               value={typedName}
               onChange={e => setTypedName(e.target.value)}
               placeholder={agentName.trim() || 'Your full legal name'}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35] focus:ring-1 focus:ring-[#0f4c35]"
             />
-            <p className="text-[11px] text-gray-400 mt-1">
+            <p className="text-[11px] text-gray-400 mt-2">
               Must exactly match the name above. Recorded as explicit-intent evidence alongside your drawn signature.
             </p>
           </div>

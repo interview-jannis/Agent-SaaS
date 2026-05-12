@@ -188,6 +188,8 @@ export default function AdminAgentDetailPage() {
         .eq('agent_id', agent.id)
 
       await logAsCurrentUser('agent.approved', { type: 'agent', id: agent.id, label: `${agent.name}${agent.agent_number ? ` · ${agent.agent_number}` : ''}` })
+      const { notifyAgent } = await import('@/lib/notifications')
+      await notifyAgent(agent.id, 'Your account has been approved. Please complete your account setup to get started.', '/onboarding/setup')
       setShowApprove(false)
       await fetchData()
     } catch (e: unknown) {
@@ -677,13 +679,13 @@ export default function AdminAgentDetailPage() {
             </div>
           )}
 
-          {/* Danger Zone — deletion blocked server-side if agent has cases */}
+          {/* Danger Zone */}
           <section className="bg-white border border-red-200 rounded-2xl p-5 flex items-center justify-between flex-wrap gap-3">
             <div>
               <h3 className="text-xs font-semibold text-red-700 uppercase tracking-wide mb-1">Danger Zone</h3>
               <p className="text-xs text-gray-600">
-                Permanently delete this agent, their login, and any signed contracts.
-                Cannot be undone. Only allowed when the agent has no cases.
+                Permanently delete this agent, their login, all their cases, and any signed contracts.
+                Cannot be undone.
               </p>
             </div>
             <button onClick={() => { setShowDelete(true); setDeleteConfirmName(''); setError('') }} disabled={deleting}
@@ -702,7 +704,7 @@ export default function AdminAgentDetailPage() {
                   <p className="text-xs text-gray-600 mt-1">
                     This will permanently remove <span className="font-semibold">{agent.name}</span>
                     {agent.agent_number ? <> (<span className="font-mono">{agent.agent_number}</span>)</> : null},
-                    their login, and any signed contracts. This cannot be undone.
+                    their login, all their cases and associated data, and any signed contracts. This cannot be undone.
                   </p>
                 </div>
                 <div>

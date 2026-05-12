@@ -47,19 +47,22 @@ export default function SetupWizardPage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session?.user?.id) { router.replace('/login'); return }
       const { data: agent } = await supabase.from('agents')
-        .select('name, country, onboarding_status, setup_completed_at')
+        .select('name, country, onboarding_status, setup_completed_at, email')
         .eq('auth_user_id', session.user.id).maybeSingle()
       if (!agent) { router.replace('/login'); return }
-      const a = agent as { name: string; country: string | null; onboarding_status: string; setup_completed_at: string | null }
+      const a = agent as { name: string; country: string | null; onboarding_status: string; setup_completed_at: string | null; email: string | null }
       if (a.onboarding_status !== 'approved') { router.replace('/onboarding/waiting'); return }
       if (a.setup_completed_at) { router.replace('/agent/home'); return }
       setAuthUserId(session.user.id)
       setName(a.name ?? '')
       setCountry(a.country ?? '')
+      // Pre-fill email from notification email saved during waiting stage
+      const savedEmail = a.email && !a.email.includes('@tiktak.temp') ? a.email : ''
+      if (savedEmail) setForm(p => ({ ...p, email: savedEmail }))
       // Restore any previously saved draft (password fields intentionally excluded)
       const draft = loadDraft()
       if (draft) {
-        if (draft.form) setForm(p => ({ ...p, email: draft.form.email ?? '', phone: draft.form.phone ?? '' }))
+        if (draft.form) setForm(p => ({ ...p, email: draft.form.email || savedEmail, phone: draft.form.phone ?? '' }))
         if (draft.bank) setBank(draft.bank)
         if (draft.business) setBusiness(draft.business)
       }
