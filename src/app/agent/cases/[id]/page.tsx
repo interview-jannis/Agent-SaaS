@@ -33,6 +33,7 @@ import { getMissingClientFields, getMissingCaseFields, CLIENT_INFO_COLUMNS } fro
 type MemberClient = ClientInfo & {
   client_number: string
   nationality: string | null
+  intake_token: string | null
 }
 
 type CaseMember = {
@@ -118,7 +119,7 @@ type CaseAttachment = {
   created_at: string
 }
 
-type AgentClient = { id: string; name: string; nationality: string }
+type AgentClient = { id: string; name: string; nationality: string; intake_token: string | null }
 type NewClientForm = {
   name: string; nationality: string; gender: 'male' | 'female'; date_of_birth: string
   phone: string; email: string; dietary_restriction: DietaryType; needs_muslim_friendly: boolean
@@ -199,6 +200,7 @@ export default function CaseDetailPage() {
     isRemoved: boolean  // pending case_member delete
     clientId: string
     clientNumber: string
+    intakeToken: string | null
     clientName: string
     nationality: string | null
     needsMuslim: boolean
@@ -244,7 +246,7 @@ export default function CaseDetailPage() {
         concept, outbound_flight, inbound_flight, cancellation_reason, agent_notes,
         case_members(
           id, is_lead,
-          clients(client_number, nationality, ${CLIENT_INFO_COLUMNS})
+          clients(client_number, nationality, intake_token, ${CLIENT_INFO_COLUMNS})
         ),
         documents(
           id, type, document_number, slug, total_price, payment_due_date, payment_received_at, agent_margin_rate, company_margin_rate, finalized_at, from_party, to_party, created_at,
@@ -318,7 +320,7 @@ export default function CaseDetailPage() {
       await fetchCase()
 
       if (aid) {
-        const { data: cl } = await supabase.from('clients').select('id, name, nationality').eq('agent_id', aid).order('name')
+        const { data: cl } = await supabase.from('clients').select('id, name, nationality, intake_token').eq('agent_id', aid).order('name')
         setAgentClients(cl ?? [])
       }
       setLoading(false)
@@ -616,6 +618,7 @@ export default function CaseDetailPage() {
       clientName: m.clients?.name ?? '',
       nationality: m.clients?.nationality ?? null,
       needsMuslim: !!m.clients?.needs_muslim_friendly,
+      intakeToken: m.clients?.intake_token ?? null,
       isLead: m.is_lead,
       groupId: gmMap.get(m.id) ?? null,
     }))
@@ -672,7 +675,7 @@ export default function CaseDetailPage() {
       id: tempId, isNew: true, isRemoved: false,
       clientId, clientNumber: '',
       clientName: existing.name, nationality: existing.nationality ?? null,
-      needsMuslim: false, isLead: false, groupId: null,
+      needsMuslim: false, intakeToken: existing.intake_token ?? null, isLead: false, groupId: null,
     }])
   }
 
@@ -1696,7 +1699,7 @@ export default function CaseDetailPage() {
                     )
                   }
 
-                  const groupedMembers = sortedGroups.map(g => ({
+                  const groupedMembers = sortedGroups.filter(g => isAssignableGroup(g.name)).map(g => ({
                     group: g,
                     members: pendingMembers.filter(p => p.groupId === g.id)
                       .sort((a, b) => Number(b.isLead) - Number(a.isLead)),

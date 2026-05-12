@@ -858,8 +858,9 @@ export default function AdminCaseDetailPage() {
 
                 {caseData.case_members.length > 0 && (() => {
                   const memberGroupMap = new Map<string, string>()
-                  sortedGroups.forEach(g => g.document_group_members?.forEach(gm => memberGroupMap.set(gm.case_member_id, g.id)))
-                  const grouped = sortedGroups.map(g => ({
+                  const visibleGroups = sortedGroups.filter(g => isAssignableGroup(g.name))
+                  visibleGroups.forEach(g => g.document_group_members?.forEach(gm => memberGroupMap.set(gm.case_member_id, g.id)))
+                  const grouped = visibleGroups.map(g => ({
                     group: g,
                     members: caseData.case_members
                       .filter(m => memberGroupMap.get(m.id) === g.id)
@@ -877,7 +878,7 @@ export default function AdminCaseDetailPage() {
                     </div>
                   )
 
-                  return sortedGroups.length > 0 ? (
+                  return visibleGroups.length > 0 ? (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       {grouped.map(({ group, members }) => (
                         <div key={group.id} className="space-y-1">
