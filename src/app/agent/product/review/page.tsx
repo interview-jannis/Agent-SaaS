@@ -556,7 +556,7 @@ export default function QuoteReviewPage() {
           AGENT_NAME: agentData.name,
           AGENT_COUNTRY: (agentData as { country: string | null }).country ?? '',
           CLIENT_NAME: lead.name,
-          CASE_NUMBER: caseNumber,
+          CASE_NUMBER: caseData.case_number,
           QUOTE_NUMBER: quotation.document_number ?? '',
           TOTAL_AMOUNT: totalDisplay,
           DEPOSIT_PERCENTAGE: depositPct,
@@ -571,7 +571,7 @@ export default function QuoteReviewPage() {
       // to awaiting_deposit.
       await notifyAssignedAdmin(
         { agent_id: agentData.id },
-        `${caseNumber} new case from ${agentData.name} — awaiting 3-party contract`,
+        `${caseData.case_number} new case from ${agentData.name} — awaiting 3-party contract`,
         `/admin/cases/${caseData.id}`
       )
       router.push(`/agent/cases/${caseData.id}`)
