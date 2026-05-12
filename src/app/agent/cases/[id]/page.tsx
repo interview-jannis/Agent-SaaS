@@ -1025,7 +1025,8 @@ export default function CaseDetailPage() {
             </div>
           )}
 
-          {/* Hero: status-aware next action */}
+          {/* Hero: status-aware next action — sticky so it stays visible while scrolling */}
+          <div className="sticky top-0 z-10 bg-white pb-2 -mx-1 px-1">
           <AgentCaseHero
             status={caseData.status}
             caseInfoComplete={caseInfoComplete}
@@ -1057,18 +1058,14 @@ export default function CaseDetailPage() {
             copied={copied}
             busy={confirmingSchedule || markingTravelComplete || submittingRevision}
           />
+          </div>
 
           {/* ─── FINANCIALS — always second, right after Hero ─── */}
           {quote && (() => {
-            const isActionTarget = caseData.status === 'awaiting_payment' || caseData.status === 'awaiting_deposit'
             const isCompleted = caseData.status === 'completed'
-            const sectionClass = isActionTarget && !isCompleted
-              ? 'scroll-mt-20 bg-white border border-[#0f4c35] rounded-2xl overflow-hidden'
-              : 'scroll-mt-20 bg-white border border-gray-200 rounded-2xl overflow-hidden'
-            const headerClass = isActionTarget && !isCompleted
-              ? 'flex items-center justify-between px-5 py-2.5 bg-green-50 border-b border-green-200'
-              : 'flex items-center justify-between px-5 py-2.5 bg-gray-100 border-b border-gray-200'
-            const labelClass = isActionTarget && !isCompleted
+            const sectionClass = 'scroll-mt-20 bg-white border-2 border-[#0f4c35] rounded-2xl overflow-hidden'
+            const headerClass = 'flex items-center justify-between px-5 py-2.5 bg-green-50 border-b border-green-200'
+            const labelClass = !isCompleted
               ? 'text-xs font-semibold text-[#0f4c35] uppercase tracking-wide'
               : 'text-xs font-semibold text-gray-700 uppercase tracking-wide'
             return (
@@ -1868,18 +1865,12 @@ export default function CaseDetailPage() {
           {(() => {
             const isReviewing = caseData.status === 'reviewing_schedule'
             const isTravelDone = caseData.status === 'awaiting_travel'
-            const isActionTarget = isReviewing || isTravelDone
             const isCompleted = caseData.status === 'completed'
-            const sectionClass = (isReviewing || isTravelDone) && !isCompleted
-              ? 'scroll-mt-20 bg-white border border-[#0f4c35] rounded-2xl overflow-hidden'
-              : 'scroll-mt-20 bg-white border border-gray-200 rounded-2xl overflow-hidden'
-            const headerClass = (isReviewing || isTravelDone) && !isCompleted
-              ? 'flex items-center justify-between px-5 py-2.5 bg-green-50 border-b border-green-200'
-              : 'flex items-center justify-between px-5 py-2.5 bg-gray-100 border-b border-gray-200'
-            const labelClass = (isReviewing || isTravelDone) && !isCompleted
+            const sectionClass = 'scroll-mt-20 bg-white border-2 border-[#0f4c35] rounded-2xl overflow-hidden'
+            const headerClass = 'flex items-center justify-between px-5 py-2.5 bg-green-50 border-b border-green-200'
+            const labelClass = !isCompleted
               ? 'text-xs font-semibold text-[#0f4c35] uppercase tracking-wide'
               : 'text-xs font-semibold text-gray-700 uppercase tracking-wide'
-            void isActionTarget
             return (
           <section id="schedule" className={sectionClass}>
             <div className={headerClass}>

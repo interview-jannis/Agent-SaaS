@@ -701,7 +701,8 @@ export default function AdminCaseDetailPage() {
             </div>
           )}
 
-          {/* Hero: status-aware next action */}
+          {/* Hero: status-aware next action — sticky so it stays visible while scrolling */}
+          <div className="sticky top-0 z-10 bg-white pb-2 -mx-1 px-1">
           <AdminCaseHero
             status={caseData.status}
             caseInfoComplete={caseInfoComplete}
@@ -718,6 +719,7 @@ export default function AdminCaseDetailPage() {
             onScrollToPricing={() => document.getElementById('pricing')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
             onScrollToConfirmPayment={() => document.getElementById('financials')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
           />
+          </div>
 
           {/* Agent */}
           <section className="bg-gray-50 rounded-2xl border-2 border-gray-300 overflow-hidden">
@@ -2102,17 +2104,9 @@ export default function AdminCaseDetailPage() {
               agent-side cyan tone — both sides have parallel actions in these
               two windows, so both get the action signal. */}
           {latestQuote && (() => {
-            const isCompleted = caseData.status === 'completed'
-            const isActionTarget = (caseData.status === 'awaiting_deposit' || caseData.status === 'awaiting_payment') && !isCompleted
-            const sectionClass = isActionTarget
-              ? 'bg-white border-2 border-[#0f4c35] rounded-2xl overflow-hidden'
-              : 'bg-gray-50 rounded-2xl border-2 border-gray-300 overflow-hidden'
-            const headerClass = isActionTarget
-              ? 'flex items-center justify-between px-4 py-2.5 bg-green-50 border-b border-green-200'
-              : 'flex items-center justify-between px-4 py-2.5 bg-gray-100 border-b border-gray-200'
-            const labelClass = isActionTarget
-              ? 'text-xs font-semibold text-[#0f4c35] uppercase tracking-wide'
-              : 'text-xs font-semibold text-gray-700 uppercase tracking-wide'
+            const sectionClass = 'bg-white border-2 border-[#0f4c35] rounded-2xl overflow-hidden'
+            const headerClass = 'flex items-center justify-between px-4 py-2.5 bg-green-50 border-b border-green-200'
+            const labelClass = 'text-xs font-semibold text-[#0f4c35] uppercase tracking-wide'
             return (
             <section id="financials" className={`scroll-mt-20 ${sectionClass}`}>
               <div className={headerClass}>
