@@ -698,7 +698,7 @@ function PrayerMenu({ onPick }: { onPick: (prayer: string) => void }) {
         type="button"
         onClick={() => setOpen(o => !o)}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
-        className="text-xs font-medium text-orange-500 hover:text-orange-700"
+        className="text-xs font-medium text-teal-600 hover:text-teal-800"
       >
         + Prayer ▾
       </button>
@@ -710,7 +710,7 @@ function PrayerMenu({ onPick }: { onPick: (prayer: string) => void }) {
               type="button"
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => { onPick(p); setOpen(false) }}
-              className="w-full text-left px-3 py-1.5 text-xs text-orange-700 hover:bg-orange-50"
+              className="w-full text-left px-3 py-1.5 text-xs text-teal-700 hover:bg-teal-50"
             >
               {p}
             </button>
@@ -849,7 +849,7 @@ const GROUP_TONES: Array<{ hex: string; chip: string; chipText: string }> = [
   { hex: '#c084fc', chip: 'bg-purple-50 border-purple-200',  chipText: 'text-purple-700' },
 ]
 const SHARED_TONE = { hex: '#111827', chip: 'bg-white border-gray-800', chipText: 'text-gray-900' }
-const PRAYER_HEX = '#fb923c'
+const PRAYER_HEX = '#14b8a6'
 
 function ItemRow({
   item, caseProducts, caseGroups, sharedVariantIds, committedVariantContexts,
