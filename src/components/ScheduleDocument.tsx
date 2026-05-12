@@ -521,8 +521,8 @@ function ScheduleRow({
     <div style={{ display: 'flex', padding: '11px 0', alignItems: 'flex-start' }}>
       {/* Left gutter: 2px stripe + vertical group name (multi-group only) */}
       {showStripe && (
-        <div style={{ width: 38, flexShrink: 0, alignSelf: 'stretch', display: 'flex', marginRight: 16 }}>
-          <div style={{ width: 2, flexShrink: 0, background: stripeBackground, opacity: itemType === 'transfer' ? 0.3 : 1 }} />
+        <div style={{ width: 38, flexShrink: 0, alignSelf: 'stretch', display: 'flex', marginRight: 16, opacity: itemType === 'transfer' ? 0.3 : 1 }}>
+          <div style={{ width: 2, flexShrink: 0, background: stripeBackground }} />
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
             {itemGroupIds!.length === 1 ? (
               <span style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', fontFamily: 'Inter, sans-serif', fontSize: 8, fontWeight: 700, letterSpacing: '0.18em', textTransform: 'uppercase', color: groupCol!.text }}>
@@ -575,16 +575,13 @@ function ScheduleRow({
         {itemType === 'transfer' ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
             {transferRoute && (
-              <p className="sch-sans" style={{ fontSize: '13px', fontWeight: 500, color: '#888', letterSpacing: '0.01em', lineHeight: 1.4 }}>
+              <p className="sch-sans" style={{ fontSize: '13px', fontWeight: 400, color: '#ccc', letterSpacing: '0.01em', lineHeight: 1.4 }}>
                 {transferRoute}
               </p>
             )}
             {transportLabel && (
-              <span className="sch-sans" style={{
-                fontSize: '10px', color: '#aaa', background: '#f5f2ee',
-                border: '1px solid #ede9e3', borderRadius: '20px', padding: '1px 8px',
-              }}>
-                {transportLabel}
+              <span className="sch-sans" style={{ fontSize: '10px', color: '#ccc', letterSpacing: '0.04em' }}>
+                · {transportLabel}
               </span>
             )}
             {item.title && (
@@ -609,8 +606,9 @@ function ScheduleRow({
           </p>
           {item.variantTag && (
             <span className="sch-sans" style={{
-              fontSize: '10px', color: '#999', background: '#f5f2ee',
-              border: '1px solid #ede9e3', borderRadius: '20px', padding: '1px 8px',
+              fontSize: '9.5px', fontWeight: 500, color: '#aaa',
+              border: '1px solid #ddd8d2', borderRadius: '3px', padding: '1px 6px',
+              letterSpacing: '0.04em',
             }}>
               {item.variantTag}
             </span>
@@ -618,8 +616,9 @@ function ScheduleRow({
           {/* Cuisine chip */}
           {itemType === 'meal' && item.cuisine && (
             <span className="sch-sans" style={{
-              fontSize: '10px', color: '#9a9088', background: '#f5f2ee',
-              border: '1px solid #ede9e3', borderRadius: '20px', padding: '1px 8px',
+              fontSize: '9.5px', fontWeight: 500, color: '#aaa',
+              border: '1px solid #ddd8d2', borderRadius: '3px', padding: '1px 6px',
+              letterSpacing: '0.04em',
             }}>
               {item.cuisine}
             </span>
