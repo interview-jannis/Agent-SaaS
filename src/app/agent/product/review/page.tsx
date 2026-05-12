@@ -375,7 +375,7 @@ export default function QuoteReviewPage() {
           concept: cart.tripName?.trim() || null,
           agent_notes: agentNotes.trim() || null,
         })
-        .select('id').single()
+        .select('id, case_number').single()
       if (caseErr) throw caseErr
 
       // Create case members (lead + companions)
