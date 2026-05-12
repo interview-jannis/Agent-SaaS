@@ -359,7 +359,13 @@ export default function ScheduleEditor({
       return
     }
     // Validate titles
-    const empty = items.filter(i => !i.title.trim())
+    const empty = items.filter(i => {
+      const t = i.itemType ?? 'appointment'
+      if (t === 'free') return false
+      if (t === 'transfer') return !(i.fromLocation?.trim() && i.toLocation?.trim()) && !i.title.trim()
+      if (t === 'hotel') return !i.hotelCheckType && !i.title.trim()
+      return !i.title.trim()
+    })
     if (empty.length > 0) {
       setError(`${empty.length} item${empty.length > 1 ? 's' : ''} missing a title.`)
       setEmptyTitleIds(new Set(empty.map(i => i.id)))
