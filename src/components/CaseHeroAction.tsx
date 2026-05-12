@@ -347,7 +347,12 @@ export function AdminCaseHero(p: AdminHeroProps) {
               {' '}— info collection starts once settlement is paid.
             </span>
           }
-        />
+        >
+          <button onClick={p.onScrollToConfirmPayment}
+            className={`text-xs font-medium px-3 py-2 rounded-lg ${TONE.gray.primaryBtn}`}>
+            Go to Financials
+          </button>
+        </HeroShell>
       )
 
     case 'awaiting_info':
