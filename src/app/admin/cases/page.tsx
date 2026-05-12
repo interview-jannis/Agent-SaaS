@@ -154,10 +154,11 @@ export default function AdminCasesPage() {
   const [exchangeRate, setExchangeRate] = useState(1350)
   const [partnerPaidByCase, setPartnerPaidByCase] = useState<Record<string, Set<string>>>({})
   const [settledCaseIds, setSettledCaseIds] = useState<Set<string>>(new Set())
+  const [evaluationByCaseId, setEvaluationByCaseId] = useState<Record<string, number>>({})
 
   useEffect(() => {
     async function init() {
-      const [casesRes, rateRes, partnerRes, settleRes] = await Promise.all([
+      const [casesRes, rateRes, partnerRes, settleRes, evalRes] = await Promise.all([
         supabase.from('cases').select(`
           id, case_number, status, travel_start_date, travel_end_date, created_at,
           agents!cases_agent_id_fkey(id, agent_number, name),
@@ -167,6 +168,7 @@ export default function AdminCasesPage() {
         supabase.from('system_settings').select('value').eq('key', 'product_price_rate').single(),
         supabase.from('partner_payments').select('case_id, partner_name'),
         supabase.from('settlements').select('case_id').not('paid_at', 'is', null),
+        supabase.from('agent_evaluations').select('case_id, rating'),
       ])
       if (casesRes.error) console.error('[cases] fetch error:', casesRes.error)
       setCases((casesRes.data as unknown as Case[]) ?? [])
@@ -180,6 +182,11 @@ export default function AdminCasesPage() {
       }
       setPartnerPaidByCase(ppMap)
       setSettledCaseIds(new Set(((settleRes.data as { case_id: string | null }[] | null) ?? []).map(s => s.case_id).filter((x): x is string => !!x)))
+      const evMap: Record<string, number> = {}
+      for (const row of (evalRes.data as { case_id: string; rating: number }[] | null) ?? []) {
+        evMap[row.case_id] = row.rating
+      }
+      setEvaluationByCaseId(evMap)
 
       setLoading(false)
     }
@@ -299,6 +306,7 @@ export default function AdminCasesPage() {
                     <th className="py-3 px-1.5 md:px-4 text-xs font-medium text-gray-400 text-left hidden md:table-cell">Members</th>
                     <th className="py-3 px-1.5 md:px-4 text-xs font-medium text-gray-400 text-left">Travel</th>
                     <th className="py-3 px-1.5 md:px-4 text-xs font-medium text-gray-400 text-center md:text-left">Settlement</th>
+                    <th className="py-3 px-1.5 md:px-4 text-xs font-medium text-gray-400 text-left hidden md:table-cell">Review</th>
                     <th className="py-3 px-1.5 md:px-4 text-xs font-medium text-gray-400 text-left">Total (USD)</th>
                   </tr>
                 </thead>
@@ -309,7 +317,7 @@ export default function AdminCasesPage() {
                     return (
                       <Fragment key={group}>
                         <tr id={`status-section-${group}`} className="scroll-mt-20 bg-gray-100">
-                          <td colSpan={7} className={`px-6 border-b border-gray-200 ${empty ? 'py-1' : 'py-2'}`}>
+                          <td colSpan={8} className={`px-6 border-b border-gray-200 ${empty ? 'py-1' : 'py-2'}`}>
                             <div className="flex items-center gap-2">
                               <svg className={`w-3.5 h-3.5 shrink-0 ${empty ? 'text-gray-300' : 'text-gray-600'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                                 <path strokeLinecap="round" strokeLinejoin="round" d={GROUP_ICON_PATHS[group]} />
@@ -378,6 +386,13 @@ export default function AdminCasesPage() {
                                     </div>
                                   )
                                 })()}
+                              </td>
+                              <td className="py-3 px-1.5 md:px-4 hidden md:table-cell">
+                                {c.status === 'completed' ? (
+                                  evaluationByCaseId[c.id] != null
+                                    ? <span className="text-xs text-amber-500 font-medium">{'★'.repeat(evaluationByCaseId[c.id])}{'☆'.repeat(5 - evaluationByCaseId[c.id])}</span>
+                                    : <span className="text-xs text-gray-300">—</span>
+                                ) : null}
                               </td>
                               <td className="py-3 px-1.5 md:px-4 font-medium text-gray-900">
                                 {quote ? fmtUSD(quote.total_price / exchangeRate) : '—'}

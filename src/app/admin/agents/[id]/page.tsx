@@ -68,6 +68,16 @@ type SettlementRow = {
   paid_at: string | null
 }
 
+type AgentEvalRow = {
+  id: string
+  case_id: string
+  rating: number
+  tags: string[]
+  notes: string | null
+  created_at: string
+  cases: { case_number: string; travel_start_date: string | null } | null
+}
+
 function fmtUSD(n: number) { return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }
 function commissionKrw(totalKrw: number, margin: number): number {
   if (!margin || margin <= 0) return 0
@@ -83,6 +93,7 @@ export default function AdminAgentDetailPage() {
   const [settlements, setSettlements] = useState<SettlementRow[]>([])
   const [contracts, setContracts] = useState<ContractRow[]>([])
   const [admins, setAdmins] = useState<AdminLite[]>([])
+  const [evaluations, setEvaluations] = useState<AgentEvalRow[]>([])
   const [isSuperAdmin, setIsSuperAdmin] = useState(false)
   const [exchangeRate, setExchangeRate] = useState(1350)
   const [loading, setLoading] = useState(true)
@@ -97,7 +108,7 @@ export default function AdminAgentDetailPage() {
   const [reassignError, setReassignError] = useState('')
 
   const fetchData = useCallback(async () => {
-    const [agentRes, casesRes, settlementsRes, contractsRes, rateRes, adminsRes, sessionRes] = await Promise.all([
+    const [agentRes, casesRes, settlementsRes, contractsRes, rateRes, adminsRes, sessionRes, evalsRes] = await Promise.all([
       supabase.from('agents')
         .select('id, agent_number, name, email, phone, country, margin_rate, is_active, bank_info, business_info, onboarding_status, rejection_reason, rejected_at, invite_token, invite_expires_at, assigned_admin_id')
         .eq('id', id).single(),
@@ -116,12 +127,17 @@ export default function AdminAgentDetailPage() {
       supabase.from('system_settings').select('value').eq('key', 'product_price_rate').single(),
       supabase.from('admins').select('id, name, is_super_admin').order('name'),
       supabase.auth.getSession(),
+      supabase.from('agent_evaluations')
+        .select('id, case_id, rating, tags, notes, created_at, cases(case_number, travel_start_date)')
+        .eq('agent_id', id)
+        .order('created_at', { ascending: false }),
     ])
     setAgent((agentRes.data as Agent) ?? null)
     setCases((casesRes.data as unknown as CaseRow[]) ?? [])
     setSettlements((settlementsRes.data as SettlementRow[]) ?? [])
     setContracts((contractsRes.data as ContractRow[]) ?? [])
     setAdmins((adminsRes.data as AdminLite[]) ?? [])
+    setEvaluations((evalsRes.data as unknown as AgentEvalRow[]) ?? [])
     const r = (rateRes.data?.value as { usd_krw?: number } | null)?.usd_krw
     if (r) setExchangeRate(r)
 
@@ -753,6 +769,46 @@ export default function AdminAgentDetailPage() {
               </button>
             </section>
           )}
+
+          {/* Agent Evaluations summary */}
+          {agent.onboarding_status === 'approved' && evaluations.length > 0 && (() => {
+            const avg = evaluations.reduce((s, e) => s + e.rating, 0) / evaluations.length
+            return (
+              <section className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+                <div className="flex items-center justify-between px-5 py-2.5 bg-gray-50 border-b border-gray-200">
+                  <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Agent Evaluations</h3>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm text-amber-400">{'★'.repeat(Math.round(avg))}{'☆'.repeat(5 - Math.round(avg))}</span>
+                    <span className="text-xs text-gray-500 font-medium">{avg.toFixed(1)} avg · {evaluations.length} review{evaluations.length > 1 ? 's' : ''}</span>
+                  </div>
+                </div>
+                <div className="divide-y divide-gray-50">
+                  {evaluations.map(ev => (
+                    <div key={ev.id} className="px-5 py-3 flex items-start gap-4">
+                      <div className="shrink-0 text-center min-w-[40px]">
+                        <p className="text-base font-semibold text-amber-400">{'★'.repeat(ev.rating)}</p>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <button onClick={() => router.push(`/admin/cases/${ev.case_id}`)}
+                            className="text-xs font-medium text-gray-700 hover:text-[#0f4c35] hover:underline font-mono">
+                            {ev.cases?.case_number ?? ev.case_id.slice(0, 8)}
+                          </button>
+                          {ev.cases?.travel_start_date && (
+                            <span className="text-[10px] text-gray-400">{ev.cases.travel_start_date.slice(0, 7)}</span>
+                          )}
+                          {(ev.tags ?? []).map(t => (
+                            <span key={t} className="text-[10px] font-medium text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-full">{t}</span>
+                          ))}
+                        </div>
+                        {ev.notes && <p className="text-xs text-gray-500 mt-0.5 truncate">{ev.notes}</p>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )
+          })()}
 
           {/* Cases list + Settlement History — approved only */}
           {agent.onboarding_status === 'approved' && (<>

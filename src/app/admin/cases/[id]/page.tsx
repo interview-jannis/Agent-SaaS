@@ -269,6 +269,14 @@ export default function AdminCaseDetailPage() {
   const [copiedAttachId, setCopiedAttachId] = useState<string | null>(null)
   const [confirmDeleteAttachId, setConfirmDeleteAttachId] = useState<string | null>(null)
 
+  // Agent evaluation
+  const [evaluation, setEvaluation] = useState<{ id: string; rating: number; tags: string[]; notes: string } | null>(null)
+  const [evalRating, setEvalRating] = useState(0)
+  const [evalTags, setEvalTags] = useState<string[]>([])
+  const [evalNotes, setEvalNotes] = useState('')
+  const [evalSaving, setEvalSaving] = useState(false)
+  const [evalEditing, setEvalEditing] = useState(false)
+
   // ── Data fetching ──────────────────────────────────────────────────────────
 
   const fetchCase = useCallback(async () => {
@@ -296,7 +304,7 @@ export default function AdminCaseDetailPage() {
     if (!data) { setNotFound(true); return }
     setCaseData(data as unknown as Case)
 
-    const [{ data: pp }, { data: ss }, { data: sv }, { data: att }] = await Promise.all([
+    const [{ data: pp }, { data: ss }, { data: sv }, { data: att }, { data: ev }] = await Promise.all([
       supabase.from('partner_payments')
         .select('id, case_id, partner_name, amount, paid_at, note, created_at')
         .eq('case_id', id),
@@ -312,11 +320,19 @@ export default function AdminCaseDetailPage() {
         .select('id, case_id, file_name, file_url, file_size, uploaded_by_admin_id, created_at')
         .eq('case_id', id)
         .order('created_at', { ascending: false }),
+      supabase.from('agent_evaluations')
+        .select('id, rating, tags, notes')
+        .eq('case_id', id)
+        .maybeSingle(),
     ])
     setPartnerPayments((pp as PartnerPayment[]) ?? [])
     setAgentSettlement((ss as AgentSettlement | null) ?? null)
     setCaseSurvey((sv as SurveyRow | null) ?? null)
     setAttachments((att as CaseAttachment[]) ?? [])
+    const evRow = ev as { id: string; rating: number; tags: string[]; notes: string } | null
+    setEvaluation(evRow)
+    if (evRow) { setEvalRating(evRow.rating); setEvalTags(evRow.tags ?? []); setEvalNotes(evRow.notes ?? '') }
+    else { setEvalRating(0); setEvalTags([]); setEvalNotes('') }
 
     // Self-heal: opportunistically advance status if both deposit legs are
     // paid / info is complete. Cheap no-op when already advanced or not eligible.
@@ -448,6 +464,23 @@ export default function AdminCaseDetailPage() {
   }, [setupCollapseInitialized, caseData])
 
   // ── Actions ────────────────────────────────────────────────────────────────
+
+  const EVAL_TAGS = ['Communication', 'Accuracy', 'Responsiveness', 'Client Management', 'Documentation']
+
+  async function saveEvaluation() {
+    if (!caseData || evalRating === 0) return
+    setEvalSaving(true)
+    const { data: adminRow } = await supabase.from('admins').select('id').eq('auth_user_id', (await supabase.auth.getUser()).data.user?.id ?? '').maybeSingle()
+    const payload = { case_id: caseData.id, agent_id: caseData.agent_id, admin_id: adminRow?.id ?? null, rating: evalRating, tags: evalTags, notes: evalNotes, updated_at: new Date().toISOString() }
+    if (evaluation) {
+      await supabase.from('agent_evaluations').update(payload).eq('id', evaluation.id)
+    } else {
+      await supabase.from('agent_evaluations').insert(payload)
+    }
+    setEvalSaving(false)
+    setEvalEditing(false)
+    await fetchCase()
+  }
 
   async function deleteScheduleVersion(scheduleId: string, pdfUrl: string | null, version: number, fileName: string | null) {
     const confirmed = window.confirm(
@@ -2314,6 +2347,83 @@ export default function AdminCaseDetailPage() {
               <p className="text-xs text-gray-500">Agent will mark travel complete after the trip.</p>
             </section>
           )}
+
+          {/* Agent Evaluation — completed cases only */}
+          {caseData.status === 'completed' && caseData.agent_id && (
+            <section className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-2.5 bg-gray-50 border-b border-gray-200">
+                <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Agent Evaluation</h3>
+                {evaluation && !evalEditing && (
+                  <button onClick={() => setEvalEditing(true)} className="text-[11px] font-medium text-gray-500 hover:text-gray-800 px-2 py-1 rounded-lg border border-gray-200 hover:bg-gray-100">Edit</button>
+                )}
+              </div>
+              <div className="px-5 py-4 space-y-4">
+                {evaluation && !evalEditing ? (
+                  /* Read mode */
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-1">
+                      {[1,2,3,4,5].map(s => (
+                        <span key={s} className={`text-xl ${s <= evaluation.rating ? 'text-amber-400' : 'text-gray-200'}`}>★</span>
+                      ))}
+                      <span className="text-xs text-gray-400 ml-2">{evaluation.rating} / 5</span>
+                    </div>
+                    {evaluation.tags.length > 0 && (
+                      <div className="flex gap-1.5 flex-wrap">
+                        {evaluation.tags.map(t => (
+                          <span key={t} className="text-[10px] font-medium text-gray-600 bg-gray-100 px-2 py-0.5 rounded-full">{t}</span>
+                        ))}
+                      </div>
+                    )}
+                    {evaluation.notes && <p className="text-xs text-gray-600 whitespace-pre-wrap">{evaluation.notes}</p>}
+                  </div>
+                ) : (
+                  /* Edit / Create mode */
+                  <div className="space-y-3">
+                    {/* Star rating */}
+                    <div>
+                      <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Rating</p>
+                      <div className="flex items-center gap-1">
+                        {[1,2,3,4,5].map(s => (
+                          <button key={s} onClick={() => setEvalRating(s)}
+                            className={`text-2xl transition-colors ${s <= evalRating ? 'text-amber-400' : 'text-gray-200 hover:text-amber-200'}`}>★</button>
+                        ))}
+                      </div>
+                    </div>
+                    {/* Tags */}
+                    <div>
+                      <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Tags</p>
+                      <div className="flex gap-1.5 flex-wrap">
+                        {EVAL_TAGS.map(t => (
+                          <button key={t} onClick={() => setEvalTags(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t])}
+                            className={`text-[11px] font-medium px-2.5 py-1 rounded-full border transition-colors ${evalTags.includes(t) ? 'bg-[#0f4c35] text-white border-[#0f4c35]' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'}`}>
+                            {t}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    {/* Notes */}
+                    <div>
+                      <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Notes <span className="text-gray-300 normal-case font-normal">(optional)</span></p>
+                      <textarea value={evalNotes} onChange={e => setEvalNotes(e.target.value)} rows={3}
+                        placeholder="Internal notes about this agent's performance on this case…"
+                        className="w-full text-xs text-gray-900 border border-gray-200 rounded-xl px-3 py-2 resize-none focus:outline-none focus:border-[#0f4c35]" />
+                    </div>
+                    <div className="flex items-center gap-2 justify-end pt-1">
+                      {evaluation && (
+                        <button onClick={() => { setEvalEditing(false); setEvalRating(evaluation.rating); setEvalTags(evaluation.tags); setEvalNotes(evaluation.notes ?? '') }}
+                          className="text-xs font-medium text-gray-500 hover:text-gray-800 px-3 py-1.5 rounded-lg">Cancel</button>
+                      )}
+                      <button onClick={saveEvaluation} disabled={evalSaving || evalRating === 0}
+                        className="text-xs font-medium bg-[#0f4c35] text-white hover:bg-[#0a3828] px-4 py-1.5 rounded-lg disabled:opacity-40 transition-colors">
+                        {evalSaving ? 'Saving…' : evaluation ? 'Update' : 'Save Evaluation'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
+
           {/* Partner Payouts — track cash sent to hospitals/hotels/etc per partner */}
           {latestQuote && (() => {
             type PartnerItem = { name: string; price: number; group: string; qty: number }
