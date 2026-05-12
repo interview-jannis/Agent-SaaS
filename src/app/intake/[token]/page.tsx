@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import DOBPicker from '@/components/DOBPicker'
+import { supabase } from '@/lib/supabase'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -24,7 +25,7 @@ type ClientData = {
   date_of_birth: string | null
   phone: string | null
   email: string | null
-  passport_number: string | null
+  passport_image_url: string | null
   needs_muslim_friendly: boolean
   dietary_restriction: DietaryType | null
   prayer_frequency: PrayerFrequency | null
@@ -55,7 +56,7 @@ type ClientData = {
 
 type FormState = {
   nationality: string; gender: string; date_of_birth: string
-  phone: string; email: string; passport_number: string
+  phone: string; email: string; passport_image_url: string
   needs_muslim_friendly: boolean
   dietary_restriction: DietaryType; prayer_frequency: PrayerFrequency | null; prayer_location: PrayerLocation | null
   special_requests: string
@@ -174,7 +175,7 @@ function toForm(c: ClientData): FormState {
   return {
     nationality: c.nationality ?? '', gender: c.gender ?? 'male',
     date_of_birth: c.date_of_birth ?? '', phone: c.phone ?? '',
-    email: c.email ?? '', passport_number: c.passport_number ?? '',
+    email: c.email ?? '', passport_image_url: c.passport_image_url ?? '',
     needs_muslim_friendly: c.needs_muslim_friendly,
     dietary_restriction: c.dietary_restriction ?? 'none',
     prayer_frequency: c.prayer_frequency, prayer_location: c.prayer_location,
@@ -210,6 +211,7 @@ function ClientForm({ token, client, onSaved }: {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [saved, setSaved] = useState(false)
+  const [passportUploading, setPassportUploading] = useState(false)
 
   // Reset form when client changes (tab switch)
   useEffect(() => { setForm(toForm(client)); setError(''); setSaved(false) }, [client.id]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -268,7 +270,49 @@ function ClientForm({ token, client, onSaved }: {
         <Field label="Date of Birth">
           <DOBPicker value={form.date_of_birth} onChange={v => set('date_of_birth', v)} />
         </Field>
-        <TI label="Passport Number" value={form.passport_number} onChange={v => set('passport_number', v)} required placeholder="Passport number" />
+        <Field label="Passport Copy" required colSpan>
+          <label className={`flex flex-col items-center justify-center gap-1.5 w-full rounded-lg border-2 border-dashed px-3 py-4 cursor-pointer transition-colors ${passportUploading ? 'opacity-50 pointer-events-none' : 'hover:border-[#0f4c35] hover:bg-green-50'} ${form.passport_image_url ? 'border-green-300 bg-green-50' : 'border-gray-200 bg-white'}`}>
+            <input type="file" accept="image/*,application/pdf" className="hidden"
+              onChange={async e => {
+                const file = e.target.files?.[0]
+                if (!file) return
+                setPassportUploading(true)
+                const ext = file.name.split('.').pop() ?? 'jpg'
+                const path = `${client.id}/passport.${ext}`
+                const { error: uploadError } = await supabase.storage.from('client-passports').upload(path, file, { upsert: true })
+                if (!uploadError) {
+                  const { data: { publicUrl } } = supabase.storage.from('client-passports').getPublicUrl(path)
+                  set('passport_image_url', publicUrl)
+                }
+                setPassportUploading(false)
+              }} />
+            {passportUploading ? (
+              <span className="text-sm text-gray-400">Uploading…</span>
+            ) : form.passport_image_url ? (
+              form.passport_image_url.toLowerCase().includes('.pdf') ? (
+                <div className="flex flex-col items-center gap-1.5">
+                  <svg className="w-10 h-10 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                  </svg>
+                  <span className="text-xs text-green-700 font-medium">PDF uploaded — tap to replace</span>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-2 w-full">
+                  <img src={form.passport_image_url} alt="Passport" className="max-h-40 max-w-full rounded-md object-contain border border-gray-200" />
+                  <span className="text-xs text-green-700 font-medium">Tap to replace</span>
+                </div>
+              )
+            ) : (
+              <>
+                <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+                </svg>
+                <span className="text-sm text-gray-500">Tap to upload passport copy</span>
+                <span className="text-xs text-gray-400">Photo or PDF accepted</span>
+              </>
+            )}
+          </label>
+        </Field>
         <div className="col-span-2">
           <Field label="Muslim?">
             <div className="flex gap-6 mt-0.5">

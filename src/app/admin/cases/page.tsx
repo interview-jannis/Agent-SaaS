@@ -391,7 +391,7 @@ export default function AdminCasesPage() {
                                 {c.status === 'completed' ? (
                                   evaluationByCaseId[c.id] != null
                                     ? <span className="text-xs text-amber-500 font-medium">{'★'.repeat(evaluationByCaseId[c.id])}{'☆'.repeat(5 - evaluationByCaseId[c.id])}</span>
-                                    : <span className="text-xs text-gray-300">—</span>
+                                    : <span className="text-[10px] font-medium text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">No review</span>
                                 ) : null}
                               </td>
                               <td className="py-3 px-1.5 md:px-4 font-medium text-gray-900">

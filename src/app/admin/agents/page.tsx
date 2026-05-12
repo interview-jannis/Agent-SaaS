@@ -45,6 +45,7 @@ export default function AdminAgentsPage() {
   const [clients, setClients] = useState<ClientRow[]>([])
   const [settlements, setSettlements] = useState<SettlementRow[]>([])
   const [exchangeRate, setExchangeRate] = useState(1350)
+  const [avgRatingByAgent, setAvgRatingByAgent] = useState<Record<string, { avg: number; count: number }>>({})
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all')
@@ -57,7 +58,7 @@ export default function AdminAgentsPage() {
   const [copiedInvite, setCopiedInvite] = useState(false)
 
   async function fetchAll() {
-    const [agentsRes, adminsRes, casesRes, clientsRes, settlementsRes, rateRes] = await Promise.all([
+    const [agentsRes, adminsRes, casesRes, clientsRes, settlementsRes, rateRes, evalsRes] = await Promise.all([
       supabase.from('agents')
         .select('id, agent_number, name, email, country, margin_rate, is_active, onboarding_status, rejection_reason, assigned_admin_id')
         .order('name'),
@@ -66,6 +67,7 @@ export default function AdminAgentsPage() {
       supabase.from('clients').select('id, agent_id'),
       supabase.from('settlements').select('id, agent_id, case_id, amount'),
       supabase.from('system_settings').select('value').eq('key', 'product_price_rate').single(),
+      supabase.from('agent_evaluations').select('agent_id, rating'),
     ])
     setAgents((agentsRes.data as Agent[]) ?? [])
     setAdmins((adminsRes.data as AdminLite[]) ?? [])
@@ -74,6 +76,18 @@ export default function AdminAgentsPage() {
     setSettlements((settlementsRes.data as SettlementRow[]) ?? [])
     const r = (rateRes.data?.value as { usd_krw?: number } | null)?.usd_krw
     if (r) setExchangeRate(r)
+    const evals = (evalsRes.data ?? []) as { agent_id: string; rating: number }[]
+    const byAgent: Record<string, { sum: number; count: number }> = {}
+    for (const e of evals) {
+      if (!byAgent[e.agent_id]) byAgent[e.agent_id] = { sum: 0, count: 0 }
+      byAgent[e.agent_id].sum += e.rating
+      byAgent[e.agent_id].count++
+    }
+    const avgMap: Record<string, { avg: number; count: number }> = {}
+    for (const [id, { sum, count }] of Object.entries(byAgent)) {
+      avgMap[id] = { avg: Math.round((sum / count) * 10) / 10, count }
+    }
+    setAvgRatingByAgent(avgMap)
   }
 
   const adminNameById = new Map(admins.map(a => [a.id, a.name ?? '—']))
@@ -208,6 +222,7 @@ export default function AdminAgentsPage() {
                       <th className="py-2.5 px-2 md:px-4 text-xs font-medium text-gray-400 text-left hidden md:table-cell">Assigned to</th>
                       <th className="py-2.5 px-2 md:px-4 text-xs font-medium text-gray-400 text-left hidden md:table-cell">Cases</th>
                       <th className="py-2.5 px-2 md:px-4 text-xs font-medium text-gray-400 text-left hidden md:table-cell">Margin</th>
+                      <th className="py-2.5 px-2 md:px-4 text-xs font-medium text-gray-400 text-left hidden md:table-cell">Rating</th>
                       <th className="py-2.5 px-2 md:px-4 text-xs font-medium text-gray-400 text-left">Unsettled</th>
                       <th className="py-2.5 px-2 md:px-4 text-xs font-medium text-gray-400 text-left hidden md:table-cell">Paid Out</th>
                       <th className="py-2.5 px-2 md:px-4 text-xs font-medium text-gray-400 text-left">Status</th>
@@ -228,6 +243,17 @@ export default function AdminAgentsPage() {
                           <td className="py-3 px-2 md:px-4 text-gray-600 hidden md:table-cell">{a.assigned_admin_id ? adminNameById.get(a.assigned_admin_id) ?? '—' : <span className="text-gray-300">Unassigned</span>}</td>
                           <td className="py-3 px-2 md:px-4 text-gray-500 text-center hidden md:table-cell">{m.cases}</td>
                           <td className="py-3 px-2 md:px-4 text-gray-700 hidden md:table-cell">{a.margin_rate != null ? `${(a.margin_rate * 100).toFixed(0)}%` : '—'}</td>
+                          <td className="py-3 px-2 md:px-4 hidden md:table-cell">
+                            {avgRatingByAgent[a.id] ? (
+                              <span className="flex items-center gap-1">
+                                <span className="text-amber-400 text-xs">★</span>
+                                <span className="text-xs font-medium text-gray-700">{avgRatingByAgent[a.id].avg.toFixed(1)}</span>
+                                <span className="text-[10px] text-gray-400">({avgRatingByAgent[a.id].count})</span>
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-gray-300">—</span>
+                            )}
+                          </td>
                           <td className={`py-3 px-2 md:px-4 font-medium ${m.unsettledKrw > 0 ? 'text-amber-700' : 'text-gray-400'}`}>{fmtUSD(m.unsettledKrw / exchangeRate)}</td>
                           <td className="py-3 px-2 md:px-4 text-gray-600 hidden md:table-cell">{fmtUSD(m.paidKrw / exchangeRate)}</td>
                           <td className="py-3 px-2 md:px-4">

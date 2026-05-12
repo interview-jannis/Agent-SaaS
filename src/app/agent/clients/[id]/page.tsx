@@ -23,7 +23,7 @@ type Client = {
   date_of_birth: string | null
   phone: string | null
   email: string | null
-  passport_number: string | null
+  passport_image_url: string | null
   needs_muslim_friendly: boolean
   dietary_restriction: DietaryType | null
   prayer_frequency: PrayerFrequency | null
@@ -60,7 +60,7 @@ type EditForm = {
   date_of_birth: string
   phone: string
   email: string
-  passport_number: string
+  passport_image_url: string
   needs_muslim_friendly: boolean
   dietary_restriction: DietaryType
   prayer_frequency: PrayerFrequency | null
@@ -161,7 +161,7 @@ function toEditForm(c: Client): EditForm {
   return {
     nationality: c.nationality ?? '', gender: c.gender ?? 'male',
     date_of_birth: c.date_of_birth ?? '', phone: c.phone ?? '',
-    email: c.email ?? '', passport_number: c.passport_number ?? '',
+    email: c.email ?? '', passport_image_url: c.passport_image_url ?? '',
     needs_muslim_friendly: c.needs_muslim_friendly,
     dietary_restriction: c.dietary_restriction ?? 'none',
     prayer_frequency: c.prayer_frequency,
@@ -257,6 +257,7 @@ export default function ClientDetailPage() {
   const [editForm, setEditForm] = useState<EditForm | null>(null)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
+  const [passportUploading, setPassportUploading] = useState(false)
 
   const fetchData = useCallback(async () => {
     const [{ data: cl }, { data: cm }] = await Promise.all([
@@ -305,7 +306,7 @@ export default function ClientDetailPage() {
       const checkText = (label: string, oldV: string | null | undefined, newV: string) => {
         if (wasText(oldV) && !nowText(newV)) cleared.push(label)
       }
-      checkText('Passport', client.passport_number, editForm.passport_number)
+      if (client.passport_image_url && !editForm.passport_image_url) cleared.push('Passport Copy')
       checkText('Emergency Contact Name', client.emergency_contact_name, editForm.emergency_contact_name)
       checkText('Emergency Contact Relation', client.emergency_contact_relation, editForm.emergency_contact_relation)
       checkText('Emergency Contact Phone', client.emergency_contact_phone, editForm.emergency_contact_phone)
@@ -341,7 +342,7 @@ export default function ClientDetailPage() {
         date_of_birth: editForm.date_of_birth || null,
         phone: editForm.phone || null,
         email: editForm.email || null,
-        passport_number: editForm.passport_number || null,
+        passport_image_url: editForm.passport_image_url || null,
         needs_muslim_friendly: editForm.needs_muslim_friendly,
         dietary_restriction: isMuslim ? editForm.dietary_restriction : 'none',
         prayer_frequency: isMuslim ? editForm.prayer_frequency : null,
@@ -382,7 +383,7 @@ export default function ClientDetailPage() {
         diff('Date of birth', client.date_of_birth, editForm.date_of_birth),
         diff('Phone', client.phone, editForm.phone),
         diff('Email', client.email, editForm.email),
-        diff('Passport', client.passport_number, editForm.passport_number),
+        diff('Passport', client.passport_image_url, editForm.passport_image_url),
         (client.emergency_contact_name !== (editForm.emergency_contact_name || null)
           || client.emergency_contact_relation !== (editForm.emergency_contact_relation || null)
           || client.emergency_contact_phone !== (editForm.emergency_contact_phone || null)) ? 'Emergency contact' : null,
@@ -526,7 +527,20 @@ export default function ClientDetailPage() {
                   <ViewField label="Nationality" value={client.nationality} />
                   <ViewField label="Gender" value={client.gender} />
                   <ViewField label="Date of Birth" value={client.date_of_birth} />
-                  <ViewField label="Passport Number *" value={client.passport_number} mono />
+                  <div>
+                    <p className="text-[10px] text-gray-400 mb-0.5">Passport Copy *</p>
+                    {client.passport_image_url ? (
+                      <a href={client.passport_image_url} target="_blank" rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-xs text-[#0f4c35] hover:underline">
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+                        </svg>
+                        View passport copy
+                      </a>
+                    ) : (
+                      <span className="text-sm text-gray-300">—</span>
+                    )}
+                  </div>
                   <ViewField label="Muslim" value={client.needs_muslim_friendly ? 'Yes' : 'No'} />
                 </div>
               </section>
@@ -626,7 +640,50 @@ export default function ClientDetailPage() {
                     <label className="block text-xs text-gray-500 mb-1">Date of Birth</label>
                     <DOBPicker value={editForm.date_of_birth} onChange={v => setEditForm(p => p && ({ ...p, date_of_birth: v }))} />
                   </div>
-                  <TextInput label="Passport Number *" value={editForm.passport_number} onChange={v => setEditForm(p => p && ({ ...p, passport_number: v }))} />
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Passport Copy *</label>
+                    <label className={`flex flex-col items-center justify-center gap-1.5 w-full rounded-lg border-2 border-dashed px-3 py-4 cursor-pointer transition-colors ${passportUploading ? 'opacity-50 pointer-events-none' : 'hover:border-[#0f4c35] hover:bg-green-50'} ${editForm.passport_image_url ? 'border-green-300 bg-green-50' : 'border-gray-200 bg-white'}`}>
+                      <input type="file" accept="image/*,application/pdf" className="hidden"
+                        onChange={async e => {
+                          const file = e.target.files?.[0]
+                          if (!file || !client) return
+                          setPassportUploading(true)
+                          const ext = file.name.split('.').pop() ?? 'jpg'
+                          const path = `${client.id}/passport.${ext}`
+                          const { error } = await supabase.storage.from('client-passports').upload(path, file, { upsert: true })
+                          if (!error) {
+                            const { data: { publicUrl } } = supabase.storage.from('client-passports').getPublicUrl(path)
+                            setEditForm(p => p && ({ ...p, passport_image_url: publicUrl }))
+                          }
+                          setPassportUploading(false)
+                        }} />
+                      {passportUploading ? (
+                        <span className="text-xs text-gray-400">Uploading…</span>
+                      ) : editForm.passport_image_url ? (
+                        editForm.passport_image_url.toLowerCase().includes('.pdf') ? (
+                          <div className="flex flex-col items-center gap-1">
+                            <svg className="w-8 h-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                            </svg>
+                            <span className="text-[10px] text-green-700 font-medium">PDF uploaded — click to replace</span>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col items-center gap-1.5 w-full">
+                            <img src={editForm.passport_image_url} alt="Passport" className="max-h-32 max-w-full rounded-md object-contain border border-gray-200" />
+                            <span className="text-[10px] text-green-700 font-medium">Click to replace</span>
+                          </div>
+                        )
+                      ) : (
+                        <>
+                          <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+                          </svg>
+                          <span className="text-xs text-gray-400">Upload passport copy</span>
+                          <span className="text-[10px] text-gray-300">Image or PDF</span>
+                        </>
+                      )}
+                    </label>
+                  </div>
                   <div className="col-span-2">
                     <label className="block text-xs text-gray-500 mb-1">Muslim?</label>
                     <div className="flex gap-4">

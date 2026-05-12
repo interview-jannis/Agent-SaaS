@@ -7,7 +7,7 @@ import { createClient } from '@supabase/supabase-js'
 
 const CLIENT_SELECT = `
   id, name, client_number,
-  nationality, gender, date_of_birth, phone, email, passport_number,
+  nationality, gender, date_of_birth, phone, email, passport_image_url,
   needs_muslim_friendly, dietary_restriction, prayer_frequency, prayer_location,
   special_requests, emergency_contact_name, emergency_contact_relation, emergency_contact_phone,
   blood_type, allergies, current_medications, health_conditions, medical_restrictions,
@@ -74,7 +74,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ token:
   // Fetch current values to enforce "can't clear filled fields" rule
   const { data: current } = await supabase
     .from('clients')
-    .select('id, gender, needs_muslim_friendly, passport_number, emergency_contact_name, emergency_contact_relation, emergency_contact_phone, blood_type, allergies, current_medications, health_conditions, medical_restrictions, height_cm, weight_kg, smoking_status, alcohol_status, pregnancy_status, preferred_language, mobility_limitations, prayer_frequency, prayer_location, dietary_restriction, same_gender_doctor, same_gender_therapist, mixed_gender_activities, cultural_religious_notes')
+    .select('id, gender, needs_muslim_friendly, passport_image_url, emergency_contact_name, emergency_contact_relation, emergency_contact_phone, blood_type, allergies, current_medications, health_conditions, medical_restrictions, height_cm, weight_kg, smoking_status, alcohol_status, pregnancy_status, preferred_language, mobility_limitations, prayer_frequency, prayer_location, dietary_restriction, same_gender_doctor, same_gender_therapist, mixed_gender_activities, cultural_religious_notes')
     .eq('id', client_id)
     .maybeSingle()
   if (!current) return NextResponse.json({ error: 'Client not found.' }, { status: 404 })
@@ -95,7 +95,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ token:
   const nowText = (v: unknown) => typeof v === 'string' && v.trim().length > 0
   const check = (label: string, oldV: unknown, newV: unknown) => { if (wasText(oldV) && !nowText(newV)) cleared.push(label) }
 
-  check('Passport', current.passport_number, body.passport_number)
+  if (current.passport_image_url && !body.passport_image_url) cleared.push('Passport Copy')
   check('Emergency Contact Name', current.emergency_contact_name, body.emergency_contact_name)
   check('Emergency Contact Relation', current.emergency_contact_relation, body.emergency_contact_relation)
   check('Emergency Contact Phone', current.emergency_contact_phone, body.emergency_contact_phone)
@@ -130,7 +130,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ token:
     date_of_birth: (body.date_of_birth as string) || null,
     phone: (body.phone as string) || null,
     email: (body.email as string) || null,
-    passport_number: (body.passport_number as string) || null,
+    passport_image_url: (body.passport_image_url as string) || null,
     needs_muslim_friendly: isMuslim,
     dietary_restriction: isMuslim ? ((body.dietary_restriction as string) ?? 'none') : 'none',
     prayer_frequency: isMuslim ? ((body.prayer_frequency as string) ?? null) : null,
