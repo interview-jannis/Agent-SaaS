@@ -591,39 +591,44 @@ function ScheduleRow({
             )}
           </div>
         ) : (
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap' }}>
-          {hotelPrefix && (
-            <span className="sch-sans" style={{ fontSize: '10px', fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#9a9088' }}>
-              {hotelPrefix} ·
-            </span>
-          )}
-          <p className="sch-serif sch-item-title" style={{
-            fontSize: '19px', fontWeight: isPrayer ? 400 : 500, lineHeight: 1.3,
-            color: isPrayer ? '#c07830' : '#1a1a1a',
-            fontStyle: isPrayer ? 'italic' : 'normal',
-          }}>
-            {item.title || (itemType === 'free' ? 'At leisure' : '—')}
-          </p>
-          {item.variantTag && (
-            <span className="sch-sans" style={{
-              fontSize: '9.5px', fontWeight: 500, color: '#aaa',
-              border: '1px solid #ddd8d2', borderRadius: '3px', padding: '1px 6px',
-              letterSpacing: '0.04em',
-            }}>
-              {item.variantTag}
-            </span>
-          )}
-          {/* Cuisine chip */}
-          {itemType === 'meal' && item.cuisine && (
-            <span className="sch-sans" style={{
-              fontSize: '9.5px', fontWeight: 500, color: '#aaa',
-              border: '1px solid #ddd8d2', borderRadius: '3px', padding: '1px 6px',
-              letterSpacing: '0.04em',
-            }}>
-              {item.cuisine}
-            </span>
-          )}
-        </div>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
+              {hotelPrefix && (
+                <span className="sch-sans" style={{ fontSize: '10px', fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#9a9088' }}>
+                  {hotelPrefix} ·
+                </span>
+              )}
+              <p className="sch-serif sch-item-title" style={{
+                fontSize: '19px', fontWeight: isPrayer ? 400 : 500, lineHeight: 1.3,
+                color: isPrayer ? '#c07830' : '#1a1a1a',
+                fontStyle: isPrayer ? 'italic' : 'normal',
+              }}>
+                {item.title || (itemType === 'free' ? 'At leisure' : '—')}
+              </p>
+            </div>
+            {(item.variantTag || (itemType === 'meal' && item.cuisine)) && (
+              <div style={{ display: 'flex', gap: '6px', marginTop: '4px', flexWrap: 'wrap' }}>
+                {item.variantTag && (
+                  <span className="sch-sans" style={{
+                    fontSize: '9.5px', fontWeight: 500, color: '#aaa',
+                    border: '1px solid #ddd8d2', borderRadius: '3px', padding: '1px 6px',
+                    letterSpacing: '0.04em',
+                  }}>
+                    {item.variantTag}
+                  </span>
+                )}
+                {itemType === 'meal' && item.cuisine && (
+                  <span className="sch-sans" style={{
+                    fontSize: '9.5px', fontWeight: 500, color: '#aaa',
+                    border: '1px solid #ddd8d2', borderRadius: '3px', padding: '1px 6px',
+                    letterSpacing: '0.04em',
+                  }}>
+                    {item.cuisine}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
         )}
 
         {/* Public notes */}
