@@ -540,8 +540,7 @@ export default function QuoteReviewPage() {
       }
 
       localStorage.removeItem('agent-cart')
-      const caseNumber = `#C-${String((caseCount ?? 0) + 1).padStart(3, '0')}`
-      await logAsCurrentUser('case.created', { type: 'case', id: caseData.id, label: caseNumber }, { total_krw: totalKRW })
+      await logAsCurrentUser('case.created', { type: 'case', id: caseData.id, label: caseData.case_number }, { total_krw: totalKRW })
 
       // Auto-generate the 3-party contract immediately. Case enters
       // awaiting_contract right away — there's no in-between step where the
