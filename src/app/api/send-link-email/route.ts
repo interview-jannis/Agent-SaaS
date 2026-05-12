@@ -8,6 +8,7 @@ const SUBJECTS: Record<string, string> = {
   invoice: '[Tiktak] Your invoice is ready',
   schedule: '[Tiktak] Your travel schedule is ready',
   contract: '[Tiktak] Your contract is ready to sign',
+  partner_view: '[TIKKTAKK] Client information shared with you',
 }
 
 const BODY_LINES: Record<string, { heading: string; body: string; cta: string }> = {
@@ -30,6 +31,11 @@ const BODY_LINES: Record<string, { heading: string; body: string; cta: string }>
     heading: 'Your contract is ready to sign',
     body: 'Please review and sign the 3-party contract at the link below. Your signature is required to proceed.',
     cta: 'Review & Sign Contract',
+  },
+  partner_view: {
+    heading: 'Client information has been shared with you',
+    body: 'TIKKTAKK has shared client profile information with you for reference. Please review the details at the link below.',
+    cta: 'View Client Information',
   },
 }
 
