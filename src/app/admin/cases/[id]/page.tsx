@@ -1543,7 +1543,7 @@ export default function AdminCaseDetailPage() {
 
           {/* Schedule History */}
           {sortedSchedules.length > 0 && (
-            <section className={`rounded-2xl border-2 overflow-hidden ${caseData.status === 'reviewing_schedule' ? 'bg-white border-[#0f4c35]' : 'bg-gray-50 border-gray-300'}`}>
+            <section id="schedule-history" className={`scroll-mt-20 rounded-2xl border-2 overflow-hidden ${caseData.status === 'reviewing_schedule' ? 'bg-white border-[#0f4c35]' : 'bg-gray-50 border-gray-300'}`}>
               <div className={`flex items-center justify-between px-4 py-2.5 border-b ${caseData.status === 'reviewing_schedule' ? 'bg-green-50 border-green-200' : 'bg-gray-100 border-gray-200'}`}>
                 <div className="flex items-center gap-2">
                   <p className={`text-xs font-semibold uppercase tracking-wide ${caseData.status === 'reviewing_schedule' ? 'text-[#0f4c35]' : 'text-gray-700'}`}>Schedule History</p>

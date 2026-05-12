@@ -394,6 +394,13 @@ export function AdminCaseHero(p: AdminHeroProps) {
             ? <span>Revision requested — upload a new version below.</span>
             : <span>Pending agent confirmation. They&apos;ll either confirm or request a revision.</span>}
         >
+          <button onClick={() => document.getElementById('schedule-history')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+            className="text-xs font-medium px-3 py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 flex items-center gap-1.5">
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+            </svg>
+            View Schedule
+          </button>
           {p.scheduleStatus === 'revision_requested' && (
             <button onClick={p.onScrollToScheduleUpload}
               className={`text-xs font-medium px-3 py-2 rounded-lg ${TONE.green.primaryBtn}`}>
