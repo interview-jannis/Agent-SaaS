@@ -92,6 +92,7 @@ export default function ScheduleEditor({
   const [savingDraft, setSavingDraft] = useState(false)
   const [draftSaved, setDraftSaved] = useState(false)
   const [error, setError] = useState('')
+  const [emptyTitleIds, setEmptyTitleIds] = useState<Set<string>>(new Set())
   // Items added in this session that haven't been "Saved" individually yet.
   // Pending rows show with dashed border + inline Cancel/Save and don't count
   // for the global coverage gate (so admin can stage incomplete drafts).
@@ -361,10 +362,12 @@ export default function ScheduleEditor({
     const empty = items.filter(i => !i.title.trim())
     if (empty.length > 0) {
       setError(`${empty.length} item${empty.length > 1 ? 's' : ''} missing a title.`)
+      setEmptyTitleIds(new Set(empty.map(i => i.id)))
       return
     }
     setSaving(true)
     setError('')
+    setEmptyTitleIds(new Set())
     try {
       // Normalize sortOrder per (day, block) for stable storage
       const normalized = [...items]
@@ -478,10 +481,14 @@ export default function ScheduleEditor({
                       isPending={pendingItemIds.has(it.id)}
                       isEditSession={editSnapshots.has(it.id)}
                       isGroupUnset={unsetGroupItemIds.has(it.id)}
+                      highlightEmptyTitle={emptyTitleIds.has(it.id)}
                       onGroupChosen={() => markGroupChosen(it.id)}
                       canMoveUp={idx > 0 && dayItems[idx - 1].block === it.block}
                       canMoveDown={idx < dayItems.length - 1 && dayItems[idx + 1].block === it.block}
-                      onUpdate={(patch) => updateItem(it.id, patch)}
+                      onUpdate={(patch) => {
+                        if (patch.title) setEmptyTitleIds(prev => { const n = new Set(prev); n.delete(it.id); return n })
+                        updateItem(it.id, patch)
+                      }}
                       onApplyVariant={(vid) => applyVariantPick(it.id, vid)}
                       onRemove={() => removeItem(it.id)}
                       onMove={(dir) => moveItem(it.id, dir)}
@@ -863,7 +870,7 @@ const PRAYER_HEX = '#fb923c'
 
 function ItemRow({
   item, caseProducts, caseGroups, sharedVariantIds, committedVariantContexts,
-  isPending, isEditSession, isGroupUnset,
+  isPending, isEditSession, isGroupUnset, highlightEmptyTitle,
   canMoveUp, canMoveDown,
   onUpdate, onApplyVariant, onRemove, onMove,
   onEdit, onCommit, onCancelDraft, onGroupChosen,
@@ -876,6 +883,7 @@ function ItemRow({
   isPending: boolean
   isEditSession: boolean
   isGroupUnset: boolean
+  highlightEmptyTitle: boolean
   canMoveUp: boolean
   canMoveDown: boolean
   onUpdate: (patch: Partial<ScheduleItem>) => void
@@ -1144,7 +1152,9 @@ function ItemRow({
               <input type="text" value={item.title}
                 onChange={(e) => onUpdate({ title: e.target.value })}
                 disabled={!isPending} placeholder="Title"
-                className="flex-1 text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-600 disabled:cursor-default"
+                className={`flex-1 text-sm border rounded-lg px-2.5 py-1.5 text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-600 disabled:cursor-default ${
+                  highlightEmptyTitle && !item.title.trim() ? 'border-rose-400 bg-rose-50' : 'border-gray-200'
+                }`}
               />
             )}
             {item.variantTag && (
