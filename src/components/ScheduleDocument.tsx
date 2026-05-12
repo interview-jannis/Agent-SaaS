@@ -570,15 +570,30 @@ function ScheduleRow({
           </div>
         )}
 
-        {/* Transfer route */}
-        {itemType === 'transfer' && transferRoute && (
-          <p className="sch-serif" style={{ fontSize: '17px', fontWeight: 400, lineHeight: 1.3, color: '#1a1a1a', marginBottom: '2px' }}>
-            {transferRoute}
-          </p>
-        )}
-
-        {/* Title row */}
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap' }}>
+        {/* Transfer — compact logistics row, visually quieter than activities */}
+        {itemType === 'transfer' ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            {transferRoute && (
+              <p className="sch-sans" style={{ fontSize: '13px', fontWeight: 500, color: '#888', letterSpacing: '0.01em', lineHeight: 1.4 }}>
+                {transferRoute}
+              </p>
+            )}
+            {transportLabel && (
+              <span className="sch-sans" style={{
+                fontSize: '10px', color: '#aaa', background: '#f5f2ee',
+                border: '1px solid #ede9e3', borderRadius: '20px', padding: '1px 8px',
+              }}>
+                {transportLabel}
+              </span>
+            )}
+            {item.title && (
+              <p className="sch-sans" style={{ fontSize: '12px', color: '#bbb', width: '100%', marginTop: '1px' }}>
+                {item.title}
+              </p>
+            )}
+          </div>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap' }}>
           {hotelPrefix && (
             <span className="sch-sans" style={{ fontSize: '10px', fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#9a9088' }}>
               {hotelPrefix} ·
@@ -589,7 +604,7 @@ function ScheduleRow({
             color: isPrayer ? '#c07830' : '#1a1a1a',
             fontStyle: isPrayer ? 'italic' : 'normal',
           }}>
-            {item.title || (itemType === 'free' ? 'At leisure' : itemType === 'transfer' && !transferRoute ? '—' : '—')}
+            {item.title || (itemType === 'free' ? 'At leisure' : '—')}
           </p>
           {item.variantTag && (
             <span className="sch-sans" style={{
@@ -597,15 +612,6 @@ function ScheduleRow({
               border: '1px solid #ede9e3', borderRadius: '20px', padding: '1px 8px',
             }}>
               {item.variantTag}
-            </span>
-          )}
-          {/* Transport mode chip */}
-          {itemType === 'transfer' && transportLabel && (
-            <span className="sch-sans" style={{
-              fontSize: '10px', color: '#9a9088', background: '#f5f2ee',
-              border: '1px solid #ede9e3', borderRadius: '20px', padding: '1px 8px',
-            }}>
-              {transportLabel}
             </span>
           )}
           {/* Cuisine chip */}
@@ -618,6 +624,7 @@ function ScheduleRow({
             </span>
           )}
         </div>
+        )}
 
         {/* Public notes */}
         {item.notes && (
