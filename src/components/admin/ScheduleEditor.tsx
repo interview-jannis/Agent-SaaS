@@ -995,19 +995,19 @@ function ItemRow({
           </div>
         ) : (
           /* Committed: compact read-only text */
-          <div className="flex items-center gap-2 text-xs text-gray-600">
-            <span className="font-medium text-gray-700">
+          <div className="flex items-center gap-2 text-xs">
+            <span className="font-semibold text-gray-900">
               {SCHEDULE_ITEM_TYPE_LABEL[itemType]}
             </span>
             <span className="text-gray-300">·</span>
-            <span>
+            <span className="text-gray-400">
               {SCHEDULE_BLOCK_LABEL[item.block]}
               {item.endBlock && item.endBlock !== item.block && ` → ${SCHEDULE_BLOCK_LABEL[item.endBlock]}`}
             </span>
             {item.time && (
               <>
                 <span className="text-gray-300">·</span>
-                <span className="tabular-nums">
+                <span className="tabular-nums text-gray-400">
                   {item.time}{item.endTime ? ` – ${item.endTime}` : ''}
                 </span>
               </>
