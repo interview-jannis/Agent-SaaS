@@ -128,15 +128,21 @@ export function generateSlug(): string {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36)
 }
 
-// Generate the next document_number for a given type. Counts existing rows of
-// that type and increments. Not strictly transactional — fine for low-volume
-// MVP, revisit if collisions appear.
+// Generate the next document_number for a given type using MAX+1 to avoid
+// collisions when documents are deleted (count+1 can repeat an existing number).
 export async function nextDocumentNumber(type: DocumentType): Promise<string> {
-  const { count } = await supabase
+  const prefix = NUMBER_PREFIX[type]
+  const { data } = await supabase
     .from('documents')
-    .select('*', { count: 'exact', head: true })
+    .select('document_number')
     .eq('type', type)
-  return NUMBER_PREFIX[type] + String((count ?? 0) + 1).padStart(3, '0')
+    .order('document_number', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  const maxNum = data?.document_number
+    ? (parseInt(data.document_number.replace(/\D/g, ''), 10) || 0)
+    : 0
+  return prefix + String(maxNum + 1).padStart(3, '0')
 }
 
 // ────────────────────────────────────────────────────────────────────────────
