@@ -79,6 +79,9 @@ type ClientForm = {
 
 const CART_VERSION = 4  // bump to invalidate old localStorage carts
 
+// Subcategories where products are grouped by partner_name in the catalog grid
+const PARTNER_GROUPED_SUBCATEGORIES = new Set(['Health Screening'])
+
 const GROUP_PALETTE = Array(8).fill({
   border: 'border-gray-200',
   tab: 'bg-[#0f4c35] text-white',
@@ -142,6 +145,7 @@ export default function AgentProductPage() {
   const [search, setSearch] = useState('')
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('')
   const [selectedSubcategoryName, setSelectedSubcategoryName] = useState<string>('')
+  const [selectedPartnerName, setSelectedPartnerName] = useState<string>('')
   const [pinnedProductIds, setPinnedProductIds] = useState<Set<string>>(new Set())
   const [filterPrayerRoom, setFilterPrayerRoom] = useState(false)
   const [filterDietary, setFilterDietary] = useState<string[]>([])
@@ -291,6 +295,7 @@ export default function AgentProductPage() {
 
   const marginMult = 1 + companyMargin + agentMargin
   const nights = useMemo(() => nightsBetween(dateStart, dateEnd), [dateStart, dateEnd])
+  const daysLive = useMemo(() => daysBetween(dateStart, dateEnd), [dateStart, dateEnd])
 
   // Total pax across all non-shared groups — Shared group's price multiplier.
   const sharedMemberCount = groups.filter(g => g.id !== 'shared').reduce((s, g) => s + g.memberCount, 0)
@@ -317,11 +322,12 @@ export default function AgentProductPage() {
     const list = products.filter((p) => {
       if (selectedCategoryId && p.category_id !== selectedCategoryId) return false
       if (selectedSubcategoryName && p.product_subcategories?.name !== selectedSubcategoryName) return false
+      if (selectedPartnerName && p.partner_name !== selectedPartnerName) return false
       return passesCrossFilters(p)
     })
     return list.sort((a, b) => priceSortKey(b) - priceSortKey(a))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [products, search, selectedCategoryId, selectedSubcategoryName, filterPrayerRoom, filterDietary, filterFemaleMedical, exchangeRate, marginMult])
+  }, [products, search, selectedCategoryId, selectedSubcategoryName, selectedPartnerName, filterPrayerRoom, filterDietary, filterFemaleMedical, exchangeRate, marginMult])
 
   const availableSubcategories = useMemo(() => {
     if (!selectedCategoryId) return [] as string[]
@@ -332,6 +338,37 @@ export default function AgentProductPage() {
       .filter(s => s.category_id === selectedCategoryId && productSubIds.has(s.id))
       .map(s => s.name)
   }, [products, subcategories, selectedCategoryId])
+
+  const productsBySubcategory = useMemo(() => {
+    const map = new Map<string, Product[]>()
+    for (const sub of availableSubcategories) map.set(sub, [])
+    for (const p of products) {
+      if (p.category_id !== selectedCategoryId) continue
+      if (!passesCrossFilters(p)) continue
+      const sub = p.product_subcategories?.name ?? ''
+      if (sub && map.has(sub)) map.get(sub)!.push(p)
+    }
+    for (const bucket of map.values()) {
+      bucket.sort((a, b) => priceSortKey(b) - priceSortKey(a))
+    }
+    return map
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [products, selectedCategoryId, availableSubcategories, search, filterPrayerRoom, filterDietary, filterFemaleMedical, exchangeRate, marginMult])
+
+  const availablePartnerNames = useMemo(() => {
+    if (!selectedCategoryId) return [] as string[]
+    const relevant = products.filter(p => {
+      if (p.category_id !== selectedCategoryId) return false
+      if (selectedSubcategoryName && p.product_subcategories?.name !== selectedSubcategoryName) return false
+      return true
+    })
+    const allPartnerGrouped = relevant.length > 0 &&
+      relevant.every(p => PARTNER_GROUPED_SUBCATEGORIES.has(p.product_subcategories?.name ?? ''))
+    if (!PARTNER_GROUPED_SUBCATEGORIES.has(selectedSubcategoryName) && !allPartnerGrouped) return [] as string[]
+    const names = new Set<string>()
+    for (const p of relevant) { if (p.partner_name) names.add(p.partner_name) }
+    return Array.from(names).sort()
+  }, [products, selectedCategoryId, selectedSubcategoryName])
 
   const productsByCategory = useMemo(() => {
     const map = new Map<string, Product[]>()
@@ -394,12 +431,12 @@ export default function AgentProductPage() {
         basePrice: v.base_price, priceCurrency: v.price_currency, exchangeRate,
         marginMult: subpackageMult(subpkgConfig), applyMargin: true,
       })
-      const days = isHotelItem(cat, sub) ? nights : it.days
-      return sum + usd * days
+      const daysForItem = isHotelItem(cat, sub) ? nights : (p.quantity_type === 'per_day' ? daysLive : it.days)
+      return sum + usd * daysForItem
     }, 0)
 
     return groupTotal + servicesTotal
-  }, [groups, tripServices, products, exchangeRate, marginMult, subpkgConfig, nights, sharedMemberCount])
+  }, [groups, tripServices, products, exchangeRate, marginMult, subpkgConfig, nights, daysLive, sharedMemberCount])
 
   // ── Cart handlers — groups ─────────────────────────────────────────────────
 
@@ -847,7 +884,7 @@ export default function AgentProductPage() {
           <div className="flex items-center gap-1.5 overflow-x-auto -mx-1 px-1">
             {[{ id: '', name: 'All' }, ...categories].map(cat => (
               <button key={cat.id || 'all'}
-                onClick={() => { setSelectedCategoryId(cat.id); setSelectedSubcategoryName('') }}
+                onClick={() => { setSelectedCategoryId(cat.id); setSelectedSubcategoryName(''); setSelectedPartnerName('') }}
                 className={`shrink-0 px-3 py-1.5 text-xs rounded-full border transition-colors ${selectedCategoryId === cat.id ? 'bg-[#0f4c35] border-[#0f4c35] text-white' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'}`}>
                 {cat.name}
               </button>
@@ -858,14 +895,30 @@ export default function AgentProductPage() {
         {/* Subcategory pills */}
         {selectedCategoryId && availableSubcategories.length > 0 && (
           <div className="shrink-0 bg-white border-b border-gray-100 px-4 md:px-6 py-2 flex items-center gap-1.5 overflow-x-auto">
-            <button onClick={() => setSelectedSubcategoryName('')}
+            <button onClick={() => { setSelectedSubcategoryName(''); setSelectedPartnerName('') }}
               className={`shrink-0 px-2.5 py-1 text-[11px] rounded-full border transition-colors ${selectedSubcategoryName === '' ? 'bg-gray-800 border-gray-800 text-white' : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'}`}>
               All
             </button>
             {availableSubcategories.map(sub => (
-              <button key={sub} onClick={() => setSelectedSubcategoryName(sub)}
+              <button key={sub} onClick={() => { setSelectedSubcategoryName(sub); setSelectedPartnerName('') }}
                 className={`shrink-0 px-2.5 py-1 text-[11px] rounded-full border transition-colors ${selectedSubcategoryName === sub ? 'bg-gray-800 border-gray-800 text-white' : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'}`}>
                 {sub}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Partner pills — 3rd tier, only for partner-grouped subcategories */}
+        {selectedCategoryId && availablePartnerNames.length > 1 && (
+          <div className="shrink-0 bg-white border-b border-gray-100 px-4 md:px-6 py-2 flex items-center gap-1.5 overflow-x-auto">
+            <button onClick={() => setSelectedPartnerName('')}
+              className={`shrink-0 px-2.5 py-1 text-[11px] rounded-full border transition-colors ${selectedPartnerName === '' ? 'bg-[#0f4c35] border-[#0f4c35] text-white' : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'}`}>
+              All
+            </button>
+            {availablePartnerNames.map(partner => (
+              <button key={partner} onClick={() => setSelectedPartnerName(partner)}
+                className={`shrink-0 px-2.5 py-1 text-[11px] rounded-full border transition-colors ${selectedPartnerName === partner ? 'bg-[#0f4c35] border-[#0f4c35] text-white' : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'}`}>
+                {partner}
               </button>
             ))}
           </div>
@@ -907,8 +960,62 @@ export default function AgentProductPage() {
                 })}
               </div>
             )
+          ) : selectedSubcategoryName === '' && selectedPartnerName === '' && availableSubcategories.length > 1 ? (
+            // Category "All" view — group by subcategory
+            Array.from(productsBySubcategory.values()).every(arr => arr.length === 0) ? (
+              <div className="flex items-center justify-center h-48"><p className="text-sm text-gray-400">No products found</p></div>
+            ) : (
+              <div className="space-y-4">
+                {availableSubcategories.map(sub => {
+                  const items = productsBySubcategory.get(sub) ?? []
+                  if (items.length === 0) return null
+                  const PREVIEW = 6
+                  const preview = items.slice(0, PREVIEW)
+                  const hasMore = items.length > PREVIEW
+                  return (
+                    <section key={sub} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+                      <div className="flex items-center justify-between mb-3 pb-2 border-b border-gray-100">
+                        <h2 className="text-sm font-semibold text-gray-800">{sub}</h2>
+                        <button onClick={() => setSelectedSubcategoryName(sub)} className="text-xs text-[#0f4c35] font-medium hover:underline">
+                          {hasMore ? `See all (${items.length}) →` : 'See all →'}
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                        {preview.map(p => renderProductCard(p, true))}
+                      </div>
+                    </section>
+                  )
+                })}
+              </div>
+            )
           ) : filteredProducts.length === 0 ? (
             <div className="flex items-center justify-center h-48"><p className="text-sm text-gray-400">No products found</p></div>
+          ) : (PARTNER_GROUPED_SUBCATEGORIES.has(selectedSubcategoryName) ||
+            (selectedSubcategoryName === '' && filteredProducts.length > 0 &&
+              filteredProducts.every(p => PARTNER_GROUPED_SUBCATEGORIES.has(p.product_subcategories?.name ?? '')))) ? (
+            (() => {
+              const byPartner = new Map<string, Product[]>()
+              for (const p of filteredProducts) {
+                const partner = p.partner_name ?? 'Other'
+                if (!byPartner.has(partner)) byPartner.set(partner, [])
+                byPartner.get(partner)!.push(p)
+              }
+              const showHeaders = byPartner.size > 1
+              return (
+                <div className="space-y-6">
+                  {Array.from(byPartner.entries()).map(([partner, partnerProducts]) => (
+                    <div key={partner}>
+                      {showHeaders && (
+                        <h3 className="text-sm font-semibold text-gray-700 mb-3 pb-2 border-b border-gray-200">{partner}</h3>
+                      )}
+                      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                        {partnerProducts.map(p => renderProductCard(p))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )
+            })()
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
               {filteredProducts.map(p => renderProductCard(p))}
@@ -929,15 +1036,16 @@ export default function AgentProductPage() {
               const v = p?.product_variants?.find(x => x.id === it.variantId)
               if (!p || !v) return null
               const isHotel = isHotelItem(p.product_categories?.name, p.product_subcategories?.name)
-              const displayNights = isHotel ? nights : it.days
+              const isPerDay = p.quantity_type === 'per_day'
+              const displayDays = isHotel ? nights : isPerDay ? daysLive : it.days
               const label = v.variant_label ? `${p.name} · ${v.variant_label}` : p.name
               return (
                 <div key={`${it.productId}:${it.variantId}`}
                   className="flex items-center gap-1 px-2.5 py-1 bg-[#0f4c35]/5 border border-[#0f4c35]/20 rounded-lg text-xs text-[#0f4c35] whitespace-nowrap shrink-0">
                   <span className="truncate max-w-[120px]">{label}</span>
                   <span className="mx-0.5 opacity-40">·</span>
-                  {isHotel ? (
-                    <span className="opacity-70">{displayNights}{displayNights === 1 ? 'n' : 'n'} <span className="opacity-50">(auto)</span></span>
+                  {isHotel || isPerDay ? (
+                    <span className="opacity-70">{displayDays}{isHotel ? 'n' : 'd'} <span className="opacity-50">(auto)</span></span>
                   ) : (
                     <>
                       <button onClick={() => setServiceDays(it.productId, it.variantId, it.days - 1)}

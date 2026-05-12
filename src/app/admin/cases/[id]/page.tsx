@@ -1,6 +1,6 @@
 ﻿'use client'
 
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { notifyAgent } from '@/lib/notifications'
@@ -250,6 +250,7 @@ export default function AdminCaseDetailPage() {
   const [stagedRemoves, setStagedRemoves] = useState<Set<string>>(new Set())
   const [savingItems, setSavingItems] = useState(false)
   const [editingProducts, setEditingProducts] = useState(false)
+  const editPickerRef = useRef<HTMLDivElement>(null)
   const [clientModalMember, setClientModalMember] = useState<CaseMember | null>(null)
   const [showClientPanel, setShowClientPanel] = useState(false)
   const [expandedClientIds, setExpandedClientIds] = useState<Set<string>>(new Set())
@@ -480,6 +481,14 @@ export default function AdminCaseDetailPage() {
     setSetupCollapseInitialized(true)
   }, [setupCollapseInitialized, caseData])
 
+  useEffect(() => {
+    if (!editingProducts) return
+    const id = requestAnimationFrame(() => {
+      editPickerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+    })
+    return () => cancelAnimationFrame(id)
+  }, [editingProducts])
+
   // ── Actions ────────────────────────────────────────────────────────────────
 
   const EVAL_TAGS = ['Communication', 'Accuracy', 'Responsiveness', 'Client Management', 'Documentation']
@@ -548,7 +557,7 @@ export default function AdminCaseDetailPage() {
   )
 
   const caseAgent = getAgent(caseData)
-  const canEdit = isSuperAdmin || (!!currentAdminId && caseAgent?.assigned_admin_id === currentAdminId)
+  const canEdit = !!currentAdminId
 
   const lead = caseData.case_members?.find((m) => m.is_lead)
   const companions = caseData.case_members?.filter((m) => !m.is_lead) ?? []
@@ -734,11 +743,11 @@ export default function AdminCaseDetailPage() {
       {/* Body — split when client panel is open */}
       <div className="flex-1 flex min-h-0">
         <div className="flex-1 overflow-y-auto">
-        <div className="max-w-3xl mx-auto px-4 md:px-6 py-4 md:py-6 space-y-5">
+        <div className="max-w-3xl mx-auto px-4 md:px-6 py-4 md:py-6 flex flex-col gap-5">
 
           {/* Canceled banner */}
           {caseData.status === 'canceled' && (
-            <div className="border-l-4 border-rose-400 bg-rose-50 rounded-r-xl px-4 py-3 space-y-1">
+            <div className="order-first border-l-4 border-rose-400 bg-rose-50 rounded-r-xl px-4 py-3 space-y-1">
               <p className="text-xs font-semibold text-rose-800">This case has been canceled</p>
               {caseData.cancellation_reason && (
                 <p className="text-xs text-rose-700"><span className="font-medium">Cancellation reason:</span> {caseData.cancellation_reason}</p>
@@ -749,7 +758,7 @@ export default function AdminCaseDetailPage() {
 
           {/* Non-assigned admin — view only notice */}
           {!canEdit && !isSuperAdmin && (
-            <div className="border-l-4 border-amber-400 bg-amber-50 rounded-r-xl px-4 py-3">
+            <div className="order-first border-l-4 border-amber-400 bg-amber-50 rounded-r-xl px-4 py-3">
               <p className="text-xs font-semibold text-amber-800">View only</p>
               <p className="text-xs text-amber-700 mt-0.5">
                 This case is assigned to {caseAgent?.assigned_admin_id ? 'another admin' : 'no admin yet'}. You can view all information but cannot make changes.
@@ -758,7 +767,7 @@ export default function AdminCaseDetailPage() {
           )}
 
           {/* Hero: status-aware next action — sticky so it stays visible while scrolling */}
-          <div className="sticky top-0 z-10 bg-white pb-2 -mx-1 px-1">
+          <div className="order-first sticky top-0 z-10 bg-white pb-2 -mx-1 px-1">
           <AdminCaseHero
             status={caseData.status}
             caseInfoComplete={caseInfoComplete}
@@ -1463,120 +1472,120 @@ export default function AdminCaseDetailPage() {
                       ? `$${v.base_price.toLocaleString('en-US')}`
                       : fmtKRW(v.base_price)
                   return (
-                    <div className="bg-white rounded-xl border border-gray-200 px-3 py-2 flex flex-wrap items-center gap-2 relative">
-                      <span className="text-[10px] text-gray-500 shrink-0">Add to</span>
-                      {editGroups.length > 1 && (
+                    <div ref={editPickerRef} className="sticky bottom-0 -mx-4 px-4 pb-4 pt-3 bg-white border-t-2 border-[#0f4c35]/20 rounded-b-2xl space-y-2">
+                      <div className="bg-green-50 rounded-xl border-2 border-[#0f4c35]/30 px-3 py-2.5 flex flex-wrap items-center gap-2 relative">
+                        <span className="text-[10px] font-semibold text-[#0f4c35] shrink-0">Add to</span>
+                        {editGroups.length > 1 && (
+                          <select
+                            value={pickerGroupId || editGroups[0]?.id}
+                            onChange={(e) => setPickerGroupId(e.target.value)}
+                            className="border border-gray-200 rounded-lg px-2 py-1 text-xs text-gray-900 focus:outline-none focus:border-[#0f4c35] bg-white">
+                            {editGroups.filter(g => g.name !== 'Trip Services').map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                          </select>
+                        )}
                         <select
-                          value={pickerGroupId || editGroups[0]?.id}
-                          onChange={(e) => setPickerGroupId(e.target.value)}
+                          value={pickerCategoryFilter}
+                          onChange={(e) => { setPickerCategoryFilter(e.target.value); setPickerSubcategoryFilter('') }}
                           className="border border-gray-200 rounded-lg px-2 py-1 text-xs text-gray-900 focus:outline-none focus:border-[#0f4c35] bg-white">
-                          {editGroups.filter(g => g.name !== 'Trip Services').map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                          <option value="">All categories</option>
+                          {categoryOptions.map(c => <option key={c} value={c}>{c}</option>)}
                         </select>
-                      )}
-                      <select
-                        value={pickerCategoryFilter}
-                        onChange={(e) => { setPickerCategoryFilter(e.target.value); setPickerSubcategoryFilter('') }}
-                        className="border border-gray-200 rounded-lg px-2 py-1 text-xs text-gray-900 focus:outline-none focus:border-[#0f4c35] bg-white">
-                        <option value="">All categories</option>
-                        {categoryOptions.map(c => <option key={c} value={c}>{c}</option>)}
-                      </select>
-                      <select
-                        value={pickerSubcategoryFilter}
-                        onChange={(e) => setPickerSubcategoryFilter(e.target.value)}
-                        disabled={subcategoryOptions.length === 0}
-                        className="border border-gray-200 rounded-lg px-2 py-1 text-xs text-gray-900 focus:outline-none focus:border-[#0f4c35] bg-white disabled:bg-gray-50">
-                        <option value="">All sub</option>
-                        {subcategoryOptions.map(s => <option key={s} value={s}>{s}</option>)}
-                      </select>
-                      <div className="flex-1 min-w-[12rem] relative">
-                        <input
-                          type="text"
-                          value={pickerQuery}
-                          placeholder={products.length === 0 ? 'No products available' : 'Search products by name or partner…'}
-                          disabled={products.length === 0 || savingItems}
-                          onFocus={() => setPickerOpen(true)}
-                          onBlur={() => setTimeout(() => setPickerOpen(false), 150)}
-                          onChange={(e) => { setPickerQuery(e.target.value); setPickerOpen(true) }}
-                          className="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs text-gray-900 focus:outline-none focus:border-[#0f4c35] bg-white disabled:bg-gray-50" />
-                        {pickerOpen && matches.length > 0 && (
-                          <div className="absolute left-0 right-0 top-full mt-1 z-10 bg-white border border-gray-200 rounded-lg shadow-lg max-h-72 overflow-y-auto divide-y divide-gray-100">
-                            {matches.map(p => {
-                              const expanded = pickerExpandedProduct === p.id
-                              const multi = p.variants.length > 1
-                              const sole = p.variants[0]
-                              return (
-                                <div key={p.id}>
-                                  <button
-                                    type="button"
-                                    onMouseDown={(e) => e.preventDefault()}
-                                    onClick={() => onProductClick(p)}
-                                    className="w-full text-left px-3 py-1.5 hover:bg-gray-50 text-xs">
-                                    <div className="flex items-center justify-between gap-2">
-                                      <span className="text-gray-900 truncate">{p.name}</span>
-                                      {multi && (
-                                        <span className="text-[10px] font-medium text-gray-600 bg-gray-100 border border-gray-200 rounded px-1.5 py-0.5 shrink-0">
-                                          {p.variants.length} variants {expanded ? '▲' : '▼'}
+                        <select
+                          value={pickerSubcategoryFilter}
+                          onChange={(e) => setPickerSubcategoryFilter(e.target.value)}
+                          disabled={subcategoryOptions.length === 0}
+                          className="border border-gray-200 rounded-lg px-2 py-1 text-xs text-gray-900 focus:outline-none focus:border-[#0f4c35] bg-white disabled:bg-gray-50">
+                          <option value="">All sub</option>
+                          {subcategoryOptions.map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                        <div className="flex-1 min-w-[12rem] relative">
+                          <input
+                            type="text"
+                            value={pickerQuery}
+                            placeholder={products.length === 0 ? 'No products available' : 'Search products by name or partner…'}
+                            disabled={products.length === 0 || savingItems}
+                            onFocus={() => setPickerOpen(true)}
+                            onBlur={() => setTimeout(() => setPickerOpen(false), 150)}
+                            onChange={(e) => { setPickerQuery(e.target.value); setPickerOpen(true) }}
+                            className="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs text-gray-900 focus:outline-none focus:border-[#0f4c35] bg-white disabled:bg-gray-50" />
+                          {pickerOpen && matches.length > 0 && (
+                            <div className="absolute left-0 right-0 bottom-full mb-1 z-10 bg-white border border-gray-200 rounded-lg shadow-lg max-h-72 overflow-y-auto divide-y divide-gray-100">
+                              {matches.map(p => {
+                                const expanded = pickerExpandedProduct === p.id
+                                const multi = p.variants.length > 1
+                                const sole = p.variants[0]
+                                return (
+                                  <div key={p.id}>
+                                    <button
+                                      type="button"
+                                      onMouseDown={(e) => e.preventDefault()}
+                                      onClick={() => onProductClick(p)}
+                                      className="w-full text-left px-3 py-1.5 hover:bg-gray-50 text-xs">
+                                      <div className="flex items-center justify-between gap-2">
+                                        <span className="text-gray-900 truncate">{p.name}</span>
+                                        {multi && (
+                                          <span className="text-[10px] font-medium text-gray-600 bg-gray-100 border border-gray-200 rounded px-1.5 py-0.5 shrink-0">
+                                            {p.variants.length} variants {expanded ? '▲' : '▼'}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className="text-[10px] text-gray-400 flex justify-between gap-2">
+                                        <span className="truncate">{p.partner_name ?? '—'}</span>
+                                        <span className="tabular-nums shrink-0">
+                                          {multi
+                                            ? `${fmtVariantPrice(p.variants[p.variants.length - 1])} – ${fmtVariantPrice(p.variants[0])}`
+                                            : sole ? fmtVariantPrice(sole)
+                                            : (p.price_currency === 'USD' ? `$${p.base_price.toLocaleString('en-US')}` : fmtKRW(p.base_price))}
                                         </span>
-                                      )}
-                                    </div>
-                                    <div className="text-[10px] text-gray-400 flex justify-between gap-2">
-                                      <span className="truncate">{p.partner_name ?? '—'}</span>
-                                      <span className="tabular-nums shrink-0">
-                                        {multi
-                                          ? `${fmtVariantPrice(p.variants[p.variants.length - 1])} – ${fmtVariantPrice(p.variants[0])}`
-                                          : sole ? fmtVariantPrice(sole)
-                                          : (p.price_currency === 'USD' ? `$${p.base_price.toLocaleString('en-US')}` : fmtKRW(p.base_price))}
-                                      </span>
-                                    </div>
-                                  </button>
-                                  {multi && expanded && (
-                                    <div className="bg-gray-50/60 border-t border-gray-100 divide-y divide-gray-100/60">
-                                      {p.variants.map(v => (
-                                        <button
-                                          key={v.id}
-                                          type="button"
-                                          onMouseDown={(e) => e.preventDefault()}
-                                          onClick={() => stageVariant(p, v)}
-                                          className="w-full text-left px-6 py-1.5 hover:bg-gray-50 text-xs flex items-center justify-between gap-2">
-                                          <span className="text-gray-700 truncate">{v.variant_label ?? '— Default —'}</span>
-                                          <span className="tabular-nums text-gray-600 shrink-0">{fmtVariantPrice(v)}</span>
-                                        </button>
-                                      ))}
-                                    </div>
-                                  )}
-                                </div>
-                              )
-                            })}
-                          </div>
-                        )}
-                        {pickerOpen && matches.length === 0 && (
-                          <div className="absolute left-0 right-0 top-full mt-1 z-10 bg-white border border-gray-200 rounded-lg shadow-lg px-3 py-2 text-xs text-gray-400">
-                            {q !== '' ? `No products match "${pickerQuery}"` : 'No products match the current filters.'}
-                          </div>
-                        )}
+                                      </div>
+                                    </button>
+                                    {multi && expanded && (
+                                      <div className="bg-gray-50/60 border-t border-gray-100 divide-y divide-gray-100/60">
+                                        {p.variants.map(v => (
+                                          <button
+                                            key={v.id}
+                                            type="button"
+                                            onMouseDown={(e) => e.preventDefault()}
+                                            onClick={() => stageVariant(p, v)}
+                                            className="w-full text-left px-6 py-1.5 hover:bg-gray-50 text-xs flex items-center justify-between gap-2">
+                                            <span className="text-gray-700 truncate">{v.variant_label ?? '— Default —'}</span>
+                                            <span className="tabular-nums text-gray-600 shrink-0">{fmtVariantPrice(v)}</span>
+                                          </button>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          )}
+                          {pickerOpen && matches.length === 0 && (
+                            <div className="absolute left-0 right-0 bottom-full mb-1 z-10 bg-white border border-gray-200 rounded-lg shadow-lg px-3 py-2 text-xs text-gray-400">
+                              {q !== '' ? `No products match "${pickerQuery}"` : 'No products match the current filters.'}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      {actionError && <p className="text-xs text-red-500">{actionError}</p>}
+                      <div className="flex items-center justify-end gap-2 pt-1 border-t border-[#0f4c35]/10">
+                        <button
+                          type="button"
+                          onClick={cancelChanges}
+                          disabled={!dirty || savingItems}
+                          className="text-xs font-medium bg-gray-700 text-white hover:bg-gray-600 px-2.5 py-1.5 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={saveChanges}
+                          disabled={!dirty || savingItems}
+                          className="text-xs font-medium bg-[#0f4c35] text-white hover:bg-[#0a3828] px-3 py-1.5 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed">
+                          {savingItems ? 'Saving…' : `Save${dirty ? ` (${stagedAdds.length}+ ${stagedRemoves.size}-)` : ''}`}
+                        </button>
                       </div>
                     </div>
                   )
                 })()}
-
-                {actionError && <p className="text-xs text-red-500">{actionError}</p>}
-
-                <div className="flex items-center justify-end gap-2 pt-1">
-                  <button
-                    type="button"
-                    onClick={cancelChanges}
-                    disabled={!dirty || savingItems}
-                    className="text-xs font-medium bg-gray-700 text-white hover:bg-gray-600 px-2.5 py-1.5 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={saveChanges}
-                    disabled={!dirty || savingItems}
-                    className="text-xs font-medium bg-[#0f4c35] text-white hover:bg-[#0a3828] px-3 py-1.5 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed">
-                    {savingItems ? 'Saving…' : `Save${dirty ? ` (${stagedAdds.length}+ ${stagedRemoves.size}-)` : ''}`}
-                  </button>
-                </div>
               </section>
             )
           })()}
@@ -2198,11 +2207,8 @@ export default function AdminCaseDetailPage() {
             )
           })()}
 
-          {/* Quote / Financials — cyan when admin has financial action queued
-              (awaiting_deposit: issue deposit settlement after agent issues;
-              awaiting_payment: confirm balance payment receipt). Mirror of the
-              agent-side cyan tone — both sides have parallel actions in these
-              two windows, so both get the action signal. */}
+          {/* Quote / Financials — floats to top when case is completed */}
+          <div className={caseData.status === 'completed' ? 'order-[-1]' : ''}>
           {latestQuote && (() => {
             const financialStages = ['awaiting_deposit', 'awaiting_pricing', 'awaiting_payment', 'awaiting_travel', 'awaiting_settlement', 'completed']
             const isFinancialActive = financialStages.includes(caseData.status)
@@ -2406,6 +2412,7 @@ export default function AdminCaseDetailPage() {
             </section>
             )
           })()}
+          </div>
 
 
           {caseData.status === 'awaiting_travel' && (

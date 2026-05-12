@@ -1,11 +1,13 @@
 # Project Progress
 
 ## 현재 상태
-- **Phase**: 시뮬 D+0(5/11). 오전: Deposit 플로우 단순화 등 5건. 오후: #19 섹션 테두리/뱃지 + Balance Invoice 자동발행 버그 4건 수정.
-- **마지막 작업**: 2026-05-11 오후 — #19 섹션 border-2+상태뱃지 / 스케줄 재컨펌 시 finalized_at 리셋 / createDraftFinalInvoice idempotent / auto-create → 명시적 버튼 / draft invoice agent 숨김.
-- **마지막 업데이트**: 2026-05-11 (시뮬레이션 5/11~15, 런칭 5/18)
+- **Phase**: 시뮬 D+1(5/12). 오전: 버튼 체계+Invoice+canEdit+인코딩 복구. 오후: Health Screening 상품 분리, 카탈로그 3차 카테고리 필터, 상품 삭제 확인 모달, vehicle per_day 자동 일수, Edit picker sticky + 자동스크롤, completed 케이스 Financials 최상단, agent 비활성화 3-layer 차단.
+- **마지막 작업**: 2026-05-12 저녁 — agent deactivation 3-layer block (로그인 차단 + Guard + /deactivated 전용 페이지).
+- **마지막 업데이트**: 2026-05-12 (시뮬레이션 5/11~15, 런칭 5/18)
 - **SaaS 브랜드명**: **TikkTakk** (5/9 전역 치환 완료)
 
+> 2026-05-12 저녁: `notes/26.05.12.md` §9–12 (vehicle per_day 자동 일수. Edit picker sticky + 자동스크롤. completed 케이스 Financials 최상단 flex+order. Agent 비활성화 3-layer: login+Guard+/deactivated 전용 페이지).
+> 2026-05-12: `notes/26.05.12.md` (§1–5: 버튼 4-tier+Invoice+canEdit+인코딩 복구. §6: Health Screening 업로드 파싱 규칙. §7: 카탈로그 partner pills + subcategory 섹션 뷰. §8: 상품 삭제 확인 모달).
 > 2026-05-11 오후: `notes/26.05.11.md` §5–6 (#19 섹션 border-2+상태뱃지 / Balance Invoice 자동발행 버그 4건 수정 — 재컨펌 시 리셋·idempotent·명시적 버튼·draft 숨김).
 > 2026-05-11 오전: `notes/26.05.11.md` §1–4 (price_rate_snapshot 마이그레이션. Deposit 플로우 단순화. Agent Contact Info 필수화. Group Assignment 정합성. Shared Activities 명칭 정리).
 > 2026-05-09-10 상세: `notes/26.05.09-10.md` (§1: TikkTakk 브랜드명 치환. §2: 인당 견적서 `?member=` 탭. §3: Admin 권한 체계 재설계. §4: UX 잔손질 6건. §5: Trip Services 분리. §6: 견적서 불변성 모델 + Finalize 리팩터 + DB 트리거. §7: Agent 취소 여행명 확인. §8: Guide 전면 재작성).
@@ -101,6 +103,7 @@
 - [ ] **Subpackage 라인 아이템 노트** — agent가 Subpackage 상품 선택 시 variant처럼 노트 입력 (내부용, 고객 견적서 미노출). `document_items.notes` 컬럼 추가. admin "Notes from Agent" 섹션에 기존 `cases.agent_notes`(케이스 전체 메모)와 함께 상품별 노트 묶어서 노출.
 - [ ] **스케줄 Selected Products 커버리지 게이트 — Subpackage 예외** — 현재 스케줄 저장 시 모든 selected product가 스케줄에 포함되어야 하는 커버리지 검증이 있음. 통역·차량·컨시어지 같은 Subpackage 상품은 스케줄 항목으로 개별 배치하는 게 아니라 여행 전반에 걸친 지원 서비스이므로 이 검증에서 제외해야 함.
 - [ ] **Subpackage 서비스 일수 수량 컨트롤** — 통역/차량/컨시어지 등 일수 단위 상품은 memberCount가 아닌 일수(quantity)로 곱해야 함. 카트 담은 후 −/+ 수량 조절 UI 추가, CartItem.quantity에 저장, totalUSD/review/document 생성에서 quantity 우선 사용. Guide 페이지에 호텔(nights)·Subpackage 서비스(일수)·일반 상품(인원수) 계산 방식 설명 추가 필요.
+- [ ] **상품 카탈로그 3번째 티어 (Phase 2)** — `K-Medical > Health Screening > A센터` 같이 provider/clinic 단위 하위 분류. `product_subsubcategories` 테이블 신규 + FK 체인 + Excel upload + ProductForm + 에이전트 카탈로그 UI. 현재는 Female/Male/Junior를 같은 subcategory 내 별도 product로 처리. 센터 2곳 이상 되는 시점에 설계.
 - [ ] **호텔 객실 정원 검증 (Phase 2)** — `product_variants`에 `min_occupancy/max_occupancy` 컬럼, ProductForm + Excel upload에 입력, v18 데이터 backfill, 카트에서 group memberCount > max_occupancy 시 경고. 견적 금액엔 영향 없음 (UX 안전장치). 시뮬에서 발견해도 늦지 않음
 - [x] **데이터 마스터 v17 → v18** (5/4 저녁: DIAR 159 rows → 11 base + 159 variants, Hotel 37 rows → 13 base + 37 variants. `[★5 Hotel]` strip + grade paren strip + Hanok inline. 사용자 검수 후 deleteMissing으로 옛 row 정리)
 - [x] **Agent 카탈로그 정렬 정책** — 가격 desc 적용 (5/4 저녁). 인기순(5건+)은 케이스 쌓이면 도입 (backlog)

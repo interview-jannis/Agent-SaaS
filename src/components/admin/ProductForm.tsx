@@ -125,6 +125,8 @@ export default function ProductForm({ productId, productNumber, categories, init
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState('')
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false)
+  const [deleteConfirmInput, setDeleteConfirmInput] = useState('')
 
   // Sub-categories — loaded once, filtered by selected category
   const [subcategories, setSubcategories] = useState<{ id: string; category_id: string; name: string }[]>([])
@@ -435,8 +437,8 @@ export default function ProductForm({ productId, productNumber, categories, init
 
   // ── Delete ───────────────────────────────────────────────────
 
-  async function handleDelete() {
-    if (!productId || !confirm('Are you sure you want to delete this product?')) return
+  async function handleConfirmDelete() {
+    if (!productId) return
     setDeleting(true)
     try {
       const label = `${form.partner_name.trim()} / ${form.name.trim()}`
@@ -452,6 +454,7 @@ export default function ProductForm({ productId, productNumber, categories, init
     } catch (e: unknown) {
       setError((e as { message?: string })?.message ?? 'Failed to delete product.')
       setDeleting(false)
+      setDeleteModalOpen(false)
     }
   }
 
@@ -962,9 +965,9 @@ export default function ProductForm({ productId, productNumber, categories, init
           {productId ? (
             <button
               type="button"
-              onClick={handleDelete}
+              onClick={() => { setDeleteModalOpen(true); setDeleteConfirmInput('') }}
               disabled={deleting}
-              className="px-4 py-2.5 text-sm font-medium text-red-500 border border-red-200 hover:bg-red-50 rounded-xl transition-colors disabled:opacity-40"
+              className="px-4 py-2.5 text-sm font-medium bg-red-600 text-white hover:bg-red-700 rounded-xl transition-colors disabled:opacity-40"
             >
               {deleting ? 'Deleting...' : 'Delete Product'}
             </button>
@@ -991,6 +994,59 @@ export default function ProductForm({ productId, productNumber, categories, init
         </div>
 
       </div>
+
+      {/* Delete confirmation modal */}
+      {deleteModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
+          onClick={() => !deleting && setDeleteModalOpen(false)}>
+          <div className="bg-white rounded-2xl w-full max-w-sm p-6 space-y-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                <svg className="w-5 h-5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900">Delete Product</h3>
+                <p className="text-xs text-gray-500 mt-1">
+                  This will permanently delete <span className="font-medium text-gray-700">{form.name.trim()}</span> and all its variants. This cannot be undone.
+                </p>
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1.5">
+                Type <span className="font-mono font-semibold text-gray-700">{form.name.trim()}</span> to confirm
+              </label>
+              <input
+                type="text"
+                value={deleteConfirmInput}
+                onChange={e => setDeleteConfirmInput(e.target.value)}
+                placeholder={form.name.trim()}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-red-400"
+                autoFocus
+              />
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setDeleteModalOpen(false)}
+                disabled={deleting}
+                className="px-4 py-1.5 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                disabled={deleting || deleteConfirmInput.trim() !== form.name.trim()}
+                className="px-4 py-1.5 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-40 transition-colors"
+              >
+                {deleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

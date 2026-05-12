@@ -73,6 +73,17 @@ rows.forEach(r => {
     r[9] = 0;
     r[28] = 'Special rate on request — contact Sofitel sales manager for group/VIP pricing. Published rack rate: ₩22,000,000/night.';
   }
+  // Ruby Clinic: 4 packages are distinct products (not per-botox-brand variants).
+  // v18 column misalignment caused botox brand names (Xeomin/Allergan/Domestic) to land in variant_label.
+  if (r[3] === 'Ruby Clinic') {
+    r[7] = '';
+  }
+  // SELENA Clinic Hongdae: 3 tiered packages — no variants.
+  // v18 column misalignment caused botox brand names to land in variant_label.
+  // Note: "Royal Refresh Day" is explicitly a non-injection procedure — Xeomin variant was factually wrong.
+  if (r[3] === 'SELENA Clinic Hongdae') {
+    r[7] = '';
+  }
 });
 
 // ── max product number ─────────────────────────────────────────────────────────

@@ -19,11 +19,15 @@ export default function AgentOnboardingGuard() {
       if (!uid) return
       const { data } = await supabase
         .from('agents')
-        .select('onboarding_status, setup_completed_at')
+        .select('onboarding_status, setup_completed_at, is_active')
         .eq('auth_user_id', uid)
         .maybeSingle()
       if (cancelled) return
-      const row = data as { onboarding_status?: string; setup_completed_at?: string | null } | null
+      const row = data as { onboarding_status?: string; setup_completed_at?: string | null; is_active?: boolean } | null
+      if (row?.is_active === false) {
+        router.replace('/deactivated')
+        return
+      }
       const status = row?.onboarding_status
       if (status && status !== 'approved') {
         router.replace('/onboarding')

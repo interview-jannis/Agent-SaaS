@@ -51,6 +51,7 @@ export function nightsBetween(dateStart: string | null | undefined, dateEnd: str
 // Days between two ISO dates (inclusive of both start and end). Used for per_day items
 // like vehicles where the count includes the arrival and departure day.
 export function daysBetween(dateStart: string | null | undefined, dateEnd: string | null | undefined): number {
+  if (!dateStart || !dateEnd) return 1
   return nightsBetween(dateStart, dateEnd) + 1
 }
 

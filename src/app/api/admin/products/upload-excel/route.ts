@@ -150,6 +150,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: `Could not parse xlsx: ${(e as Error).message}` }, { status: 400 })
   }
 
+  // Health Screening: gender is product identity, not a variant selector.
+  // Flatten "VIP Premium / Male" → product name "VIP Premium Male" with no variant label,
+  // so each gender gets its own product row (and its own description).
+  for (const r of rows) {
+    if (normStr(r.subcategory) === 'Health Screening' && normStr(r.variant_label)) {
+      r.name = `${normStr(r.name)} ${normStr(r.variant_label)}`
+      r.variant_label = ''
+    }
+  }
+
   // Categories — required to exist
   const { data: cats } = await supabase.from('product_categories').select('id, name')
   const catMap = new Map<string, string>((cats ?? []).map(c => [c.name as string, c.id as string]))

@@ -94,6 +94,7 @@ Agent 수동 개입:
 - Agent (6탭): Home / Cases / Clients / Payouts / Dashboard / Profile
 - Admin: Overview / Cases / Products / Agents / Clients / Settlement / Contracts / **Surveys** / **Admins** / Audit Log / Settings
   - 권한 분기: 일반 admin은 **Admins** 메뉴 안 보임. 모든 admin이 시스템 설정/계약서/설문 **조회**는 가능하나 **수정**은 super admin만.
+  - **케이스 편집 권한**: `canEdit = !!currentAdminId` — 로그인한 admin이면 누구나 케이스 편집 가능. `assigned_admin_id`는 알림 라우팅 전용이며 권한 게이트가 아님.
   - **/admin/surveys**: Questions 탭 (post-trip 질문 편집, super admin 전용) + Responses 탭 (제출된 응답 모음). 이전엔 /admin/contracts에 섞여 있었으나 결이 달라 분리 (5/4).
 - 고객용 URL 페이지:
   - **/quote/[slug]** — Quotation (가격 finalize 전 단계)
@@ -105,14 +106,21 @@ Agent 수동 개입:
 - 온보딩: /onboarding (Welcome/Orientation/NDA/Partnership/Waiting/Setup)
 - 계약 뷰어: /onboarding/contract/[id] (Agent 본인), /admin/agents/[id]/contract/[cid] (Admin)
 - 비밀번호: /reset-password (Supabase recovery flow)
+- 비활성화: /deactivated (is_active=false agent 전용 차단 페이지 — Sign out만 노출, super admin 이메일 표시)
 
-## 역할 분기 (Login 3-way)
+## 역할 분기 (Login)
 - admins 테이블에 있음 → /admin/overview
+- agents.is_active = false → signOut + /deactivated (로그인 자체 차단)
 - agents.onboarding_status = 'pending_onboarding' 또는 'awaiting_approval' → /onboarding
 - agents.onboarding_status = 'approved' && setup_completed_at IS NULL → /onboarding/setup
 - agents.onboarding_status = 'approved' && setup_completed_at → /agent/home
 
 라우팅 가드 3곳(Login / AgentOnboardingGuard / Onboarding layout) 동일 로직 유지 필수.
+
+**Agent 비활성화 3-layer (5/12):**
+1. **Login**: 로그인 시 `is_active === false` → `supabase.auth.signOut()` 후 `/deactivated`로 이동
+2. **AgentOnboardingGuard**: `/agent/*` 레이아웃마다 마운트. `is_active === false` → `/deactivated` replace. 기존 세션도 차단.
+3. **/deactivated 전용 페이지**: Sign out 버튼만 노출. DB에서 super admin 이메일 조회해 `mailto:` 링크로 표시. 다른 네비게이션 없음.
 
 ## DB 스키마
 
@@ -196,7 +204,7 @@ Agent 수동 개입:
 - 고객 URL 페이지: src/app/quote/[slug]/ , src/app/invoice/[slug]/ , src/app/schedule/[slug]/
 - API 라우트: src/app/api/ (service role 필요한 작업용)
   - **계약서 sign API** (2026-05-04): `/api/onboarding/sign-contract` (agent 사인), `/api/admin/sign-contract` (admin counter-sign). 서버사이드 IP/SHA-256 hash/typed_name 본인검증/body token 서버 substitute.
-  - **상품 일괄 업로드** (2026-05-04): `/api/admin/products/upload-excel`. multipart xlsx, UPSERT (cat+partner+name natural key, variant_label로 variant 매칭), `?dryRun=true`로 preview, `?deleteMissing=true`로 옵트인 일괄 삭제 (누락 row 자동 클린업). 신규 product_number는 MAX(numeric)+1로 발번 (count+1은 sparse 번호와 충돌함).
+  - **상품 일괄 업로드** (2026-05-04): `/api/admin/products/upload-excel`. multipart xlsx, UPSERT (cat+partner+name natural key, variant_label로 variant 매칭), `?dryRun=true`로 preview, `?deleteMissing=true`로 옵트인 일괄 삭제 (누락 row 자동 클린업). 신규 product_number는 MAX(numeric)+1로 발번 (count+1은 sparse 번호와 충돌함). **Health Screening 파싱 특칙 (5/12)**: `subcategory = "Health Screening"`이고 `variant_label` 있으면 → `name`에 성별 합치고(`VIP Premium Male`) `variant_label` 비움 — 성별별 독립 product + 독립 description 보장.
   - 그 외: agent setup, create-agent, claim-admin-invite, notify-signed, etc.
 - 타입 정의는 src/types/
 
@@ -232,6 +240,29 @@ Agent 수동 개입:
 - **Gray** (`bg-gray-50 text-gray-500 border-gray-200`) — 대기 중 / 완료 / 정보성
 - **Rose** (`bg-rose-50 text-rose-700 border-rose-200`) — 취소 / 오류 등 부정적 상태
 - 새 UI 작성 시 violet/emerald/blue/cyan/yellow accent 사용 금지 — 위 톤 중 하나로 매핑할 것
+
+### 버튼 4-tier 체계 (5/12 확정)
+| 티어 | 클래스 | 용도 |
+|------|--------|------|
+| **Primary** | `bg-[#0f4c35] text-white hover:bg-[#0a3828]` | Save, Send, Mark Paid, Approve, Send Invoice |
+| **Edit** | `bg-green-700 text-white hover:bg-green-800 px-2.5 py-1 rounded-lg transition-colors` | Edit, + Add note, Edit Products |
+| **Utility** | `bg-gray-700 text-white hover:bg-gray-600` | Preview, Copy Link, Expand/Collapse, Save Draft, Save PDF, Sign on device |
+| **Destructive** | `bg-red-600 text-white hover:bg-red-700` | Cancel Case |
+
+> 모든 버튼은 solid(테두리=채우기 동일). `text-[#0f4c35] border border-green-200` 등 outline/ghost 스타일 신규 사용 금지.
+
+### 에이전트 상품 카탈로그 3차 카테고리 (5/12)
+- 경로: `src/app/agent/product/page.tsx`
+- 탭 구조: Category(1행) → Subcategory(2행) → Partner pills(3행, 조건부)
+- **`PARTNER_GROUPED_SUBCATEGORIES = new Set(['Health Screening'])`** 상수로 파트너 필터가 필요한 subcategory 목록 관리. 새 subcategory 추가 시 이 Set에만 추가하면 됨.
+- partner pills 노출 조건: `availablePartnerNames.length > 1` — 파트너 1개면 pills 숨김(그룹 헤더도 생략).
+- K-Medical > All 상태에서도 visible product 전부 `PARTNER_GROUPED_SUBCATEGORIES`에 속하면 파트너 그룹핑 적용.
+- subcategory sections view(홈 All 패턴 재사용): `selectedSubcategoryName === '' && selectedPartnerName === '' && availableSubcategories.length > 1`일 때 subcategory별 섹션 카드(최대 6 preview + "See all (N) →" 링크)로 표시. 치과/한방 등 신규 subcategory 추가 시 자동 전환.
+
+### 파괴적 액션 확인 UX 패턴
+- 상품 이름 등 **정확한 텍스트를 직접 입력해야 Delete 버튼 활성화** (`deleteConfirmInput.trim() !== targetName.trim()` → disabled).
+- Cancel Case 모달과 동일 패턴. 앞으로 되돌릴 수 없는 삭제/취소 액션은 이 방식 사용.
+- Delete 버튼은 `bg-red-600 text-white hover:bg-red-700` solid 빨간색.
 
 ## 진행 현황 참조
 - 최신 진행 상황: `notes/PROGRESS.md`

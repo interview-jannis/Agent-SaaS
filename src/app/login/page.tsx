@@ -51,13 +51,18 @@ function LoginForm() {
 
     const [{ data: admin }, { data: agent }] = await Promise.all([
       supabase.from('admins').select('id').eq('auth_user_id', userId).maybeSingle(),
-      supabase.from('agents').select('id, onboarding_status, setup_completed_at').eq('auth_user_id', userId).maybeSingle(),
+      supabase.from('agents').select('id, onboarding_status, setup_completed_at, is_active').eq('auth_user_id', userId).maybeSingle(),
     ])
 
     if (admin) {
       router.push('/admin/overview')
     } else if (agent) {
-      const a = agent as { onboarding_status?: string; setup_completed_at?: string | null }
+      const a = agent as { onboarding_status?: string; setup_completed_at?: string | null; is_active?: boolean }
+      if (a.is_active === false) {
+        await supabase.auth.signOut()
+        router.push('/deactivated')
+        return
+      }
       if (a.onboarding_status === 'pending_onboarding' || a.onboarding_status === 'awaiting_approval') {
         router.push('/onboarding')
       } else if (a.onboarding_status === 'approved' && !a.setup_completed_at) {
