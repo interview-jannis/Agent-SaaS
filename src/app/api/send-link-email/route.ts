@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { Resend } from 'resend'
 
-const FROM = 'Tiktak <noreply@interviewcorp.co.kr>'
+const FROM = 'TIKKTAKK <noreply@interviewcorp.co.kr>'
 
 const SUBJECTS: Record<string, string> = {
   quotation: '[Tiktak] Your quotation is ready',

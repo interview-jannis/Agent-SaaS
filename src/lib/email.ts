@@ -5,7 +5,7 @@ function getResend(): Resend {
   if (!_resend) _resend = new Resend(process.env.RESEND_API_KEY)
   return _resend
 }
-const FROM = 'Tiktak <noreply@interviewcorp.co.kr>'
+const FROM = 'TIKKTAKK <noreply@interviewcorp.co.kr>'
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://tiktak.interviewcorp.co.kr'
 
 function getAdminSubject(message: string): string {
