@@ -54,6 +54,40 @@ export default function AgentClientsPage() {
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
 
+  // Intake link modal
+  const [showIntake, setShowIntake] = useState(false)
+  const [intakeSelected, setIntakeSelected] = useState<Set<string>>(new Set())
+  const [intakeGenerating, setIntakeGenerating] = useState(false)
+  const [intakeLink, setIntakeLink] = useState('')
+  const [intakeCopied, setIntakeCopied] = useState(false)
+
+  async function generateIntakeLink() {
+    if (intakeSelected.size === 0) return
+    setIntakeGenerating(true); setIntakeLink('')
+    try {
+      const res = await fetch('/api/intake/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ client_ids: Array.from(intakeSelected), agent_id: agentId }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Failed to generate link.')
+      setIntakeLink(`${window.location.origin}/intake/${data.token}`)
+    } catch (e: unknown) {
+      alert((e as { message?: string })?.message ?? 'Failed to generate link.')
+    } finally {
+      setIntakeGenerating(false)
+    }
+  }
+
+  function copyIntakeLink() {
+    if (!intakeLink) return
+    navigator.clipboard.writeText(intakeLink).then(() => {
+      setIntakeCopied(true)
+      setTimeout(() => setIntakeCopied(false), 2000)
+    })
+  }
+
   async function fetchClients(aid: string) {
     const { data } = await supabase
       .from('clients')
@@ -153,15 +187,26 @@ export default function AgentClientsPage() {
             </button>
           )}
         </div>
-        <button
-          onClick={() => { setForm(DEFAULT_FORM); setFormError(''); setShowModal(true) }}
-          className="md:ml-auto flex items-center justify-center gap-1.5 px-3 py-1.5 bg-[#0f4c35] text-white text-xs font-medium rounded-lg hover:bg-[#0a3828] transition-colors"
-        >
-          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-          </svg>
-          Add Client
-        </button>
+        <div className="md:ml-auto flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => { setIntakeSelected(new Set()); setIntakeLink(''); setShowIntake(true) }}
+            className="flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 flex-1 md:flex-none transition-colors"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
+            </svg>
+            Send Intake Link
+          </button>
+          <button
+            onClick={() => { setForm(DEFAULT_FORM); setFormError(''); setShowModal(true) }}
+            className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-[#0f4c35] text-white text-xs font-medium rounded-lg hover:bg-[#0a3828] flex-1 md:flex-none transition-colors"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+            Add Client
+          </button>
+        </div>
       </div>
 
       {/* Table */}
@@ -329,6 +374,67 @@ export default function AgentClientsPage() {
               <button onClick={handleCreate} disabled={saving}
                 className="px-4 py-1.5 text-sm bg-[#0f4c35] text-white font-medium rounded-lg hover:bg-[#0a3828] disabled:opacity-50 transition-colors">
                 {saving ? 'Saving...' : 'Register Client'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Intake Link Modal */}
+      {showIntake && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+          onClick={() => { if (!intakeGenerating) { setShowIntake(false); setIntakeLink('') } }}>
+          <div className="bg-white rounded-2xl max-w-sm w-full shadow-xl" onClick={e => e.stopPropagation()}>
+            <div className="p-5 border-b border-gray-100">
+              <h3 className="text-sm font-semibold text-gray-900">Send Intake Link</h3>
+              <p className="text-xs text-gray-500 mt-0.5">Select clients — they&apos;ll all be accessible from one shared link.</p>
+            </div>
+
+            <div className="p-5 space-y-1.5 max-h-64 overflow-y-auto">
+              {clients.length === 0 ? (
+                <p className="text-xs text-gray-400 text-center py-4">No clients yet.</p>
+              ) : clients.map(c => {
+                const checked = intakeSelected.has(c.id)
+                return (
+                  <label key={c.id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-gray-50 cursor-pointer transition-colors">
+                    <input type="checkbox" checked={checked}
+                      onChange={() => setIntakeSelected(prev => {
+                        const next = new Set(prev)
+                        checked ? next.delete(c.id) : next.add(c.id)
+                        return next
+                      })}
+                      className="accent-[#0f4c35] w-4 h-4 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-800 truncate">{c.name}</p>
+                      <p className="text-[10px] font-mono text-gray-400">{c.client_number}</p>
+                    </div>
+                  </label>
+                )
+              })}
+            </div>
+
+            {intakeLink && (
+              <div className="px-5 pb-3">
+                <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5">
+                  <p className="text-xs text-gray-600 flex-1 truncate font-mono">{intakeLink}</p>
+                  <button onClick={copyIntakeLink}
+                    className={`shrink-0 transition-colors ${intakeCopied ? 'text-[#0f4c35]' : 'text-gray-400 hover:text-[#0f4c35]'}`}>
+                    {intakeCopied
+                      ? <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+                      : <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                    }
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="px-5 pb-5 flex items-center justify-end gap-2">
+              <button onClick={() => { setShowIntake(false); setIntakeLink('') }} disabled={intakeGenerating}
+                className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-800 disabled:opacity-40">Cancel</button>
+              <button onClick={generateIntakeLink}
+                disabled={intakeSelected.size === 0 || intakeGenerating}
+                className="px-4 py-1.5 text-xs font-medium bg-[#0f4c35] text-white rounded-lg hover:bg-[#0a3828] disabled:opacity-40 transition-colors">
+                {intakeGenerating ? 'Generating…' : intakeLink ? 'Regenerate Link' : 'Generate Link'}
               </button>
             </div>
           </div>

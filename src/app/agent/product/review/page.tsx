@@ -358,12 +358,13 @@ export default function QuoteReviewPage() {
       const companyMargin = (companyRateSetting?.value as { rate?: number } | null)?.rate ?? 0.2
       const agentMargin = agentData.margin_rate ?? 0.15
 
-      // Create case
-      const { count: caseCount } = await supabase.from('cases').select('*', { count: 'exact', head: true })
+      // Create case — use MAX+1 to avoid collision after deletions (count+1 breaks on sparse gaps)
+      const { data: maxCaseRow } = await supabase.from('cases').select('case_number').order('case_number', { ascending: false }).limit(1).maybeSingle()
+      const maxCaseNum = maxCaseRow ? (parseInt(maxCaseRow.case_number.replace(/\D/g, '')) || 0) : 0
       const { data: caseData, error: caseErr } = await supabase
         .from('cases')
         .insert({
-          case_number: `#C-${String((caseCount ?? 0) + 1).padStart(3, '0')}`,
+          case_number: `#C-${String(maxCaseNum + 1).padStart(3, '0')}`,
           agent_id: agentData.id,
           // New SOP flow: case enters at awaiting_contract right after quote is
           // sent. Detailed client info / trip info is collected in parallel
