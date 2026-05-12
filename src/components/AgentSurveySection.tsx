@@ -21,10 +21,11 @@ type Props = {
   caseId: string
   caseNumber: string
   agentId: string
+  caseStatus: string
   onChanged?: () => Promise<void> | void
 }
 
-export default function AgentSurveySection({ caseId, caseNumber, agentId, onChanged }: Props) {
+export default function AgentSurveySection({ caseId, caseNumber, agentId, caseStatus, onChanged }: Props) {
   const [survey, setSurvey] = useState<SurveyRow | null>(null)
   const [questions, setQuestions] = useState<SurveyQuestion[]>([])
   const [loading, setLoading] = useState(true)
@@ -85,7 +86,7 @@ export default function AgentSurveySection({ caseId, caseNumber, agentId, onChan
   // Already submitted — show summary
   if (survey) {
     return (
-      <section id="survey" className="scroll-mt-20 bg-gray-50 rounded-2xl p-5 space-y-3">
+      <section id="survey" className="scroll-mt-20 rounded-2xl p-5 space-y-3 bg-gray-50 border border-gray-200">
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Client Review</h3>
@@ -111,9 +112,9 @@ export default function AgentSurveySection({ caseId, caseNumber, agentId, onChan
 
   // Not yet submitted — show form
   return (
-    <section id="survey" className="scroll-mt-20 bg-teal-50 border border-teal-200 rounded-2xl p-5 space-y-4">
+    <section id="survey" className={`scroll-mt-20 rounded-2xl p-5 space-y-4 ${caseStatus === 'awaiting_review' ? 'bg-white border-2 border-[#0f4c35]' : 'bg-gray-50 border border-gray-200'}`}>
       <div>
-        <h3 className="text-xs font-semibold text-teal-700 uppercase tracking-wide">Client Review</h3>
+        <h3 className={`text-xs font-semibold uppercase tracking-wide ${caseStatus === 'awaiting_review' ? 'text-[#0f4c35]' : 'text-gray-700'}`}>Client Review</h3>
         <p className="text-xs text-gray-600 mt-0.5">Collect feedback from your client and submit. This finalizes the case.</p>
       </div>
 

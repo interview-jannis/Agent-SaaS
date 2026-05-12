@@ -2105,14 +2105,15 @@ export default function AdminCaseDetailPage() {
               agent-side cyan tone — both sides have parallel actions in these
               two windows, so both get the action signal. */}
           {latestQuote && (() => {
-            const isCompleted = caseData.status === 'completed'
-            const sectionClass = !isCompleted
+            const financialStages = ['awaiting_deposit', 'awaiting_pricing', 'awaiting_payment', 'awaiting_settlement', 'completed']
+            const isFinancialActive = financialStages.includes(caseData.status)
+            const sectionClass = isFinancialActive
               ? 'bg-white border-2 border-[#0f4c35] rounded-2xl overflow-hidden'
-              : 'bg-gray-50 rounded-2xl border-2 border-gray-300 overflow-hidden'
-            const headerClass = !isCompleted
+              : 'bg-gray-50 rounded-2xl border border-gray-200 overflow-hidden'
+            const headerClass = isFinancialActive
               ? 'flex items-center justify-between px-4 py-2.5 bg-green-50 border-b border-green-200'
               : 'flex items-center justify-between px-4 py-2.5 bg-gray-100 border-b border-gray-200'
-            const labelClass = !isCompleted
+            const labelClass = isFinancialActive
               ? 'text-xs font-semibold text-[#0f4c35] uppercase tracking-wide'
               : 'text-xs font-semibold text-gray-700 uppercase tracking-wide'
             return (
@@ -2308,7 +2309,8 @@ export default function AdminCaseDetailPage() {
 
 
           {caseData.status === 'awaiting_travel' && (
-            <section className="border-2 border-gray-300 bg-gray-50 rounded-2xl p-4">
+            <section className="border-2 border-[#0f4c35] bg-white rounded-2xl p-4">
+              <p className="text-xs font-semibold text-[#0f4c35] uppercase tracking-wide mb-1">Travel Underway</p>
               <p className="text-xs text-gray-500">Agent will mark travel complete after the trip.</p>
             </section>
           )}

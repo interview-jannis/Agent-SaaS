@@ -105,9 +105,9 @@ export default function AdminCaseContractSection({ caseId, caseNumber, caseStatu
   const isExpanded = expanded ?? !fullySigned
 
   return (
-    <section id="case-contract" className="scroll-mt-20 bg-gray-50 rounded-2xl border-2 border-gray-300 overflow-hidden">
-      <div className="flex items-center justify-between gap-3 flex-wrap px-4 py-2.5 bg-gray-100 border-b border-gray-200">
-        <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">3-Party Contract</h3>
+    <section id="case-contract" className={`scroll-mt-20 rounded-2xl overflow-hidden ${caseStatus === 'awaiting_contract' ? 'bg-white border-2 border-[#0f4c35]' : 'bg-gray-50 border-2 border-gray-300'}`}>
+      <div className={`flex items-center justify-between gap-3 flex-wrap px-4 py-2.5 border-b ${caseStatus === 'awaiting_contract' ? 'bg-green-50 border-green-200' : 'bg-gray-100 border-gray-200'}`}>
+        <h3 className={`text-xs font-semibold uppercase tracking-wide ${caseStatus === 'awaiting_contract' ? 'text-[#0f4c35]' : 'text-gray-700'}`}>3-Party Contract</h3>
         <div className="flex items-center gap-2 shrink-0">
           {fullySigned && contract.client_token && (
             <button onClick={() => window.open(`/case-contract/${contract.client_token}?print=1`, '_blank', 'noopener')}

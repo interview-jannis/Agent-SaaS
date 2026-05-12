@@ -159,10 +159,10 @@ export default function AgentCaseContractSection({
   const isExpanded = expanded ?? !fullySigned
 
   return (
-    <section id="case-contract" className="scroll-mt-20 bg-gray-50 rounded-2xl border border-gray-200 overflow-hidden">
-      <div className="flex flex-col sm:flex-row sm:items-center gap-2 px-5 py-2.5 bg-gray-100 border-b border-gray-200">
+    <section id="case-contract" className={`scroll-mt-20 rounded-2xl overflow-hidden ${caseStatus === 'awaiting_contract' ? 'bg-white border-2 border-[#0f4c35]' : 'bg-gray-50 border border-gray-200'}`}>
+      <div className={`flex flex-col sm:flex-row sm:items-center gap-2 px-5 py-2.5 border-b ${caseStatus === 'awaiting_contract' ? 'bg-green-50 border-green-200' : 'bg-gray-100 border-gray-200'}`}>
         <div className="flex-1 min-w-0">
-          <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">3-Party Contract</h3>
+          <h3 className={`text-xs font-semibold uppercase tracking-wide ${caseStatus === 'awaiting_contract' ? 'text-[#0f4c35]' : 'text-gray-700'}`}>3-Party Contract</h3>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {fullySigned && contract && contract.client_token && (

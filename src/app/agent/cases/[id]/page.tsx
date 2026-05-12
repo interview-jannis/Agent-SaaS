@@ -33,7 +33,6 @@ import { getMissingClientFields, getMissingCaseFields, CLIENT_INFO_COLUMNS } fro
 type MemberClient = ClientInfo & {
   client_number: string
   nationality: string | null
-  intake_token: string | null
 }
 
 type CaseMember = {
@@ -119,7 +118,7 @@ type CaseAttachment = {
   created_at: string
 }
 
-type AgentClient = { id: string; name: string; nationality: string; intake_token: string | null }
+type AgentClient = { id: string; name: string; nationality: string }
 type NewClientForm = {
   name: string; nationality: string; gender: 'male' | 'female'; date_of_birth: string
   phone: string; email: string; dietary_restriction: DietaryType; needs_muslim_friendly: boolean
@@ -200,7 +199,6 @@ export default function CaseDetailPage() {
     isRemoved: boolean  // pending case_member delete
     clientId: string
     clientNumber: string
-    intakeToken: string | null
     clientName: string
     nationality: string | null
     needsMuslim: boolean
@@ -246,7 +244,7 @@ export default function CaseDetailPage() {
         concept, outbound_flight, inbound_flight, cancellation_reason, agent_notes,
         case_members(
           id, is_lead,
-          clients(client_number, nationality, intake_token, ${CLIENT_INFO_COLUMNS})
+          clients(client_number, nationality, ${CLIENT_INFO_COLUMNS})
         ),
         documents(
           id, type, document_number, slug, total_price, payment_due_date, payment_received_at, agent_margin_rate, company_margin_rate, finalized_at, from_party, to_party, created_at,
@@ -320,7 +318,7 @@ export default function CaseDetailPage() {
       await fetchCase()
 
       if (aid) {
-        const { data: cl } = await supabase.from('clients').select('id, name, nationality, intake_token').eq('agent_id', aid).order('name')
+        const { data: cl } = await supabase.from('clients').select('id, name, nationality').eq('agent_id', aid).order('name')
         setAgentClients(cl ?? [])
       }
       setLoading(false)
@@ -618,7 +616,6 @@ export default function CaseDetailPage() {
       clientName: m.clients?.name ?? '',
       nationality: m.clients?.nationality ?? null,
       needsMuslim: !!m.clients?.needs_muslim_friendly,
-      intakeToken: m.clients?.intake_token ?? null,
       isLead: m.is_lead,
       groupId: gmMap.get(m.id) ?? null,
     }))
@@ -675,7 +672,7 @@ export default function CaseDetailPage() {
       id: tempId, isNew: true, isRemoved: false,
       clientId, clientNumber: '',
       clientName: existing.name, nationality: existing.nationality ?? null,
-      needsMuslim: false, intakeToken: existing.intake_token ?? null, isLead: false, groupId: null,
+      needsMuslim: false, isLead: false, groupId: null,
     }])
   }
 
@@ -1065,14 +1062,15 @@ export default function CaseDetailPage() {
 
           {/* ─── FINANCIALS — always second, right after Hero ─── */}
           {quote && (() => {
-            const isCompleted = caseData.status === 'completed'
-            const sectionClass = !isCompleted
+            const financialStages = ['awaiting_deposit', 'awaiting_pricing', 'awaiting_payment', 'awaiting_settlement', 'completed']
+            const isFinancialActive = financialStages.includes(caseData.status)
+            const sectionClass = isFinancialActive
               ? 'scroll-mt-20 bg-white border-2 border-[#0f4c35] rounded-2xl overflow-hidden'
               : 'scroll-mt-20 bg-white border border-gray-200 rounded-2xl overflow-hidden'
-            const headerClass = !isCompleted
+            const headerClass = isFinancialActive
               ? 'flex items-center justify-between px-5 py-2.5 bg-green-50 border-b border-green-200'
               : 'flex items-center justify-between px-5 py-2.5 bg-gray-100 border-b border-gray-200'
-            const labelClass = !isCompleted
+            const labelClass = isFinancialActive
               ? 'text-xs font-semibold text-[#0f4c35] uppercase tracking-wide'
               : 'text-xs font-semibold text-gray-700 uppercase tracking-wide'
             return (
@@ -1246,6 +1244,7 @@ export default function CaseDetailPage() {
               caseId={caseData.id}
               caseNumber={caseData.case_number}
               agentId={agentId}
+              caseStatus={caseData.status}
               onChanged={async () => { await fetchCase() }}
             />
           )}
@@ -1872,14 +1871,15 @@ export default function CaseDetailPage() {
           {(() => {
             const isReviewing = caseData.status === 'reviewing_schedule'
             const isTravelDone = caseData.status === 'awaiting_travel'
-            const isCompleted = caseData.status === 'completed'
-            const sectionClass = !isCompleted
+            const scheduleStages = ['awaiting_schedule', 'reviewing_schedule', 'awaiting_travel']
+            const isScheduleActive = scheduleStages.includes(caseData.status)
+            const sectionClass = isScheduleActive
               ? 'scroll-mt-20 bg-white border-2 border-[#0f4c35] rounded-2xl overflow-hidden'
               : 'scroll-mt-20 bg-white border border-gray-200 rounded-2xl overflow-hidden'
-            const headerClass = !isCompleted
+            const headerClass = isScheduleActive
               ? 'flex items-center justify-between px-5 py-2.5 bg-green-50 border-b border-green-200'
               : 'flex items-center justify-between px-5 py-2.5 bg-gray-100 border-b border-gray-200'
-            const labelClass = !isCompleted
+            const labelClass = isScheduleActive
               ? 'text-xs font-semibold text-[#0f4c35] uppercase tracking-wide'
               : 'text-xs font-semibold text-gray-700 uppercase tracking-wide'
             return (
