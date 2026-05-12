@@ -565,18 +565,19 @@ export default function AdminCaseDetailPage() {
   const scheduleReady = allClientsComplete && groupsComplete && caseInfoComplete
   // Schedule is locked once the agent confirms (or beyond) — no more uploads or deletes.
   const scheduleLocked =
-    caseData.status === 'awaiting_pricing'
-    || caseData.status === 'awaiting_payment'
-    || caseData.status === 'awaiting_travel'
-    || caseData.status === 'awaiting_review'
+    caseData.status === 'awaiting_review'
     || caseData.status === 'completed'
     || caseData.status === 'canceled'
   const canUploadSchedule = scheduleReady
     && (
-      // First build: no schedule yet (or stale pending draft before first send)
+      // First build: no schedule yet
       caseData.status === 'awaiting_schedule'
-      // Revision: agent requested changes — allow a new version
+      // Revision: agent requested changes
       || (caseData.status === 'reviewing_schedule' && latestSchedule?.status === 'revision_requested')
+      // Post-confirmation supplement (e.g. results consultation day added later)
+      || caseData.status === 'awaiting_pricing'
+      || caseData.status === 'awaiting_payment'
+      || caseData.status === 'awaiting_travel'
     )
   const sortedGroups = latestQuote?.document_groups ? [...latestQuote.document_groups].sort((a, b) => a.order - b.order) : []
   // editGroups: groups from finalInvoice (draft or finalized). Edit Selected Products
@@ -1770,6 +1771,7 @@ export default function AdminCaseDetailPage() {
               partnerName: string | null; groupId: string; groupName: string; isSubpackage: boolean
               isSharedGroup: boolean
               durationValue: number | null; durationUnit: string | null
+              isHealthCheckup: boolean
             }[] = []
             for (const grp of sortedGroups) {
               if (grp.name === 'Trip Services') continue
@@ -1790,6 +1792,7 @@ export default function AdminCaseDetailPage() {
                   isSharedGroup: grp.name === 'Shared' || grp.name === 'Shared Activities',
                   durationValue: it.products?.duration_value ?? null,
                   durationUnit: it.products?.duration_unit ?? null,
+                  isHealthCheckup: catName === 'K-Medical',
                 })
               }
             }

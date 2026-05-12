@@ -42,6 +42,7 @@ type CaseProduct = {
   isSharedGroup: boolean
   durationValue: number | null
   durationUnit: string | null
+  isHealthCheckup: boolean
 }
 
 type Props = {
@@ -614,6 +615,12 @@ export default function ScheduleEditor({
         const allCovered = missing.length === 0
         const canSave = !saving && allCovered && !hasPending && items.length > 0
 
+        // Health checkup results consultation suggestion
+        const hasHealthCheckup = caseProducts.some(p => p.isHealthCheckup)
+        const hasResultsItem = hasHealthCheckup && items.some(i =>
+          !pendingItemIds.has(i.id) && i.title.toLowerCase().includes('result')
+        )
+
         return (
           <div className="space-y-2">
             {!allCovered && requiredKeys.size > 0 && (
@@ -630,6 +637,12 @@ export default function ScheduleEditor({
                     </li>
                   ))}
                 </ul>
+              </div>
+            )}
+            {hasHealthCheckup && !hasResultsItem && (
+              <div className="text-xs bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 space-y-0.5">
+                <p className="font-semibold text-blue-700">Optional: Results Consultation</p>
+                <p className="text-blue-600">Health checkup included — consider scheduling a day for the results consultation.</p>
               </div>
             )}
             {hasPending && (
