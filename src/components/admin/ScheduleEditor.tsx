@@ -935,32 +935,9 @@ function ItemRow({
 
   return (
     <div className={`flex ${isPending ? 'bg-amber-50/40 border border-dashed border-amber-300 m-2 rounded-lg overflow-hidden' : ''}`}>
-      {/* Left gutter: 4px stripe bar + vertical group name */}
-      <div style={{ width: 32, flexShrink: 0, display: 'flex', alignSelf: 'stretch' }}>
-        <div style={{ width: 4, flexShrink: 0, background: stripeBackground }} />
-        {showGroupSelect && !item.isPrayer && (
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '4px 0', overflow: 'hidden' }}>
-            {itemGroupIds === null ? (
-              <span style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', fontSize: 8, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#9ca3af' }}>
-                Shared
-              </span>
-            ) : itemGroupIds.length === 1 ? (
-              <span style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', fontSize: 8, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: tone.hex }}>
-                {caseGroups.find(g => g.id === itemGroupIds[0])?.name ?? '?'}
-              </span>
-            ) : (
-              itemGroupIds.map(gid => {
-                const idx = caseGroups.findIndex(g => g.id === gid)
-                const t = idx >= 0 ? GROUP_TONES[idx % GROUP_TONES.length] : { hex: '#9ca3af' }
-                return (
-                  <span key={gid} style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', fontSize: 8, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: t.hex }}>
-                    {caseGroups.find(g => g.id === gid)?.name ?? '?'}
-                  </span>
-                )
-              })
-            )}
-          </div>
-        )}
+      {/* Left gutter: 4px stripe bar only */}
+      <div style={{ width: 8, flexShrink: 0, alignSelf: 'stretch' }}>
+        <div style={{ width: 4, height: '100%', background: stripeBackground }} />
       </div>
       {/* Main content */}
       <div className="flex-1 py-4 pr-4 space-y-2 min-w-0">
