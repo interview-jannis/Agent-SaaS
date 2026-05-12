@@ -615,9 +615,14 @@ export default function ScheduleEditor({
         const allCovered = missing.length === 0
         const canSave = !saving && allCovered && !hasPending && items.length > 0
 
-        // Health checkup results consultation suggestion
-        const hasHealthCheckup = caseProducts.some(p => p.isHealthCheckup)
-        const hasResultsItem = hasHealthCheckup && items.some(i =>
+        // Health checkup results consultation suggestion — only when a health
+        // checkup product is actually linked to a committed schedule item
+        const hasHealthCheckupLinked = items.some(i =>
+          !pendingItemIds.has(i.id) &&
+          i.variantId != null &&
+          caseProducts.find(p => p.variantId === i.variantId)?.isHealthCheckup
+        )
+        const hasResultsItem = hasHealthCheckupLinked && items.some(i =>
           !pendingItemIds.has(i.id) && i.title.toLowerCase().includes('result')
         )
 
@@ -639,7 +644,7 @@ export default function ScheduleEditor({
                 </ul>
               </div>
             )}
-            {hasHealthCheckup && !hasResultsItem && (
+            {hasHealthCheckupLinked && !hasResultsItem && (
               <div className="text-xs bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 space-y-0.5">
                 <p className="font-semibold text-blue-700">Optional: Results Consultation</p>
                 <p className="text-blue-600">Health checkup included — consider scheduling a day for the results consultation.</p>
