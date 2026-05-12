@@ -219,9 +219,9 @@ export default function AdminSettlementPage() {
     if (!settlePaidDate) { setModalError('Paid date is required.'); return }
     setSaving(true); setModalError('')
     try {
-      const { count } = await supabase.from('settlements').select('*', { count: 'exact', head: true })
-      const next = (count ?? 0) + 1
-      const settlementNumber = `#S-${String(next).padStart(3, '0')}`
+      const { data: maxSRow } = await supabase.from('settlements').select('settlement_number').order('settlement_number', { ascending: false }).limit(1).maybeSingle()
+      const maxSNum = maxSRow?.settlement_number ? (parseInt(maxSRow.settlement_number.replace(/\D/g, ''), 10) || 0) : 0
+      const settlementNumber = `#S-${String(maxSNum + 1).padStart(3, '0')}`
       const amountKrw = caseCommissionKrw(settlingCase)
 
       const { error } = await supabase.from('settlements').insert({

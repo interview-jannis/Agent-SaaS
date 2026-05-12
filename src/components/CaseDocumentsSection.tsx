@@ -350,9 +350,9 @@ export default function CaseDocumentsSection({
         } else if (doc.type === 'commission_invoice') {
           // Admin marked commission invoice paid → create settlement + close case
           const amount = doc.total_price ?? 0
-          const { count } = await supabase.from('settlements').select('*', { count: 'exact', head: true })
-          const next = (count ?? 0) + 1
-          const settlementNumber = `#S-${String(next).padStart(3, '0')}`
+          const { data: maxSRow } = await supabase.from('settlements').select('settlement_number').order('settlement_number', { ascending: false }).limit(1).maybeSingle()
+          const maxSNum = maxSRow?.settlement_number ? (parseInt(maxSRow.settlement_number.replace(/\D/g, ''), 10) || 0) : 0
+          const settlementNumber = `#S-${String(maxSNum + 1).padStart(3, '0')}`
           await supabase.from('settlements').insert({
             settlement_number: settlementNumber,
             agent_id: agentId,

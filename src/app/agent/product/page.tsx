@@ -515,11 +515,12 @@ export default function AgentProductPage() {
     if (!agentId) { setClientError('Agent profile not loaded. Please refresh.'); return }
     setSavingClient(true); setClientError('')
     try {
-      const { count } = await supabase.from('clients').select('*', { count: 'exact', head: true })
+      const { data: maxCLRow } = await supabase.from('clients').select('client_number').order('client_number', { ascending: false }).limit(1).maybeSingle()
+      const maxCLNum = maxCLRow?.client_number ? (parseInt(maxCLRow.client_number.replace(/\D/g, ''), 10) || 0) : 0
       const { data, error } = await supabase
         .from('clients')
         .insert({
-          client_number: `#CL-${String((count ?? 0) + 1).padStart(3, '0')}`,
+          client_number: `#CL-${String(maxCLNum + 1).padStart(3, '0')}`,
           agent_id: agentId,
           name: f.name.trim(), nationality: f.nationality.trim(), gender: f.gender,
           date_of_birth: f.date_of_birth, phone: f.phone.trim(), email: f.email.trim(),
