@@ -573,19 +573,23 @@ function ScheduleRow({
 
         {/* Transfer — compact logistics row, visually quieter than activities */}
         {itemType === 'transfer' ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          <div>
             {transferRoute && (
               <p className="sch-sans" style={{ fontSize: '13px', fontWeight: 400, color: '#ccc', letterSpacing: '0.01em', lineHeight: 1.4 }}>
                 {transferRoute}
               </p>
             )}
             {transportLabel && (
-              <span className="sch-sans" style={{ fontSize: '10px', color: '#ccc', letterSpacing: '0.04em' }}>
-                · {transportLabel}
+              <span className="sch-sans" style={{
+                fontSize: '9.5px', fontWeight: 500, color: '#ccc',
+                border: '1px solid #e8e4de', borderRadius: '3px', padding: '1px 6px',
+                letterSpacing: '0.04em', display: 'inline-block', marginTop: '4px',
+              }}>
+                {transportLabel}
               </span>
             )}
             {item.title && (
-              <p className="sch-sans" style={{ fontSize: '12px', color: '#bbb', width: '100%', marginTop: '1px' }}>
+              <p className="sch-sans" style={{ fontSize: '12px', color: '#ccc', marginTop: '2px' }}>
                 {item.title}
               </p>
             )}
