@@ -152,13 +152,17 @@ export default function ScheduleEditor({
   // see/edit them, but no UI for adding or removing days here — change dates
   // in Trip Setup instead.
 
-  function addItem(day: number) {
+  function addItem(day: number, atBottom = false) {
     setCollapsedDays(prev => { const n = new Set(prev); n.delete(day); return n }) // auto-expand
     const id = generateScheduleItemId()
+    const dayItems = items.filter(i => i.day === day)
+    const lastBlock = atBottom && dayItems.length > 0
+      ? dayItems[dayItems.length - 1].block
+      : 'morning'
     const newItem: ScheduleItem = {
       id,
       day,
-      block: 'morning',
+      block: lastBlock,
       time: null,
       title: '',
       location: null,
@@ -490,7 +494,7 @@ export default function ScheduleEditor({
             )}
             {!isCollapsed && (
               <div className="flex items-center gap-3 px-4 py-2.5 border-t border-gray-100">
-                <button onClick={() => addItem(day)} className="text-xs font-medium text-[#0f4c35] hover:underline">+ Add Item</button>
+                <button onClick={() => addItem(day, true)} className="text-xs font-medium text-[#0f4c35] hover:underline">+ Add Item</button>
                 <FreeTimeMenu onPick={(kind) => addFreeTime(day, kind)} />
                 <PrayerMenu onPick={(prayer) => addPrayerTime(day, prayer)} />
               </div>
