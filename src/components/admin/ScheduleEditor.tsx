@@ -780,11 +780,9 @@ function GroupMultiSelect({
   }
 
   // Pending state — button that opens dropdown.
-  // Shows chips inline so the visual matches committed state.
-  const buttonContent = isGroupUnset ? (
-    <span className="text-xs font-semibold text-amber-700">— Choose —</span>
-  ) : isShared ? (
-    <span className="text-xs font-semibold text-gray-900">Shared (all)</span>
+  // Always shows the current selection; amber border signals "not yet confirmed".
+  const buttonContent = isShared ? (
+    <span className={`text-xs font-semibold ${isGroupUnset ? 'text-amber-700' : 'text-gray-900'}`}>Shared (all)</span>
   ) : (
     <span className="flex items-center gap-1">{renderGroupChips(groupIds!)}</span>
   )
