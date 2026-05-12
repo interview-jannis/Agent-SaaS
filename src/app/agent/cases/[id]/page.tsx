@@ -423,7 +423,7 @@ export default function CaseDetailPage() {
   // (different doc, different slug — invoice_first_opened_at tracked per-doc).
   function sendInvoice() {
     if (!quote?.slug) return
-    const baseUrl = typeof window !== 'undefined' ? window.location.origin : ''
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || (typeof window !== 'undefined' ? window.location.origin : '')
     let url: string
     if (quote.finalized_at) {
       const finalInvoice = caseData?.documents?.find(d => d.type === 'final_invoice')
@@ -441,7 +441,7 @@ export default function CaseDetailPage() {
   // Send Schedule
   function sendSchedule() {
     if (!schedule?.slug) return
-    const baseUrl = typeof window !== 'undefined' ? window.location.origin : ''
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || (typeof window !== 'undefined' ? window.location.origin : '')
     navigator.clipboard.writeText(`${baseUrl}/schedule/${schedule.slug}`).then(() => {
       setScheduleCopied(true)
       setTimeout(() => setScheduleCopied(false), 2000)
@@ -1048,7 +1048,7 @@ export default function CaseDetailPage() {
             onSendQuotation={sendInvoice}
             onSendInvoice={sendInvoice}
             onSendContract={contractToken && contractAgentSigned ? () => {
-              const url = `${window.location.origin}/case-contract/${contractToken}`
+              const url = `${process.env.NEXT_PUBLIC_APP_URL || window.location.origin}/case-contract/${contractToken}`
               navigator.clipboard.writeText(url).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000) })
             } : undefined}
             onConfirmSchedule={confirmSchedule}

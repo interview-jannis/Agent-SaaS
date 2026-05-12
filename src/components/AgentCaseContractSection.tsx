@@ -139,7 +139,7 @@ export default function AgentCaseContractSection({
 
   async function copyClientLink() {
     if (!contract?.client_token) return
-    const url = `${window.location.origin}/case-contract/${contract.client_token}`
+    const url = `${process.env.NEXT_PUBLIC_APP_URL || window.location.origin}/case-contract/${contract.client_token}`
     await navigator.clipboard.writeText(url)
     setCopied(true); setTimeout(() => setCopied(false), 2000)
   }

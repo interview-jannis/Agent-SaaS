@@ -379,7 +379,7 @@ export default function CaseDocumentsSection({
   }
 
   function copyLink(doc: DocumentRow) {
-    const baseUrl = typeof window !== 'undefined' ? window.location.origin : ''
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || (typeof window !== 'undefined' ? window.location.origin : '')
     const url = `${baseUrl}/${customerRouteFor(doc.type)}/${doc.slug}`
     navigator.clipboard.writeText(url).then(() => {
       setCopiedId(doc.id)
