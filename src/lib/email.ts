@@ -1,6 +1,10 @@
 import { Resend } from 'resend'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
+let _resend: Resend | null = null
+function getResend(): Resend {
+  if (!_resend) _resend = new Resend(process.env.RESEND_API_KEY)
+  return _resend
+}
 const FROM = 'Tiktak <noreply@interviewcorp.co.kr>'
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://tiktak.interviewcorp.co.kr'
 
@@ -98,7 +102,7 @@ function buildHtml(message: string, linkUrl: string | null, isAdmin: boolean): s
 export async function sendEmailToAgent(agentEmail: string, message: string, linkUrl: string | null) {
   if (!process.env.RESEND_API_KEY) return
   try {
-    await resend.emails.send({
+    await getResend().emails.send({
       from: FROM,
       to: agentEmail,
       subject: `[Tiktak] ${getAgentSubject(message)}`,
@@ -112,7 +116,7 @@ export async function sendEmailToAgent(agentEmail: string, message: string, link
 export async function sendEmailToAdmin(adminEmail: string, message: string, linkUrl: string | null) {
   if (!process.env.RESEND_API_KEY) return
   try {
-    await resend.emails.send({
+    await getResend().emails.send({
       from: FROM,
       to: adminEmail,
       subject: `[Tiktak] ${getAdminSubject(message)}`,
