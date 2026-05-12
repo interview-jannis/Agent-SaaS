@@ -190,6 +190,7 @@ export default function ScheduleEditor({
   function commitPendingItem(id: string) {
     setPendingItemIds(prev => { const n = new Set(prev); n.delete(id); return n })
     setEditSnapshots(prev => { const n = new Map(prev); n.delete(id); return n })
+    setUnsetGroupItemIds(prev => { const n = new Set(prev); n.delete(id); return n })
     void saveDraft(items)
   }
   function editItem(id: string) {
