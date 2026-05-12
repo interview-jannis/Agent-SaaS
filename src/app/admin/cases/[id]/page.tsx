@@ -1528,10 +1528,10 @@ export default function AdminCaseDetailPage() {
 
           {/* Schedule History */}
           {sortedSchedules.length > 0 && (
-            <section className="bg-gray-50 rounded-2xl border-2 border-gray-300 overflow-hidden">
-              <div className="flex items-center justify-between px-4 py-2.5 bg-gray-100 border-b border-gray-200">
+            <section className={`rounded-2xl border-2 overflow-hidden ${caseData.status === 'reviewing_schedule' ? 'bg-white border-[#0f4c35]' : 'bg-gray-50 border-gray-300'}`}>
+              <div className={`flex items-center justify-between px-4 py-2.5 border-b ${caseData.status === 'reviewing_schedule' ? 'bg-green-50 border-green-200' : 'bg-gray-100 border-gray-200'}`}>
                 <div className="flex items-center gap-2">
-                  <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Schedule History</p>
+                  <p className={`text-xs font-semibold uppercase tracking-wide ${caseData.status === 'reviewing_schedule' ? 'text-[#0f4c35]' : 'text-gray-700'}`}>Schedule History</p>
                   {latestSchedule && (() => {
                     const s = latestSchedule.status
                     const cls = s === 'confirmed' ? 'text-green-700 bg-green-50 border-green-200' :
@@ -2105,7 +2105,7 @@ export default function AdminCaseDetailPage() {
               agent-side cyan tone — both sides have parallel actions in these
               two windows, so both get the action signal. */}
           {latestQuote && (() => {
-            const financialStages = ['awaiting_deposit', 'awaiting_pricing', 'awaiting_payment', 'awaiting_settlement', 'completed']
+            const financialStages = ['awaiting_deposit', 'awaiting_pricing', 'awaiting_payment', 'awaiting_travel', 'awaiting_settlement', 'completed']
             const isFinancialActive = financialStages.includes(caseData.status)
             const sectionClass = isFinancialActive
               ? 'bg-white border-2 border-[#0f4c35] rounded-2xl overflow-hidden'
@@ -2567,8 +2567,12 @@ export default function AdminCaseDetailPage() {
 
             return (
             <section
-              className={`rounded-2xl border overflow-hidden transition-colors ${
-                attachDragOver ? 'border-[#0f4c35] bg-[#0f4c35]/5' : 'border-gray-200 bg-gray-50'
+              className={`rounded-2xl overflow-hidden transition-colors ${
+                attachDragOver
+                  ? 'border-2 border-[#0f4c35] bg-[#0f4c35]/5'
+                  : caseData.status === 'awaiting_travel'
+                    ? 'border-2 border-[#0f4c35] bg-white'
+                    : 'border border-gray-200 bg-gray-50'
               }`}
               onDragOver={(e) => { e.preventDefault(); if (!pendingAttachFile) setAttachDragOver(true) }}
               onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setAttachDragOver(false) }}
@@ -2580,8 +2584,8 @@ export default function AdminCaseDetailPage() {
                 if (file) { setAttachError(''); setPendingAttachFile(file) }
               }}
             >
-              <div className="flex items-center justify-between px-4 py-2.5 bg-gray-100 border-b border-gray-200">
-                <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Attachments</p>
+              <div className={`flex items-center justify-between px-4 py-2.5 border-b ${caseData.status === 'awaiting_travel' ? 'bg-green-50 border-green-200' : 'bg-gray-100 border-gray-200'}`}>
+                <p className={`text-xs font-semibold uppercase tracking-wide ${caseData.status === 'awaiting_travel' ? 'text-[#0f4c35]' : 'text-gray-700'}`}>Attachments</p>
                 {!pendingAttachFile && (
                   <label className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors cursor-pointer ${
                     attachUploading
