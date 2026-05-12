@@ -158,16 +158,33 @@ export default function AdminAgentDetailPage() {
     if (!agent) return
     setToggling(true); setError('')
     try {
-      const nextActive = !agent.is_active
-      const { error } = await supabase.from('agents').update({ is_active: nextActive }).eq('id', agent.id)
+      const { error } = await supabase.from('agents').update({ is_active: true }).eq('id', agent.id)
       if (error) throw error
-      await logAsCurrentUser(nextActive ? 'agent.activated' : 'agent.deactivated',
+      await logAsCurrentUser('agent.activated',
         { type: 'agent', id: agent.id, label: `${agent.name}${agent.agent_number ? ` · ${agent.agent_number}` : ''}` })
       await fetchData()
     } catch (e: unknown) {
       setError((e as { message?: string })?.message ?? 'Failed.')
     } finally {
       setToggling(false)
+    }
+  }
+
+  async function deactivateAgent() {
+    if (!agent) return
+    setDeactivating(true); setError('')
+    try {
+      const { error } = await supabase.from('agents').update({ is_active: false }).eq('id', agent.id)
+      if (error) throw error
+      await logAsCurrentUser('agent.deactivated',
+        { type: 'agent', id: agent.id, label: `${agent.name}${agent.agent_number ? ` · ${agent.agent_number}` : ''}` })
+      setShowDeactivate(false)
+      setDeactivateConfirmName('')
+      await fetchData()
+    } catch (e: unknown) {
+      setError((e as { message?: string })?.message ?? 'Failed.')
+    } finally {
+      setDeactivating(false)
     }
   }
 
@@ -245,6 +262,9 @@ export default function AdminAgentDetailPage() {
   const [showDelete, setShowDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [deleteConfirmName, setDeleteConfirmName] = useState('')
+  const [showDeactivate, setShowDeactivate] = useState(false)
+  const [deactivating, setDeactivating] = useState(false)
+  const [deactivateConfirmName, setDeactivateConfirmName] = useState('')
   const [copiedInvite, setCopiedInvite] = useState(false)
 
   async function reassignAgent() {
@@ -696,18 +716,31 @@ export default function AdminAgentDetailPage() {
           )}
 
           {/* Danger Zone */}
-          <section className="bg-white border border-red-200 rounded-2xl p-5 flex items-center justify-between flex-wrap gap-3">
-            <div>
-              <h3 className="text-xs font-semibold text-red-700 uppercase tracking-wide mb-1">Danger Zone</h3>
+          <section className="bg-white border border-red-200 rounded-2xl p-5 space-y-3">
+            <h3 className="text-xs font-semibold text-red-700 uppercase tracking-wide">Danger Zone</h3>
+            {agent.onboarding_status === 'approved' && agent.is_active && (
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <p className="text-xs text-gray-600">Disable login access while keeping all cases and records intact.</p>
+                <button onClick={() => { setShowDeactivate(true); setDeactivateConfirmName(''); setError('') }} disabled={deactivating}
+                  className="px-4 py-2 text-xs font-medium border border-red-200 text-red-600 rounded-lg hover:bg-red-50 disabled:opacity-40 shrink-0">
+                  Deactivate Agent
+                </button>
+              </div>
+            )}
+            <div className="flex items-center justify-between flex-wrap gap-3">
               <p className="text-xs text-gray-600">
-                Permanently delete this agent, their login, all their cases, and any signed contracts.
-                Cannot be undone.
+                Permanently delete this agent and their login.
+                {cases.length > 0
+                  ? <span className="text-red-500"> Cannot delete — agent has {cases.length} case{cases.length > 1 ? 's' : ''}. Deactivate instead.</span>
+                  : ' Cannot be undone.'}
               </p>
+              <button
+                onClick={() => { setShowDelete(true); setDeleteConfirmName(''); setError('') }}
+                disabled={deleting || cases.length > 0}
+                className="px-4 py-2 text-xs font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-40 shrink-0">
+                Delete Agent
+              </button>
             </div>
-            <button onClick={() => { setShowDelete(true); setDeleteConfirmName(''); setError('') }} disabled={deleting}
-              className="px-4 py-2 text-xs font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-40">
-              Delete Agent
-            </button>
           </section>
 
           {/* Delete modal */}
@@ -720,7 +753,7 @@ export default function AdminAgentDetailPage() {
                   <p className="text-xs text-gray-600 mt-1">
                     This will permanently remove <span className="font-semibold">{agent.name}</span>
                     {agent.agent_number ? <> (<span className="font-mono">{agent.agent_number}</span>)</> : null},
-                    their login, all their cases and associated data, and any signed contracts. This cannot be undone.
+                    their login, and any signed contracts. This cannot be undone.
                   </p>
                 </div>
                 <div>
@@ -748,26 +781,55 @@ export default function AdminAgentDetailPage() {
             </div>
           )}
 
-          {/* Account control — only for approved agents */}
-          {agent.onboarding_status === 'approved' && (
+          {/* Account control — only for inactive approved agents (activate only) */}
+          {agent.onboarding_status === 'approved' && !agent.is_active && (
             <section className="bg-gray-50 rounded-2xl p-5 flex items-center justify-between">
               <div>
                 <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Account Status</h3>
-                <p className="text-xs text-gray-500">
-                  {agent.is_active
-                    ? 'Agent can log in and use the platform.'
-                    : 'Agent account is deactivated. They cannot log in.'}
-                </p>
+                <p className="text-xs text-gray-500">Agent account is deactivated. They cannot log in.</p>
               </div>
               <button onClick={toggleActive} disabled={toggling}
-                className={`px-4 py-2 text-xs font-medium rounded-lg disabled:opacity-40 ${
-                  agent.is_active
-                    ? 'border border-red-200 text-red-600 hover:bg-red-50'
-                    : 'bg-[#0f4c35] text-white hover:bg-[#0a3828]'
-                }`}>
-                {toggling ? '...' : agent.is_active ? 'Deactivate' : 'Activate'}
+                className="px-4 py-2 text-xs font-medium bg-[#0f4c35] text-white rounded-lg hover:bg-[#0a3828] disabled:opacity-40">
+                {toggling ? '...' : 'Activate'}
               </button>
             </section>
+          )}
+
+          {/* Deactivate modal */}
+          {showDeactivate && (
+            <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+              onClick={() => { if (!deactivating) { setShowDeactivate(false); setDeactivateConfirmName('') } }}>
+              <div className="bg-white rounded-2xl max-w-md w-full p-5 space-y-4" onClick={e => e.stopPropagation()}>
+                <div>
+                  <h3 className="text-sm font-semibold text-red-700">Deactivate Agent</h3>
+                  <p className="text-xs text-gray-600 mt-1">
+                    <span className="font-semibold">{agent.name}</span> will lose login access immediately.
+                    All cases and records are preserved. You can reactivate at any time.
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1.5">
+                    Type <span className="font-semibold text-gray-800">{agent.name}</span> to confirm
+                  </label>
+                  <input
+                    type="text"
+                    value={deactivateConfirmName}
+                    onChange={e => setDeactivateConfirmName(e.target.value)}
+                    placeholder={agent.name}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-red-400"
+                  />
+                </div>
+                {error && <p className="text-xs text-red-500">{error}</p>}
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
+                  <button onClick={() => { setShowDeactivate(false); setDeactivateConfirmName(''); setError('') }} disabled={deactivating}
+                    className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-800 disabled:opacity-40">Cancel</button>
+                  <button onClick={deactivateAgent} disabled={deactivating || deactivateConfirmName.trim() !== agent.name.trim()}
+                    className="px-3 py-1.5 text-xs font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-40">
+                    {deactivating ? 'Deactivating...' : 'Confirm Deactivate'}
+                  </button>
+                </div>
+              </div>
+            </div>
           )}
 
           {/* Agent Evaluations summary */}
