@@ -522,7 +522,7 @@ function ScheduleRow({
       {/* Left gutter: 2px stripe + vertical group name (multi-group only) */}
       {showStripe && (
         <div style={{ width: 38, flexShrink: 0, alignSelf: 'stretch', display: 'flex', marginRight: 16 }}>
-          <div style={{ width: 2, flexShrink: 0, background: stripeBackground }} />
+          <div style={{ width: 2, flexShrink: 0, background: stripeBackground, opacity: itemType === 'transfer' ? 0.3 : 1 }} />
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
             {itemGroupIds!.length === 1 ? (
               <span style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', fontFamily: 'Inter, sans-serif', fontSize: 8, fontWeight: 700, letterSpacing: '0.18em', textTransform: 'uppercase', color: groupCol!.text }}>
@@ -552,8 +552,9 @@ function ScheduleRow({
         whiteSpace: 'nowrap',
       }}>
         <span style={{
-          fontSize: '11.5px',
-          color: isPrayer ? '#c07830' : (timeStr ? '#b0a898' : '#ddd'),
+          fontSize: itemType === 'transfer' ? '11px' : '11.5px',
+          fontWeight: itemType === 'transfer' ? 400 : 600,
+          color: isPrayer ? '#c07830' : itemType === 'transfer' ? '#ccc' : (timeStr ? '#444' : '#ddd'),
         }}>
           {timeStr ?? '—'}
         </span>
@@ -600,7 +601,7 @@ function ScheduleRow({
             </span>
           )}
           <p className="sch-serif sch-item-title" style={{
-            fontSize: '19px', fontWeight: 400, lineHeight: 1.3,
+            fontSize: '19px', fontWeight: isPrayer ? 400 : 500, lineHeight: 1.3,
             color: isPrayer ? '#c07830' : '#1a1a1a',
             fontStyle: isPrayer ? 'italic' : 'normal',
           }}>
