@@ -12,7 +12,7 @@ import {
   addDocumentGroupMember,
 } from '@/lib/documents'
 import { createCaseContract } from '@/lib/caseContracts'
-import { appliesMargin, isHotelItem, nightsBetween, variantPriceUsd, variantPriceKrw, subpackageMult, type SubpackageMarginConfig } from '@/lib/pricing'
+import { appliesMargin, isHotelItem, nightsBetween, daysBetween, variantPriceUsd, variantPriceKrw, subpackageMult, type SubpackageMarginConfig } from '@/lib/pricing'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -42,6 +42,7 @@ type Variant = {
 type Product = {
   id: string
   name: string
+  quantity_type: 'per_person' | 'per_night' | 'per_day' | 'flat' | null
   product_categories: { name: string } | null
   product_subcategories: { name: string } | null
   product_variants: Variant[]
@@ -142,7 +143,7 @@ export default function QuoteReviewPage() {
       const [leadRes, productsRes, rateRes, companyRateRes, agentRes, subpkgRes] = await Promise.all([
         supabase.from('clients').select('id, client_number, name, nationality, gender, needs_muslim_friendly, dietary_restriction').eq('id', draft.clientId).single(),
         allProductIds.length
-          ? supabase.from('products').select('id, name, product_categories(name), product_subcategories(name), product_variants(id, variant_label, base_price, price_currency, sort_order)').in('id', allProductIds)
+          ? supabase.from('products').select('id, name, quantity_type, product_categories(name), product_subcategories(name), product_variants(id, variant_label, base_price, price_currency, sort_order)').in('id', allProductIds)
           : Promise.resolve({ data: [] }),
         supabase.from('system_settings').select('value').eq('key', 'product_price_rate').single(),
         supabase.from('system_settings').select('value').eq('key', 'company_margin_rate').single(),
@@ -186,6 +187,7 @@ export default function QuoteReviewPage() {
 
   const marginMult = 1 + companyMargin + agentMargin
   const nights = nightsBetween(cart?.dateStart, cart?.dateEnd)
+  const days = daysBetween(cart?.dateStart, cart?.dateEnd)
 
   function findVariant(productId: string, variantId: string): { product: Product; variant: Variant } | null {
     const p = products.find(x => x.id === productId)
@@ -220,10 +222,12 @@ export default function QuoteReviewPage() {
     .filter(g => g.id !== 'shared')
     .reduce((s, g) => s + g.memberCount, 0)
 
-  // Per-line multiplier — nights for hotels, stored quantity for interpreter
-  // products, shared group uses total pax, otherwise group memberCount.
+  // Per-line multiplier — nights for per_night (hotel), days for per_day (vehicle),
+  // stored quantity if set, shared group uses total pax, otherwise group memberCount.
   function itemMultiplier(item: CartItem, group: CartGroup): number {
     if (isHotel(item)) return nights
+    const found = findVariant(item.productId, item.variantId)
+    if (found?.product.quantity_type === 'per_day') return days
     if (item.quantity != null) return item.quantity
     return group.id === 'shared' ? sharedMemberCount : group.memberCount
   }

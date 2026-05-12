@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
@@ -15,7 +15,7 @@ import ScheduleEditor from '@/components/admin/ScheduleEditor'
 import { SCHEDULE_BLOCK_LABEL, compareScheduleItems } from '@/types/schedule'
 import type { DocumentRow } from '@/lib/documents'
 import type { ScheduleItem } from '@/types/schedule'
-import { nightsBetween } from '@/lib/pricing'
+import { nightsBetween, daysBetween } from '@/lib/pricing'
 import type { SurveyRow } from '@/lib/surveys'
 
 import type { ClientInfo, FlightInfo } from '@/lib/clientCompleteness'
@@ -181,7 +181,7 @@ export default function AdminCaseDetailPage() {
   const [isSuperAdmin, setIsSuperAdmin] = useState(false)
 
   // Partner payments — local edit state by partner_name
-  const [partnerEdits, setPartnerEdits] = useState<Record<string, { amount: string; paid_at: string; note: string }>>({})
+  const [partnerEdits, setPartnerEdits] = useState<Record<string, { amount: string; paid_at: string; note: string; confirmName: string }>>({})
   const [savingPartner, setSavingPartner] = useState<string | null>(null)
   const [partnerError, setPartnerError] = useState('')
 
@@ -209,6 +209,7 @@ export default function AdminCaseDetailPage() {
     base_price: number; price_currency: ItemCurrency | null;
     category_name: string | null; subcategory_name: string | null;
     category_sort: number;
+    quantity_type: 'per_person' | 'per_night' | 'per_day' | 'flat';
     variants: ProductVariant[];
   }
   const [products, setProducts] = useState<ProductRow[]>([])
@@ -242,6 +243,8 @@ export default function AdminCaseDetailPage() {
     priceCurrency: ItemCurrency
     groupId: string
     groupName: string
+    quantity: number
+    quantityType: 'per_person' | 'per_night' | 'per_day' | 'flat'
   }
   const [stagedAdds, setStagedAdds] = useState<StagedAdd[]>([])
   const [stagedRemoves, setStagedRemoves] = useState<Set<string>>(new Set())
@@ -268,6 +271,9 @@ export default function AdminCaseDetailPage() {
   const [pendingAttachPreviewUrl, setPendingAttachPreviewUrl] = useState<string | null>(null)
   const [copiedAttachId, setCopiedAttachId] = useState<string | null>(null)
   const [confirmDeleteAttachId, setConfirmDeleteAttachId] = useState<string | null>(null)
+
+  // Fallback concierge info from most recent schedule across all cases
+  const [lastConciergeInfo, setLastConciergeInfo] = useState<{ name: string | null; phone: string | null } | null>(null)
 
   // Agent evaluation
   const [evaluation, setEvaluation] = useState<{ id: string; rating: number; tags: string[]; notes: string } | null>(null)
@@ -304,7 +310,7 @@ export default function AdminCaseDetailPage() {
     if (!data) { setNotFound(true); return }
     setCaseData(data as unknown as Case)
 
-    const [{ data: pp }, { data: ss }, { data: sv }, { data: att }, { data: ev }] = await Promise.all([
+    const [{ data: pp }, { data: ss }, { data: sv }, { data: att }, { data: ev }, { data: lastConc }] = await Promise.all([
       supabase.from('partner_payments')
         .select('id, case_id, partner_name, amount, paid_at, note, created_at')
         .eq('case_id', id),
@@ -324,11 +330,20 @@ export default function AdminCaseDetailPage() {
         .select('id, rating, tags, notes')
         .eq('case_id', id)
         .maybeSingle(),
+      supabase.from('schedules')
+        .select('concierge_name, concierge_phone')
+        .not('concierge_name', 'is', null)
+        .neq('case_id', id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
     ])
     setPartnerPayments((pp as PartnerPayment[]) ?? [])
     setAgentSettlement((ss as AgentSettlement | null) ?? null)
     setCaseSurvey((sv as SurveyRow | null) ?? null)
     setAttachments((att as CaseAttachment[]) ?? [])
+    const concRow = lastConc as { concierge_name: string | null; concierge_phone: string | null } | null
+    if (concRow) setLastConciergeInfo({ name: concRow.concierge_name, phone: concRow.concierge_phone })
     const evRow = ev as { id: string; rating: number; tags: string[]; notes: string } | null
     setEvaluation(evRow)
     if (evRow) { setEvalRating(evRow.rating); setEvalTags(evRow.tags ?? []); setEvalNotes(evRow.notes ?? '') }
@@ -385,7 +400,7 @@ export default function AdminCaseDetailPage() {
     let cancelled = false
     ;(async () => {
       const { data, error } = await supabase.from('products')
-        .select('id, name, partner_name, base_price, price_currency, is_active, product_categories(name, sort_order), product_subcategories(name), product_variants(id, variant_label, base_price, price_currency, is_active, sort_order)')
+        .select('id, name, partner_name, base_price, price_currency, is_active, quantity_type, product_categories(name, sort_order), product_subcategories(name), product_variants(id, variant_label, base_price, price_currency, is_active, sort_order)')
         .order('name', { ascending: true })
       if (error) { console.error('[case] products fetch error:', error); return }
       if (cancelled) return
@@ -394,6 +409,7 @@ export default function AdminCaseDetailPage() {
       type Raw = {
         id: string; name: string; partner_name: string | null;
         base_price: number; price_currency: 'KRW' | 'USD' | null; is_active: boolean | null;
+        quantity_type: string | null;
         product_categories: CategoryRel;
         product_subcategories: SubRel;
         product_variants: Array<{ id: string; variant_label: string | null; base_price: number; price_currency: 'KRW' | 'USD' | null; is_active: boolean | null; sort_order: number | null }>
@@ -418,6 +434,7 @@ export default function AdminCaseDetailPage() {
         category_name: pickName(r.product_categories),
         subcategory_name: pickName(r.product_subcategories),
         category_sort: pickCategorySort(r.product_categories),
+        quantity_type: (['per_person', 'per_night', 'per_day', 'flat'].includes(r.quantity_type ?? '') ? r.quantity_type : 'per_person') as ProductRow['quantity_type'],
         variants: (r.product_variants ?? [])
           .filter(v => v.is_active !== false)
           .map(v => ({
@@ -783,7 +800,7 @@ export default function AdminCaseDetailPage() {
                 )}
               </div>
               <button onClick={() => setSetupCollapsed(!setupCollapsed)}
-                className="text-[11px] font-medium text-gray-500 hover:text-gray-800 px-2 py-1 rounded-lg border border-gray-200 hover:bg-white">
+                className="text-xs font-medium bg-gray-700 text-white hover:bg-gray-600 px-2.5 py-1.5 rounded-lg transition-colors">
                 {setupCollapsed ? '▼ Expand' : '▲ Collapse'}
               </button>
             </div>
@@ -1023,6 +1040,7 @@ export default function AdminCaseDetailPage() {
                   exchangeRate={exchangeRate}
                   defaultExpanded={true}
                   onEditClick={canEditProducts ? () => setEditingProducts(true) : undefined}
+                  highlight={caseData.status === 'awaiting_schedule' || caseData.status === 'reviewing_schedule'}
                 />
               )
             }
@@ -1090,6 +1108,7 @@ export default function AdminCaseDetailPage() {
                     variantLabelSnapshot: add.variantLabel,
                     basePrice: add.basePrice,
                     finalPrice: add.finalPrice,
+                    quantity: add.quantity,
                     origin: 'admin_added',
                   })
                   await logAsCurrentUser('quote.item_added',
@@ -1117,11 +1136,12 @@ export default function AdminCaseDetailPage() {
               } finally { setSavingItems(false) }
             }
 
+            const scheduleStatus = caseData.status === 'awaiting_schedule' || caseData.status === 'reviewing_schedule'
             return (
-              <section className="border-2 border-gray-300 bg-white rounded-2xl p-4 space-y-3">
-                <div className="flex items-center justify-between flex-wrap gap-2">
+              <section className={`border-2 bg-white rounded-2xl p-4 space-y-3 ${scheduleStatus ? 'border-[#0f4c35]' : 'border-gray-300'}`}>
+                <div className={`flex items-center justify-between flex-wrap gap-2 -mx-4 -mt-4 px-4 py-2.5 mb-1 rounded-t-2xl border-b ${scheduleStatus ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'}`}>
                   <div className="flex items-baseline gap-3 min-w-0">
-                    <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Edit Selected Products</p>
+                    <p className={`text-xs font-semibold uppercase tracking-wide ${scheduleStatus ? 'text-[#0f4c35]' : 'text-gray-700'}`}>Edit Selected Products</p>
                     <p className="text-[10px] text-gray-400">
                       {dirty
                         ? `${stagedAdds.length} to add · ${stagedRemoves.size} to remove — review then save`
@@ -1132,7 +1152,7 @@ export default function AdminCaseDetailPage() {
                     type="button"
                     onClick={() => { cancelChanges(); setEditingProducts(false) }}
                     disabled={savingItems}
-                    className="text-[11px] font-medium text-gray-500 hover:text-gray-800 px-2 py-1 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-40 shrink-0">
+                    className="text-xs font-medium bg-gray-700 text-white hover:bg-gray-600 px-2.5 py-1.5 rounded-lg transition-colors disabled:opacity-40 shrink-0">
                     ← Done
                   </button>
                 </div>
@@ -1253,7 +1273,7 @@ export default function AdminCaseDetailPage() {
                               )
                             })}
                             {groupStaged.map(add => (
-                              <div key={add.tempId} className="flex items-center gap-3 px-3 py-2 bg-green-50/60">
+                              <div key={add.tempId} className="flex items-center gap-3 px-3 py-2 bg-green-50/60 flex-wrap">
                                 <span className="text-[9px] font-semibold uppercase tracking-wide shrink-0 px-1.5 py-0.5 rounded bg-green-100 text-green-700">
                                   New
                                 </span>
@@ -1267,9 +1287,22 @@ export default function AdminCaseDetailPage() {
                                     </p>
                                   )}
                                 </div>
+                                {/* Quantity control */}
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <button type="button"
+                                    onClick={() => setStagedAdds(prev => prev.map(a => a.tempId === add.tempId ? { ...a, quantity: Math.max(1, a.quantity - 1) } : a))}
+                                    className="w-5 h-5 flex items-center justify-center rounded border border-gray-300 text-gray-500 hover:bg-gray-100 text-xs">−</button>
+                                  <span className="text-xs tabular-nums w-6 text-center text-gray-800">{add.quantity}</span>
+                                  <button type="button"
+                                    onClick={() => setStagedAdds(prev => prev.map(a => a.tempId === add.tempId ? { ...a, quantity: a.quantity + 1 } : a))}
+                                    className="w-5 h-5 flex items-center justify-center rounded border border-gray-300 text-gray-500 hover:bg-gray-100 text-xs">+</button>
+                                  <span className="text-[10px] text-gray-400 ml-0.5">
+                                    {add.quantityType === 'per_night' ? 'nights' : add.quantityType === 'per_day' ? 'days' : add.quantityType === 'flat' ? '' : 'pax'}
+                                  </span>
+                                </div>
                                 <div className="text-right shrink-0">
-                                  <p className="text-xs text-gray-800 tabular-nums">{fmtKRW(add.finalPrice)}</p>
-                                  <p className="text-[10px] text-gray-400 tabular-nums">{fmtUSD(add.finalPrice / exchangeRate)}</p>
+                                  <p className="text-xs text-gray-800 tabular-nums">{fmtKRW(add.finalPrice * add.quantity)}</p>
+                                  <p className="text-[10px] text-gray-400 tabular-nums">{fmtUSD(add.finalPrice * add.quantity / exchangeRate)}</p>
                                 </div>
                                 <button
                                   type="button"
@@ -1392,6 +1425,11 @@ export default function AdminCaseDetailPage() {
                       ? (variant.price_currency === 'USD' ? Math.round(variant.base_price * exchangeRate) : variant.base_price)
                       : (product.price_currency === 'USD' ? Math.round(product.base_price * exchangeRate) : product.base_price)
                     const tempId = `tmp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
+                    const defaultQty = product.quantity_type === 'per_night'
+                      ? nightsBetween(caseData.travel_start_date, caseData.travel_end_date)
+                      : product.quantity_type === 'per_day'
+                      ? daysBetween(caseData.travel_start_date, caseData.travel_end_date)
+                      : 1
                     setStagedAdds(prev => [...prev, {
                       tempId,
                       productId: product.id,
@@ -1404,6 +1442,8 @@ export default function AdminCaseDetailPage() {
                       priceCurrency: variant?.price_currency ?? (product.price_currency === 'USD' ? 'USD' : 'KRW'),
                       groupId: targetGroup.id,
                       groupName: targetGroup.name,
+                      quantity: defaultQty,
+                      quantityType: product.quantity_type,
                     }])
                     setPickerQuery('')
                     setPickerOpen(false)
@@ -1430,7 +1470,7 @@ export default function AdminCaseDetailPage() {
                           value={pickerGroupId || editGroups[0]?.id}
                           onChange={(e) => setPickerGroupId(e.target.value)}
                           className="border border-gray-200 rounded-lg px-2 py-1 text-xs text-gray-900 focus:outline-none focus:border-[#0f4c35] bg-white">
-                          {editGroups.filter(g => isAssignableGroup(g.name)).map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                          {editGroups.filter(g => g.name !== 'Trip Services').map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
                         </select>
                       )}
                       <select
@@ -1526,7 +1566,7 @@ export default function AdminCaseDetailPage() {
                     type="button"
                     onClick={cancelChanges}
                     disabled={!dirty || savingItems}
-                    className="text-xs font-medium text-gray-600 hover:text-gray-900 px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed">
+                    className="text-xs font-medium bg-gray-700 text-white hover:bg-gray-600 px-2.5 py-1.5 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
                     Cancel
                   </button>
                   <button
@@ -1559,7 +1599,7 @@ export default function AdminCaseDetailPage() {
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] text-gray-400">{sortedSchedules.length} version{sortedSchedules.length > 1 ? 's' : ''}</span>
                   <button onClick={() => setScheduleCollapsed(!scheduleCollapsed)}
-                    className="text-[11px] font-medium text-gray-500 hover:text-gray-800 px-2 py-1 rounded-lg border border-gray-200 hover:bg-white">
+                    className="text-xs font-medium bg-gray-700 text-white hover:bg-gray-600 px-2.5 py-1.5 rounded-lg transition-colors">
                     {scheduleCollapsed ? '▼ Expand' : '▲ Collapse'}
                   </button>
                 </div>
@@ -1589,6 +1629,16 @@ export default function AdminCaseDetailPage() {
               <div className="space-y-2">
                 {sortedSchedules.map((s) => {
                   const isLatest = s.id === latestSchedule?.id
+
+                  // Diff vs previous version
+                  const prevSchedule = sortedSchedules.find(ps => ps.version === s.version - 1)
+                  const diffKey = (it: ScheduleItem) => it.variantId ?? it.title.trim().toLowerCase()
+                  const prevKeys = new Set((prevSchedule?.items ?? []).map(diffKey))
+                  const newKeys = new Set((s.items ?? []).map(diffKey))
+                  const addedItems = (s.items ?? []).filter((it: ScheduleItem) => !prevKeys.has(diffKey(it)))
+                  const removedItems = (prevSchedule?.items ?? []).filter((it: ScheduleItem) => !newKeys.has(diffKey(it)))
+                  const hasDiff = prevSchedule && (addedItems.length > 0 || removedItems.length > 0)
+
                   const statusStyle =
                     s.status === 'confirmed' ? 'bg-green-50 text-green-700 border-green-200' :
                     s.status === 'revision_requested' ? 'bg-rose-50 text-rose-700 border-rose-200' :
@@ -1605,6 +1655,12 @@ export default function AdminCaseDetailPage() {
                         <span className="text-xs font-semibold text-gray-700">v{s.version}</span>
                         {isLatest && <span className="text-[9px] font-medium text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">LATEST</span>}
                         <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${statusStyle}`}>{statusLabel}</span>
+                        {hasDiff && addedItems.length > 0 && (
+                          <span className="text-[10px] font-medium text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full">+{addedItems.length} added</span>
+                        )}
+                        {hasDiff && removedItems.length > 0 && (
+                          <span className="text-[10px] font-medium text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-full">-{removedItems.length} removed</span>
+                        )}
                         {s.status === 'revision_requested' && s.revision_note && (
                           <span className="text-xs text-gray-700 border-l-2 border-rose-300 pl-2 flex-1 min-w-0 whitespace-pre-line">{s.revision_note}</span>
                         )}
@@ -1612,7 +1668,7 @@ export default function AdminCaseDetailPage() {
                           {s.items && s.items.length > 0 && (
                             <button
                               onClick={() => setExpandedScheduleId(prev => prev === s.id ? null : s.id)}
-                              className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-800 transition-colors"
+                              className="flex items-center gap-1.5 text-xs font-medium bg-gray-700 text-white hover:bg-gray-600 px-2.5 py-1.5 rounded-lg transition-colors"
                             >
                               <svg className={`w-3.5 h-3.5 transition-transform ${expandedScheduleId === s.id ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
@@ -1624,7 +1680,7 @@ export default function AdminCaseDetailPage() {
                             <a
                               href={`${baseUrl}/schedule/${s.slug}?preview=1&internal=1&v=${s.version}`}
                               target="_blank" rel="noopener noreferrer"
-                              className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-[#0f4c35] transition-colors">
+                              className="flex items-center gap-1.5 text-xs font-medium bg-gray-700 text-white hover:bg-gray-600 px-2.5 py-1.5 rounded-lg transition-colors">
                               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -1646,6 +1702,7 @@ export default function AdminCaseDetailPage() {
                           )
                           : (() => {
                             const days = Array.from(new Set(s.items.map((it: ScheduleItem) => it.day))).sort((a, b) => a - b)
+                            const addedSet = new Set(addedItems.map(diffKey))
                             return (
                               <div className="border-t border-gray-100 divide-y divide-gray-100">
                                 {days.map((day: number) => {
@@ -1653,26 +1710,50 @@ export default function AdminCaseDetailPage() {
                                   return (
                                     <div key={day}>
                                       <p className="px-3 py-1.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide bg-gray-50">Day {day}</p>
-                                      {dayItems.map(it => (
-                                        <div key={it.id} className="px-3 py-2 flex items-start gap-3 border-t border-gray-50">
-                                          <div className="w-20 shrink-0">
-                                            <p className="text-[10px] text-gray-400 uppercase tracking-wide">{SCHEDULE_BLOCK_LABEL[it.block]}{it.endBlock && it.endBlock !== it.block ? ` →` : ''}</p>
-                                            {it.endBlock && it.endBlock !== it.block && (
-                                              <p className="text-[10px] text-gray-400 uppercase tracking-wide">{SCHEDULE_BLOCK_LABEL[it.endBlock]}</p>
+                                      {dayItems.map(it => {
+                                        const isAdded = hasDiff && addedSet.has(diffKey(it))
+                                        return (
+                                          <div key={it.id} className={`px-3 py-2 flex items-start gap-3 border-t border-gray-50 ${isAdded ? 'bg-green-50' : ''}`}>
+                                            <div className="w-20 shrink-0">
+                                              <p className="text-[10px] text-gray-400 uppercase tracking-wide">{SCHEDULE_BLOCK_LABEL[it.block]}{it.endBlock && it.endBlock !== it.block ? ` →` : ''}</p>
+                                              {it.endBlock && it.endBlock !== it.block && (
+                                                <p className="text-[10px] text-gray-400 uppercase tracking-wide">{SCHEDULE_BLOCK_LABEL[it.endBlock]}</p>
+                                              )}
+                                              {it.time && <p className="text-[10px] text-gray-400 tabular-nums mt-0.5">{it.time}{it.endTime ? ` – ${it.endTime}` : ''}</p>}
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                              {it.partner && <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">{it.partner}</p>}
+                                              <p className="text-xs text-gray-800">{it.title}{it.variantTag ? ` · ${it.variantTag}` : ''}</p>
+                                              {it.location && <p className="text-[11px] text-gray-400 mt-0.5">{it.location}</p>}
+                                              {it.notes && <p className="text-[11px] text-gray-500 mt-0.5 italic">{it.notes}</p>}
+                                            </div>
+                                            {isAdded && (
+                                              <span className="shrink-0 text-[9px] font-semibold text-green-700 bg-green-100 px-1.5 py-0.5 rounded self-start mt-0.5">NEW</span>
                                             )}
-                                            {it.time && <p className="text-[10px] text-gray-400 tabular-nums mt-0.5">{it.time}{it.endTime ? ` – ${it.endTime}` : ''}</p>}
                                           </div>
-                                          <div className="flex-1 min-w-0">
-                                            {it.partner && <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">{it.partner}</p>}
-                                            <p className="text-xs text-gray-800">{it.title}{it.variantTag ? ` · ${it.variantTag}` : ''}</p>
-                                            {it.location && <p className="text-[11px] text-gray-400 mt-0.5">{it.location}</p>}
-                                            {it.notes && <p className="text-[11px] text-gray-500 mt-0.5 italic">{it.notes}</p>}
-                                          </div>
-                                        </div>
-                                      ))}
+                                        )
+                                      })}
                                     </div>
                                   )
                                 })}
+                                {hasDiff && removedItems.length > 0 && (
+                                  <div>
+                                    <p className="px-3 py-1.5 text-[10px] font-semibold text-rose-400 uppercase tracking-wide bg-rose-50">Removed</p>
+                                    {removedItems.map((it: ScheduleItem) => (
+                                      <div key={it.id} className="px-3 py-2 flex items-start gap-3 border-t border-rose-50 bg-rose-50/50 opacity-60">
+                                        <div className="w-20 shrink-0">
+                                          <p className="text-[10px] text-rose-300 uppercase tracking-wide">{SCHEDULE_BLOCK_LABEL[it.block]}</p>
+                                          {it.time && <p className="text-[10px] text-rose-300 tabular-nums mt-0.5">{it.time}</p>}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                          {it.partner && <p className="text-[10px] text-rose-300 uppercase tracking-wide mb-0.5">{it.partner}</p>}
+                                          <p className="text-xs text-rose-400 line-through">{it.title}{it.variantTag ? ` · ${it.variantTag}` : ''}</p>
+                                          {it.location && <p className="text-[11px] text-rose-300 mt-0.5 line-through">{it.location}</p>}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
                               </div>
                             )
                           })()
@@ -1854,8 +1935,9 @@ export default function AdminCaseDetailPage() {
                   }}
                   slug={latestSchedule?.slug ?? null}
                   nextVersion={nextVersion}
-                  initialConciergeName={latestSchedule?.concierge_name ?? null}
-                  initialConciergePhone={latestSchedule?.concierge_phone ?? null}
+                  initialConciergeName={latestSchedule?.concierge_name ?? lastConciergeInfo?.name ?? null}
+                  initialConciergePhone={latestSchedule?.concierge_phone ?? lastConciergeInfo?.phone ?? null}
+                  prevItems={latestSchedule?.items ?? undefined}
                   readOnly={!canEdit}
                 />
               </section>
@@ -2307,6 +2389,7 @@ export default function AdminCaseDetailPage() {
                 caseStatus={caseData.status}
                 embedded
                 canEdit={canEdit}
+                clientEmail={lead?.clients?.email ?? null}
                 quotation={latestQuote as unknown as DocumentRow}
                 finalInvoice={(finalInvoice ?? null) as unknown as DocumentRow | null}
                 documents={(caseData.documents ?? []) as unknown as DocumentRow[]}
@@ -2368,7 +2451,7 @@ export default function AdminCaseDetailPage() {
                     <div className="flex items-center justify-between">
                       <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Agent Evaluation</p>
                       {evaluation && !evalEditing && (
-                        <button onClick={() => setEvalEditing(true)} className="text-[11px] font-medium text-gray-500 hover:text-gray-800 px-2 py-1 rounded-lg border border-gray-200 hover:bg-gray-100">Edit</button>
+                        <button onClick={() => setEvalEditing(true)} className="text-xs font-semibold bg-green-700 text-white hover:bg-green-800 px-2.5 py-1 rounded-lg transition-colors">Edit</button>
                       )}
                     </div>
                     {evaluation && !evalEditing ? (
@@ -2523,9 +2606,42 @@ export default function AdminCaseDetailPage() {
                     const edit = partnerEdits[g.name]
                     const editing = !!edit
                     const saving = savingPartner === g.name
+                    const confirmed = edit?.confirmName === g.name
 
+                    const cancelEdit = () => setPartnerEdits(p => { const n = { ...p }; delete n[g.name]; return n })
+
+                    const savePayment = async (amount: string, paid_at: string, note: string) => {
+                      setSavingPartner(g.name); setPartnerError('')
+                      try {
+                        const { data: { session } } = await supabase.auth.getSession()
+                        const { data: adminRow } = await supabase.from('admins').select('id').eq('auth_user_id', session?.user?.id ?? '').maybeSingle()
+                        const payload = {
+                          case_id: caseData.id,
+                          partner_name: g.name,
+                          amount: Number(amount),
+                          paid_at,
+                          note: note.trim() || null,
+                          paid_by: adminRow?.id ?? null,
+                        }
+                        if (existing) {
+                          const { error } = await supabase.from('partner_payments').update(payload).eq('id', existing.id)
+                          if (error) throw error
+                        } else {
+                          const { error } = await supabase.from('partner_payments').insert(payload)
+                          if (error) throw error
+                        }
+                        await logAsCurrentUser('partner.paid',
+                          { type: 'case', id: caseData.id, label: caseData.case_number },
+                          { partner_name: g.name, amount_krw: Number(amount), paid_at })
+                        cancelEdit()
+                        await fetchCase()
+                      } catch (e: unknown) {
+                        setPartnerError((e as { message?: string })?.message ?? 'Failed.')
+                      } finally { setSavingPartner(null) }
+                    }
+
+                    // Paid — default view
                     if (existing && !editing) {
-                      // Paid view
                       return (
                         <div key={g.name} className="bg-white rounded-xl border border-green-200 p-3 flex items-center gap-3 flex-wrap">
                           <span className="w-2 h-2 rounded-full bg-[#0f4c35] shrink-0" />
@@ -2537,112 +2653,94 @@ export default function AdminCaseDetailPage() {
                             <span className="text-sm font-semibold text-[#0f4c35]">{fmtUSD(existing.amount / exchangeRate)}</span>
                             <span className="text-[10px] text-gray-400 ml-2">{fmtKRW(existing.amount)}</span>
                           </span>
-                          <div className="flex items-center gap-2 shrink-0">
-                            <button
-                              onClick={() => setPartnerEdits(p => ({ ...p, [g.name]: { amount: String(existing.amount), paid_at: existing.paid_at, note: existing.note ?? '' } }))}
-                              className="text-[10px] text-gray-400 hover:text-gray-700">Edit</button>
-                            <button
-                              onClick={async () => {
-                                if (!confirm(`Delete payment record for ${g.name}?\n\nAmount: ${fmtKRW(existing.amount)} · Paid: ${existing.paid_at}\n\nThis will mark the partner as unpaid. This cannot be undone.`)) return
-                                setSavingPartner(g.name); setPartnerError('')
-                                try {
-                                  const { error } = await supabase.from('partner_payments').delete().eq('id', existing.id)
-                                  if (error) throw error
-                                  await fetchCase()
-                                } catch (e: unknown) {
-                                  setPartnerError((e as { message?: string })?.message ?? 'Failed.')
-                                } finally { setSavingPartner(null) }
-                              }}
-                              className="text-[10px] text-red-500 hover:text-red-700">Delete</button>
-                          </div>
+                          <button
+                            onClick={() => setPartnerEdits(p => ({ ...p, [g.name]: { amount: String(existing.amount), paid_at: existing.paid_at, note: existing.note ?? '', confirmName: '' } }))}
+                            className="text-xs font-semibold bg-green-700 text-white hover:bg-green-800 px-2.5 py-1 rounded-lg transition-colors">Edit</button>
                         </div>
                       )
                     }
 
-                    // Edit / unpaid input
+                    // Unpaid — simple Mark Paid button
+                    if (!existing && !editing) {
+                      return (
+                        <div key={g.name} className="bg-white rounded-xl border border-gray-200 p-3 space-y-2">
+                          <div className="flex items-center gap-3">
+                            <span className="w-2 h-2 rounded-full bg-gray-300 shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm text-gray-700">{g.name}</p>
+                              <p className="text-[10px] text-gray-400">{g.items.length} item{g.items.length !== 1 ? 's' : ''} · suggested {fmtUSD(g.suggested / exchangeRate)} · {fmtKRW(g.suggested)}</p>
+                            </div>
+                            <button
+                              disabled={!canEdit || saving}
+                              onClick={() => savePayment(String(Math.round(g.suggested)), new Date().toISOString().slice(0, 10), '')}
+                              className="shrink-0 px-3 py-1 text-xs font-medium bg-[#0f4c35] text-white rounded-lg hover:bg-[#0a3828] disabled:opacity-40">
+                              {saving ? 'Saving...' : 'Mark Paid'}
+                            </button>
+                          </div>
+                          <ul className="text-[10px] text-gray-500 space-y-0.5 pl-4 border-l border-gray-100">
+                            {g.items.map((it, i) => (
+                              <li key={i} className="flex justify-between gap-2">
+                                <span className="truncate">{it.name}<span className="text-gray-400"> · {it.group} ({it.qty} pax)</span></span>
+                                <span className="text-gray-400 tabular-nums shrink-0">{fmtKRW(it.price)}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )
+                    }
+
+                    // Edit mode — name confirmation required
                     const amount = edit?.amount ?? String(Math.round(g.suggested))
                     const paid_at = edit?.paid_at ?? new Date().toISOString().slice(0, 10)
                     const note = edit?.note ?? ''
-                    const setField = (key: 'amount' | 'paid_at' | 'note', v: string) =>
-                      setPartnerEdits(p => ({ ...p, [g.name]: { ...{ amount, paid_at, note }, ...(p[g.name] ?? {}), [key]: v } }))
+                    const setField = (key: 'amount' | 'paid_at' | 'note' | 'confirmName', v: string) =>
+                      setPartnerEdits(p => ({ ...p, [g.name]: { ...{ amount, paid_at, note, confirmName: edit?.confirmName ?? '' }, ...(p[g.name] ?? {}), [key]: v } }))
 
                     return (
-                      <div key={g.name} className={`bg-white rounded-xl border p-3 space-y-2 ${existing ? 'border-emerald-200' : 'border-gray-200'}`}>
-                        <div className="flex items-center gap-3 flex-wrap">
-                          <span className={`w-2 h-2 rounded-full shrink-0 ${existing ? 'bg-[#0f4c35]' : 'bg-gray-300'}`} />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-gray-900">{g.name}</p>
-                            <p className="text-[10px] text-gray-500">{g.items.length} item{g.items.length !== 1 ? 's' : ''} · suggested {fmtUSD(g.suggested / exchangeRate)} · {fmtKRW(g.suggested)}</p>
-                          </div>
+                      <div key={g.name} className="bg-white rounded-xl border border-gray-200 p-3 space-y-3">
+                        <div className="flex items-center gap-3">
+                          <span className="w-2 h-2 rounded-full bg-[#0f4c35] shrink-0" />
+                          <p className="text-sm font-medium text-gray-900 flex-1">{g.name}</p>
+                          <button onClick={cancelEdit} className="text-[10px] text-gray-400 hover:text-gray-700">Cancel</button>
                         </div>
-                        <ul className="text-[10px] text-gray-500 space-y-0.5 pl-4 border-l border-gray-100">
-                          {g.items.map((it, i) => (
-                            <li key={i} className="flex justify-between gap-2">
-                              <span className="truncate">
-                                {it.name}
-                                <span className="text-gray-400"> · {it.group} ({it.qty} pax)</span>
-                              </span>
-                              <span className="text-gray-400 tabular-nums shrink-0">{fmtKRW(it.price)}</span>
-                            </li>
-                          ))}
-                        </ul>
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                          <div>
-                            <label className="block text-[10px] text-gray-500 mb-1">Amount (KRW)</label>
-                            <input value={amount} onChange={e => setField('amount', e.target.value.replace(/[^0-9]/g, ''))} type="text" inputMode="numeric"
-                              className="w-full border border-gray-200 rounded-lg px-2 py-1 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
-                          </div>
-                          <div>
-                            <label className="block text-[10px] text-gray-500 mb-1">Paid On</label>
-                            <input value={paid_at} onChange={e => setField('paid_at', e.target.value)} type="date"
-                              className="w-full border border-gray-200 rounded-lg px-2 py-1 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
-                          </div>
-                          <div>
-                            <label className="block text-[10px] text-gray-500 mb-1">Note (optional)</label>
-                            <input value={note} onChange={e => setField('note', e.target.value)} placeholder="Bank ref, etc."
-                              className="w-full border border-gray-200 rounded-lg px-2 py-1 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
-                          </div>
+                        <div>
+                          <label className="block text-[10px] text-gray-500 mb-1">Type partner name to confirm edit</label>
+                          <input
+                            value={edit?.confirmName ?? ''}
+                            onChange={e => setField('confirmName', e.target.value)}
+                            placeholder={g.name}
+                            className="w-full border border-gray-200 rounded-lg px-2 py-1 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]"
+                          />
                         </div>
-                        <div className="flex items-center justify-end gap-2">
-                          {edit && (
-                            <button onClick={() => setPartnerEdits(p => { const n = { ...p }; delete n[g.name]; return n })}
-                              className="text-xs text-gray-400 hover:text-gray-700">Cancel</button>
-                          )}
-                          <button
-                            disabled={!canEdit || saving || !amount || Number(amount) <= 0 || !paid_at}
-                            onClick={async () => {
-                              setSavingPartner(g.name); setPartnerError('')
-                              try {
-                                const { data: { session } } = await supabase.auth.getSession()
-                                const { data: adminRow } = await supabase.from('admins').select('id').eq('auth_user_id', session?.user?.id ?? '').maybeSingle()
-                                const payload = {
-                                  case_id: caseData.id,
-                                  partner_name: g.name,
-                                  amount: Number(amount),
-                                  paid_at,
-                                  note: note.trim() || null,
-                                  paid_by: adminRow?.id ?? null,
-                                }
-                                if (existing) {
-                                  const { error } = await supabase.from('partner_payments').update(payload).eq('id', existing.id)
-                                  if (error) throw error
-                                } else {
-                                  const { error } = await supabase.from('partner_payments').insert(payload)
-                                  if (error) throw error
-                                }
-                                await logAsCurrentUser('partner.paid',
-                                  { type: 'case', id: caseData.id, label: caseData.case_number },
-                                  { partner_name: g.name, amount_krw: Number(amount), paid_at })
-                                setPartnerEdits(p => { const n = { ...p }; delete n[g.name]; return n })
-                                await fetchCase()
-                              } catch (e: unknown) {
-                                setPartnerError((e as { message?: string })?.message ?? 'Failed.')
-                              } finally { setSavingPartner(null) }
-                            }}
-                            className="px-3 py-1 text-xs font-medium bg-[#0f4c35] text-white rounded-lg hover:bg-[#0a3828] disabled:opacity-40">
-                            {saving ? 'Saving...' : existing ? 'Save' : 'Mark Paid'}
-                          </button>
-                        </div>
+                        {confirmed && (
+                          <>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                              <div>
+                                <label className="block text-[10px] text-gray-500 mb-1">Amount (KRW)</label>
+                                <input value={amount} onChange={e => setField('amount', e.target.value.replace(/[^0-9]/g, ''))} type="text" inputMode="numeric"
+                                  className="w-full border border-gray-200 rounded-lg px-2 py-1 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
+                              </div>
+                              <div>
+                                <label className="block text-[10px] text-gray-500 mb-1">Paid On</label>
+                                <input value={paid_at} onChange={e => setField('paid_at', e.target.value)} type="date"
+                                  className="w-full border border-gray-200 rounded-lg px-2 py-1 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
+                              </div>
+                              <div>
+                                <label className="block text-[10px] text-gray-500 mb-1">Note (optional)</label>
+                                <input value={note} onChange={e => setField('note', e.target.value)} placeholder="Bank ref, etc."
+                                  className="w-full border border-gray-200 rounded-lg px-2 py-1 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
+                              </div>
+                            </div>
+                            <div className="flex justify-end">
+                              <button
+                                disabled={!canEdit || saving || !amount || Number(amount) <= 0 || !paid_at}
+                                onClick={() => savePayment(amount, paid_at, note)}
+                                className="px-3 py-1 text-xs font-medium bg-[#0f4c35] text-white rounded-lg hover:bg-[#0a3828] disabled:opacity-40">
+                                {saving ? 'Saving...' : 'Save'}
+                              </button>
+                            </div>
+                          </>
+                        )}
                       </div>
                     )
                   })}

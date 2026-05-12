@@ -62,6 +62,8 @@ type Props = {
   onFinalPaymentConfirm?: (paidAt: string) => Promise<void>
   /** When false, Mark Paid / Issue buttons are disabled (non-assigned admin) */
   canEdit?: boolean
+  /** Lead client email — used to send Balance Invoice email link */
+  clientEmail?: string | null
 }
 
 // Card styling — all white so no single invoice type dominates the section
@@ -98,13 +100,15 @@ async function captureSigner(): Promise<{ name: string | null; title: string | n
 }
 
 export default function CaseDocumentsSection({
-  caseId, caseNumber, agentId, actor, caseStatus, embedded, travelCompletedAt, quotation, finalInvoice, documents, exchangeRate, onChanged, onFinalPaymentConfirm, canEdit = true,
+  caseId, caseNumber, agentId, actor, caseStatus, embedded, travelCompletedAt, quotation, finalInvoice, documents, exchangeRate, onChanged, onFinalPaymentConfirm, canEdit = true, clientEmail,
 }: Props) {
   const [products, setProducts] = useState<Product[]>([])
   const [items, setItems] = useState<Record<string, DocumentItemRow[]>>({})
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [copiedId, setCopiedId] = useState<string | null>(null)
+  const [emailSendingDocId, setEmailSendingDocId] = useState<string | null>(null)
+  const [emailSentDocId, setEmailSentDocId] = useState<string | null>(null)
 
   // Issue modal state — null when closed, otherwise the intent
   const [issuing, setIssuing] = useState<IssueIntent | null>(null)
@@ -387,6 +391,24 @@ export default function CaseDocumentsSection({
     })
   }
 
+  async function sendDocEmail(doc: DocumentRow) {
+    if (!clientEmail) return
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || (typeof window !== 'undefined' ? window.location.origin : '')
+    const url = `${baseUrl}/${customerRouteFor(doc.type)}/${doc.slug}`
+    setEmailSendingDocId(doc.id)
+    try {
+      await fetch('/api/send-link-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ emails: [clientEmail], url, type: 'invoice' }),
+      })
+      setEmailSentDocId(doc.id)
+      setTimeout(() => setEmailSentDocId(null), 2500)
+    } finally {
+      setEmailSendingDocId(null)
+    }
+  }
+
   // Visible documents in this section: all invoice types. Quotation is
   // rendered separately in the Selected Products section.
   const invoiceDocs = documents.filter(d => {
@@ -629,7 +651,7 @@ export default function CaseDocumentsSection({
                 <span className={`text-[10px] font-semibold uppercase tracking-wide ${TYPE_LABEL_TONE[doc.type]}`}>
                   {label}
                 </span>
-                <span className="text-[10px] text-gray-400 font-medium">
+                <span className="text-[10px] text-gray-600 font-semibold">
                   {partyLabel(doc.from_party)} → {partyLabel(doc.to_party)}
                 </span>
                 <span className="text-[10px] font-mono text-gray-500">{doc.document_number}</span>
@@ -737,18 +759,51 @@ export default function CaseDocumentsSection({
               )
             )}
 
-            {/* Bottom row — bordered button row matching the contract section's
-                Save PDF / Expand button style (text links were too quiet). */}
+            {/* Bottom row */}
             <div className="flex items-center justify-between flex-wrap gap-2 pt-2 border-t border-gray-100">
               <div className="flex items-center gap-2 flex-wrap">
                 <a href={`${baseUrl}/${customerRouteFor(doc.type)}/${doc.slug}?preview=1`} target="_blank" rel="noopener noreferrer"
-                  className="text-[11px] font-medium text-gray-600 hover:text-gray-900 px-2 py-1 rounded-lg border border-gray-200 hover:bg-white">
-                  Preview ↗
+                  className="flex items-center gap-1 text-[11px] font-medium bg-gray-700 text-white hover:bg-gray-600 px-2 py-1 rounded-lg">
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  Preview
                 </a>
-                <button onClick={() => copyLink(doc)}
-                  className="text-[11px] font-medium text-gray-600 hover:text-gray-900 px-2 py-1 rounded-lg border border-gray-200 hover:bg-white">
-                  {copiedId === doc.id ? '✓ Copied!' : 'Copy link'}
-                </button>
+                {doc.type !== 'commission_invoice' && !(doc.type === 'deposit_invoice' && doc.to_party === 'agent') && (
+                  <button onClick={() => copyLink(doc)}
+                    className="flex items-center gap-1 text-[11px] font-medium bg-gray-700 text-white hover:bg-gray-600 px-2 py-1 rounded-lg">
+                    {copiedId === doc.id ? (
+                      <>
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+                        Copied!
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                        Copy Link
+                      </>
+                    )}
+                  </button>
+                )}
+                {doc.type === 'final_invoice' && clientEmail && !paid && (
+                  <button onClick={() => sendDocEmail(doc)} disabled={emailSendingDocId === doc.id}
+                    className="flex items-center gap-1 text-[11px] font-medium bg-[#0f4c35] text-white hover:bg-[#0a3828] px-2.5 py-1 rounded-lg disabled:opacity-40">
+                    {emailSentDocId === doc.id ? (
+                      <>
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+                        Sent!
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" /></svg>
+                        {emailSendingDocId === doc.id ? 'Sending…' : 'Send Invoice'}
+                      </>
+                    )}
+                  </button>
+                )}
                 {paid ? (
                   <span className="text-[10px] text-gray-400 ml-1">Paid {doc.payment_received_at?.slice(0, 10)}</span>
                 ) : doc.payment_due_date ? (

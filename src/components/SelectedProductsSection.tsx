@@ -1,10 +1,10 @@
-'use client'
+﻿'use client'
 
 import { useState } from 'react'
 
 // Shared "Selected Products" renderer for case detail pages (admin + agent).
 // Reads from the canonical documents model (quotation + additional_invoices)
-// using each item's stored final_price — no margin-multiplier recalculation.
+// using each item's stored final_price ??no margin-multiplier recalculation.
 // That guarantees both sides see the same numbers even after admin edits
 // final_price inline or issues an additional invoice mid-trip.
 
@@ -56,6 +56,8 @@ type Props = {
   showOriginalOnly?: boolean
   // When provided, shows an Edit button in the header
   onEditClick?: () => void
+  // Highlight with green border (schedule-related statuses)
+  highlight?: boolean
 }
 
 function fmtUSD(n: number) {
@@ -66,12 +68,12 @@ function fmtKRW(n: number) {
 }
 
 function itemName(item: Item): string {
-  return item.products?.name ?? item.product_name_snapshot ?? '—'
+  return item.products?.name ?? item.product_name_snapshot ?? ''
 }
 
 function activeItems(g: Group, showOriginalOnly = false): Item[] {
   if (showOriginalOnly) {
-    // Pre-confirmation agent view: removals are not confirmed yet — show all original items
+    // Pre-confirmation agent view: removals are not confirmed yet ??show all original items
     return (g.document_items ?? []).filter(it =>
       it.origin === 'original' || it.origin == null
     )
@@ -85,7 +87,7 @@ function groupTotal(g: Group, showOriginalOnly = false): number {
 
 export default function SelectedProductsSection({
   documents, exchangeRate, defaultExpanded = false, showKRW = true,
-  showOriginalOnly = false, onEditClick,
+  showOriginalOnly = false, onEditClick, highlight = false,
 }: Props) {
   const [expanded, setExpanded] = useState(defaultExpanded)
   const [detailItem, setDetailItem] = useState<Item | null>(null)
@@ -120,7 +122,7 @@ export default function SelectedProductsSection({
             const items = activeItems(group, showOriginalOnly)
             // When not filtering (admin / agent post-confirm): show all items
             // including removed ones for full audit trail. Sort: active-original
-            // → active-added → removed.
+            // ??active-added ??removed.
             const displayItems = showOriginalOnly
               ? items
               : [...(group.document_items ?? [])].sort((a, b) => {
@@ -208,9 +210,9 @@ export default function SelectedProductsSection({
   }
 
   return (
-    <section className="bg-gray-50 rounded-2xl border-2 border-gray-300 overflow-hidden">
-      <div className="flex items-center gap-2 px-5 py-2.5 bg-gray-100 border-b border-gray-200">
-        <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Selected Products</h3>
+    <section className={`rounded-2xl border-2 overflow-hidden ${highlight ? 'bg-white border-[#0f4c35]' : 'bg-gray-50 border-gray-300'}`}>
+      <div className={`flex items-center gap-2 px-5 py-2.5 border-b ${highlight ? 'bg-green-50 border-green-200' : 'bg-gray-100 border-gray-200'}`}>
+        <h3 className={`text-xs font-semibold uppercase tracking-wide ${highlight ? 'text-[#0f4c35]' : 'text-gray-700'}`}>Selected Products</h3>
         {additions.length > 0 && (
           <span className="text-[10px] font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">
             +{additions.length} additional
@@ -218,12 +220,12 @@ export default function SelectedProductsSection({
         )}
         {onEditClick && (
           <button onClick={onEditClick}
-            className="text-[11px] font-medium text-gray-500 hover:text-gray-800 px-2 py-1 rounded-lg border border-gray-200 hover:bg-gray-100">
+            className="text-xs font-semibold bg-green-700 text-white hover:bg-green-800 px-2.5 py-1 rounded-lg transition-colors">
             Edit
           </button>
         )}
         <button onClick={() => setExpanded(v => !v)}
-          className="ml-auto text-[11px] font-medium text-gray-500 hover:text-gray-800 px-2 py-1 rounded-lg border border-gray-200 hover:bg-gray-100">
+          className="ml-auto text-xs font-medium bg-gray-700 text-white hover:bg-gray-600 px-2.5 py-1.5 rounded-lg transition-colors">
           {expanded ? '▲ Collapse' : '▼ Expand'}
         </button>
       </div>
@@ -237,7 +239,7 @@ export default function SelectedProductsSection({
         renderDoc(doc, `Additional · ${doc.finalized_at ? new Date(doc.finalized_at).toLocaleDateString('en-US', { dateStyle: 'medium' }) : 'pending'}`)
       )}
 
-      {/* Grand total — sum across quotation + all additional invoices */}
+      {/* Grand total ??sum across quotation + all additional invoices */}
       <div className="flex items-center justify-between bg-[#0f4c35]/5 border border-[#0f4c35]/15 rounded-xl px-4 py-3">
         <span className="text-sm font-semibold text-gray-700">Grand Total</span>
         <div className="text-right">
@@ -317,3 +319,4 @@ function ProductDetailModal({
     </div>
   )
 }
+

@@ -82,13 +82,13 @@ export default function PartnerViewPage() {
 
   if (loading) return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-      <p className="text-sm text-gray-400">Loading...</p>
+      <p className="text-sm text-gray-400">불러오는 중...</p>
     </div>
   )
 
   if (invalid) return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-      <p className="text-sm text-gray-400">This link is no longer valid.</p>
+      <p className="text-sm text-gray-400">유효하지 않은 링크입니다.</p>
     </div>
   )
 
@@ -100,9 +100,9 @@ export default function PartnerViewPage() {
       <div className="bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between">
         <div>
           <span className="text-base font-bold tracking-tight text-[#0f4c35]">TIKKTAKK</span>
-          <span className="ml-3 text-xs text-gray-400">Client Information</span>
+          <span className="ml-3 text-xs text-gray-400">고객 정보</span>
         </div>
-        <span className="text-[10px] text-gray-300 uppercase tracking-widest">Read only</span>
+        <span className="text-[10px] text-gray-300 uppercase tracking-widest">열람 전용</span>
       </div>
 
       {/* Client tabs */}
@@ -131,65 +131,65 @@ export default function PartnerViewPage() {
         </div>
 
         {/* Basic info */}
-        <Section title="Basic Information">
-          <Row label="Gender" value={c.gender} />
-          <Row label="Date of Birth" value={c.date_of_birth} />
-          <Row label="Phone" value={c.phone} />
-          <Row label="Email" value={c.email} />
-          <Row label="Passport Number" value={c.passport_number} />
-          <Row label="Preferred Language" value={c.preferred_language} />
+        <Section title="기본 정보">
+          <Row label="성별" value={c.gender} />
+          <Row label="생년월일" value={c.date_of_birth} />
+          <Row label="연락처" value={c.phone} />
+          <Row label="이메일" value={c.email} />
+          <Row label="여권 번호" value={c.passport_number} />
+          <Row label="선호 언어" value={c.preferred_language} />
         </Section>
 
         {/* Emergency contact */}
         {(c.emergency_contact_name || c.emergency_contact_phone) && (
-          <Section title="Emergency Contact">
-            <Row label="Name" value={c.emergency_contact_name} />
-            <Row label="Relation" value={c.emergency_contact_relation} />
-            <Row label="Phone" value={c.emergency_contact_phone} />
+          <Section title="비상 연락처">
+            <Row label="이름" value={c.emergency_contact_name} />
+            <Row label="관계" value={c.emergency_contact_relation} />
+            <Row label="연락처" value={c.emergency_contact_phone} />
           </Section>
         )}
 
         {/* Health */}
-        <Section title="Health & Medical">
-          <Row label="Blood Type" value={c.blood_type} />
-          <Row label="Height" value={c.height_cm != null ? `${c.height_cm} cm` : null} />
-          <Row label="Weight" value={c.weight_kg != null ? `${c.weight_kg} kg` : null} />
-          <Row label="Allergies" value={c.allergies} />
-          <Row label="Current Medications" value={c.current_medications} />
-          <Row label="Health Conditions" value={c.health_conditions} />
-          <Row label="Medical Restrictions" value={c.medical_restrictions} />
-          <Row label="Mobility Limitations" value={c.mobility_limitations} />
-          <Row label="Pregnancy Status" value={c.pregnancy_status} />
-          <Row label="Smoking" value={c.smoking_status} />
-          <Row label="Alcohol" value={c.alcohol_status} />
+        <Section title="건강 및 의료 정보">
+          <Row label="혈액형" value={c.blood_type} />
+          <Row label="키" value={c.height_cm != null ? `${c.height_cm} cm` : null} />
+          <Row label="몸무게" value={c.weight_kg != null ? `${c.weight_kg} kg` : null} />
+          <Row label="알레르기" value={c.allergies} />
+          <Row label="복용 중인 약물" value={c.current_medications} />
+          <Row label="건강 상태" value={c.health_conditions} />
+          <Row label="의료 제한 사항" value={c.medical_restrictions} />
+          <Row label="거동 제한" value={c.mobility_limitations} />
+          <Row label="임신 여부" value={c.pregnancy_status} />
+          <Row label="흡연 여부" value={c.smoking_status} />
+          <Row label="음주 여부" value={c.alcohol_status} />
         </Section>
 
         {/* Muslim preferences */}
         {c.needs_muslim_friendly && (
-          <Section title="Muslim Preferences">
-            <Row label="Dietary Restriction" value={c.dietary_restriction} />
-            <Row label="Prayer Frequency" value={c.prayer_frequency} />
-            <Row label="Prayer Location" value={c.prayer_location} />
-            <Row label="Same-gender Doctor" value={c.same_gender_doctor} />
-            <Row label="Same-gender Therapist" value={c.same_gender_therapist} />
-            <Row label="Mixed-gender Activities" value={c.mixed_gender_activities} />
-            <Row label="Cultural / Religious Notes" value={c.cultural_religious_notes} />
+          <Section title="무슬림 관련 사항">
+            <Row label="식이 제한" value={c.dietary_restriction} />
+            <Row label="기도 빈도" value={c.prayer_frequency} />
+            <Row label="기도 장소" value={c.prayer_location} />
+            <Row label="동성 의사 선호" value={c.same_gender_doctor} />
+            <Row label="동성 치료사 선호" value={c.same_gender_therapist} />
+            <Row label="혼성 활동 참여" value={c.mixed_gender_activities} />
+            <Row label="문화·종교 관련 참고사항" value={c.cultural_religious_notes} />
           </Section>
         )}
 
         {/* Aesthetic & notes */}
         {(c.prior_aesthetic_procedures || c.recent_health_checkup_notes || c.special_requests) && (
-          <Section title="Additional Notes">
-            <Row label="Prior Aesthetic Procedures" value={c.prior_aesthetic_procedures} />
-            <Row label="Recent Health Checkup" value={c.recent_health_checkup_notes} />
-            <Row label="Special Requests" value={c.special_requests} />
+          <Section title="기타 사항">
+            <Row label="기존 미용 시술 이력" value={c.prior_aesthetic_procedures} />
+            <Row label="최근 건강검진 결과" value={c.recent_health_checkup_notes} />
+            <Row label="특별 요청 사항" value={c.special_requests} />
           </Section>
         )}
 
       </div>
 
       <div className="text-center py-8">
-        <p className="text-[10px] text-gray-300">Shared by TIKKTAKK · Confidential</p>
+        <p className="text-[10px] text-gray-300">TIKKTAKK 제공 · 기밀</p>
       </div>
     </div>
   )

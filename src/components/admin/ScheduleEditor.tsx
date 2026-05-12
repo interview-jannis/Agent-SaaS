@@ -1,10 +1,10 @@
-'use client'
+﻿'use client'
 
 // In-page schedule editor (admin). Replaces PDF upload as the primary path.
 //
 // UX: one card per Day, each card has rows of items. Per-row inputs:
 //   Block | Time (optional) | Title | Location | Notes | Product (optional)
-// Day count is derived from travel_start_date / travel_end_date — to extend
+// Day count is derived from travel_start_date / travel_end_date ??to extend
 // or shorten the trip, edit dates in Trip Setup. Legacy items beyond the
 // trip duration still surface (so historical data isn't hidden).
 //
@@ -57,22 +57,24 @@ type Props = {
   defaultDayCount: number
   // Products from the case's quotation, for the optional product picker.
   caseProducts: CaseProduct[]
-  // Document groups — drives the per-row Group dropdown so admin can mark
+  // Document groups ??drives the per-row Group dropdown so admin can mark
   // an item as Shared (visible to everyone) or specific to one group.
   caseGroups?: Array<{ id: string; name: string }>
   // Triggered after a successful save so parent can refetch.
   onSaved: () => void
   // Persists current items as a draft without sending to agent.
   onSaveDraft: (items: ScheduleItem[]) => Promise<void>
-  // When true, save/draft actions are hidden — view only.
+  // When true, save/draft actions are hidden ??view only.
   readOnly?: boolean
   // Slug for "Preview" link.
   slug: string | null
   // Save creates a new version on top of this.
   nextVersion: number
-  // Concierge footer override (carried from last version — admin can edit).
+  // Concierge footer override (carried from last version ??admin can edit).
   initialConciergeName?: string | null
   initialConciergePhone?: string | null
+  // Previous version's items for diff display while editing.
+  prevItems?: ScheduleItem[]
 }
 
 export default function ScheduleEditor({
@@ -83,8 +85,12 @@ export default function ScheduleEditor({
   onSaved, onSaveDraft, slug, nextVersion,
   initialConciergeName = null, initialConciergePhone = null,
   readOnly = false,
+  prevItems,
 }: Props) {
   const [items, setItems] = useState<ScheduleItem[]>(initialItems)
+  const [markedForRemoval, setMarkedForRemoval] = useState<Set<string>>(new Set())
+  const diffKeyFn = (it: ScheduleItem) => it.variantId ?? it.title.trim().toLowerCase()
+  const prevKeySet = useMemo(() => new Set((prevItems ?? []).map(diffKeyFn)), [prevItems])
   const [conciergeName, setConciergeName] = useState<string>(initialConciergeName ?? '')
   const [conciergePhone, setConciergePhone] = useState<string>(initialConciergePhone ?? '')
   const [revisionNote, setRevisionNote] = useState('')
@@ -98,7 +104,7 @@ export default function ScheduleEditor({
   // Pending rows show with dashed border + inline Cancel/Save and don't count
   // for the global coverage gate (so admin can stage incomplete drafts).
   const [pendingItemIds, setPendingItemIds] = useState<Set<string>>(new Set())
-  // Days that are collapsed. Initialised to all days that already have committed items —
+  // Days that are collapsed. Initialised to all days that already have committed items ??
   // so a loaded schedule starts compact and admins expand only what they want to edit.
   const [collapsedDays, setCollapsedDays] = useState<Set<number>>(() => {
     const s = new Set<number>()
@@ -108,7 +114,7 @@ export default function ScheduleEditor({
   function toggleDayCollapse(day: number) {
     setCollapsedDays(prev => { const n = new Set(prev); n.has(day) ? n.delete(day) : n.add(day); return n })
   }
-  // Items whose group hasn't been explicitly chosen yet (shows "— Choose group —" prompt).
+  // Items whose group hasn't been explicitly chosen yet (shows "??Choose group ?? prompt).
   // Cleared the moment admin changes the group select.
   const [unsetGroupItemIds, setUnsetGroupItemIds] = useState<Set<string>>(new Set())
   // Snapshot of items at the moment Edit was clicked, keyed by item id.
@@ -125,7 +131,7 @@ export default function ScheduleEditor({
     return shared
   }, [caseProducts])
 
-  // variantId → Set<groupId|null> of committed rows that already link this variant.
+  // variantId ??Set<groupId|null> of committed rows that already link this variant.
   // null in the set means a Shared row (covers all groups).
   // Used by ItemRow to hide already-scheduled products from the picker.
   const committedVariantContexts = useMemo(() => {
@@ -141,7 +147,7 @@ export default function ScheduleEditor({
     return result
   }, [items, pendingItemIds])
 
-  // Days present in the editor — union of (1..defaultDayCount) and any item's day.
+  // Days present in the editor ??union of (1..defaultDayCount) and any item's day.
   const days = useMemo(() => {
     const set = new Set<number>()
     for (let d = 1; d <= Math.max(defaultDayCount, 1); d++) set.add(d)
@@ -151,7 +157,7 @@ export default function ScheduleEditor({
 
   // Day count is fixed by travel dates. Legacy items with day > defaultDayCount
   // still appear in the editor (handled via `days` union above) so admins can
-  // see/edit them, but no UI for adding or removing days here — change dates
+  // see/edit them, but no UI for adding or removing days here ??change dates
   // in Trip Setup instead.
 
   function addItem(day: number, atBottom = false) {
@@ -203,11 +209,11 @@ export default function ScheduleEditor({
   function cancelPendingItem(id: string) {
     const snapshot = editSnapshots.get(id)
     if (snapshot) {
-      // Editing an existing committed item — restore original and exit edit mode
+      // Editing an existing committed item ??restore original and exit edit mode
       setItems(prev => prev.map(i => i.id === id ? snapshot : i))
       setEditSnapshots(prev => { const n = new Map(prev); n.delete(id); return n })
     } else {
-      // Brand-new item that was never committed — remove entirely
+      // Brand-new item that was never committed ??remove entirely
       setItems(prev => prev.filter(i => i.id !== id))
     }
     setPendingItemIds(prev => { const n = new Set(prev); n.delete(id); return n })
@@ -220,7 +226,7 @@ export default function ScheduleEditor({
     setUnsetGroupItemIds(prev => { const n = new Set(prev); n.add(id); return n })
   }
 
-  // Free-time presets — common enough that admins shouldn't have to type
+  // Free-time presets ??common enough that admins shouldn't have to type
   // "Free time" + pick a block every time. Half-day = single block (morning
   // OR afternoon). Full-day = three rows (morning + afternoon + evening) so
   // the editorial output renders blank periods consistently.
@@ -292,7 +298,18 @@ export default function ScheduleEditor({
   }
 
   function removeItem(id: string) {
-    setItems(prev => prev.filter(i => i.id !== id))
+    const it = items.find(i => i.id === id)
+    if (it && prevKeySet.has(diffKeyFn(it))) {
+      // Existing item: toggle "marked for removal" instead of deleting
+      setMarkedForRemoval(prev => {
+        const next = new Set(prev)
+        if (next.has(id)) next.delete(id); else next.add(id)
+        return next
+      })
+    } else {
+      // New item: actually remove
+      setItems(prev => prev.filter(i => i.id !== id))
+    }
   }
 
   function moveItem(id: string, direction: -1 | 1) {
@@ -317,8 +334,8 @@ export default function ScheduleEditor({
   }
 
   // Apply variant pick: split fields so renderer can lay out hierarchy.
-  //   partner → eyebrow (e.g. "GIL HOSPITAL")
-  //   title   → activity (e.g. "VIP Premium · Female")
+  //   partner ??eyebrow (e.g. "GIL HOSPITAL")
+  //   title   ??activity (e.g. "VIP Premium · Female")
   // Deselect clears auto-derived fields, but free-form text the admin typed
   // by hand survives.
   function applyVariantPick(itemId: string, variantId: string | null) {
@@ -376,8 +393,9 @@ export default function ScheduleEditor({
     setError('')
     setEmptyTitleIds(new Set())
     try {
-      // Normalize sortOrder per (day, block) for stable storage
+      // Normalize sortOrder per (day, block) for stable storage; exclude marked-for-removal items
       const normalized = [...items]
+        .filter(it => !markedForRemoval.has(it.id))
         .sort(compareScheduleItems)
         .map((it, idx) => ({ ...it, sortOrder: idx }))
 
@@ -433,6 +451,19 @@ export default function ScheduleEditor({
 
   const visibleDays = days
 
+  // Diff vs previous version (only when prevItems provided)
+  const activeItems = items.filter(it => !markedForRemoval.has(it.id))
+  const activeKeys = new Set(activeItems.map(diffKeyFn))
+  const addedKeys = prevItems ? new Set(activeItems.filter(it => !prevKeySet.has(diffKeyFn(it))).map(diffKeyFn)) : new Set<string>()
+
+  // Set of groupIds that have a health checkup product linked ??used to
+  // show the Results Consultation option only for those specific groups
+  const healthCheckupGroupIds = new Set(
+    items
+      .filter(i => i.variantId != null && caseProducts.find(p => p.variantId === i.variantId)?.isHealthCheckup)
+      .flatMap(i => (i.groupIds ?? (i.groupId ? [i.groupId] : [])))
+  )
+
   return (
     <div className="space-y-4">
       {visibleDays.map(day => {
@@ -459,7 +490,7 @@ export default function ScheduleEditor({
               <div className="flex items-center gap-3">
                 {!isCollapsed && (
                   <>
-                    <button onClick={() => addItem(day)} className="text-xs font-medium text-[#0f4c35] hover:underline">+ Add Item</button>
+                    <button onClick={() => addItem(day)} className="text-xs font-semibold text-[#0f4c35] hover:bg-green-50 px-2 py-1 rounded-lg border border-[#0f4c35]/30 hover:border-[#0f4c35] transition-colors">+ Add Item</button>
                     <FreeTimeMenu onPick={(kind) => addFreeTime(day, kind)} />
                     <PrayerMenu onPick={(prayer) => addPrayerTime(day, prayer)} />
                   </>
@@ -489,6 +520,12 @@ export default function ScheduleEditor({
                       isEditSession={editSnapshots.has(it.id)}
                       isGroupUnset={unsetGroupItemIds.has(it.id)}
                       highlightEmptyTitle={emptyTitleIds.has(it.id)}
+                      showResultsSuggestion={
+                        !!(it.groupIds?.some(gid => healthCheckupGroupIds.has(gid)) ||
+                          (it.groupId && healthCheckupGroupIds.has(it.groupId)))
+                      }
+                      isNew={addedKeys.has(diffKeyFn(it))}
+                      isMarkedForRemoval={markedForRemoval.has(it.id)}
                       onGroupChosen={() => markGroupChosen(it.id)}
                       canMoveUp={idx > 0 && dayItems[idx - 1].block === it.block}
                       canMoveDown={idx < dayItems.length - 1 && dayItems[idx + 1].block === it.block}
@@ -509,7 +546,7 @@ export default function ScheduleEditor({
             )}
             {!isCollapsed && (
               <div className="flex items-center gap-3 px-4 py-2.5 border-t border-gray-100">
-                <button onClick={() => addItem(day, true)} className="text-xs font-medium text-[#0f4c35] hover:underline">+ Add Item</button>
+                <button onClick={() => addItem(day, true)} className="text-xs font-semibold text-[#0f4c35] hover:bg-green-50 px-2 py-1 rounded-lg border border-[#0f4c35]/30 hover:border-[#0f4c35] transition-colors">+ Add Item</button>
                 <FreeTimeMenu onPick={(kind) => addFreeTime(day, kind)} />
                 <PrayerMenu onPick={(prayer) => addPrayerTime(day, prayer)} />
               </div>
@@ -546,7 +583,7 @@ export default function ScheduleEditor({
 
       <div className="bg-white rounded-xl border border-gray-100 p-3">
         <label className="block text-[11px] text-gray-500 mb-1">
-          Note to agent / client <span className="text-gray-400">(optional — shown on schedule)</span>
+          Note to agent / client <span className="text-gray-400">(optional ??shown on schedule)</span>
         </label>
         <textarea
           value={adminNote}
@@ -580,12 +617,12 @@ export default function ScheduleEditor({
           - Non-Subpackage: each (groupId, variantId) pair must be covered by
             a committed row where variantId matches AND (row.groupId === group OR
             row.groupId === null/Shared). A Shared row covers ALL groups.
-          - Subpackage: treated as shared — any one row with that variantId
+          - Subpackage: treated as shared ??any one row with that variantId
             satisfies it, regardless of which group the row belongs to.
           Pending drafts don't count. */}
       {(() => {
         // Build required coverage keys
-        const requiredKeys = new Map<string, CaseProduct>() // key → representative CaseProduct for display
+        const requiredKeys = new Map<string, CaseProduct>() // key ??representative CaseProduct for display
         for (const cp of caseProducts) {
           const key = cp.isSubpackage ? `sub:${cp.variantId}` : `${cp.groupId}:${cp.variantId}`
           if (!requiredKeys.has(key)) requiredKeys.set(key, cp)
@@ -615,16 +652,6 @@ export default function ScheduleEditor({
         const allCovered = missing.length === 0
         const canSave = !saving && allCovered && !hasPending && items.length > 0
 
-        // Health checkup results consultation suggestion — show as soon as any
-        // item (pending or committed) has a health checkup product linked
-        const hasHealthCheckupLinked = items.some(i =>
-          i.variantId != null &&
-          caseProducts.find(p => p.variantId === i.variantId)?.isHealthCheckup
-        )
-        const hasResultsItem = items.some(i =>
-          i.title.toLowerCase().includes('result')
-        )
-
         return (
           <div className="space-y-2">
             {!allCovered && requiredKeys.size > 0 && (
@@ -635,7 +662,7 @@ export default function ScheduleEditor({
                 <ul className="text-amber-900 space-y-0.5 pl-3 list-disc">
                   {missing.map(p => (
                     <li key={p.isSubpackage ? `sub:${p.variantId}` : `${p.groupId}:${p.variantId}`}>
-                      {!p.isSubpackage && <span className="text-amber-600">{p.groupName} — </span>}
+                      {!p.isSubpackage && <span className="text-amber-600">{p.groupName} ??</span>}
                       {p.partnerName && <span className="text-amber-700">{p.partnerName} · </span>}
                       {p.productName}{p.variantLabel ? ` · ${p.variantLabel}` : ''}
                     </li>
@@ -643,15 +670,9 @@ export default function ScheduleEditor({
                 </ul>
               </div>
             )}
-            {hasHealthCheckupLinked && !hasResultsItem && (
-              <div className="text-xs bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 space-y-0.5">
-                <p className="font-semibold text-blue-700">Optional: Results Consultation</p>
-                <p className="text-blue-600">Health checkup included — consider scheduling a day for the results consultation.</p>
-              </div>
-            )}
             {hasPending && (
               <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                {pendingItemIds.size} item{pendingItemIds.size !== 1 ? 's' : ''} still in draft — Save or Cancel each before sending.
+                {pendingItemIds.size} item{pendingItemIds.size !== 1 ? 's' : ''} still in draft ??Save or Cancel each before sending.
               </p>
             )}
             {readOnly ? (
@@ -663,7 +684,7 @@ export default function ScheduleEditor({
               <button
                 onClick={() => void saveDraft(items)}
                 disabled={savingDraft || saving || items.length === 0}
-                className="text-sm font-medium text-gray-600 hover:text-gray-900 border border-gray-200 hover:bg-gray-50 px-4 py-2 rounded-xl disabled:opacity-40 disabled:cursor-not-allowed"
+                className="text-sm font-medium bg-gray-700 text-white hover:bg-gray-600 px-4 py-2 rounded-xl disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {savingDraft ? 'Saving…' : draftSaved ? 'Draft saved' : 'Save Draft'}
               </button>
@@ -684,9 +705,9 @@ export default function ScheduleEditor({
   )
 }
 
-// ── Free time menu ────────────────────────────────────────────────────────────
+// ?? Free time menu ????????????????????????????????????????????????????????????
 
-// Small dropdown next to "Add Item" — three preset options. Half-day picks
+// Small dropdown next to "Add Item" ??three preset options. Half-day picks
 // drop a single "Free time" row in that block; full-day drops three (morning
 // + afternoon + evening) so the editorial render shows the full day blank.
 function FreeTimeMenu({
@@ -701,7 +722,7 @@ function FreeTimeMenu({
         type="button"
         onClick={() => setOpen(o => !o)}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
-        className="text-xs font-medium text-gray-500 hover:text-gray-800"
+        className="text-xs font-medium text-gray-600 hover:text-gray-900 px-2 py-1 rounded-lg border border-gray-200 hover:bg-gray-50"
       >
         + Free time ▾
       </button>
@@ -729,7 +750,7 @@ function FreeTimeMenu({
   )
 }
 
-// ── Prayer time menu ─────────────────────────────────────────────────────────
+// ?? Prayer time menu ?????????????????????????????????????????????????????????
 
 function PrayerMenu({ onPick }: { onPick: (prayer: string) => void }) {
   const [open, setOpen] = useState(false)
@@ -740,7 +761,7 @@ function PrayerMenu({ onPick }: { onPick: (prayer: string) => void }) {
         type="button"
         onClick={() => setOpen(o => !o)}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
-        className="text-xs font-medium text-orange-500 hover:text-orange-700"
+        className="text-xs font-medium text-orange-600 hover:text-orange-800 px-2 py-1 rounded-lg border border-orange-200 hover:bg-orange-50"
       >
         + Prayer ▾
       </button>
@@ -763,7 +784,7 @@ function PrayerMenu({ onPick }: { onPick: (prayer: string) => void }) {
   )
 }
 
-// ── Group multi-select ────────────────────────────────────────────────────────
+// ?? Group multi-select ????????????????????????????????????????????????????????
 
 function GroupMultiSelect({
   groupIds, caseGroups, isPending, isGroupUnset, onChange, onGroupChosen,
@@ -814,7 +835,7 @@ function GroupMultiSelect({
     return <span className="flex items-center gap-1">{renderGroupChips(groupIds)}</span>
   }
 
-  // Pending state — button that opens dropdown.
+  // Pending state ??button that opens dropdown.
   // Always shows the current selection; amber border signals "not yet confirmed".
   const buttonContent = isShared ? (
     <span className={`text-xs font-semibold ${isGroupUnset ? 'text-amber-700' : 'text-gray-900'}`}>Shared (all)</span>
@@ -876,9 +897,9 @@ function GroupMultiSelect({
   )
 }
 
-// ── Item row ──────────────────────────────────────────────────────────────────
+// ?? Item row ??????????????????????????????????????????????????????????????????
 
-// Color palette for group accents — repeats if there are more groups.
+// Color palette for group accents ??repeats if there are more groups.
 // Used as a left border stripe + select chip tint so admin can see at a
 // glance which group each row belongs to.
 // Group palette: blue / emerald / pink / purple (orange reserved for prayer).
@@ -893,7 +914,7 @@ const PRAYER_HEX = '#fb923c'
 
 function ItemRow({
   item, caseProducts, caseGroups, sharedVariantIds, committedVariantContexts,
-  isPending, isEditSession, isGroupUnset, highlightEmptyTitle,
+  isPending, isEditSession, isGroupUnset, highlightEmptyTitle, showResultsSuggestion, isNew, isMarkedForRemoval,
   canMoveUp, canMoveDown,
   onUpdate, onApplyVariant, onRemove, onMove,
   onEdit, onCommit, onCancelDraft, onGroupChosen,
@@ -907,6 +928,9 @@ function ItemRow({
   isEditSession: boolean
   isGroupUnset: boolean
   highlightEmptyTitle: boolean
+  showResultsSuggestion?: boolean
+  isNew?: boolean
+  isMarkedForRemoval?: boolean
   canMoveUp: boolean
   canMoveDown: boolean
   onUpdate: (patch: Partial<ScheduleItem>) => void
@@ -926,7 +950,7 @@ function ItemRow({
     ? { hex: PRAYER_HEX, chip: '', chipText: '' }
     : groupIdx >= 0 ? GROUP_TONES[groupIdx % GROUP_TONES.length] : SHARED_TONE
 
-  // Left stripe: solid color or top→bottom gradient for multi-group.
+  // Left stripe: solid color or top?뭕ottom gradient for multi-group.
   const stripeBackground = (() => {
     if (item.isPrayer) return PRAYER_HEX
     if (itemGroupIds === null || itemGroupIds.length <= 1) return tone.hex
@@ -977,7 +1001,7 @@ function ItemRow({
   const showTitleAlert = highlightEmptyTitle && !item.title.trim() && itemType !== 'free'
 
   return (
-    <div className={`flex ${isPending ? 'bg-amber-50/40 border border-dashed border-amber-300 m-2 rounded-lg overflow-hidden' : showTitleAlert ? 'bg-rose-50/60' : ''}`}>
+    <div className={`flex ${isPending ? 'bg-amber-50/40 border border-dashed border-amber-300 m-2 rounded-lg overflow-hidden' : isMarkedForRemoval ? 'bg-rose-50/60 opacity-60' : showTitleAlert ? 'bg-rose-50/60' : isNew ? 'bg-green-50/50' : ''}`}>
       {/* Left gutter: 4px stripe bar */}
       <div style={{ width: 32, flexShrink: 0, display: 'flex', alignSelf: 'stretch' }}>
         <div style={{ width: 4, flexShrink: 0, background: stripeBackground }} />
@@ -1033,7 +1057,7 @@ function ItemRow({
             </select>
             <span className="text-gray-200">|</span>
             <Time24Input value={item.time ?? null} onChange={(v) => onUpdate({ time: v })} />
-            <span className="text-xs text-gray-400">–</span>
+            <span className="text-xs text-gray-400">→</span>
             <Time24Input value={item.endTime ?? null} onChange={(v) => onUpdate({ endTime: v })} />
           </div>
         ) : (
@@ -1051,7 +1075,7 @@ function ItemRow({
               <>
                 <span className="text-gray-300">·</span>
                 <span className="tabular-nums text-gray-400">
-                  {item.time}{item.endTime ? ` – ${item.endTime}` : ''}
+                  {item.time}{item.endTime ? ` → ${item.endTime}` : ''}
                 </span>
               </>
             )}
@@ -1059,7 +1083,13 @@ function ItemRow({
         )}
         {/* Spacer */}
         <div className="flex-1" />
-        {/* Right cluster — always pinned to far right */}
+        {isMarkedForRemoval && (
+          <span className="shrink-0 text-[9px] font-semibold text-rose-700 bg-rose-100 border border-rose-200 px-1.5 py-0.5 rounded mr-1">REMOVE</span>
+        )}
+        {isNew && !isMarkedForRemoval && (
+          <span className="shrink-0 text-[9px] font-semibold text-green-700 bg-green-100 border border-green-200 px-1.5 py-0.5 rounded mr-1">NEW</span>
+        )}
+        {/* Right cluster ??always pinned to far right */}
         {!isPending && (
           <div className="flex items-center gap-1 shrink-0">
             <button
@@ -1080,7 +1110,7 @@ function ItemRow({
             </button>
             <button
               onClick={onEdit}
-              className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-[#0f4c35] hover:bg-gray-50 px-2 py-1 rounded-lg border border-gray-200 hover:border-[#0f4c35] transition-colors"
+              className="flex items-center gap-1 text-xs font-semibold bg-green-700 text-white hover:bg-green-800 px-2.5 py-1 rounded-lg transition-colors"
               title="Edit row"
             >
               <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536M9 11l6.071-6.071a2 2 0 112.828 2.829L11.828 13.83a2 2 0 01-.707.464l-3.535 1.06 1.06-3.535A2 2 0 019 11z" /></svg>
@@ -1088,10 +1118,10 @@ function ItemRow({
             </button>
             <button
               onClick={() => {
-                if (window.confirm('Remove this item from the schedule?')) onRemove()
+                if (isMarkedForRemoval || window.confirm('Remove this item from the schedule?')) onRemove()
               }}
-              className="text-gray-300 hover:text-red-500 w-6 h-6 flex items-center justify-center"
-              title="Remove item"
+              className={`w-6 h-6 flex items-center justify-center ${isMarkedForRemoval ? 'text-rose-400 hover:text-rose-600' : 'text-gray-300 hover:text-red-500'}`}
+              title={isMarkedForRemoval ? 'Undo removal' : 'Remove item'}
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
             </button>
@@ -1139,8 +1169,14 @@ function ItemRow({
             </select>
           )}
           {itemType === 'appointment' && !item.isPrayer && <select
-            value={item.variantId ?? ''}
-            onChange={(e) => onApplyVariant(e.target.value || null)}
+            value={item.variantId ?? (item.title === 'Results Consultation' ? '__results_consultation__' : '')}
+            onChange={(e) => {
+              if (e.target.value === '__results_consultation__') {
+                onUpdate({ title: 'Results Consultation', variantId: null })
+              } else {
+                onApplyVariant(e.target.value || null)
+              }
+            }}
             disabled={!isPending}
             className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-900 focus:outline-none focus:border-[#0f4c35] flex-1 min-w-[180px] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
           >
@@ -1155,6 +1191,9 @@ function ItemRow({
                 </option>
               )
             })}
+            {showResultsSuggestion && (
+              <option value="__results_consultation__">Results Consultation</option>
+            )}
           </select>}
           {coversGroups.length > 1 && (
             <span className="text-[10px] font-medium text-gray-400 bg-gray-100 rounded px-1.5 py-0.5 shrink-0">
@@ -1164,7 +1203,7 @@ function ItemRow({
         </div>
       )}
 
-      {/* Partner eyebrow + title — appointment/free only (other types handle title above) */}
+      {/* Partner eyebrow + title ??appointment/free only (other types handle title above) */}
       {(itemType === 'appointment' || itemType === 'free') && (
         <>
           {item.partner && (
@@ -1196,7 +1235,7 @@ function ItemRow({
       {/* Type-specific fields */}
       {itemType === 'transfer' && (
         <>
-          {/* From / To — always visible (core summary) */}
+          {/* From / To ??always visible (core summary) */}
           <div className="grid grid-cols-2 gap-2">
             <input type="text" value={item.fromLocation ?? ''}
               onChange={(e) => onUpdate({ fromLocation: e.target.value || null })}
@@ -1209,7 +1248,7 @@ function ItemRow({
               className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
             />
           </div>
-          {/* Transport mode + label override — in Details for committed rows */}
+          {/* Transport mode + label override ??in Details for committed rows */}
           {(isPending || detailsOpen) && (
             <div className="grid grid-cols-2 gap-2">
               <select value={item.transportMode ?? ''}
@@ -1234,7 +1273,7 @@ function ItemRow({
           )}
         </>
       )}
-      {/* Hotel label override — only in Details for committed rows (check-in/out is already in row 2) */}
+      {/* Hotel label override ??only in Details for committed rows (check-in/out is already in row 2) */}
       {itemType === 'hotel' && (isPending || detailsOpen) && (
         <input type="text" value={item.title}
           onChange={(e) => onUpdate({ title: e.target.value })}
@@ -1244,7 +1283,7 @@ function ItemRow({
       )}
       {itemType === 'meal' && (
         <>
-          {/* Meal type — always visible */}
+          {/* Meal type ??always visible */}
           <select value={item.title}
             onChange={(e) => onUpdate({ title: e.target.value })}
             disabled={!isPending}
@@ -1257,7 +1296,7 @@ function ItemRow({
             <option value="Brunch">Brunch</option>
             <option value="Snack">Snack / Café</option>
           </select>
-          {/* Restaurant + cuisine — in Details for committed rows */}
+          {/* Restaurant + cuisine ??in Details for committed rows */}
           {(isPending || detailsOpen) && (
             <div className="grid grid-cols-2 gap-2">
               <input type="text" value={item.restaurantName ?? ''}
@@ -1275,7 +1314,7 @@ function ItemRow({
         </>
       )}
 
-      {/* Expand/collapse toggle for optional detail fields — only shown on committed rows */}
+      {/* Expand/collapse toggle for optional detail fields ??only shown on committed rows */}
       {!isPending && (
         <button
           type="button"
@@ -1302,16 +1341,16 @@ function ItemRow({
         </button>
       )}
 
-      {/* Notes + internal fields — always visible when editing (isPending), collapsible when committed */}
+      {/* Notes + internal fields ??always visible when editing (isPending), collapsible when committed */}
       {(isPending || detailsOpen) && (
         <>
-          {/* Notes — VIP-facing */}
+          {/* Notes ??VIP-facing */}
           <input
             type="text"
             value={item.notes ?? ''}
             onChange={(e) => onUpdate({ notes: e.target.value || null })}
             disabled={!isPending}
-            placeholder="Notes — visible to client (optional)"
+            placeholder="Notes ??visible to client (optional)"
             className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
           />
 
@@ -1363,12 +1402,12 @@ function ItemRow({
 
       {isPending && (
         <div className="flex items-center justify-end gap-2 pt-1">
-          <span className="text-[10px] text-amber-700 mr-auto">Draft — not counted toward schedule coverage until saved</span>
+          <span className="text-[10px] text-amber-700 mr-auto">Draft ??not counted toward schedule coverage until saved</span>
           <button
             type="button"
             onClick={() => {
               if (isEditSession) {
-                // Restores original — no data loss, no confirmation needed
+                // Restores original ??no data loss, no confirmation needed
                 onCancelDraft()
                 return
               }
@@ -1394,3 +1433,4 @@ function ItemRow({
     </div>
   )
 }
+

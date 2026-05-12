@@ -281,9 +281,10 @@ export default function AdminSidebar() {
           <button
             onClick={handleLogout}
             title="Logout"
-            className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors"
+            className={`flex items-center gap-1.5 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-800 transition-colors ${collapsed ? 'md:w-7 md:h-7 md:justify-center px-2 py-1 md:p-0' : 'px-2 py-1'}`}
           >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+            <span className={`text-xs font-medium ${collapsed ? 'md:hidden' : ''}`}>Logout</span>
+            <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" />
             </svg>
           </button>

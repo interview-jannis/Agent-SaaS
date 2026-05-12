@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
@@ -398,7 +398,7 @@ export default function AdminSettingsPage() {
                   {profileSaved && <p className="text-xs text-[#0f4c35] mt-1">Saved.</p>}
                 </div>
                 <button onClick={() => startEdit('profile')}
-                  className="shrink-0 text-xs font-medium text-[#0f4c35] hover:underline">Edit</button>
+                  className="shrink-0 text-xs font-semibold bg-green-700 text-white hover:bg-green-800 px-2.5 py-1 rounded-lg transition-colors">Edit</button>
               </div>
             ) : (
               <div className="space-y-3">
@@ -453,7 +453,7 @@ export default function AdminSettingsPage() {
                 </div>
                 {isSuperAdmin && (
                   <button onClick={() => startEdit('product_price_rate')}
-                    className="shrink-0 text-xs font-medium text-[#0f4c35] hover:underline">Edit</button>
+                    className="shrink-0 text-xs font-semibold bg-green-700 text-white hover:bg-green-800 px-2.5 py-1 rounded-lg transition-colors">Edit</button>
                 )}
               </div>
             ) : (
@@ -535,7 +535,7 @@ export default function AdminSettingsPage() {
                 </div>
                 {isSuperAdmin && (
                   <button onClick={() => startEdit('rate')}
-                    className="shrink-0 text-xs font-medium text-[#0f4c35] hover:underline">Edit</button>
+                    className="shrink-0 text-xs font-semibold bg-green-700 text-white hover:bg-green-800 px-2.5 py-1 rounded-lg transition-colors">Edit</button>
                 )}
               </div>
             ) : (
@@ -583,7 +583,7 @@ export default function AdminSettingsPage() {
                 </div>
                 {isSuperAdmin && (
                   <button onClick={() => startEdit('margin')}
-                    className="shrink-0 text-xs font-medium text-[#0f4c35] hover:underline">Edit</button>
+                    className="shrink-0 text-xs font-semibold bg-green-700 text-white hover:bg-green-800 px-2.5 py-1 rounded-lg transition-colors">Edit</button>
                 )}
               </div>
             ) : (
@@ -633,7 +633,7 @@ export default function AdminSettingsPage() {
                   {subpkgSaved && <p className="text-xs text-[#0f4c35] mt-1">Saved.</p>}
                 </div>
                 <button onClick={() => startEdit('subpackage')}
-                  className="shrink-0 text-xs font-medium text-[#0f4c35] hover:underline">Edit</button>
+                  className="shrink-0 text-xs font-semibold bg-green-700 text-white hover:bg-green-800 px-2.5 py-1 rounded-lg transition-colors">Edit</button>
               </div>
             ) : (
               <div className="space-y-4">
@@ -698,7 +698,7 @@ export default function AdminSettingsPage() {
                 </div>
                 {isSuperAdmin && (
                   <button onClick={() => startEdit('bank')}
-                    className="shrink-0 text-xs font-medium text-[#0f4c35] hover:underline">Edit</button>
+                    className="shrink-0 text-xs font-semibold bg-green-700 text-white hover:bg-green-800 px-2.5 py-1 rounded-lg transition-colors">Edit</button>
                 )}
               </div>
             ) : (
@@ -758,7 +758,7 @@ export default function AdminSettingsPage() {
                 </div>
                 {isSuperAdmin && (
                   <button onClick={() => startEdit('deposit')}
-                    className="shrink-0 text-xs font-medium text-[#0f4c35] hover:underline">Edit</button>
+                    className="shrink-0 text-xs font-semibold bg-green-700 text-white hover:bg-green-800 px-2.5 py-1 rounded-lg transition-colors">Edit</button>
                 )}
               </div>
             ) : (
@@ -808,7 +808,7 @@ export default function AdminSettingsPage() {
                 </div>
                 {isSuperAdmin && (
                   <button onClick={() => startEdit('stamp')}
-                    className="shrink-0 text-xs font-medium text-[#0f4c35] hover:underline">Edit</button>
+                    className="shrink-0 text-xs font-semibold bg-green-700 text-white hover:bg-green-800 px-2.5 py-1 rounded-lg transition-colors">Edit</button>
                 )}
               </div>
             ) : (

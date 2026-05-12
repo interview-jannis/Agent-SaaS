@@ -38,6 +38,7 @@ export type FormState = {
   price_currency: 'KRW' | 'USD'
   duration_value: string
   duration_unit: 'hours' | 'days' | 'nights'
+  quantity_type: 'per_person' | 'per_night' | 'per_day' | 'flat'
   partner_name: string
   location_address: string
   contact_channels: ContactChannel[]
@@ -78,6 +79,13 @@ const DURATION_UNITS = [
   { value: 'nights', label: 'Nights' },
 ]
 
+const QUANTITY_TYPE_OPTIONS = [
+  { value: 'per_person', label: 'Per Person', desc: 'Multiplied by group member count' },
+  { value: 'per_night', label: 'Per Night', desc: 'Multiplied by number of nights (hotel)' },
+  { value: 'per_day', label: 'Per Day', desc: 'Multiplied by number of days (vehicle)' },
+  { value: 'flat', label: 'Flat', desc: 'Fixed quantity, no multiplier' },
+]
+
 const DEFAULT_FORM: FormState = {
   name: '',
   category_id: '',
@@ -87,6 +95,7 @@ const DEFAULT_FORM: FormState = {
   price_currency: 'KRW',
   duration_value: '',
   duration_unit: 'hours',
+  quantity_type: 'per_person',
   partner_name: '',
   location_address: '',
   contact_channels: [],
@@ -294,6 +303,7 @@ export default function ProductForm({ productId, productNumber, categories, init
         price_currency: firstVariant.price_currency,
         duration_value: Number(form.duration_value),
         duration_unit: form.duration_unit,
+        quantity_type: form.quantity_type,
         partner_name: form.partner_name.trim(),
         location_address: form.location_address.trim(),
         contact_channels: form.contact_channels,
@@ -555,6 +565,28 @@ export default function ProductForm({ productId, productNumber, categories, init
                     className="accent-[#0f4c35]"
                   />
                   <span className="text-sm text-gray-700">{u.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1.5">Pricing Unit</label>
+            <div className="flex flex-wrap gap-2">
+              {QUANTITY_TYPE_OPTIONS.map(opt => (
+                <label key={opt.value} className={`flex items-center gap-2 px-3 py-2 rounded-xl border cursor-pointer transition-colors ${form.quantity_type === opt.value ? 'border-[#0f4c35] bg-[#0f4c35]/5' : 'border-gray-200 hover:border-gray-300'}`}>
+                  <input
+                    type="radio"
+                    name="quantity_type"
+                    value={opt.value}
+                    checked={form.quantity_type === opt.value}
+                    onChange={() => set('quantity_type', opt.value as FormState['quantity_type'])}
+                    className="accent-[#0f4c35]"
+                  />
+                  <div>
+                    <p className="text-xs font-medium text-gray-800">{opt.label}</p>
+                    <p className="text-[10px] text-gray-400">{opt.desc}</p>
+                  </div>
                 </label>
               ))}
             </div>

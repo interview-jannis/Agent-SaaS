@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
@@ -214,7 +214,7 @@ export default function AdminCategoriesPage() {
                             <span className="flex-1 text-sm font-medium text-gray-900">{cat.name}</span>
                             <span className="text-[10px] text-gray-400 mr-2">{subs.length} sub</span>
                             <button onClick={() => { setEditCatId(cat.id); setEditCatName(cat.name) }}
-                              className="text-xs font-medium text-gray-400 hover:text-gray-700 transition-colors">Edit</button>
+                              className="text-xs font-semibold bg-green-700 text-white hover:bg-green-800 px-2.5 py-1 rounded-lg transition-colors">Edit</button>
                             <button onClick={() => deleteCategory(cat.id, cat.name)}
                               className="text-xs font-medium text-red-400 hover:text-red-600 transition-colors">Delete</button>
                           </>
@@ -245,7 +245,7 @@ export default function AdminCategoriesPage() {
                                   <>
                                     <span className="flex-1 text-xs text-gray-700">{sub.name}</span>
                                     <button onClick={() => { setEditSubId(sub.id); setEditSubName(sub.name) }}
-                                      className="text-[11px] font-medium text-gray-400 hover:text-gray-700 transition-colors">Edit</button>
+                                      className="text-xs font-semibold bg-green-700 text-white hover:bg-green-800 px-2.5 py-1 rounded-lg transition-colors">Edit</button>
                                     <button onClick={() => deleteSubcategory(sub.id, sub.name)}
                                       className="text-[11px] font-medium text-red-400 hover:text-red-600 transition-colors">Delete</button>
                                   </>

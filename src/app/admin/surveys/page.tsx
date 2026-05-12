@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
@@ -147,7 +147,7 @@ export default function AdminSurveysPage() {
                     {saved && <span className="text-[10px] text-[#0f4c35]">Saved.</span>}
                     {isSuperAdmin && (
                       <button onClick={() => setEditing(true)}
-                        className="text-xs font-medium text-[#0f4c35] hover:underline">Edit</button>
+                        className="text-xs font-semibold bg-green-700 text-white hover:bg-green-800 px-2.5 py-1 rounded-lg transition-colors">Edit</button>
                     )}
                   </div>
                 ) : (

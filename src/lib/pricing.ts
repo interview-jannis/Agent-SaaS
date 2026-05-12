@@ -48,6 +48,12 @@ export function nightsBetween(dateStart: string | null | undefined, dateEnd: str
   return Math.max(1, Math.round((end - start) / 86400000))
 }
 
+// Days between two ISO dates (inclusive of both start and end). Used for per_day items
+// like vehicles where the count includes the arrival and departure day.
+export function daysBetween(dateStart: string | null | undefined, dateEnd: string | null | undefined): number {
+  return nightsBetween(dateStart, dateEnd) + 1
+}
+
 // Convert a base price (per single member) to USD applying the margin rule.
 // `marginMult` is `(1 + companyMargin + agentMargin)` — additive, not compound.
 export function variantPriceUsd({

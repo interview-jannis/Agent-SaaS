@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
@@ -263,7 +263,7 @@ export default function AdminContractsPage() {
                     {!isEditing ? (
                       isSuperAdmin && (
                         <button onClick={() => openEdit(type)}
-                          className="text-xs font-medium text-[#0f4c35] hover:underline">Edit</button>
+                          className="text-xs font-semibold bg-green-700 text-white hover:bg-green-800 px-2.5 py-1 rounded-lg transition-colors">Edit</button>
                       )
                     ) : (
                       <div className="flex items-center gap-3">

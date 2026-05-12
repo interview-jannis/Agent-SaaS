@@ -8,7 +8,7 @@ const SUBJECTS: Record<string, string> = {
   invoice: '[Tiktak] Your invoice is ready',
   schedule: '[Tiktak] Your travel schedule is ready',
   contract: '[Tiktak] Your contract is ready to sign',
-  partner_view: '[TIKKTAKK] Client information shared with you',
+  partner_view: '[TIKKTAKK] 고객 정보가 공유되었습니다',
 }
 
 const BODY_LINES: Record<string, { heading: string; body: string; cta: string }> = {
@@ -33,9 +33,9 @@ const BODY_LINES: Record<string, { heading: string; body: string; cta: string }>
     cta: 'Review & Sign Contract',
   },
   partner_view: {
-    heading: 'Client information has been shared with you',
-    body: 'TIKKTAKK has shared client profile information with you for reference. Please review the details at the link below.',
-    cta: 'View Client Information',
+    heading: '고객 정보가 공유되었습니다',
+    body: 'TIKKTAKK에서 참고용으로 고객 프로필 정보를 공유해 드렸습니다. 아래 링크에서 내용을 확인해 주세요.',
+    cta: '고객 정보 확인하기',
   },
 }
 

@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
@@ -195,7 +195,7 @@ export default function AgentProfilePage() {
               <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Contact</h3>
               {!editContact ? (
                 <button onClick={() => { setEditContact(true); setPhone(profile.phone ?? ''); setCountry(profile.country ?? ''); setError('') }}
-                  className="text-xs font-medium text-[#0f4c35] hover:underline">Edit</button>
+                  className="text-xs font-semibold bg-green-700 text-white hover:bg-green-800 px-2.5 py-1 rounded-lg transition-colors">Edit</button>
               ) : (
                 <div className="flex items-center gap-3">
                   <button onClick={() => { setEditContact(false); setError('') }} className="text-xs text-gray-400 hover:text-gray-600">Cancel</button>
@@ -277,7 +277,7 @@ export default function AgentProfilePage() {
                     doc_url: profile.business_info?.doc_url ?? '',
                   })
                   setBusinessDocError('')
-                }} className="text-xs font-medium text-[#0f4c35] hover:underline">Edit</button>
+                }} className="text-xs font-semibold bg-green-700 text-white hover:bg-green-800 px-2.5 py-1 rounded-lg transition-colors">Edit</button>
               ) : (
                 <div className="flex items-center gap-3">
                   <button onClick={() => { setEditBusiness(false); setBusinessDocError('') }} className="text-xs text-gray-400 hover:text-gray-600">Cancel</button>

@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 // Agent-side case contract management. Lives on agent case detail page.
 // Handles: generate contract from template → agent signs → copies client link
@@ -186,14 +186,14 @@ export default function AgentCaseContractSection({
         <div className="flex items-center gap-2 flex-wrap">
           {fullySigned && contract && contract.client_token && (
             <button onClick={() => window.open(`/case-contract/${contract.client_token}?print=1`, '_blank', 'noopener')}
-              className="flex-1 sm:flex-none text-[11px] font-medium text-gray-500 hover:text-gray-800 px-2 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50">
+              className="flex-1 sm:flex-none text-[11px] font-medium bg-gray-700 text-white hover:bg-gray-600 px-2 py-1.5 rounded-lg">
               ⤓ Save PDF
             </button>
           )}
           {contract && contract.client_token && !contract.client_signed_at && (
             <>
               <button onClick={copyClientLink}
-                className="flex-1 sm:flex-none text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50">
+                className="flex-1 sm:flex-none text-xs font-medium bg-gray-700 text-white hover:bg-gray-600 px-3 py-1.5 rounded-lg">
                 {copied ? '✓ Copied!' : 'Copy Link'}
               </button>
               {clientEmail && (
@@ -203,14 +203,14 @@ export default function AgentCaseContractSection({
                 </button>
               )}
               <button onClick={() => { setClientSignMode(v => !v); setError('') }}
-                className="flex-1 sm:flex-none text-xs font-medium px-3 py-1.5 rounded-lg border border-[#0f4c35] text-[#0f4c35] hover:bg-[#0f4c35]/5">
+                className="flex-1 sm:flex-none text-xs font-medium bg-gray-700 text-white hover:bg-gray-600 px-3 py-1.5 rounded-lg">
                 {clientSignMode ? 'Cancel' : 'Sign on this device'}
               </button>
             </>
           )}
           {contract && (
             <button onClick={() => setExpanded(!isExpanded)}
-              className="flex-1 sm:flex-none text-[11px] font-medium text-gray-500 hover:text-gray-800 px-2 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50">
+              className="flex-1 sm:flex-none text-[11px] font-medium bg-gray-700 text-white hover:bg-gray-600 px-2 py-1.5 rounded-lg">
               {isExpanded ? '▲ Collapse' : '▼ Expand'}
             </button>
           )}

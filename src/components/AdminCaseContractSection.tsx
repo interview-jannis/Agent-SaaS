@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 // Admin-side case contract viewer + counter-signature.
 // Shows the 3-party contract status; admin can sign once both agent + client
@@ -111,12 +111,12 @@ export default function AdminCaseContractSection({ caseId, caseNumber, caseStatu
         <div className="flex items-center gap-2 shrink-0">
           {fullySigned && contract.client_token && (
             <button onClick={() => window.open(`/case-contract/${contract.client_token}?print=1`, '_blank', 'noopener')}
-              className="text-[11px] font-medium text-gray-500 hover:text-gray-800 px-2 py-1 rounded-lg border border-gray-200 hover:bg-gray-50">
+              className="text-[11px] font-medium bg-gray-700 text-white hover:bg-gray-600 px-2 py-1 rounded-lg">
               ⤓ Save PDF
             </button>
           )}
           <button onClick={() => setExpanded(!isExpanded)}
-            className="text-[11px] font-medium text-gray-500 hover:text-gray-800 px-2 py-1 rounded-lg border border-gray-200 hover:bg-gray-50">
+            className="text-[11px] font-medium bg-gray-700 text-white hover:bg-gray-600 px-2 py-1 rounded-lg">
             {isExpanded ? '▲ Collapse' : '▼ Expand'}
           </button>
         </div>

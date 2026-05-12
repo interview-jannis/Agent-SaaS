@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import DOBPicker from '@/components/DOBPicker'
-import { appliesMargin, isHotelItem, nightsBetween, variantPriceUsd, subpackageMult, type SubpackageMarginConfig } from '@/lib/pricing'
+import { appliesMargin, isHotelItem, nightsBetween, daysBetween, variantPriceUsd, subpackageMult, type SubpackageMarginConfig } from '@/lib/pricing'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -25,6 +25,7 @@ type Product = {
   price_currency: 'KRW' | 'USD'
   duration_value: number
   duration_unit: 'hours' | 'days' | 'nights'
+  quantity_type: 'per_person' | 'per_night' | 'per_day' | 'flat' | null
   partner_name: string | null
   has_female_doctor: boolean
   has_prayer_room: boolean
@@ -238,7 +239,7 @@ export default function AgentProductPage() {
         supabase.from('system_settings').select('value').eq('key', 'company_margin_rate').single(),
         supabase
           .from('products')
-          .select('id, name, description, base_price, price_currency, duration_value, duration_unit, partner_name, has_female_doctor, has_prayer_room, dietary_type, category_id, subcategory_id, product_categories(name), product_subcategories(name), product_images(image_url, is_primary), product_variants(id, variant_label, base_price, price_currency, sort_order, is_active)')
+          .select('id, name, description, base_price, price_currency, duration_value, duration_unit, quantity_type, partner_name, has_female_doctor, has_prayer_room, dietary_type, category_id, subcategory_id, product_categories(name), product_subcategories(name), product_images(image_url, is_primary), product_variants(id, variant_label, base_price, price_currency, sort_order, is_active)')
           .eq('is_active', true),
         supabase.from('product_categories').select('id, name').order('sort_order').order('name'),
         supabase.from('product_subcategories').select('id, category_id, name, sort_order').order('sort_order').order('name'),
@@ -438,7 +439,11 @@ export default function AgentProductPage() {
       const idx = prev.findIndex(it => it.productId === productId && it.variantId === variantId)
       if (idx >= 0) return prev.filter((_, i) => i !== idx)
       const p = products.find(x => x.id === productId)
-      const defaultDays = isHotelItem(p?.product_categories?.name, p?.product_subcategories?.name) ? Math.max(nights, 1) : 1
+      const defaultDays = isHotelItem(p?.product_categories?.name, p?.product_subcategories?.name)
+        ? Math.max(nights, 1)
+        : p?.quantity_type === 'per_day'
+        ? Math.max(daysBetween(dateStart, dateEnd), 1)
+        : 1
       return [...prev, { productId, variantId, days: defaultDays }]
     })
   }

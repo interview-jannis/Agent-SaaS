@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
@@ -1108,7 +1108,7 @@ export default function CaseDetailPage() {
                   <h3 className={labelClass}>Financials</h3>
                   {isTerminal && (
                     <button onClick={() => setFinancialsCollapsed(!financialsCollapsed)}
-                      className="text-[11px] font-medium text-gray-500 hover:text-gray-800 px-2 py-1 rounded-lg border border-gray-200 hover:bg-gray-100">
+                      className="text-xs font-medium bg-gray-700 text-white hover:bg-gray-600 px-2.5 py-1.5 rounded-lg transition-colors">
                       {financialsCollapsed ? '▼ Expand' : '▲ Collapse'}
                     </button>
                   )}
@@ -1128,7 +1128,7 @@ export default function CaseDetailPage() {
                     <a
                       href={`${typeof window !== 'undefined' ? window.location.origin : ''}/${previewPath}/${previewSlug}?preview=1`}
                       target="_blank" rel="noopener noreferrer"
-                      className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-[#0f4c35] transition-colors px-2 py-1.5 rounded-lg hover:bg-gray-100">
+                      className="flex items-center gap-1.5 text-xs font-medium bg-gray-700 text-white hover:bg-gray-600 px-2.5 py-1.5 rounded-lg transition-colors">
                       <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
                         <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -1149,7 +1149,7 @@ export default function CaseDetailPage() {
                       return (
                         <div className="flex items-center gap-1.5">
                           <button onClick={sendInvoice}
-                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors">
+                            className="flex items-center gap-1.5 text-xs font-medium bg-gray-700 text-white hover:bg-gray-600 px-2.5 py-1.5 rounded-lg transition-colors">
                             {copied ? (
                               <>
                                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -1260,6 +1260,7 @@ export default function CaseDetailPage() {
                   caseStatus={caseData.status}
                   embedded
                   travelCompletedAt={caseData.travel_completed_at}
+                  clientEmail={lead?.clients?.email ?? null}
                   quotation={quote as unknown as DocumentRow}
                   finalInvoice={(caseData.documents?.find(d => d.type === 'final_invoice') ?? null) as unknown as DocumentRow | null}
                   documents={(caseData.documents ?? []) as unknown as DocumentRow[]}
@@ -1313,7 +1314,7 @@ export default function CaseDetailPage() {
                 ) : null}
               </div>
               <button onClick={() => setSetupCollapsed(!setupCollapsed)}
-                className="text-[11px] font-medium text-gray-500 hover:text-gray-800 px-2 py-1 rounded-lg border border-gray-200 hover:bg-gray-100">
+                className="text-xs font-medium bg-gray-700 text-white hover:bg-gray-600 px-2.5 py-1.5 rounded-lg transition-colors">
                 {setupCollapsed ? '▼ Expand' : '▲ Collapse'}
               </button>
             </div>
@@ -1336,7 +1337,7 @@ export default function CaseDetailPage() {
               {!editDates ? (
                 !tripMembersLocked && (
                   <button onClick={() => { setEditDates(true); setDateStart(caseData.travel_start_date ?? ''); setDateEnd(caseData.travel_end_date ?? '') }}
-                    className="text-xs text-[#0f4c35] hover:underline font-medium">Edit</button>
+                    className="text-xs font-semibold bg-green-700 text-white hover:bg-green-800 px-2.5 py-1 rounded-lg transition-colors">Edit</button>
                 )
               ) : (
                 <div className="flex items-center gap-3">
@@ -1534,7 +1535,7 @@ export default function CaseDetailPage() {
               {!editMembers ? (
                 !tripMembersLocked && (
                   <button onClick={() => setEditMembers(true)}
-                    className="text-xs font-medium text-[#0f4c35] hover:underline">Edit</button>
+                    className="text-xs font-semibold bg-green-700 text-white hover:bg-green-800 px-2.5 py-1 rounded-lg transition-colors">Edit</button>
                 )
               ) : (
                 <button onClick={() => setShowNewClient(v => !v)}
@@ -1790,7 +1791,7 @@ export default function CaseDetailPage() {
 
                 <div className="flex items-center gap-2 justify-end pt-2 border-t border-gray-200">
                   <button onClick={cancelMembers} disabled={savingMembers}
-                    className="text-xs font-medium text-gray-500 hover:text-gray-800 px-3 py-1.5 rounded-lg disabled:opacity-40">
+                    className="text-xs font-medium bg-gray-700 text-white hover:bg-gray-600 px-2.5 py-1.5 rounded-lg transition-colors disabled:opacity-40">
                     Cancel
                   </button>
                   <button onClick={saveMembers} disabled={savingMembers || !dirty}
@@ -1844,14 +1845,14 @@ export default function CaseDetailPage() {
                 <h3 className={`text-xs font-semibold uppercase tracking-wide ${caseData.status === 'completed' ? 'text-gray-700' : 'text-red-600'}`}>Notes for TikkTakk</h3>
                 {!notesEditing ? (
                   <button onClick={() => { setNotesDraft(caseData.agent_notes ?? ''); setNotesEditing(true) }}
-                    className="text-xs font-medium text-[#0f4c35] hover:underline">
+                    className="text-xs font-semibold bg-green-700 text-white hover:bg-green-800 px-2.5 py-1 rounded-lg transition-colors">
                     {caseData.agent_notes ? 'Edit' : '+ Add note'}
                   </button>
                 ) : (
                   <div className="flex items-center gap-2">
                     <button onClick={() => { setNotesEditing(false); setNotesDraft('') }}
                       disabled={savingNotes}
-                      className="text-xs font-medium text-gray-500 hover:text-gray-800 px-2 py-1 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-40">
+                      className="text-xs font-medium bg-gray-700 text-white hover:bg-gray-600 px-2.5 py-1.5 rounded-lg transition-colors disabled:opacity-40">
                       Cancel
                     </button>
                     <button onClick={async () => {
@@ -1941,7 +1942,7 @@ export default function CaseDetailPage() {
               <div className="flex items-center gap-2">
               {isTerminal && (
                 <button onClick={() => setScheduleCollapsed(!scheduleCollapsed)}
-                  className="text-[11px] font-medium text-gray-500 hover:text-gray-800 px-2 py-1 rounded-lg border border-gray-200 hover:bg-gray-100">
+                  className="text-xs font-medium bg-gray-700 text-white hover:bg-gray-600 px-2.5 py-1.5 rounded-lg transition-colors">
                   {scheduleCollapsed ? '▼ Expand' : '▲ Collapse'}
                 </button>
               )}
@@ -1951,7 +1952,7 @@ export default function CaseDetailPage() {
                   <a
                     href={`${typeof window !== 'undefined' ? window.location.origin : ''}/schedule/${schedule.slug}?preview=1`}
                     target="_blank" rel="noopener noreferrer"
-                    className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-[#0f4c35] transition-colors px-2 py-1.5 rounded-lg hover:bg-white">
+                    className="flex items-center gap-1.5 text-xs font-medium bg-gray-700 text-white hover:bg-gray-600 px-2.5 py-1.5 rounded-lg transition-colors">
                     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
                       <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -1961,7 +1962,7 @@ export default function CaseDetailPage() {
                   {/* Send — copy schedule URL or send via email */}
                   <div className="flex items-center gap-1.5">
                     <button onClick={sendSchedule}
-                      className="flex items-center gap-1.5 text-xs font-medium border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors px-3 py-1.5 rounded-lg">
+                      className="flex items-center gap-1.5 text-xs font-medium bg-gray-700 text-white hover:bg-gray-600 px-2.5 py-1.5 rounded-lg transition-colors">
                       {scheduleCopied ? (
                         <>
                           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -2125,7 +2126,7 @@ export default function CaseDetailPage() {
                 {scheduleError && <p className="text-xs text-red-500">{scheduleError}</p>}
                 <div className="flex items-center justify-end gap-2">
                   <button onClick={() => setShowRevisionModal(false)} disabled={submittingRevision}
-                    className="text-xs font-medium text-gray-500 hover:text-gray-800 px-3 py-1.5 rounded-lg disabled:opacity-40">
+                    className="text-xs font-medium bg-gray-700 text-white hover:bg-gray-600 px-2.5 py-1.5 rounded-lg transition-colors disabled:opacity-40">
                     Cancel
                   </button>
                   <button onClick={requestRevision} disabled={submittingRevision || !revisionNote.trim()}
@@ -2202,7 +2203,7 @@ export default function CaseDetailPage() {
                 <p className="text-xs text-gray-500">Remove this case if it was created by mistake. Admin will be notified with your reason.</p>
               </div>
               <button onClick={() => setShowCancel(true)}
-                className="px-3 py-1.5 text-xs font-medium text-red-600 border border-red-200 rounded-lg hover:bg-red-50">
+                className="px-3 py-1.5 text-xs font-medium bg-red-600 text-white rounded-lg hover:bg-red-700">
                 Cancel Case
               </button>
             </section>
