@@ -615,15 +615,14 @@ export default function ScheduleEditor({
         const allCovered = missing.length === 0
         const canSave = !saving && allCovered && !hasPending && items.length > 0
 
-        // Health checkup results consultation suggestion — only when a health
-        // checkup product is actually linked to a committed schedule item
+        // Health checkup results consultation suggestion — show as soon as any
+        // item (pending or committed) has a health checkup product linked
         const hasHealthCheckupLinked = items.some(i =>
-          !pendingItemIds.has(i.id) &&
           i.variantId != null &&
           caseProducts.find(p => p.variantId === i.variantId)?.isHealthCheckup
         )
-        const hasResultsItem = hasHealthCheckupLinked && items.some(i =>
-          !pendingItemIds.has(i.id) && i.title.toLowerCase().includes('result')
+        const hasResultsItem = items.some(i =>
+          i.title.toLowerCase().includes('result')
         )
 
         return (
