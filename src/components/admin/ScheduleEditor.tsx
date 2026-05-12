@@ -488,6 +488,13 @@ export default function ScheduleEditor({
                 )}
               </div>
             )}
+            {!isCollapsed && (
+              <div className="flex items-center gap-3 px-4 py-2.5 border-t border-gray-100">
+                <button onClick={() => addItem(day)} className="text-xs font-medium text-[#0f4c35] hover:underline">+ Add Item</button>
+                <FreeTimeMenu onPick={(kind) => addFreeTime(day, kind)} />
+                <PrayerMenu onPick={(prayer) => addPrayerTime(day, prayer)} />
+              </div>
+            )}
           </div>
         )
       })}
