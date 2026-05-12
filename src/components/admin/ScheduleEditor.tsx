@@ -698,7 +698,7 @@ function PrayerMenu({ onPick }: { onPick: (prayer: string) => void }) {
         type="button"
         onClick={() => setOpen(o => !o)}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
-        className="text-xs font-medium text-teal-600 hover:text-teal-800"
+        className="text-xs font-medium text-orange-500 hover:text-orange-700"
       >
         + Prayer ▾
       </button>
@@ -710,7 +710,7 @@ function PrayerMenu({ onPick }: { onPick: (prayer: string) => void }) {
               type="button"
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => { onPick(p); setOpen(false) }}
-              className="w-full text-left px-3 py-1.5 text-xs text-teal-700 hover:bg-teal-50"
+              className="w-full text-left px-3 py-1.5 text-xs text-orange-700 hover:bg-orange-50"
             >
               {p}
             </button>
@@ -841,15 +841,15 @@ function GroupMultiSelect({
 // Color palette for group accents — repeats if there are more groups.
 // Used as a left border stripe + select chip tint so admin can see at a
 // glance which group each row belongs to.
-// Matches agent home GROUP_PALETTE order (blue / emerald / orange / purple).
+// Group palette: blue / emerald / pink / purple (orange reserved for prayer).
 const GROUP_TONES: Array<{ hex: string; chip: string; chipText: string }> = [
   { hex: '#60a5fa', chip: 'bg-blue-50 border-blue-200',    chipText: 'text-blue-700' },
   { hex: '#34d399', chip: 'bg-emerald-50 border-emerald-200', chipText: 'text-emerald-700' },
-  { hex: '#fb923c', chip: 'bg-orange-50 border-orange-200',  chipText: 'text-orange-700' },
+  { hex: '#f472b6', chip: 'bg-pink-50 border-pink-200',    chipText: 'text-pink-700' },
   { hex: '#c084fc', chip: 'bg-purple-50 border-purple-200',  chipText: 'text-purple-700' },
 ]
 const SHARED_TONE = { hex: '#111827', chip: 'bg-white border-gray-800', chipText: 'text-gray-900' }
-const PRAYER_HEX = '#14b8a6'
+const PRAYER_HEX = '#fb923c'
 
 function ItemRow({
   item, caseProducts, caseGroups, sharedVariantIds, committedVariantContexts,
