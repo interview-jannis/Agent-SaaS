@@ -59,11 +59,14 @@ export default function AgentClientsPage() {
   const [intakeSelected, setIntakeSelected] = useState<Set<string>>(new Set())
   const [intakeGenerating, setIntakeGenerating] = useState(false)
   const [intakeLink, setIntakeLink] = useState('')
+  const [intakeToken, setIntakeToken] = useState('')
   const [intakeCopied, setIntakeCopied] = useState(false)
+  const [intakeSending, setIntakeSending] = useState(false)
+  const [intakeSentResult, setIntakeSentResult] = useState<{ sent: number; skipped: number } | null>(null)
 
   async function generateIntakeLink() {
     if (intakeSelected.size === 0) return
-    setIntakeGenerating(true); setIntakeLink('')
+    setIntakeGenerating(true); setIntakeLink(''); setIntakeToken(''); setIntakeSentResult(null)
     try {
       const res = await fetch('/api/intake/session', {
         method: 'POST',
@@ -72,6 +75,7 @@ export default function AgentClientsPage() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to generate link.')
+      setIntakeToken(data.token)
       setIntakeLink(`${window.location.origin}/intake/${data.token}`)
     } catch (e: unknown) {
       alert((e as { message?: string })?.message ?? 'Failed to generate link.')
@@ -86,6 +90,25 @@ export default function AgentClientsPage() {
       setIntakeCopied(true)
       setTimeout(() => setIntakeCopied(false), 2000)
     })
+  }
+
+  async function sendIntakeEmail() {
+    if (!intakeToken || intakeSelected.size === 0) return
+    setIntakeSending(true); setIntakeSentResult(null)
+    try {
+      const res = await fetch('/api/intake/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: intakeToken, client_ids: Array.from(intakeSelected) }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Failed to send.')
+      setIntakeSentResult({ sent: data.sent, skipped: data.skipped })
+    } catch (e: unknown) {
+      alert((e as { message?: string })?.message ?? 'Failed to send email.')
+    } finally {
+      setIntakeSending(false)
+    }
   }
 
   async function fetchClients(aid: string) {
@@ -414,7 +437,7 @@ export default function AgentClientsPage() {
             </div>
 
             {intakeLink && (
-              <div className="px-5 pb-3">
+              <div className="px-5 pb-3 space-y-2">
                 <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5">
                   <p className="text-xs text-gray-600 flex-1 truncate font-mono">{intakeLink}</p>
                   <button onClick={copyIntakeLink}
@@ -425,11 +448,24 @@ export default function AgentClientsPage() {
                     }
                   </button>
                 </div>
+                <button onClick={sendIntakeEmail} disabled={intakeSending}
+                  className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium border border-[#0f4c35] text-[#0f4c35] rounded-xl hover:bg-[#0f4c35]/5 disabled:opacity-40 transition-colors">
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
+                  </svg>
+                  {intakeSending ? 'Sending…' : 'Send via Email'}
+                </button>
+                {intakeSentResult && (
+                  <p className="text-xs text-center text-gray-500">
+                    {intakeSentResult.sent > 0 && <span className="text-[#0f4c35] font-medium">Sent to {intakeSentResult.sent} client{intakeSentResult.sent > 1 ? 's' : ''}.</span>}
+                    {intakeSentResult.skipped > 0 && <span className="text-gray-400"> {intakeSentResult.skipped} skipped (no email).</span>}
+                  </p>
+                )}
               </div>
             )}
 
             <div className="px-5 pb-5 flex items-center justify-end gap-2">
-              <button onClick={() => { setShowIntake(false); setIntakeLink('') }} disabled={intakeGenerating}
+              <button onClick={() => { setShowIntake(false); setIntakeLink(''); setIntakeToken(''); setIntakeSentResult(null) }} disabled={intakeGenerating}
                 className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-800 disabled:opacity-40">Cancel</button>
               <button onClick={generateIntakeLink}
                 disabled={intakeSelected.size === 0 || intakeGenerating}

@@ -126,3 +126,42 @@ export async function sendEmailToAdmin(adminEmail: string, message: string, link
     console.error('[email] failed to send to admin', e)
   }
 }
+
+export async function sendIntakeEmailToClient(clientEmail: string, clientName: string, intakeUrl: string) {
+  if (!process.env.RESEND_API_KEY) return
+  const html = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,sans-serif">
+  <table width="100%" cellpadding="0" cellspacing="0" style="padding:40px 16px">
+    <tr><td align="center">
+      <table cellpadding="0" cellspacing="0" style="background:#fff;border-radius:10px;overflow:hidden;max-width:560px;width:100%">
+        <tr><td style="background:#0f4c35;padding:20px 32px">
+          <span style="color:#fff;font-size:22px;font-weight:700;letter-spacing:-0.5px">Tiktak</span>
+        </td></tr>
+        <tr><td style="padding:32px;font-size:15px;line-height:1.7">
+          <p style="margin:0 0 12px;color:#374151">Dear ${clientName},</p>
+          <p style="margin:0 0 12px;color:#374151">Your agent has shared a health intake form with you. Please take a moment to fill in your personal and health details before your trip.</p>
+          <p style="margin:0 0 24px;color:#374151">This helps us provide you with the best possible care and experience.</p>
+          <a href="${intakeUrl}" style="display:inline-block;padding:12px 28px;background:#0f4c35;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;font-size:14px">Complete Your Profile</a>
+        </td></tr>
+        <tr><td style="padding:20px 32px;background:#f9fafb;border-top:1px solid #e5e7eb">
+          <p style="margin:0;font-size:12px;color:#9ca3af">Tiktak by Interview Co. &middot; This is an automated notification.</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`
+  try {
+    await getResend().emails.send({
+      from: FROM,
+      to: clientEmail,
+      subject: '[Tiktak] Please complete your health intake form',
+      html,
+    })
+  } catch (e) {
+    console.error('[email] failed to send intake email to client', e)
+    throw e
+  }
+}
