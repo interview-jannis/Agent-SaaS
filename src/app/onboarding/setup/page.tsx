@@ -56,13 +56,10 @@ export default function SetupWizardPage() {
       setAuthUserId(session.user.id)
       setName(a.name ?? '')
       setCountry(a.country ?? '')
-      // Pre-fill email from notification email saved during waiting stage
-      const savedEmail = a.email && !a.email.includes('@tiktak.temp') ? a.email : ''
-      if (savedEmail) setForm(p => ({ ...p, email: savedEmail }))
       // Restore any previously saved draft (password fields intentionally excluded)
       const draft = loadDraft()
       if (draft) {
-        if (draft.form) setForm(p => ({ ...p, email: draft.form.email || savedEmail, phone: draft.form.phone ?? '' }))
+        if (draft.form) setForm(p => ({ ...p, email: draft.form.email || '', phone: draft.form.phone ?? '' }))
         if (draft.bank) setBank(draft.bank)
         if (draft.business) setBusiness(draft.business)
       }
