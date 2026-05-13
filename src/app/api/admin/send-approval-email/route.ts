@@ -16,12 +16,12 @@ export async function POST(req: Request) {
   )
 
   const { data: agent } = await supabase.from('agents')
-    .select('email, invite_email')
+    .select('email, invite_email, invite_token')
     .eq('id', agent_id).maybeSingle()
 
   if (!agent) return NextResponse.json({ error: 'Agent not found.' }, { status: 404 })
 
-  const { email, invite_email } = agent as { email: string | null; invite_email: string | null }
+  const { email, invite_email, invite_token } = agent as { email: string | null; invite_email: string | null; invite_token: string | null }
   const recipientEmail = invite_email || (email && !email.includes('@tiktak.temp') ? email : null)
 
   if (!recipientEmail) {
@@ -29,7 +29,9 @@ export async function POST(req: Request) {
   }
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://tiktak.interviewcorp.co.kr'
-  await sendApprovalEmailToAgent(recipientEmail, `${appUrl}/onboarding/setup`)
+  // Use the invite link — it auto-authenticates and redirects to /onboarding/setup
+  const setupUrl = invite_token ? `${appUrl}/invite/${invite_token}` : `${appUrl}/onboarding/setup`
+  await sendApprovalEmailToAgent(recipientEmail, setupUrl)
 
   return NextResponse.json({ ok: true })
 }
