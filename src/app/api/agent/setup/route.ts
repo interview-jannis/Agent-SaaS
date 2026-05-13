@@ -123,12 +123,41 @@ export async function POST(req: Request) {
   }).eq('id', (agent as { id: string }).id)
   if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 })
 
-  // Notify assigned admin (falls back to all super admins if no assigned admin)
+  // Notify assigned admin — service role insert + email
   const ag = agent as { id: string; name: string | null; agent_number: string | null; assigned_admin_id: string | null }
   const label = ag.agent_number ? `${ag.agent_number} ${ag.name ?? ''}` : (ag.name ?? 'Agent')
   const notifMessage = `${label.trim()} completed account setup and is ready`
   const notifLink = `/admin/agents/${ag.id}`
-  await notifyAssignedAdmin({ agent_id: ag.id }, notifMessage, notifLink)
+
+  // Resolve recipients: assigned admin first, fall back to all super admins
+  const recipientIds = new Set<string>()
+  const recipients: Array<{ id: string; auth_user_id: string | null; email: string | null }> = []
+
+  if (ag.assigned_admin_id) {
+    const { data: assigned } = await supabase.from('admins')
+      .select('id, auth_user_id, email').eq('id', ag.assigned_admin_id).maybeSingle()
+    if (assigned) {
+      const r = assigned as { id: string; auth_user_id: string | null; email: string | null }
+      recipientIds.add(r.id); recipients.push(r)
+    }
+  }
+  if (recipients.length === 0) {
+    const { data: supers } = await supabase.from('admins')
+      .select('id, auth_user_id, email').eq('is_super_admin', true)
+    for (const s of (supers ?? []) as Array<{ id: string; auth_user_id: string | null; email: string | null }>) {
+      if (!recipientIds.has(s.id)) { recipientIds.add(s.id); recipients.push(s) }
+    }
+  }
+
+  const seen = new Set<string>()
+  const notifRows: Array<Record<string, unknown>> = []
+  for (const r of recipients) {
+    if (!r.auth_user_id || seen.has(r.auth_user_id)) continue
+    seen.add(r.auth_user_id)
+    notifRows.push({ auth_user_id: r.auth_user_id, target_type: 'admin', target_id: r.id, message: notifMessage, link_url: notifLink, is_read: false })
+    if (r.email) await sendEmailToAdmin(r.email, notifMessage, notifLink)
+  }
+  if (notifRows.length > 0) await supabase.from('notifications').insert(notifRows)
 
   return NextResponse.json({ ok: true })
 }
