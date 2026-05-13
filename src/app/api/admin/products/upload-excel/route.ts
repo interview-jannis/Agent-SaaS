@@ -32,6 +32,7 @@ type Row = {
   category?: string
   subcategory?: string
   partner_name?: string
+  partner_short?: string
   name?: string
   variant_label?: string
   base_price?: number | string
@@ -54,6 +55,7 @@ type ProductRecord = {
   name: string
   description: string | null
   partner_name: string | null
+  partner_short: string | null
   duration_value: number | null
   duration_unit: string | null
   has_female_doctor: boolean | null
@@ -250,6 +252,7 @@ export async function POST(req: Request) {
       subcategory_id: subId,
       name: grp.name,
       partner_name: grp.partner,
+      partner_short: normStr(first.partner_short) ?? null,
       description: normStr(first.description) ?? '',
       highlights: normStr(first.highlights) ?? null,
       duration_value: normNum(first.duration_value) ?? null,
@@ -279,6 +282,7 @@ export async function POST(req: Request) {
       const checks: Array<[string, unknown, unknown]> = [
         ['product_number', existingNum, grp.productNumber ?? existingNum],
         ['subcategory_id', existing.subcategory_id, desired.subcategory_id],
+        ['partner_short', existing.partner_short ?? null, desired.partner_short],
         ['description', existing.description ?? '', desired.description],
         ['highlights', (existing as ProductRecord & { highlights?: string | null }).highlights ?? null, desired.highlights],
         ['duration_value', existing.duration_value, desired.duration_value],

@@ -28,6 +28,7 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
     duration_unit: (product.duration_unit as FormState['duration_unit']) ?? 'hours',
     quantity_type: (product.quantity_type as FormState['quantity_type']) ?? 'per_person',
     partner_name: product.partner_name ?? '',
+    partner_short: product.partner_short ?? '',
     location_address: product.location_address ?? '',
     contact_channels: product.contact_channels ?? [],
     has_prayer_room: product.has_prayer_room ?? false,

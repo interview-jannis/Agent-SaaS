@@ -28,6 +28,7 @@ type Product = {
   name: string
   description: string | null
   partner_name: string | null
+  partner_short: string | null
   base_price: number
   price_currency: 'KRW' | 'USD' | null
   is_active: boolean
@@ -95,7 +96,7 @@ export default function AdminProductsPage() {
       supabase.from('product_subcategories').select('id, category_id, name, sort_order').order('sort_order').order('name'),
       supabase
         .from('products')
-        .select('id, product_number, name, description, partner_name, base_price, price_currency, is_active, category_id, subcategory_id, product_categories(name), product_subcategories!products_subcategory_id_fkey(name), product_subcategory_tags(product_subcategories!product_subcategory_tags_subcategory_id_fkey(name)), product_images(image_url, is_primary), product_variants(id, variant_label, base_price, price_currency, sort_order, is_active)')
+        .select('id, product_number, name, description, partner_name, partner_short, base_price, price_currency, is_active, category_id, subcategory_id, product_categories(name), product_subcategories!products_subcategory_id_fkey(name), product_subcategory_tags(product_subcategories!product_subcategory_tags_subcategory_id_fkey(name)), product_images(image_url, is_primary), product_variants(id, variant_label, base_price, price_currency, sort_order, is_active)')
         .order('product_number', { ascending: true }),
       supabase.from('system_settings').select('value').eq('key', 'markup_rates').maybeSingle(),
       supabase.from('system_settings').select('value').eq('key', 'product_price_rate').single(),
@@ -932,13 +933,18 @@ export default function AdminProductsPage() {
           {/* Row 4: partner pills — when multiple partners available */}
           {availablePartners.length > 1 && (
             <div className="flex items-center gap-1.5 flex-wrap">
-              {['', ...availablePartners].map((p) => (
-                <button key={p || 'all'}
-                  onClick={() => setPartnerFilter(p)}
-                  className={`px-2.5 py-1 text-[11px] rounded-full border transition-colors ${partnerFilter === p ? 'bg-[#0f4c35] border-[#0f4c35] text-white' : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'}`}>
-                  {p || 'All Partners'}
-                </button>
-              ))}
+              {['', ...availablePartners].map((partnerName) => {
+                const displayName = partnerName
+                  ? (products.find(p => p.partner_name === partnerName)?.partner_short ?? partnerName)
+                  : 'All Partners'
+                return (
+                  <button key={partnerName || 'all'}
+                    onClick={() => setPartnerFilter(partnerName)}
+                    className={`px-2.5 py-1 text-[11px] rounded-full border transition-colors ${partnerFilter === partnerName ? 'bg-[#0f4c35] border-[#0f4c35] text-white' : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'}`}>
+                    {displayName}
+                  </button>
+                )
+              })}
             </div>
           )}
         </div>
@@ -1089,6 +1095,7 @@ export default function AdminProductsPage() {
                 <tr className="border-b border-gray-100">
                   <th className="px-3 xl:px-6 py-3.5 text-left text-[11px] xl:text-xs font-medium text-gray-400 whitespace-nowrap">Number</th>
                   <th className="px-2 xl:px-4 py-3.5" />
+                  <th className="px-3 xl:px-6 py-3.5 text-left text-[11px] xl:text-xs font-medium text-gray-400 whitespace-nowrap">Partner</th>
                   <th className="px-3 xl:px-6 py-3.5 text-left text-[11px] xl:text-xs font-medium text-gray-400 whitespace-nowrap min-w-[200px] max-w-[280px] xl:w-auto w-full">Product Name</th>
                   <th className="hidden xl:table-cell px-6 py-3.5 text-left text-xs font-medium text-gray-400 w-full">Description</th>
                   <th className="px-3 xl:px-6 py-3.5 text-left text-[11px] xl:text-xs font-medium text-gray-400 whitespace-nowrap">Category</th>
@@ -1108,7 +1115,7 @@ export default function AdminProductsPage() {
                   return (
                     <Fragment key={cat.id}>
                       <tr id={`cat-section-${cat.id}`} className="scroll-mt-20 bg-gray-100">
-                        <td colSpan={7} className="border-b border-gray-200 px-6 py-2">
+                        <td colSpan={8} className="border-b border-gray-200 px-6 py-2">
                           <div className="flex items-center gap-2">
                             <span className="text-[10px] uppercase tracking-wide text-gray-800 font-semibold">{cat.name}</span>
                             <span className="text-[10px] tabular-nums text-gray-500">{items.length}</span>
@@ -1177,7 +1184,10 @@ export default function AdminProductsPage() {
                         )
                       })()}
                     </td>
-                    <td className="px-3 xl:px-6 py-4 text-xs xl:text-sm font-medium text-gray-900 min-w-[260px] max-w-[420px]">
+                    <td className="px-3 xl:px-6 py-4 text-xs xl:text-sm text-gray-500 whitespace-nowrap">
+                      <p className="truncate max-w-[160px]">{p.partner_short ?? p.partner_name ?? '—'}</p>
+                    </td>
+                    <td className="px-3 xl:px-6 py-4 text-xs xl:text-sm font-medium text-gray-900 min-w-[200px] max-w-[380px]">
                       <p className="line-clamp-2 break-words">
                         {p.name}
                         {!p.is_active && (
@@ -1186,9 +1196,6 @@ export default function AdminProductsPage() {
                           </span>
                         )}
                       </p>
-                      {p.partner_name && (
-                        <p className="text-[11px] text-gray-500 truncate mt-0.5">{p.partner_name}</p>
-                      )}
                     </td>
                     <td className="hidden xl:table-cell px-6 py-4 text-sm text-gray-500 max-w-xl">
                       <p className="line-clamp-3 whitespace-pre-line break-words">{p.description ?? '—'}</p>

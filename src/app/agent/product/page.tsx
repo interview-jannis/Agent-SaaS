@@ -27,6 +27,7 @@ type Product = {
   duration_unit: 'hours' | 'days' | 'nights'
   quantity_type: 'per_person' | 'per_night' | 'per_day' | 'flat' | null
   partner_name: string | null
+  partner_short: string | null
   has_female_doctor: boolean
   has_prayer_room: boolean
   dietary_type: string
@@ -242,7 +243,7 @@ export default function AgentProductPage() {
         supabase.from('system_settings').select('value').eq('key', 'markup_rates').maybeSingle(),
         supabase
           .from('products')
-          .select('id, name, description, base_price, price_currency, duration_value, duration_unit, quantity_type, partner_name, has_female_doctor, has_prayer_room, dietary_type, category_id, subcategory_id, product_categories(name), product_subcategories!products_subcategory_id_fkey(name), product_subcategory_tags(product_subcategories!product_subcategory_tags_subcategory_id_fkey(name)), product_images(image_url, is_primary), product_variants(id, variant_label, base_price, price_currency, sort_order, is_active)')
+          .select('id, name, description, base_price, price_currency, duration_value, duration_unit, quantity_type, partner_name, partner_short, has_female_doctor, has_prayer_room, dietary_type, category_id, subcategory_id, product_categories(name), product_subcategories!products_subcategory_id_fkey(name), product_subcategory_tags(product_subcategories!product_subcategory_tags_subcategory_id_fkey(name)), product_images(image_url, is_primary), product_variants(id, variant_label, base_price, price_currency, sort_order, is_active)')
           .eq('is_active', true),
         supabase.from('product_categories').select('id, name').order('sort_order').order('name'),
         supabase.from('product_subcategories').select('id, category_id, name, sort_order').order('sort_order').order('name'),
@@ -699,7 +700,7 @@ export default function AgentProductPage() {
             <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide truncate">{product.product_subcategories.name}</p>
           )}
           {product.partner_name && (
-            <p className="text-[10px] text-gray-500 truncate">{product.partner_name}</p>
+            <p className="text-[10px] text-gray-500 truncate">{product.partner_short ?? product.partner_name}</p>
           )}
           <button onClick={() => openDetail(product)}
             className="text-sm font-semibold text-gray-900 leading-tight text-left hover:text-[#0f4c35] transition-colors line-clamp-1">
@@ -925,12 +926,15 @@ export default function AgentProductPage() {
               className={`shrink-0 px-2.5 py-1 text-[11px] rounded-full border transition-colors ${selectedPartnerName === '' ? 'bg-[#0f4c35] border-[#0f4c35] text-white' : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'}`}>
               All
             </button>
-            {availablePartnerNames.map(partner => (
-              <button key={partner} onClick={() => setSelectedPartnerName(partner)}
-                className={`shrink-0 px-2.5 py-1 text-[11px] rounded-full border transition-colors ${selectedPartnerName === partner ? 'bg-[#0f4c35] border-[#0f4c35] text-white' : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'}`}>
-                {partner}
-              </button>
-            ))}
+            {availablePartnerNames.map(partner => {
+              const displayName = products.find(p => p.partner_name === partner)?.partner_short ?? partner
+              return (
+                <button key={partner} onClick={() => setSelectedPartnerName(partner)}
+                  className={`shrink-0 px-2.5 py-1 text-[11px] rounded-full border transition-colors ${selectedPartnerName === partner ? 'bg-[#0f4c35] border-[#0f4c35] text-white' : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'}`}>
+                  {displayName}
+                </button>
+              )
+            })}
           </div>
         )}
 

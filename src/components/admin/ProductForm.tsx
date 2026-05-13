@@ -40,6 +40,7 @@ export type FormState = {
   duration_unit: 'hours' | 'days' | 'nights'
   quantity_type: 'per_person' | 'per_night' | 'per_day' | 'flat'
   partner_name: string
+  partner_short: string
   location_address: string
   contact_channels: ContactChannel[]
   has_prayer_room: boolean
@@ -97,6 +98,7 @@ const DEFAULT_FORM: FormState = {
   duration_unit: 'hours',
   quantity_type: 'per_person',
   partner_name: '',
+  partner_short: '',
   location_address: '',
   contact_channels: [],
   has_prayer_room: false,
@@ -269,8 +271,7 @@ export default function ProductForm({ productId, productNumber, categories, init
     if (!form.duration_value) return 'Duration is required.'
     if (!form.partner_name.trim()) return 'Partner name is required.'
     if (!form.location_address.trim()) return 'Address is required.'
-    if (form.contact_channels.length === 0) return 'At least one contact channel is required.'
-    if (form.contact_channels.some((ch) => !ch.value.trim())) return 'All contact channel values must be filled in.'
+    if (form.contact_channels.some((ch) => !ch.value.trim())) return 'Fill in or remove empty contact channel entries.'
     if (variants.length === 0) return 'At least one variant is required.'
     if (variants.some((v) => !v.base_price || Number(v.base_price) <= 0)) return 'Every variant needs a base price.'
     // Variant labels must be unique within a product (the only exception is a
@@ -307,6 +308,7 @@ export default function ProductForm({ productId, productNumber, categories, init
         duration_unit: form.duration_unit,
         quantity_type: form.quantity_type,
         partner_name: form.partner_name.trim(),
+        partner_short: form.partner_short.trim() || null,
         location_address: form.location_address.trim(),
         contact_channels: form.contact_channels,
         has_prayer_room: form.has_prayer_room,
@@ -819,6 +821,20 @@ export default function ProductForm({ productId, productNumber, categories, init
               placeholder="Enter partner/institution name"
               className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-[#0f4c35] focus:ring-2 focus:ring-[#0f4c35]/10 transition-all"
             />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1.5">
+              Partner Short Name
+            </label>
+            <input
+              type="text"
+              value={form.partner_short}
+              onChange={(e) => set('partner_short', e.target.value)}
+              placeholder="Short name for catalog filter pills (e.g. Dr's Tunes)"
+              className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-[#0f4c35] focus:ring-2 focus:ring-[#0f4c35]/10 transition-all"
+            />
+            <p className="text-[11px] text-gray-400 mt-1">Shown in catalog filter pills. Defaults to Partner Name if left blank.</p>
           </div>
 
           <div>
