@@ -78,10 +78,17 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: insertError.message }, { status: 500 })
   }
 
+  // Fetch the inserted agent's id
+  const { data: newAgent } = await supabase.from('agents')
+    .select('id').eq('invite_token', token).maybeSingle()
+  const agentId = (newAgent as { id: string } | null)?.id ?? null
+
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://tiktak.interviewcorp.co.kr'
   const inviteUrl = `${appUrl}/invite/${token}`
 
-  if (body.recipient_email?.trim()) {
+  if (body.recipient_email?.trim() && agentId) {
+    // Save recipient email so detail page can pre-fill it
+    await supabase.from('agents').update({ email: body.recipient_email.trim() }).eq('id', agentId)
     try {
       await sendInviteEmailToAgent(body.recipient_email.trim(), inviteUrl, expiresAt.toISOString())
     } catch {
@@ -90,6 +97,7 @@ export async function POST(req: Request) {
   }
 
   return NextResponse.json({
+    agent_id: agentId,
     agent_number: agentNumber,
     token,
     invite_path: `/invite/${token}`,

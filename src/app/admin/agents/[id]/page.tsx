@@ -154,6 +154,13 @@ export default function AdminAgentDetailPage() {
     init()
   }, [fetchData])
 
+  // Pre-fill invite email input with previously used recipient email (non-placeholder)
+  useEffect(() => {
+    if (agent?.email && !agent.email.endsWith('@tiktak.temp')) {
+      setInviteEmailInput(agent.email)
+    }
+  }, [agent?.email])
+
   async function toggleActive() {
     if (!agent) return
     setToggling(true); setError('')
@@ -572,7 +579,7 @@ export default function AdminAgentDetailPage() {
                 const res = await fetch('/api/admin/send-invite-email', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ invite_url: inviteUrl, recipient_email: inviteEmailInput.trim(), expires_at: agent?.invite_expires_at }),
+                  body: JSON.stringify({ invite_url: inviteUrl, recipient_email: inviteEmailInput.trim(), expires_at: agent?.invite_expires_at, agent_id: agent?.id }),
                 })
                 if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? 'Failed') }
                 setInviteEmailSent(true)

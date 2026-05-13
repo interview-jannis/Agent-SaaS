@@ -54,7 +54,7 @@ export default function AdminAgentsPage() {
   const [showCreate, setShowCreate] = useState(false)
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState('')
-  const [createdInvite, setCreatedInvite] = useState<{ agent_number: string; invite_url: string; expires_at: string } | null>(null)
+  const [createdInvite, setCreatedInvite] = useState<{ agent_id: string | null; agent_number: string; invite_url: string; expires_at: string } | null>(null)
   const [copiedInvite, setCopiedInvite] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
   const [sendingEmail, setSendingEmail] = useState(false)
@@ -118,6 +118,7 @@ export default function AdminAgentsPage() {
       if (!res.ok) throw new Error(data.error ?? 'Failed')
       const origin = typeof window !== 'undefined' ? window.location.origin : ''
       setCreatedInvite({
+        agent_id: data.agent_id ?? null,
         agent_number: data.agent_number,
         invite_url: `${origin}${data.invite_path}`,
         expires_at: data.expires_at,
@@ -138,7 +139,7 @@ export default function AdminAgentsPage() {
       const res = await fetch('/api/admin/send-invite-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ invite_url: createdInvite.invite_url, recipient_email: inviteEmail.trim(), expires_at: createdInvite.expires_at }),
+        body: JSON.stringify({ invite_url: createdInvite.invite_url, recipient_email: inviteEmail.trim(), expires_at: createdInvite.expires_at, agent_id: createdInvite.agent_id }),
       })
       if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? 'Failed') }
       setEmailSent(true)
