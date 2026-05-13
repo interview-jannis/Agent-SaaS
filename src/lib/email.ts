@@ -127,6 +127,43 @@ export async function sendEmailToAdmin(adminEmail: string, message: string, link
   }
 }
 
+export async function sendApprovalEmailToAgent(recipientEmail: string, setupUrl: string) {
+  if (!process.env.RESEND_API_KEY) return
+  const html = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,sans-serif">
+  <table width="100%" cellpadding="0" cellspacing="0" style="padding:40px 16px">
+    <tr><td align="center">
+      <table cellpadding="0" cellspacing="0" style="background:#fff;border-radius:10px;overflow:hidden;max-width:560px;width:100%">
+        <tr><td style="background:#0f4c35;padding:20px 32px">
+          <span style="color:#fff;font-size:22px;font-weight:700;letter-spacing:-0.5px">TikkTakk</span>
+        </td></tr>
+        <tr><td style="padding:32px;font-size:15px;line-height:1.7">
+          <p style="margin:0 0 16px;font-size:18px;font-weight:600;color:#111827">Your account has been approved!</p>
+          <p style="margin:0 0 24px;color:#374151">Welcome to TikkTakk. Your partnership application has been reviewed and approved by our team. Click the button below to complete your account setup.</p>
+          <a href="${setupUrl}" style="display:inline-block;padding:12px 28px;background:#0f4c35;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;font-size:14px">Complete Account Setup</a>
+        </td></tr>
+        <tr><td style="padding:20px 32px;background:#f9fafb;border-top:1px solid #e5e7eb">
+          <p style="margin:0;font-size:12px;color:#9ca3af">TikkTakk by Interview Co. &middot; This is an automated notification.</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`
+  try {
+    await getResend().emails.send({
+      from: FROM,
+      to: recipientEmail,
+      subject: '[TikkTakk] Your account has been approved',
+      html,
+    })
+  } catch (e) {
+    console.error('[email] failed to send approval email to agent', e)
+  }
+}
+
 export async function sendInviteEmailToAgent(recipientEmail: string, inviteUrl: string, expiresAt: string) {
   if (!process.env.RESEND_API_KEY) return
   const expiresFormatted = new Date(expiresAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })

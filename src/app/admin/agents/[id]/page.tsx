@@ -229,6 +229,11 @@ export default function AdminAgentDetailPage() {
       await logAsCurrentUser('agent.approved', { type: 'agent', id: agent.id, label: `${agent.name}${agent.agent_number ? ` · ${agent.agent_number}` : ''}` })
       const { notifyAgent } = await import('@/lib/notifications')
       await notifyAgent(agent.id, 'Your account has been approved. Please complete your account setup to get started.', '/onboarding/setup')
+      await fetch('/api/admin/send-approval-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agent_id: agent.id }),
+      })
       setShowApprove(false)
       await fetchData()
     } catch (e: unknown) {
