@@ -54,7 +54,7 @@ export async function POST(req: Request) {
 
   const label = agentName ? `${agentNumber} (${agentName})` : agentNumber
   const message = `${label} signed contracts — review needed`
-  const link_url = '/admin/agents'
+  const link_url = `/admin/agents/${agent_id}`
 
   const seen = new Set<string>()
   const rows: Array<Record<string, unknown>> = []

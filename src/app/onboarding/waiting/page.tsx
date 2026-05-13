@@ -18,6 +18,7 @@ type AgentState = {
   rejection_reason: string | null
   rejected_at: string | null
   email: string | null
+  invite_email: string | null
 }
 
 export default function OnboardingWaitingPage() {
@@ -38,12 +39,13 @@ export default function OnboardingWaitingPage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session?.user?.id) return
       const { data: agent } = await supabase.from('agents')
-        .select('id, onboarding_status, rejection_reason, rejected_at, email')
+        .select('id, onboarding_status, rejection_reason, rejected_at, email, invite_email')
         .eq('auth_user_id', session.user.id).maybeSingle()
       if (!agent) { setLoading(false); return }
       const a = agent as AgentState
       setAgentState(a)
-      const realEmail = a.email && !a.email.includes('@tiktak.temp') ? a.email : ''
+      const realEmail = a.invite_email
+        || (a.email && !a.email.includes('@tiktak.temp') ? a.email : '')
       setNotifEmail(realEmail)
       if (realEmail) setEmailSaved(true)
       const { data } = await supabase.from('agent_contracts')
