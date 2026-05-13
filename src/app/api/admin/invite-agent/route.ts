@@ -65,9 +65,7 @@ export async function POST(req: Request) {
     auth_user_id: authData.user.id,
     agent_number: agentNumber,
     name: 'Invited Agent',
-    // Store recipient email directly so the detail page can pre-fill it;
-    // auth.users keeps the placeholder for onboarding login
-    email: recipientEmail ?? placeholderEmail,
+    email: placeholderEmail,
     onboarding_status: 'pending_onboarding',
     is_active: false,
     invite_token: token,

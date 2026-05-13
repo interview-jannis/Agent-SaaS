@@ -1,13 +1,11 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { sendInviteEmailToAgent } from '@/lib/email'
 
 export async function POST(req: Request) {
-  const { invite_url, recipient_email, expires_at, agent_id } = await req.json() as {
+  const { invite_url, recipient_email, expires_at } = await req.json() as {
     invite_url?: string
     recipient_email?: string
     expires_at?: string
-    agent_id?: string
   }
 
   if (!invite_url || !recipient_email?.trim()) {
@@ -20,19 +18,6 @@ export async function POST(req: Request) {
     await sendInviteEmailToAgent(recipient_email.trim(), invite_url, expiresAt)
   } catch (e: unknown) {
     return NextResponse.json({ error: (e as { message?: string })?.message ?? 'Failed to send email.' }, { status: 500 })
-  }
-
-  // Persist the recipient email on the agent record so the UI can pre-fill it next time
-  if (agent_id) {
-    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-    if (serviceKey) {
-      const supabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        serviceKey,
-        { auth: { autoRefreshToken: false, persistSession: false } }
-      )
-      await supabase.from('agents').update({ email: recipient_email.trim() }).eq('id', agent_id)
-    }
   }
 
   return NextResponse.json({ ok: true })
