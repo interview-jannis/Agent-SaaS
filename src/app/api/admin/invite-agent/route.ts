@@ -59,11 +59,15 @@ export async function POST(req: Request) {
   const now = new Date()
   const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000) // +7 days
 
-  const { error: insertError } = await supabase.from('agents').insert({
+  const recipientEmail = body.recipient_email?.trim() || null
+
+  const { data: insertData, error: insertError } = await supabase.from('agents').insert({
     auth_user_id: authData.user.id,
     agent_number: agentNumber,
     name: 'Invited Agent',
-    email: placeholderEmail,
+    // Store recipient email directly so the detail page can pre-fill it;
+    // auth.users keeps the placeholder for onboarding login
+    email: recipientEmail ?? placeholderEmail,
     onboarding_status: 'pending_onboarding',
     is_active: false,
     invite_token: token,
@@ -71,26 +75,20 @@ export async function POST(req: Request) {
     invited_at: now.toISOString(),
     invite_expires_at: expiresAt.toISOString(),
     invited_by_admin_id: invitingAdminId,
-  })
+  }).select('id').single()
 
   if (insertError) {
     await supabase.auth.admin.deleteUser(authData.user.id)
     return NextResponse.json({ error: insertError.message }, { status: 500 })
   }
 
-  // Fetch the inserted agent's id
-  const { data: newAgent } = await supabase.from('agents')
-    .select('id').eq('invite_token', token).maybeSingle()
-  const agentId = (newAgent as { id: string } | null)?.id ?? null
-
+  const agentId = (insertData as { id: string } | null)?.id ?? null
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://tiktak.interviewcorp.co.kr'
   const inviteUrl = `${appUrl}/invite/${token}`
 
-  if (body.recipient_email?.trim() && agentId) {
-    // Save recipient email so detail page can pre-fill it
-    await supabase.from('agents').update({ email: body.recipient_email.trim() }).eq('id', agentId)
+  if (recipientEmail) {
     try {
-      await sendInviteEmailToAgent(body.recipient_email.trim(), inviteUrl, expiresAt.toISOString())
+      await sendInviteEmailToAgent(recipientEmail, inviteUrl, expiresAt.toISOString())
     } catch {
       // non-fatal — link is still returned
     }
