@@ -5,9 +5,11 @@ import { createClient } from '@supabase/supabase-js'
 // Bulk product image upload — filename-based matching.
 //
 // Naming convention (case-insensitive):
-//   P-001.jpg       → product #P-001, primary image
-//   P-001-2.jpg     → product #P-001, additional image (order 2)
-//   P-001-3.png     → product #P-001, additional image (order 3)
+//   P-001.jpg           → product #P-001, primary image
+//   P-001-2.jpg         → product #P-001, additional image (order 2)
+//   P-001-3.png         → product #P-001, additional image (order 3)
+//   P-101,102,103.jpg   → same primary image applied to P-101, P-102, P-103
+//   P-101,102,103-2.jpg → same additional image (order 2) for all three
 //
 // Behaviour:
 //   - Matched products: existing product_images rows + storage files are
@@ -18,16 +20,16 @@ import { createClient } from '@supabase/supabase-js'
 // Returns a summary: matched / unmatched / failed counts + per-file details.
 // ════════════════════════════════════════════════════════════════════════════
 
-const FILENAME_RE = /^p-(\d+)(?:-(\d+))?\.([a-z0-9]+)$/i
+const FILENAME_RE = /^p-([\d,\s]+?)(?:-(\d+))?\.([a-z0-9]+)$/i
 
-function parseFilename(name: string): { num: string; order: number; isPrimary: boolean; ext: string } | null {
+function parseFilename(name: string): { nums: string[]; order: number; isPrimary: boolean; ext: string } | null {
   const m = FILENAME_RE.exec(name)
   if (!m) return null
-  const num = m[1].padStart(3, '0')
+  const nums = m[1].split(',').map(n => n.trim().padStart(3, '0')).filter(Boolean)
   const extra = m[2] ? parseInt(m[2], 10) : null
   const isPrimary = extra === null
   const order = extra ?? 1
-  return { num, order, isPrimary, ext: m[3].toLowerCase() }
+  return { nums, order, isPrimary, ext: m[3].toLowerCase() }
 }
 
 export async function POST(req: Request) {
@@ -76,14 +78,15 @@ export async function POST(req: Request) {
       unmatched.push(file.name)
       continue
     }
-    const key = parsed.num
-    if (!byProduct.has(key)) byProduct.set(key, [])
-    byProduct.get(key)!.push({
-      file,
-      order: parsed.order,
-      isPrimary: parsed.isPrimary,
-      ext: parsed.ext,
-    })
+    for (const key of parsed.nums) {
+      if (!byProduct.has(key)) byProduct.set(key, [])
+      byProduct.get(key)!.push({
+        file,
+        order: parsed.order,
+        isPrimary: parsed.isPrimary,
+        ext: parsed.ext,
+      })
+    }
   }
 
   // Fetch all matching products in one query

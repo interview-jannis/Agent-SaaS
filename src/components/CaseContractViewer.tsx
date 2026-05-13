@@ -92,11 +92,22 @@ export default function CaseContractViewer({
   const [confirmIdentity, setConfirmIdentity] = useState(false)
   const [typedName, setTypedName] = useState('')
   const [sig, setSig] = useState<string | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
   async function submit() {
-    if (!sig || !agree || !confirmIdentity) return
-    if (!typedName.trim()) return
-    await onSubmit?.({ signatureDataUrl: sig, typedName: typedName.trim() })
+    const errs: Record<string, string> = {}
+    if (!agree) errs.agree = 'Please confirm you have read and agree to the terms.'
+    if (!confirmIdentity) errs.confirmIdentity = 'Please confirm your identity.'
+    if (!typedName.trim()) errs.typedName = 'Please type your full legal name to confirm.'
+    if (!sig) errs.sig = 'Please sign above.'
+    if (Object.keys(errs).length > 0) {
+      setFieldErrors(errs)
+      const firstKey = Object.keys(errs)[0]
+      document.getElementById(`ccvfield-${firstKey}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      return
+    }
+    setFieldErrors({})
+    await onSubmit?.({ signatureDataUrl: sig!, typedName: typedName.trim() })
   }
 
   const blocks = renderBody(contract.body_snapshot)
@@ -159,41 +170,51 @@ export default function CaseContractViewer({
           </div>
 
           <div className="space-y-3">
-            <label className="flex items-start gap-3 cursor-pointer select-none">
-              <input type="checkbox" checked={agree} onChange={e => setAgree(e.target.checked)}
-                className="w-4 h-4 mt-0.5 accent-[#0f4c35] shrink-0" />
-              <span className="text-sm text-gray-700">
-                I have read this {contract.title_snapshot} <span className="font-semibold text-gray-900">in full</span>, understand its terms,
-                and voluntarily agree to be legally bound by them.
-              </span>
-            </label>
+            <div id="ccvfield-agree" className={fieldErrors.agree ? 'rounded-lg border border-red-300 bg-red-50 p-3' : ''}>
+              <label className="flex items-start gap-3 cursor-pointer select-none">
+                <input type="checkbox" checked={agree} onChange={e => { setAgree(e.target.checked); setFieldErrors(p => { const n = {...p}; delete n.agree; return n }) }}
+                  className="w-4 h-4 mt-0.5 accent-[#0f4c35] shrink-0" />
+                <span className="text-sm text-gray-700">
+                  I have read this {contract.title_snapshot} <span className="font-semibold text-gray-900">in full</span>, understand its terms,
+                  and voluntarily agree to be legally bound by them.
+                </span>
+              </label>
+              {fieldErrors.agree && <p className="text-xs text-red-500 mt-1.5 pl-7">{fieldErrors.agree}</p>}
+            </div>
 
-            <label className="flex items-start gap-3 cursor-pointer select-none">
-              <input type="checkbox" checked={confirmIdentity} onChange={e => setConfirmIdentity(e.target.checked)}
-                className="w-4 h-4 mt-0.5 accent-[#0f4c35] shrink-0" />
-              <span className="text-sm text-gray-700">{identityLabel}</span>
-            </label>
+            <div id="ccvfield-confirmIdentity" className={fieldErrors.confirmIdentity ? 'rounded-lg border border-red-300 bg-red-50 p-3' : ''}>
+              <label className="flex items-start gap-3 cursor-pointer select-none">
+                <input type="checkbox" checked={confirmIdentity} onChange={e => { setConfirmIdentity(e.target.checked); setFieldErrors(p => { const n = {...p}; delete n.confirmIdentity; return n }) }}
+                  className="w-4 h-4 mt-0.5 accent-[#0f4c35] shrink-0" />
+                <span className="text-sm text-gray-700">{identityLabel}</span>
+              </label>
+              {fieldErrors.confirmIdentity && <p className="text-xs text-red-500 mt-1.5 pl-7">{fieldErrors.confirmIdentity}</p>}
+            </div>
           </div>
 
-          <div>
+          <div id="ccvfield-typedName">
             <label className="block text-xs font-medium text-gray-500 mb-1">Type your full legal name to confirm *</label>
             <input
               type="text"
               value={typedName}
-              onChange={e => setTypedName(e.target.value)}
+              onChange={e => { setTypedName(e.target.value); setFieldErrors(p => { const n = {...p}; delete n.typedName; return n }) }}
               placeholder={namePlaceholder}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]"
+              className={`w-full border rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none ${fieldErrors.typedName ? 'border-red-400 focus:border-red-500' : 'border-gray-200 focus:border-[#0f4c35]'}`}
             />
-            <p className="text-[11px] text-gray-400 mt-1">
-              {signMode === 'client'
-                ? 'Recorded as explicit-intent evidence alongside your drawn signature.'
-                : 'Must exactly match your registered name. Recorded as explicit-intent evidence alongside your drawn signature.'}
-            </p>
+            {fieldErrors.typedName
+              ? <p className="text-xs text-red-500 mt-1">{fieldErrors.typedName}</p>
+              : <p className="text-[11px] text-gray-400 mt-1">
+                  {signMode === 'client'
+                    ? 'Recorded as explicit-intent evidence alongside your drawn signature.'
+                    : 'Must exactly match your registered name. Recorded as explicit-intent evidence alongside your drawn signature.'}
+                </p>
+            }
           </div>
 
-          <div>
+          <div id="ccvfield-sig">
             <p className="text-xs font-medium text-gray-500 mb-2">Signature *</p>
-            <SignaturePad onChange={setSig} />
+            <SignaturePad onChange={s => { setSig(s); if (s) setFieldErrors(p => { const n = {...p}; delete n.sig; return n }) }} />
+            {fieldErrors.sig && <p className="text-xs text-red-500 mt-1">{fieldErrors.sig}</p>}
           </div>
 
           <p className="text-[11px] text-gray-400 leading-relaxed">
@@ -204,7 +225,7 @@ export default function CaseContractViewer({
 
           {error && <p className="text-xs text-red-500">{error}</p>}
 
-          <button onClick={submit} disabled={saving || !agree || !confirmIdentity || !typedName.trim() || !sig}
+          <button onClick={submit} disabled={saving}
             className={`px-5 py-2.5 text-sm font-medium ${tone.accent} text-white rounded-xl hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed`}>
             {saving ? 'Signing…' : `Sign as ${signMode === 'agent' ? 'Agent' : signMode === 'client' ? 'Client' : 'Interview Co.'}`}
           </button>

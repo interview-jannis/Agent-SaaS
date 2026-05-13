@@ -41,6 +41,7 @@ export default function SetupWizardPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
   useEffect(() => {
     async function init() {
@@ -96,14 +97,24 @@ export default function SetupWizardPage() {
 
   async function submit() {
     if (!authUserId) return
-    if (!form.email.trim()) { setError('Email is required.'); return }
-    if (!form.email.includes('@') || form.email.endsWith('@tiktak.temp')) { setError('Enter a valid personal email (not the temp address).'); return }
-    if (form.password.length < 8) { setError('Password must be at least 8 characters.'); return }
-    if (form.password !== form.confirmPassword) { setError('Passwords do not match.'); return }
-    if (!form.phone.trim()) { setError('Phone number is required.'); return }
-    if (!bank.bank_name.trim() || !bank.account_number.trim() || !bank.beneficiary.trim() || !bank.swift_code.trim()) {
-      setError('Bank Name, Account Number, Beneficiary, and Swift Code are required so we can pay your commissions.'); return
+    const errs: Record<string, string> = {}
+    if (!form.email.trim()) errs.email = 'Email is required.'
+    else if (!form.email.includes('@') || form.email.endsWith('@tiktak.temp')) errs.email = 'Enter a valid personal email (not the temp address).'
+    if (form.password.length < 8) errs.password = 'Password must be at least 8 characters.'
+    if (form.password !== form.confirmPassword) errs.confirmPassword = 'Passwords do not match.'
+    if (!form.phone.trim()) errs.phone = 'Phone number is required.'
+    if (!bank.bank_name.trim()) errs.bank_name = 'Required'
+    if (!bank.account_number.trim()) errs.account_number = 'Required'
+    if (!bank.beneficiary.trim()) errs.beneficiary = 'Required'
+    if (!bank.swift_code.trim()) errs.swift_code = 'Required'
+    if (Object.keys(errs).length > 0) {
+      setFieldErrors(errs)
+      setError('')
+      const firstKey = Object.keys(errs)[0]
+      document.getElementById(`sfield-${firstKey}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      return
     }
+    setFieldErrors({})
     setSaving(true); setError('')
     // Build business_info only if any field is filled
     const business_info = (business.company_name.trim() || business.registration_number.trim() || business.doc_url)
@@ -152,25 +163,30 @@ export default function SetupWizardPage() {
       <section className="bg-white rounded-2xl border border-gray-200 p-6 space-y-4">
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">New Login Credentials</p>
 
-        <div>
+        <div id="sfield-email">
           <label className="block text-xs font-medium text-gray-600 mb-1.5">Email (your sign-in address) *</label>
-          <input type="email" value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))}
+          <input type="email" value={form.email} onChange={e => { setForm(p => ({ ...p, email: e.target.value })); setFieldErrors(p => { const n = {...p}; delete n.email; return n }) }}
             placeholder="you@example.com"
-            className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
-          <p className="text-[10px] text-gray-400 mt-1">Replaces the temporary email. Use your real email — you&apos;ll sign in with this from now on.</p>
+            className={`w-full border rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none ${fieldErrors.email ? 'border-red-400 focus:border-red-500' : 'border-gray-200 focus:border-[#0f4c35]'}`} />
+          {fieldErrors.email
+            ? <p className="text-xs text-red-500 mt-1">{fieldErrors.email}</p>
+            : <p className="text-[10px] text-gray-400 mt-1">Replaces the temporary email. Use your real email — you&apos;ll sign in with this from now on.</p>
+          }
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div>
+          <div id="sfield-password">
             <label className="block text-xs font-medium text-gray-600 mb-1.5">New Password *</label>
-            <input type="password" value={form.password} onChange={e => setForm(p => ({ ...p, password: e.target.value }))}
+            <input type="password" value={form.password} onChange={e => { setForm(p => ({ ...p, password: e.target.value })); setFieldErrors(p => { const n = {...p}; delete n.password; return n }) }}
               placeholder="At least 8 characters"
-              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
+              className={`w-full border rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none ${fieldErrors.password ? 'border-red-400 focus:border-red-500' : 'border-gray-200 focus:border-[#0f4c35]'}`} />
+            {fieldErrors.password && <p className="text-xs text-red-500 mt-1">{fieldErrors.password}</p>}
           </div>
-          <div>
+          <div id="sfield-confirmPassword">
             <label className="block text-xs font-medium text-gray-600 mb-1.5">Confirm Password *</label>
-            <input type="password" value={form.confirmPassword} onChange={e => setForm(p => ({ ...p, confirmPassword: e.target.value }))}
-              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
+            <input type="password" value={form.confirmPassword} onChange={e => { setForm(p => ({ ...p, confirmPassword: e.target.value })); setFieldErrors(p => { const n = {...p}; delete n.confirmPassword; return n }) }}
+              className={`w-full border rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none ${fieldErrors.confirmPassword ? 'border-red-400 focus:border-red-500' : 'border-gray-200 focus:border-[#0f4c35]'}`} />
+            {fieldErrors.confirmPassword && <p className="text-xs text-red-500 mt-1">{fieldErrors.confirmPassword}</p>}
           </div>
         </div>
       </section>
@@ -190,11 +206,12 @@ export default function SetupWizardPage() {
           </div>
         </div>
 
-        <div>
+        <div id="sfield-phone">
           <label className="block text-xs font-medium text-gray-600 mb-1.5">Phone *</label>
-          <input type="tel" value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))}
+          <input type="tel" value={form.phone} onChange={e => { setForm(p => ({ ...p, phone: e.target.value })); setFieldErrors(p => { const n = {...p}; delete n.phone; return n }) }}
             placeholder="+971 50 123 4567"
-            className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
+            className={`w-full border rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none ${fieldErrors.phone ? 'border-red-400 focus:border-red-500' : 'border-gray-200 focus:border-[#0f4c35]'}`} />
+          {fieldErrors.phone && <p className="text-xs text-red-500 mt-1">{fieldErrors.phone}</p>}
         </div>
       </section>
 
@@ -205,29 +222,33 @@ export default function SetupWizardPage() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div>
+          <div id="sfield-bank_name">
             <label className="block text-xs font-medium text-gray-600 mb-1.5">Bank Name *</label>
-            <input type="text" value={bank.bank_name} onChange={e => setBank(p => ({ ...p, bank_name: e.target.value }))}
+            <input type="text" value={bank.bank_name} onChange={e => { setBank(p => ({ ...p, bank_name: e.target.value })); setFieldErrors(p => { const n = {...p}; delete n.bank_name; return n }) }}
               placeholder="Emirates NBD"
-              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
+              className={`w-full border rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none ${fieldErrors.bank_name ? 'border-red-400 focus:border-red-500' : 'border-gray-200 focus:border-[#0f4c35]'}`} />
+            {fieldErrors.bank_name && <p className="text-xs text-red-500 mt-1">{fieldErrors.bank_name}</p>}
           </div>
-          <div>
+          <div id="sfield-account_number">
             <label className="block text-xs font-medium text-gray-600 mb-1.5">Account Number *</label>
-            <input type="text" value={bank.account_number} onChange={e => setBank(p => ({ ...p, account_number: e.target.value }))}
+            <input type="text" value={bank.account_number} onChange={e => { setBank(p => ({ ...p, account_number: e.target.value })); setFieldErrors(p => { const n = {...p}; delete n.account_number; return n }) }}
               placeholder="1234567890"
-              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
+              className={`w-full border rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none ${fieldErrors.account_number ? 'border-red-400 focus:border-red-500' : 'border-gray-200 focus:border-[#0f4c35]'}`} />
+            {fieldErrors.account_number && <p className="text-xs text-red-500 mt-1">{fieldErrors.account_number}</p>}
           </div>
-          <div>
+          <div id="sfield-beneficiary">
             <label className="block text-xs font-medium text-gray-600 mb-1.5">Beneficiary *</label>
-            <input type="text" value={bank.beneficiary} onChange={e => setBank(p => ({ ...p, beneficiary: e.target.value }))}
+            <input type="text" value={bank.beneficiary} onChange={e => { setBank(p => ({ ...p, beneficiary: e.target.value })); setFieldErrors(p => { const n = {...p}; delete n.beneficiary; return n }) }}
               placeholder="Full name as registered at the bank"
-              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
+              className={`w-full border rounded-xl px-3 py-2.5 text-sm text-gray-900 focus:outline-none ${fieldErrors.beneficiary ? 'border-red-400 focus:border-red-500' : 'border-gray-200 focus:border-[#0f4c35]'}`} />
+            {fieldErrors.beneficiary && <p className="text-xs text-red-500 mt-1">{fieldErrors.beneficiary}</p>}
           </div>
-          <div>
+          <div id="sfield-swift_code">
             <label className="block text-xs font-medium text-gray-600 mb-1.5">Swift Code *</label>
-            <input type="text" value={bank.swift_code} onChange={e => setBank(p => ({ ...p, swift_code: e.target.value.toUpperCase() }))}
+            <input type="text" value={bank.swift_code} onChange={e => { setBank(p => ({ ...p, swift_code: e.target.value.toUpperCase() })); setFieldErrors(p => { const n = {...p}; delete n.swift_code; return n }) }}
               placeholder="EBILAEAD"
-              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-mono text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
+              className={`w-full border rounded-xl px-3 py-2.5 text-sm font-mono text-gray-900 focus:outline-none ${fieldErrors.swift_code ? 'border-red-400 focus:border-red-500' : 'border-gray-200 focus:border-[#0f4c35]'}`} />
+            {fieldErrors.swift_code && <p className="text-xs text-red-500 mt-1">{fieldErrors.swift_code}</p>}
           </div>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">

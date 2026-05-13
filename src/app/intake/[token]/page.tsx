@@ -113,10 +113,11 @@ const MIXED_GENDER_OPTIONS: { value: MixedGenderPref; label: string }[] = [
 // ── UI helpers ────────────────────────────────────────────────────────────────
 
 const inputCls = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35] bg-white'
+const inputErrCls = 'w-full border border-red-400 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-red-500 bg-white'
 
-function Field({ label, required, colSpan, children }: { label: string; required?: boolean; colSpan?: boolean; children: React.ReactNode }) {
+function Field({ label, required, colSpan, id, children }: { label: string; required?: boolean; colSpan?: boolean; id?: string; children: React.ReactNode }) {
   return (
-    <div className={colSpan ? 'col-span-2' : ''}>
+    <div id={id} className={colSpan ? 'col-span-2' : ''}>
       <label className="block text-xs font-medium text-gray-500 mb-1">
         {label}{required && <span className="text-red-400 ml-0.5">*</span>}
       </label>
@@ -125,37 +126,40 @@ function Field({ label, required, colSpan, children }: { label: string; required
   )
 }
 
-function TI({ label, value, onChange, type = 'text', placeholder, required }: {
-  label: string; value: string; onChange: (v: string) => void; type?: string; placeholder?: string; required?: boolean
+function TI({ label, value, onChange, type = 'text', placeholder, required, error, fieldId }: {
+  label: string; value: string; onChange: (v: string) => void; type?: string; placeholder?: string; required?: boolean; error?: string; fieldId?: string
 }) {
   return (
-    <Field label={label} required={required}>
+    <Field label={label} required={required} id={fieldId}>
       <input type={type} value={value} onChange={e => onChange(e.target.value)}
-        placeholder={placeholder ?? 'N/A if none'} className={inputCls} />
+        placeholder={placeholder ?? 'N/A if none'} className={error ? inputErrCls : inputCls} />
+      {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
     </Field>
   )
 }
 
-function TA({ label, value, onChange, rows = 2, required }: {
-  label: string; value: string; onChange: (v: string) => void; rows?: number; required?: boolean
+function TA({ label, value, onChange, rows = 2, required, error, fieldId }: {
+  label: string; value: string; onChange: (v: string) => void; rows?: number; required?: boolean; error?: string; fieldId?: string
 }) {
   return (
-    <Field label={label} required={required} colSpan>
+    <Field label={label} required={required} colSpan id={fieldId}>
       <textarea value={value} onChange={e => onChange(e.target.value)} rows={rows}
-        placeholder="N/A if none" className={`${inputCls} resize-none`} />
+        placeholder="N/A if none" className={`${error ? inputErrCls : inputCls} resize-none`} />
+      {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
     </Field>
   )
 }
 
-function SI<T extends string>({ label, value, onChange, options, required }: {
-  label: string; value: T | null; onChange: (v: T | null) => void; options: { value: T; label: string }[]; required?: boolean
+function SI<T extends string>({ label, value, onChange, options, required, error, fieldId }: {
+  label: string; value: T | null; onChange: (v: T | null) => void; options: { value: T; label: string }[]; required?: boolean; error?: string; fieldId?: string
 }) {
   return (
-    <Field label={label} required={required}>
-      <select value={value ?? ''} onChange={e => onChange((e.target.value || null) as T | null)} className={inputCls}>
+    <Field label={label} required={required} id={fieldId}>
+      <select value={value ?? ''} onChange={e => onChange((e.target.value || null) as T | null)} className={error ? inputErrCls : inputCls}>
         <option value="">— Select —</option>
         {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
+      {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
     </Field>
   )
 }
@@ -202,6 +206,34 @@ function toForm(c: ClientData): FormState {
 
 // ── Client form (single person) ───────────────────────────────────────────────
 
+function validateIntakeForm(form: FormState): Record<string, string> {
+  const errs: Record<string, string> = {}
+  if (!form.preferred_language.trim()) errs.preferred_language = 'Required'
+  if (!form.emergency_contact_name.trim()) errs.emergency_contact_name = 'Required'
+  if (!form.emergency_contact_relation.trim()) errs.emergency_contact_relation = 'Required'
+  if (!form.emergency_contact_phone.trim()) errs.emergency_contact_phone = 'Required'
+  if (!form.blood_type.trim()) errs.blood_type = 'Required'
+  if (!form.height_cm.trim()) errs.height_cm = 'Required'
+  if (!form.weight_kg.trim()) errs.weight_kg = 'Required'
+  if (!form.mobility_limitations.trim()) errs.mobility_limitations = 'Required'
+  if (!form.allergies.trim()) errs.allergies = 'Required'
+  if (!form.current_medications.trim()) errs.current_medications = 'Required'
+  if (!form.health_conditions.trim()) errs.health_conditions = 'Required'
+  if (!form.medical_restrictions.trim()) errs.medical_restrictions = 'Required'
+  if (!form.smoking_status) errs.smoking_status = 'Required'
+  if (!form.alcohol_status) errs.alcohol_status = 'Required'
+  if (form.gender === 'female' && !form.pregnancy_status) errs.pregnancy_status = 'Required'
+  if (form.needs_muslim_friendly) {
+    if (!form.prayer_frequency) errs.prayer_frequency = 'Required'
+    if (!form.prayer_location) errs.prayer_location = 'Required'
+    if (!form.same_gender_doctor) errs.same_gender_doctor = 'Required'
+    if (!form.same_gender_therapist) errs.same_gender_therapist = 'Required'
+    if (!form.mixed_gender_activities) errs.mixed_gender_activities = 'Required'
+    if (!form.cultural_religious_notes.trim()) errs.cultural_religious_notes = 'Required'
+  }
+  return errs
+}
+
 function ClientForm({ token, client, onSaved }: {
   token: string
   client: ClientData
@@ -212,16 +244,26 @@ function ClientForm({ token, client, onSaved }: {
   const [error, setError] = useState('')
   const [saved, setSaved] = useState(false)
   const [passportUploading, setPassportUploading] = useState(false)
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
   // Reset form when client changes (tab switch)
-  useEffect(() => { setForm(toForm(client)); setError(''); setSaved(false) }, [client.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setForm(toForm(client)); setError(''); setSaved(false); setFieldErrors({}) }, [client.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm(p => ({ ...p, [key]: value }))
     setSaved(false)
+    setFieldErrors(p => { const n = {...p}; delete n[key as string]; return n })
   }
 
   async function handleSave() {
+    const errs = validateIntakeForm(form)
+    if (Object.keys(errs).length > 0) {
+      setFieldErrors(errs)
+      const firstKey = Object.keys(errs)[0]
+      document.getElementById(`ifield-${firstKey}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      return
+    }
+    setFieldErrors({})
     setSaving(true); setError(''); setSaved(false)
     try {
       const res = await fetch(`/api/intake/${token}`, {
@@ -331,45 +373,45 @@ function ClientForm({ token, client, onSaved }: {
       <Section title="Contact">
         <TI label="Phone" value={form.phone} onChange={v => set('phone', v)} type="tel" />
         <TI label="Email" value={form.email} onChange={v => set('email', v)} type="email" />
-        <TI label="Preferred Language" value={form.preferred_language} onChange={v => set('preferred_language', v)} placeholder="e.g. English, Arabic" required />
+        <TI label="Preferred Language" value={form.preferred_language} onChange={v => set('preferred_language', v)} placeholder="e.g. English, Arabic" required error={fieldErrors.preferred_language} fieldId="ifield-preferred_language" />
       </Section>
 
       <Section title="Emergency Contact">
-        <TI label="Name" value={form.emergency_contact_name} onChange={v => set('emergency_contact_name', v)} required />
-        <TI label="Relation" value={form.emergency_contact_relation} onChange={v => set('emergency_contact_relation', v)} placeholder="e.g. Spouse" required />
-        <TI label="Phone" value={form.emergency_contact_phone} onChange={v => set('emergency_contact_phone', v)} required />
+        <TI label="Name" value={form.emergency_contact_name} onChange={v => set('emergency_contact_name', v)} required error={fieldErrors.emergency_contact_name} fieldId="ifield-emergency_contact_name" />
+        <TI label="Relation" value={form.emergency_contact_relation} onChange={v => set('emergency_contact_relation', v)} placeholder="e.g. Spouse" required error={fieldErrors.emergency_contact_relation} fieldId="ifield-emergency_contact_relation" />
+        <TI label="Phone" value={form.emergency_contact_phone} onChange={v => set('emergency_contact_phone', v)} required error={fieldErrors.emergency_contact_phone} fieldId="ifield-emergency_contact_phone" />
       </Section>
 
       <Section title="Medical Information">
-        <TI label="Blood Type" value={form.blood_type} onChange={v => set('blood_type', v)} placeholder="e.g. A+, O-" required />
-        <TI label="Height (cm)" value={form.height_cm} onChange={v => set('height_cm', v)} type="number" required />
-        <TI label="Weight (kg)" value={form.weight_kg} onChange={v => set('weight_kg', v)} type="number" required />
-        <TI label="Mobility Limitations" value={form.mobility_limitations} onChange={v => set('mobility_limitations', v)} required />
-        <TA label="Allergies & Adverse Reactions" value={form.allergies} onChange={v => set('allergies', v)} required />
-        <TA label="Current Medications" value={form.current_medications} onChange={v => set('current_medications', v)} required />
-        <TA label="Health Conditions" value={form.health_conditions} onChange={v => set('health_conditions', v)} required />
-        <TA label="Medical Restrictions" value={form.medical_restrictions} onChange={v => set('medical_restrictions', v)} required />
+        <TI label="Blood Type" value={form.blood_type} onChange={v => set('blood_type', v)} placeholder="e.g. A+, O-" required error={fieldErrors.blood_type} fieldId="ifield-blood_type" />
+        <TI label="Height (cm)" value={form.height_cm} onChange={v => set('height_cm', v)} type="number" required error={fieldErrors.height_cm} fieldId="ifield-height_cm" />
+        <TI label="Weight (kg)" value={form.weight_kg} onChange={v => set('weight_kg', v)} type="number" required error={fieldErrors.weight_kg} fieldId="ifield-weight_kg" />
+        <TI label="Mobility Limitations" value={form.mobility_limitations} onChange={v => set('mobility_limitations', v)} required error={fieldErrors.mobility_limitations} fieldId="ifield-mobility_limitations" />
+        <TA label="Allergies & Adverse Reactions" value={form.allergies} onChange={v => set('allergies', v)} required error={fieldErrors.allergies} fieldId="ifield-allergies" />
+        <TA label="Current Medications" value={form.current_medications} onChange={v => set('current_medications', v)} required error={fieldErrors.current_medications} fieldId="ifield-current_medications" />
+        <TA label="Health Conditions" value={form.health_conditions} onChange={v => set('health_conditions', v)} required error={fieldErrors.health_conditions} fieldId="ifield-health_conditions" />
+        <TA label="Medical Restrictions" value={form.medical_restrictions} onChange={v => set('medical_restrictions', v)} required error={fieldErrors.medical_restrictions} fieldId="ifield-medical_restrictions" />
         <TA label="Prior Aesthetic Procedures (optional)" value={form.prior_aesthetic_procedures} onChange={v => set('prior_aesthetic_procedures', v)} />
         <TA label="Recent Health Checkup Notes (optional)" value={form.recent_health_checkup_notes} onChange={v => set('recent_health_checkup_notes', v)} />
       </Section>
 
       <Section title="Lifestyle">
-        <SI label="Smoking" value={form.smoking_status} onChange={v => set('smoking_status', v)} options={SMOKING_OPTIONS} required />
-        <SI label="Alcohol" value={form.alcohol_status} onChange={v => set('alcohol_status', v)} options={ALCOHOL_OPTIONS} required />
+        <SI label="Smoking" value={form.smoking_status} onChange={v => set('smoking_status', v)} options={SMOKING_OPTIONS} required error={fieldErrors.smoking_status} fieldId="ifield-smoking_status" />
+        <SI label="Alcohol" value={form.alcohol_status} onChange={v => set('alcohol_status', v)} options={ALCOHOL_OPTIONS} required error={fieldErrors.alcohol_status} fieldId="ifield-alcohol_status" />
         {form.gender === 'female' && (
-          <SI label="Pregnancy Status" value={form.pregnancy_status} onChange={v => set('pregnancy_status', v)} options={PREGNANCY_OPTIONS} required />
+          <SI label="Pregnancy Status" value={form.pregnancy_status} onChange={v => set('pregnancy_status', v)} options={PREGNANCY_OPTIONS} required error={fieldErrors.pregnancy_status} fieldId="ifield-pregnancy_status" />
         )}
       </Section>
 
       {isMuslim && (
         <Section title="Muslim Preferences" green>
           <SI label="Dietary Restriction" value={form.dietary_restriction} onChange={v => set('dietary_restriction', (v ?? 'none') as DietaryType)} options={DIETARY_OPTIONS} required />
-          <SI label="Prayer Frequency" value={form.prayer_frequency} onChange={v => set('prayer_frequency', v)} options={PRAYER_FREQUENCY_OPTIONS} required />
-          <SI label="Prayer Location" value={form.prayer_location} onChange={v => set('prayer_location', v)} options={PRAYER_LOCATION_OPTIONS} required />
-          <SI label="Same-gender Doctor" value={form.same_gender_doctor} onChange={v => set('same_gender_doctor', v)} options={GENDER_PREF_OPTIONS} required />
-          <SI label="Same-gender Therapist" value={form.same_gender_therapist} onChange={v => set('same_gender_therapist', v)} options={GENDER_PREF_OPTIONS} required />
-          <SI label="Mixed-gender Activities" value={form.mixed_gender_activities} onChange={v => set('mixed_gender_activities', v)} options={MIXED_GENDER_OPTIONS} required />
-          <TA label="Cultural / Religious Notes" value={form.cultural_religious_notes} onChange={v => set('cultural_religious_notes', v)} required />
+          <SI label="Prayer Frequency" value={form.prayer_frequency} onChange={v => set('prayer_frequency', v)} options={PRAYER_FREQUENCY_OPTIONS} required error={fieldErrors.prayer_frequency} fieldId="ifield-prayer_frequency" />
+          <SI label="Prayer Location" value={form.prayer_location} onChange={v => set('prayer_location', v)} options={PRAYER_LOCATION_OPTIONS} required error={fieldErrors.prayer_location} fieldId="ifield-prayer_location" />
+          <SI label="Same-gender Doctor" value={form.same_gender_doctor} onChange={v => set('same_gender_doctor', v)} options={GENDER_PREF_OPTIONS} required error={fieldErrors.same_gender_doctor} fieldId="ifield-same_gender_doctor" />
+          <SI label="Same-gender Therapist" value={form.same_gender_therapist} onChange={v => set('same_gender_therapist', v)} options={GENDER_PREF_OPTIONS} required error={fieldErrors.same_gender_therapist} fieldId="ifield-same_gender_therapist" />
+          <SI label="Mixed-gender Activities" value={form.mixed_gender_activities} onChange={v => set('mixed_gender_activities', v)} options={MIXED_GENDER_OPTIONS} required error={fieldErrors.mixed_gender_activities} fieldId="ifield-mixed_gender_activities" />
+          <TA label="Cultural / Religious Notes" value={form.cultural_religious_notes} onChange={v => set('cultural_religious_notes', v)} required error={fieldErrors.cultural_religious_notes} fieldId="ifield-cultural_religious_notes" />
         </Section>
       )}
 

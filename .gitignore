@@ -51,3 +51,6 @@ notes/take-*.cjs
 notes/take-*.mjs
 notes/upload-*.cjs
 notes/screenshots/
+
+# node_modules in subdirectories (e.g. data/scripts)
+**/node_modules/

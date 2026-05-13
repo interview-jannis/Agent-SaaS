@@ -101,6 +101,7 @@ export default function ContractStep({ type, step, nextHref, nextLabel, isFinal 
   const [signature, setSignature] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
   useEffect(() => {
     async function load() {
@@ -129,21 +130,27 @@ export default function ContractStep({ type, step, nextHref, nextLabel, isFinal 
 
   async function submit() {
     if (!template) return
+    const errs: Record<string, string> = {}
     if (collectIdentity) {
-      if (!agentName.trim()) { setError('Please enter your full legal name.'); return }
-      if (!agentCountry.trim()) { setError('Please enter your country of residence.'); return }
+      if (!agentName.trim()) errs.agentName = 'Please enter your full legal name.'
+      if (!agentCountry.trim()) errs.agentCountry = 'Please enter your country of residence.'
     }
-    if (!agree) { setError('Please confirm you have read and agree to the terms.'); return }
-    if (!confirmIdentity) { setError('Please confirm you are the named individual signing this agreement.'); return }
-    if (!typedName.trim()) { setError('Please type your full legal name to confirm.'); return }
-    if (!signature) { setError('Please sign above.'); return }
-
-    const expectedName = agentName.trim()
-    if (typedName.trim().toLowerCase() !== expectedName.toLowerCase()) {
-      setError(`The typed name must exactly match "${expectedName}".`)
+    if (!agree) errs.agree = 'Please confirm you have read and agree to the terms.'
+    if (!confirmIdentity) errs.confirmIdentity = 'Please confirm you are the named individual signing this agreement.'
+    if (!typedName.trim()) {
+      errs.typedName = 'Please type your full legal name to confirm.'
+    } else if (agentName.trim() && typedName.trim().toLowerCase() !== agentName.trim().toLowerCase()) {
+      errs.typedName = `The typed name must exactly match "${agentName.trim()}".`
+    }
+    if (!signature) errs.signature = 'Please sign above.'
+    if (Object.keys(errs).length > 0) {
+      setFieldErrors(errs)
+      setError('')
+      const firstKey = Object.keys(errs)[0]
+      document.getElementById(`cfield-${firstKey}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
       return
     }
-
+    setFieldErrors({})
     setSaving(true); setError('')
     try {
       const { data: { session } } = await supabase.auth.getSession()
@@ -259,17 +266,19 @@ export default function ContractStep({ type, step, nextHref, nextLabel, isFinal 
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Your Information</p>
           <p className="text-[11px] text-gray-500">Used in the &quot;Parties&quot; section of this and the next agreement.</p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
+            <div id="cfield-agentName">
               <label className="block text-xs font-medium text-gray-600 mb-1">Full Legal Name *</label>
-              <input type="text" value={agentName} onChange={e => setAgentName(e.target.value)}
+              <input type="text" value={agentName} onChange={e => { setAgentName(e.target.value); setFieldErrors(p => { const n = {...p}; delete n.agentName; return n }) }}
                 placeholder="e.g. Ahmed Al-Rashid"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
+                className={`w-full border rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none ${fieldErrors.agentName ? 'border-red-400 focus:border-red-500' : 'border-gray-200 focus:border-[#0f4c35]'}`} />
+              {fieldErrors.agentName && <p className="text-xs text-red-500 mt-1">{fieldErrors.agentName}</p>}
             </div>
-            <div>
+            <div id="cfield-agentCountry">
               <label className="block text-xs font-medium text-gray-600 mb-1">Country of Residence *</label>
-              <input type="text" list={COUNTRY_DATALIST_ID} value={agentCountry} onChange={e => setAgentCountry(e.target.value)}
+              <input type="text" list={COUNTRY_DATALIST_ID} value={agentCountry} onChange={e => { setAgentCountry(e.target.value); setFieldErrors(p => { const n = {...p}; delete n.agentCountry; return n }) }}
                 placeholder="United Arab Emirates"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
+                className={`w-full border rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none ${fieldErrors.agentCountry ? 'border-red-400 focus:border-red-500' : 'border-gray-200 focus:border-[#0f4c35]'}`} />
+              {fieldErrors.agentCountry && <p className="text-xs text-red-500 mt-1">{fieldErrors.agentCountry}</p>}
               <datalist id={COUNTRY_DATALIST_ID}>
                 {COUNTRIES.map(c => <option key={c} value={c} />)}
               </datalist>
@@ -281,44 +290,52 @@ export default function ContractStep({ type, step, nextHref, nextLabel, isFinal 
       {template && (
         <section className="bg-white rounded-2xl border border-gray-200 p-6 space-y-4">
           <div className="space-y-3">
-            <label className="flex items-start gap-3 cursor-pointer select-none">
-              <input type="checkbox" checked={agree} onChange={e => setAgree(e.target.checked)}
-                className="w-4 h-4 mt-0.5 accent-[#0f4c35] shrink-0" />
-              <span className="text-sm text-gray-700">
-                I have read this {template.title} <span className="font-semibold text-gray-900">in full</span>, understand its terms,
-                and voluntarily agree to be legally bound by them.
-              </span>
-            </label>
+            <div id="cfield-agree" className={fieldErrors.agree ? 'rounded-lg border border-red-300 bg-red-50 p-3' : ''}>
+              <label className="flex items-start gap-3 cursor-pointer select-none">
+                <input type="checkbox" checked={agree} onChange={e => { setAgree(e.target.checked); setFieldErrors(p => { const n = {...p}; delete n.agree; return n }) }}
+                  className="w-4 h-4 mt-0.5 accent-[#0f4c35] shrink-0" />
+                <span className="text-sm text-gray-700">
+                  I have read this {template.title} <span className="font-semibold text-gray-900">in full</span>, understand its terms,
+                  and voluntarily agree to be legally bound by them.
+                </span>
+              </label>
+              {fieldErrors.agree && <p className="text-xs text-red-500 mt-1.5 pl-7">{fieldErrors.agree}</p>}
+            </div>
 
-            <label className="flex items-start gap-3 cursor-pointer select-none">
-              <input type="checkbox" checked={confirmIdentity} onChange={e => setConfirmIdentity(e.target.checked)}
-                className="w-4 h-4 mt-0.5 accent-[#0f4c35] shrink-0" />
-              <span className="text-sm text-gray-700">
-                I confirm I am <span className="font-semibold text-gray-900">{agentName.trim() || 'the named individual'}</span>,
-                and that the signature below is mine and is intended as my legal signature on this agreement.
-              </span>
-            </label>
+            <div id="cfield-confirmIdentity" className={fieldErrors.confirmIdentity ? 'rounded-lg border border-red-300 bg-red-50 p-3' : ''}>
+              <label className="flex items-start gap-3 cursor-pointer select-none">
+                <input type="checkbox" checked={confirmIdentity} onChange={e => { setConfirmIdentity(e.target.checked); setFieldErrors(p => { const n = {...p}; delete n.confirmIdentity; return n }) }}
+                  className="w-4 h-4 mt-0.5 accent-[#0f4c35] shrink-0" />
+                <span className="text-sm text-gray-700">
+                  I confirm I am <span className="font-semibold text-gray-900">{agentName.trim() || 'the named individual'}</span>,
+                  and that the signature below is mine and is intended as my legal signature on this agreement.
+                </span>
+              </label>
+              {fieldErrors.confirmIdentity && <p className="text-xs text-red-500 mt-1.5 pl-7">{fieldErrors.confirmIdentity}</p>}
+            </div>
           </div>
 
-          <div className="border border-gray-300 rounded-xl p-4">
+          <div id="cfield-typedName" className={`border rounded-xl p-4 ${fieldErrors.typedName ? 'border-red-400 bg-red-50' : 'border-gray-300'}`}>
             <label className="block text-sm font-semibold text-gray-700 mb-2">
               Type your full legal name to confirm *
             </label>
             <input
               type="text"
               value={typedName}
-              onChange={e => setTypedName(e.target.value)}
+              onChange={e => { setTypedName(e.target.value); setFieldErrors(p => { const n = {...p}; delete n.typedName; return n }) }}
               placeholder={agentName.trim() || 'Your full legal name'}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35] focus:ring-1 focus:ring-[#0f4c35]"
+              className={`w-full border rounded-lg px-3 py-2.5 text-sm text-gray-900 focus:outline-none ${fieldErrors.typedName ? 'border-red-400 focus:border-red-500' : 'border-gray-200 focus:border-[#0f4c35] focus:ring-1 focus:ring-[#0f4c35]'}`}
             />
-            <p className="text-[11px] text-gray-400 mt-2">
-              Must exactly match the name above. Recorded as explicit-intent evidence alongside your drawn signature.
-            </p>
+            {fieldErrors.typedName
+              ? <p className="text-xs text-red-500 mt-2">{fieldErrors.typedName}</p>
+              : <p className="text-[11px] text-gray-400 mt-2">Must exactly match the name above. Recorded as explicit-intent evidence alongside your drawn signature.</p>
+            }
           </div>
 
-          <div>
+          <div id="cfield-signature">
             <p className="text-xs font-medium text-gray-500 mb-2">Signature *</p>
-            <SignaturePad onChange={setSignature} />
+            <SignaturePad onChange={sig => { setSignature(sig); if (sig) setFieldErrors(p => { const n = {...p}; delete n.signature; return n }) }} />
+            {fieldErrors.signature && <p className="text-xs text-red-500 mt-1">{fieldErrors.signature}</p>}
           </div>
 
           <p className="text-[11px] text-gray-400 leading-relaxed">
@@ -338,7 +355,7 @@ export default function ContractStep({ type, step, nextHref, nextLabel, isFinal 
         </button>
         <button
           onClick={submit}
-          disabled={saving || !template || !agree || !confirmIdentity || !typedName.trim() || !signature}
+          disabled={saving || !template}
           className="ml-auto px-5 py-2.5 text-sm font-medium bg-[#0f4c35] text-white rounded-xl hover:bg-[#0a3828] disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
           {saving ? 'Signing...' : nextLabel}
         </button>
