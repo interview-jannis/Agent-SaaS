@@ -266,6 +266,10 @@ export default function AdminAgentDetailPage() {
   const [deactivating, setDeactivating] = useState(false)
   const [deactivateConfirmName, setDeactivateConfirmName] = useState('')
   const [copiedInvite, setCopiedInvite] = useState(false)
+  const [inviteEmailInput, setInviteEmailInput] = useState('')
+  const [sendingInviteEmail, setSendingInviteEmail] = useState(false)
+  const [inviteEmailSent, setInviteEmailSent] = useState(false)
+  const [inviteEmailError, setInviteEmailError] = useState('')
 
   async function reassignAgent() {
     if (!agent || !reassignTargetId) return
@@ -561,6 +565,23 @@ export default function AdminAgentDetailPage() {
               ? `${window.location.origin}/invite/${agent.invite_token}`
               : `/invite/${agent.invite_token}`
             const expired = agent.invite_expires_at ? new Date(agent.invite_expires_at) < new Date() : false
+            async function handleSendInviteEmail() {
+              if (!inviteEmailInput.trim()) return
+              setSendingInviteEmail(true); setInviteEmailError(''); setInviteEmailSent(false)
+              try {
+                const res = await fetch('/api/admin/send-invite-email', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ invite_url: inviteUrl, recipient_email: inviteEmailInput.trim(), expires_at: agent?.invite_expires_at }),
+                })
+                if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? 'Failed') }
+                setInviteEmailSent(true)
+              } catch (e: unknown) {
+                setInviteEmailError((e as { message?: string })?.message ?? 'Failed to send.')
+              } finally {
+                setSendingInviteEmail(false)
+              }
+            }
             return (
               <section className="bg-gray-50 rounded-2xl p-5 space-y-3">
                 <div className="flex items-center justify-between flex-wrap gap-2">
@@ -585,6 +606,25 @@ export default function AdminAgentDetailPage() {
                 <p className="font-mono text-[11px] text-gray-800 break-all bg-white border border-gray-200 rounded-lg px-3 py-2">
                   {inviteUrl}
                 </p>
+                <div className="space-y-2">
+                  <div className="flex gap-2">
+                    <input
+                      type="email"
+                      value={inviteEmailInput}
+                      onChange={e => { setInviteEmailInput(e.target.value); setInviteEmailSent(false); setInviteEmailError('') }}
+                      placeholder="Send via email — agent@example.com"
+                      className="flex-1 text-sm text-gray-900 border border-gray-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-[#0f4c35]/30"
+                    />
+                    <button
+                      onClick={handleSendInviteEmail}
+                      disabled={sendingInviteEmail || !inviteEmailInput.trim()}
+                      className="text-xs font-medium bg-gray-700 text-white hover:bg-gray-600 px-3 py-1.5 rounded-lg disabled:opacity-40 shrink-0">
+                      {sendingInviteEmail ? 'Sending...' : 'Send Email'}
+                    </button>
+                  </div>
+                  {inviteEmailSent && <p className="text-xs text-[#0f4c35]">Invite email sent to {inviteEmailInput}</p>}
+                  {inviteEmailError && <p className="text-xs text-red-500">{inviteEmailError}</p>}
+                </div>
                 <p className="text-[11px] text-gray-500">
                   Share this with the agent to start onboarding. The link becomes invalid once they complete the Setup Wizard.
                 </p>

@@ -83,14 +83,14 @@ function buildHtml(message: string, linkUrl: string | null, isAdmin: boolean): s
     <tr><td align="center">
       <table cellpadding="0" cellspacing="0" style="background:#fff;border-radius:10px;overflow:hidden;max-width:560px;width:100%">
         <tr><td style="background:#0f4c35;padding:20px 32px">
-          <span style="color:#fff;font-size:22px;font-weight:700;letter-spacing:-0.5px">Tiktak</span>
+          <span style="color:#fff;font-size:22px;font-weight:700;letter-spacing:-0.5px">TikkTakk</span>
         </td></tr>
         <tr><td style="padding:32px;font-size:15px;line-height:1.7">
           ${body}
           ${button}
         </td></tr>
         <tr><td style="padding:20px 32px;background:#f9fafb;border-top:1px solid #e5e7eb">
-          <p style="margin:0;font-size:12px;color:#9ca3af">Tiktak by Interview Co. &middot; This is an automated notification.</p>
+          <p style="margin:0;font-size:12px;color:#9ca3af">TikkTakk by Interview Co. &middot; This is an automated notification.</p>
         </td></tr>
       </table>
     </td></tr>
@@ -105,7 +105,7 @@ export async function sendEmailToAgent(agentEmail: string, message: string, link
     await getResend().emails.send({
       from: FROM,
       to: agentEmail,
-      subject: `[Tiktak] ${getAgentSubject(message)}`,
+      subject: `[TikkTakk] ${getAgentSubject(message)}`,
       html: buildHtml(message, linkUrl, false),
     })
   } catch (e) {
@@ -119,11 +119,57 @@ export async function sendEmailToAdmin(adminEmail: string, message: string, link
     await getResend().emails.send({
       from: FROM,
       to: adminEmail,
-      subject: `[Tiktak] ${getAdminSubject(message)}`,
+      subject: `[TikkTakk] ${getAdminSubject(message)}`,
       html: buildHtml(message, linkUrl, true),
     })
   } catch (e) {
     console.error('[email] failed to send to admin', e)
+  }
+}
+
+export async function sendInviteEmailToAgent(recipientEmail: string, inviteUrl: string, expiresAt: string) {
+  if (!process.env.RESEND_API_KEY) return
+  const expiresFormatted = new Date(expiresAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+  const html = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,sans-serif">
+  <table width="100%" cellpadding="0" cellspacing="0" style="padding:40px 16px">
+    <tr><td align="center">
+      <table cellpadding="0" cellspacing="0" style="background:#fff;border-radius:10px;overflow:hidden;max-width:560px;width:100%">
+        <tr><td style="background:#0f4c35;padding:20px 32px">
+          <span style="color:#fff;font-size:22px;font-weight:700;letter-spacing:-0.5px">TikkTakk</span>
+        </td></tr>
+        <tr><td style="padding:32px;font-size:15px;line-height:1.7">
+          <p style="margin:0 0 16px;color:#374151">You have been invited to join TikkTakk as a partner agent.</p>
+          <p style="margin:0 0 8px;color:#374151">Here&apos;s what to expect when you click the link:</p>
+          <ul style="margin:8px 0 24px;padding-left:20px;color:#374151">
+            <li style="margin:4px 0"><strong>Step 1 — Orientation:</strong> Review our partnership guidelines (~5 min)</li>
+            <li style="margin:4px 0"><strong>Step 2 — Contracts:</strong> Sign the NDA and Partnership Agreement digitally</li>
+            <li style="margin:4px 0"><strong>Step 3 — Account Setup:</strong> Set your email, password, and bank details</li>
+          </ul>
+          <p style="margin:0 0 24px;color:#374151">Once you complete setup, your account will be reviewed and activated by our team.</p>
+          <a href="${inviteUrl}" style="display:inline-block;padding:12px 28px;background:#0f4c35;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;font-size:14px">Get Started</a>
+          <p style="margin:24px 0 0;font-size:12px;color:#9ca3af">This link expires on ${expiresFormatted}. If you have questions, contact your Interview Co. representative.</p>
+        </td></tr>
+        <tr><td style="padding:20px 32px;background:#f9fafb;border-top:1px solid #e5e7eb">
+          <p style="margin:0;font-size:12px;color:#9ca3af">TikkTakk by Interview Co. &middot; This is an automated notification.</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`
+  try {
+    await getResend().emails.send({
+      from: FROM,
+      to: recipientEmail,
+      subject: '[TikkTakk] You have been invited to join as a partner agent',
+      html,
+    })
+  } catch (e) {
+    console.error('[email] failed to send invite email to agent', e)
+    throw e
   }
 }
 
@@ -137,7 +183,7 @@ export async function sendIntakeEmailToClient(clientEmail: string, clientName: s
     <tr><td align="center">
       <table cellpadding="0" cellspacing="0" style="background:#fff;border-radius:10px;overflow:hidden;max-width:560px;width:100%">
         <tr><td style="background:#0f4c35;padding:20px 32px">
-          <span style="color:#fff;font-size:22px;font-weight:700;letter-spacing:-0.5px">Tiktak</span>
+          <span style="color:#fff;font-size:22px;font-weight:700;letter-spacing:-0.5px">TikkTakk</span>
         </td></tr>
         <tr><td style="padding:32px;font-size:15px;line-height:1.7">
           <p style="margin:0 0 12px;color:#374151">Dear ${clientName},</p>
@@ -146,7 +192,7 @@ export async function sendIntakeEmailToClient(clientEmail: string, clientName: s
           <a href="${intakeUrl}" style="display:inline-block;padding:12px 28px;background:#0f4c35;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;font-size:14px">Complete Your Profile</a>
         </td></tr>
         <tr><td style="padding:20px 32px;background:#f9fafb;border-top:1px solid #e5e7eb">
-          <p style="margin:0;font-size:12px;color:#9ca3af">Tiktak by Interview Co. &middot; This is an automated notification.</p>
+          <p style="margin:0;font-size:12px;color:#9ca3af">TikkTakk by Interview Co. &middot; This is an automated notification.</p>
         </td></tr>
       </table>
     </td></tr>
@@ -157,7 +203,7 @@ export async function sendIntakeEmailToClient(clientEmail: string, clientName: s
     await getResend().emails.send({
       from: FROM,
       to: clientEmail,
-      subject: '[Tiktak] Please complete your health intake form',
+      subject: '[TikkTakk] Please complete your health intake form',
       html,
     })
   } catch (e) {

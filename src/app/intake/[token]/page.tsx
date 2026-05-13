@@ -436,7 +436,7 @@ export default function IntakePage() {
     <div className="min-h-screen bg-white">
       {/* Header */}
       <div className="border-b border-gray-100 px-6 py-4 flex items-center gap-3">
-        <span className="text-base font-semibold tracking-tight text-[#0f4c35]">Tiktak</span>
+        <span className="text-base font-semibold tracking-tight text-[#0f4c35]">TikkTakk</span>
         <span className="text-gray-200">|</span>
         <span className="text-sm text-gray-500">Health & Travel Profile</span>
       </div>

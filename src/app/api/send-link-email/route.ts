@@ -4,10 +4,10 @@ import { Resend } from 'resend'
 const FROM = 'TIKKTAKK <noreply@interviewcorp.co.kr>'
 
 const SUBJECTS: Record<string, string> = {
-  quotation: '[Tiktak] Your quotation is ready',
-  invoice: '[Tiktak] Your invoice is ready',
-  schedule: '[Tiktak] Your travel schedule is ready',
-  contract: '[Tiktak] Your contract is ready to sign',
+  quotation: '[TikkTakk] Your quotation is ready',
+  invoice: '[TikkTakk] Your invoice is ready',
+  schedule: '[TikkTakk] Your travel schedule is ready',
+  contract: '[TikkTakk] Your contract is ready to sign',
   partner_view: '[TIKKTAKK] 고객 정보가 공유되었습니다',
 }
 
@@ -49,7 +49,7 @@ function buildHtml(url: string, type: string): string {
     <tr><td align="center">
       <table cellpadding="0" cellspacing="0" style="background:#fff;border-radius:10px;overflow:hidden;max-width:560px;width:100%">
         <tr><td style="background:#0f4c35;padding:20px 32px">
-          <span style="color:#fff;font-size:22px;font-weight:700;letter-spacing:-0.5px">Tiktak</span>
+          <span style="color:#fff;font-size:22px;font-weight:700;letter-spacing:-0.5px">TikkTakk</span>
         </td></tr>
         <tr><td style="padding:32px;font-size:15px;line-height:1.7">
           <p style="margin:0 0 8px;font-size:18px;font-weight:600;color:#111827">${content.heading}</p>
@@ -57,7 +57,7 @@ function buildHtml(url: string, type: string): string {
           <a href="${url}" style="display:inline-block;padding:12px 28px;background:#0f4c35;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;font-size:14px">${content.cta}</a>
         </td></tr>
         <tr><td style="padding:20px 32px;background:#f9fafb;border-top:1px solid #e5e7eb">
-          <p style="margin:0;font-size:12px;color:#9ca3af">Tiktak by Interview Co. &middot; This is an automated notification.</p>
+          <p style="margin:0;font-size:12px;color:#9ca3af">TikkTakk by Interview Co. &middot; This is an automated notification.</p>
         </td></tr>
       </table>
     </td></tr>
@@ -74,7 +74,7 @@ export async function POST(req: Request) {
   if (!url) return NextResponse.json({ error: 'Missing url.' }, { status: 400 })
 
   const resend = new Resend(process.env.RESEND_API_KEY)
-  const subject = SUBJECTS[type ?? ''] ?? '[Tiktak] A document is ready for you'
+  const subject = SUBJECTS[type ?? ''] ?? '[TikkTakk] A document is ready for you'
   const html = buildHtml(url, type ?? 'quotation')
 
   let sent = 0

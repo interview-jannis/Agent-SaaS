@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { randomBytes } from 'crypto'
+import { sendInviteEmailToAgent } from '@/lib/email'
 
 // Creates an invite link for a new Agent. No credentials to hand off —
 // Admin shares the URL and the agent goes straight into onboarding.
@@ -13,7 +14,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Service role key not configured on server.' }, { status: 500 })
   }
 
-  const body = await req.json().catch(() => ({})) as { inviting_auth_user_id?: string | null }
+  const body = await req.json().catch(() => ({})) as { inviting_auth_user_id?: string | null; recipient_email?: string | null }
 
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -75,6 +76,17 @@ export async function POST(req: Request) {
   if (insertError) {
     await supabase.auth.admin.deleteUser(authData.user.id)
     return NextResponse.json({ error: insertError.message }, { status: 500 })
+  }
+
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://tiktak.interviewcorp.co.kr'
+  const inviteUrl = `${appUrl}/invite/${token}`
+
+  if (body.recipient_email?.trim()) {
+    try {
+      await sendInviteEmailToAgent(body.recipient_email.trim(), inviteUrl, expiresAt.toISOString())
+    } catch {
+      // non-fatal — link is still returned
+    }
   }
 
   return NextResponse.json({

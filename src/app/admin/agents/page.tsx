@@ -56,6 +56,10 @@ export default function AdminAgentsPage() {
   const [createError, setCreateError] = useState('')
   const [createdInvite, setCreatedInvite] = useState<{ agent_number: string; invite_url: string; expires_at: string } | null>(null)
   const [copiedInvite, setCopiedInvite] = useState(false)
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [sendingEmail, setSendingEmail] = useState(false)
+  const [emailSent, setEmailSent] = useState(false)
+  const [emailError, setEmailError] = useState('')
 
   async function fetchAll() {
     const [agentsRes, adminsRes, casesRes, clientsRes, settlementsRes, rateRes, evalsRes] = await Promise.all([
@@ -105,7 +109,10 @@ export default function AdminAgentsPage() {
       const res = await fetch('/api/admin/invite-agent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ inviting_auth_user_id: session?.user?.id ?? null }),
+        body: JSON.stringify({
+          inviting_auth_user_id: session?.user?.id ?? null,
+          recipient_email: inviteEmail.trim() || null,
+        }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed')
@@ -115,6 +122,7 @@ export default function AdminAgentsPage() {
         invite_url: `${origin}${data.invite_path}`,
         expires_at: data.expires_at,
       })
+      if (inviteEmail.trim()) setEmailSent(true)
       await fetchAll()
     } catch (e: unknown) {
       setCreateError((e as { message?: string })?.message ?? 'Failed.')
@@ -123,9 +131,28 @@ export default function AdminAgentsPage() {
     }
   }
 
+  async function sendInviteEmail() {
+    if (!createdInvite || !inviteEmail.trim()) return
+    setSendingEmail(true); setEmailError(''); setEmailSent(false)
+    try {
+      const res = await fetch('/api/admin/send-invite-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ invite_url: createdInvite.invite_url, recipient_email: inviteEmail.trim(), expires_at: createdInvite.expires_at }),
+      })
+      if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? 'Failed') }
+      setEmailSent(true)
+    } catch (e: unknown) {
+      setEmailError((e as { message?: string })?.message ?? 'Failed to send.')
+    } finally {
+      setSendingEmail(false)
+    }
+  }
+
   function closeCreateModal() {
     setShowCreate(false)
     setCreateError(''); setCreatedInvite(null); setCopiedInvite(false)
+    setInviteEmail(''); setEmailSent(false); setEmailError('')
   }
 
   // Per-agent aggregates
@@ -329,9 +356,20 @@ export default function AdminAgentsPage() {
                 <div>
                   <h3 className="text-sm font-semibold text-gray-900">Invite a New Agent</h3>
                   <p className="text-xs text-gray-500 mt-1">
-                    Generates a one-use invite link. Share it via WhatsApp / email — the agent opens
-                    it and goes straight into Orientation and contract signing. The link expires in 7 days.
+                    Generates a one-use invite link valid for 7 days. The agent opens it and goes straight into
+                    Orientation and contract signing.
                   </p>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs text-gray-500">Agent&apos;s Email <span className="text-gray-400">(optional — send invite directly)</span></label>
+                  <input
+                    type="email"
+                    value={inviteEmail}
+                    onChange={e => setInviteEmail(e.target.value)}
+                    placeholder="agent@example.com"
+                    className="w-full text-sm text-gray-900 border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#0f4c35]/30"
+                  />
                 </div>
 
                 {createError && <p className="text-xs text-red-500">{createError}</p>}
@@ -341,7 +379,7 @@ export default function AdminAgentsPage() {
                     className="text-xs text-gray-500 hover:text-gray-800 px-3 py-1.5 rounded-lg disabled:opacity-40">Cancel</button>
                   <button onClick={createInvite} disabled={creating}
                     className="text-xs font-medium bg-[#0f4c35] text-white hover:bg-[#0a3828] px-4 py-1.5 rounded-lg disabled:opacity-40">
-                    {creating ? 'Generating...' : 'Generate Invite Link'}
+                    {creating ? 'Generating...' : inviteEmail.trim() ? 'Generate & Send Email' : 'Generate Invite Link'}
                   </button>
                 </div>
               </>
@@ -382,6 +420,26 @@ export default function AdminAgentsPage() {
                       {new Date(createdInvite.expires_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                     </span>
                   </div>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex gap-2">
+                    <input
+                      type="email"
+                      value={inviteEmail}
+                      onChange={e => { setInviteEmail(e.target.value); setEmailSent(false); setEmailError('') }}
+                      placeholder="Send via email — agent@example.com"
+                      className="flex-1 text-sm text-gray-900 border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#0f4c35]/30"
+                    />
+                    <button
+                      onClick={sendInviteEmail}
+                      disabled={sendingEmail || !inviteEmail.trim()}
+                      className="text-xs font-medium bg-gray-700 text-white hover:bg-gray-600 px-3 py-1.5 rounded-lg disabled:opacity-40 shrink-0">
+                      {sendingEmail ? 'Sending...' : 'Send'}
+                    </button>
+                  </div>
+                  {emailSent && <p className="text-xs text-[#0f4c35]">Invite email sent to {inviteEmail}</p>}
+                  {emailError && <p className="text-xs text-red-500">{emailError}</p>}
                 </div>
 
                 <p className="text-[11px] text-gray-500">
