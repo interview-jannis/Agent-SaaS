@@ -975,7 +975,7 @@ export default function AgentProductPage() {
             Array.from(productsBySubcategory.values()).every(arr => arr.length === 0) ? (
               <div className="flex items-center justify-center h-48"><p className="text-sm text-gray-400">No products found</p></div>
             ) : (
-              <div className="space-y-4">
+              <div className="space-y-6">
                 {availableSubcategories.map(sub => {
                   const items = productsBySubcategory.get(sub) ?? []
                   if (items.length === 0) return null
@@ -983,9 +983,9 @@ export default function AgentProductPage() {
                   const preview = items.slice(0, PREVIEW)
                   const hasMore = items.length > PREVIEW
                   return (
-                    <section key={sub} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
-                      <div className="flex items-center justify-between mb-3 pb-2 border-b border-gray-100">
-                        <h2 className="text-sm font-semibold text-gray-800">{sub}</h2>
+                    <div key={sub}>
+                      <div className="flex items-center justify-between mb-3 pb-2 border-b border-gray-200">
+                        <h2 className="text-sm font-semibold text-gray-700">{sub}</h2>
                         <button onClick={() => setSelectedSubcategoryName(sub)} className="text-xs text-[#0f4c35] font-medium hover:underline">
                           {hasMore ? `See all (${items.length}) →` : 'See all →'}
                         </button>
@@ -993,16 +993,21 @@ export default function AgentProductPage() {
                       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
                         {preview.map(p => renderProductCard(p, true))}
                       </div>
-                    </section>
+                    </div>
                   )
                 })}
               </div>
             )
           ) : filteredProducts.length === 0 ? (
             <div className="flex items-center justify-center h-48"><p className="text-sm text-gray-400">No products found</p></div>
-          ) : (PARTNER_GROUPED_SUBCATEGORIES.has(selectedSubcategoryName) ||
-            (selectedSubcategoryName === '' && filteredProducts.length > 0 &&
-              filteredProducts.every(p => productTagNames(p).some(n => PARTNER_GROUPED_SUBCATEGORIES.has(n))))) ? (
+          ) : (() => {
+            const selectedCatName = categories.find(c => c.id === selectedCategoryId)?.name ?? ''
+            const isKBeautyWithSub = selectedCatName === 'K-Beauty' && selectedSubcategoryName !== ''
+            return PARTNER_GROUPED_SUBCATEGORIES.has(selectedSubcategoryName) ||
+              isKBeautyWithSub ||
+              (selectedSubcategoryName === '' && filteredProducts.length > 0 &&
+                filteredProducts.every(p => productTagNames(p).some(n => PARTNER_GROUPED_SUBCATEGORIES.has(n))))
+          })() ? (
             (() => {
               const byPartner = new Map<string, Product[]>()
               for (const p of filteredProducts) {
