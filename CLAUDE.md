@@ -5,7 +5,7 @@
 ## 프로젝트 개요
 (주)인터뷰가 개발 중인 글로벌·중동 VIP 의료관광 에이전트 전용 SaaS.
 - 법인명: Interview Co., Ltd. (법적 계약 당사자)
-- SaaS 브랜드명: **Tiktak** (UI 전역)
+- SaaS 브랜드명: **TikkTakk** (UI 전역)
 - 개발 방식: 바이블코딩, 2인 개발
 - 일정: 킥오프 4/16 → 개발 완료 5/8 → 내부 시뮬레이션 5/11~15 → 런칭 5/18 (5주 MVP)
 
@@ -28,8 +28,10 @@
 - 정산: #S-
 
 ## 마진율 구조
-- 고객 견적가 = 원가 × (1 + 회사 마진율 + 에이전트 마진율)
-- 에이전트 마진율 자동 적용 (당월 travel_completed 환자 수 기준, case_members 합산)
+- 고객 견적가 = 원가 × (1 + markupRate). 커미션 = 판가 × commissionRate.
+- **카테고리별 독립 마진율** (`system_settings.markup_rates`, `MarkupRatesConfig`): K-Medical / K-Beauty / K-Wellness Spa / K-Wellness Other / K-Starcation / K-Education / Subpackage Hotel / Subpackage Other / Concierge 각각 설정. super admin 전용 편집.
+- `src/lib/pricing.ts` `getMarkupRate(category, subcategory, config)` — 단일 진실 소스.
+- 에이전트 커미션율 자동 적용 (당월 travel_completed 환자 수 기준, case_members 합산)
   - 0~10명: 15%
   - 11~30명: 20%
   - 30명+: 25%
@@ -150,8 +152,9 @@ Agent 수동 개입:
 
 ### 테이블 목록 (현재 스키마)
 - **product_categories**: id, name, sort_order. 6개 fixed (K-Medical, K-Beauty, K-Wellness, K-Education, K-Starcation, Subpackage). Excel upload는 카테고리 자동 추가 X — Manage Categories에서 명시 추가만.
-- **product_subcategories**: id, category_id, name, sort_order. K-Beauty는 클리닉명(DIAR/Dr.Tune's/...), K-Medical은 진료과(Health Check-up). Excel upload 시 자동 생성.
+- **product_subcategories**: id, category_id, name, sort_order. K-Beauty = 시술 타입(Stem Cell/Lifting/Skin Care), K-Medical = 진료과(Health Screening). Excel upload 시 자동 생성.
 - **products**: id, product_number, category_id, **subcategory_id**, name, description, base_price, price_currency, partner_name, duration_value, duration_unit, has_female_doctor, has_prayer_room, dietary_type, location_address, contact_channels(jsonb), is_active. ⚠️ `sort_order` 컬럼 없음 — sort는 product_number로.
+- **product_subcategory_tags** (2026-05-13): product_id(FK), subcategory_id(FK), PK(product_id, subcategory_id). 상품이 복수 서브카테고리에 속할 때 사용 (예: "Stem Cell, Lifting"). Excel subcategory 컬럼을 콤마 구분 → junction row 자동 생성. `products.subcategory_id`는 첫 번째 값(하위 호환 유지). ⚠️ 이 테이블 추가 후 `product_subcategories` join에 PGRST201(FK 모호성) 에러 발생 — 쿼리에서 반드시 explicit FK name 사용: `product_subcategories!products_subcategory_id_fkey(name)`, `product_subcategories!product_subcategory_tags_subcategory_id_fkey(name)`.
 - **product_variants** (2026-05-04): id, product_id, variant_label(NULL=default/sole), base_price, price_currency, sort_order, is_active. 같은 base name 상품의 다른 회차/사이즈/grade를 묶음. 모든 product에 최소 1개 default variant 보장. **편집 경로 2가지**: ProductForm(인라인 CRUD, 일상 운영) + Excel upload(bulk seed). Agent detail 모달은 variant_label에 ` · ` 있을 때 prefix 그룹핑해서 2-level 아코디언 노출 (예: `Face · 1 session` / `Face · 3 sessions` → "Face" 그룹 펼치면 sessions). product.base_price/price_currency는 첫 variant 값으로 sync되는 legacy 컬럼 — UI는 variants 사용.
 - **product_images**: id, product_id, image_url, is_primary, order
 - **admins**: id, auth_user_id, name, email, **title** (signer 직책), **is_super_admin** (BOOLEAN, 권한 분기), created_at
@@ -204,7 +207,9 @@ Agent 수동 개입:
 - 고객 URL 페이지: src/app/quote/[slug]/ , src/app/invoice/[slug]/ , src/app/schedule/[slug]/
 - API 라우트: src/app/api/ (service role 필요한 작업용)
   - **계약서 sign API** (2026-05-04): `/api/onboarding/sign-contract` (agent 사인), `/api/admin/sign-contract` (admin counter-sign). 서버사이드 IP/SHA-256 hash/typed_name 본인검증/body token 서버 substitute.
-  - **상품 일괄 업로드** (2026-05-04): `/api/admin/products/upload-excel`. multipart xlsx, UPSERT (cat+partner+name natural key, variant_label로 variant 매칭), `?dryRun=true`로 preview, `?deleteMissing=true`로 옵트인 일괄 삭제 (누락 row 자동 클린업). 신규 product_number는 MAX(numeric)+1로 발번 (count+1은 sparse 번호와 충돌함). **Health Screening 파싱 특칙 (5/12)**: `subcategory = "Health Screening"`이고 `variant_label` 있으면 → `name`에 성별 합치고(`VIP Premium Male`) `variant_label` 비움 — 성별별 독립 product + 독립 description 보장.
+  - **상품 일괄 업로드** (2026-05-04): `/api/admin/products/upload-excel`. multipart xlsx, UPSERT (cat+partner+name natural key, variant_label로 variant 매칭), `?dryRun=true`로 preview, `?deleteMissing=true`로 옵트인 일괄 삭제. 신규 product_number는 MAX(numeric)+1로 발번. **Health Screening 파싱 특칙 (5/12)**: `subcategory = "Health Screening"`이고 `variant_label` 있으면 → `name`에 성별 합치고(`VIP Premium Male`) `variant_label` 비움. **멀티태그 (5/13)**: subcategory 컬럼 콤마 구분 → `product_subcategory_tags` 자동 sync.
+  - **상품 이미지 일괄 업로드** (2026-05-08): `/api/admin/products/bulk-images`. 파일명 기반 매칭. `P-001.jpg`(primary), `P-001-2.jpg`(추가). **다중 상품 (5/13)**: `P-101,102,103.jpg` 콤마 구분으로 여러 상품 동시 적용.
+  - **Agent 초대 이메일 (5/13)**: `/api/admin/invite-agent`(recipient_email 옵션), `/api/admin/send-invite-email`(기존 초대 재발송). `src/lib/email.ts` `sendInviteEmailToAgent()`.
   - 그 외: agent setup, create-agent, claim-admin-invite, notify-signed, etc.
 - 타입 정의는 src/types/
 
@@ -213,7 +218,7 @@ Agent 수동 개입:
 - `src/lib/caseStatus.ts` — case status 단일 소스 (라벨/스타일/오너/CANCELLABLE/ACTIVE/TRAVEL_DONE). `Awaiting Final Pricing` 라벨.
 - `src/lib/caseTransitions.ts` — 상태 전이 헬퍼 (`isTravelDone` 등)
 - `src/lib/documents.ts` — documents 모델 read/write 헬퍼 (4/30 SOP 5종 invoice)
-- `src/lib/pricing.ts` (2026-05-04, 5/7 업데이트) — `appliesMargin(category, subcategory)` 단일 진실 소스. K-Wellness>Spa/Henna만 마진, 나머지 Wellness + Subpackage 기본은 원가 통과. `subpackageMult(config)`: disabled면 0(무상), enabled면 1+rate. `isHotelItem` / `nightsBetween` 헬퍼. `variantPriceUsd/Krw` 헬퍼 — agent home cart, review page, quote 모두 이걸 통해 가격 계산.
+- `src/lib/pricing.ts` (5/13 재설계) — `MarkupRatesConfig` 9카테고리 독립 마진율. `getMarkupRate(category, subcategory, config)` 단일 진실 소스. `variantPriceUsd/Krw(basePrice, currency, exchangeRate, markupRate)`. `isHotelItem` / `nightsBetween` / `daysBetween` 헬퍼.
 - `src/lib/notifications.ts` — `createNotification`, `notifyAgent`, `notifyAllAdmins`
 - `src/lib/audit.ts` — `logAudit`, `getActor`, `logAsCurrentUser`. **5/4 sweep**: products(create/update/delete/bulk_upload), categories/subcategories, system_settings, contract_templates, clients(create/update), admins(invite/delete), documents(issue/item_added/item_removed/paid)도 모두 logged. `/admin/audit` 아이콘 톤 monochrome 통일. 새 액션 추가 시 [`/admin/audit/page.tsx`](src/app/admin/audit/page.tsx)의 `ACTION_VERB` + `ACTION_TONE` + `ActionIcon` paths 3곳 모두 등록 필요 (안 그러면 dot fallback).
 - `src/hooks/useNotifications.ts` — Realtime 구독
@@ -251,13 +256,23 @@ Agent 수동 개입:
 
 > 모든 버튼은 solid(테두리=채우기 동일). `text-[#0f4c35] border border-green-200` 등 outline/ghost 스타일 신규 사용 금지.
 
-### 에이전트 상품 카탈로그 3차 카테고리 (5/12)
-- 경로: `src/app/agent/product/page.tsx`
+### 에이전트 상품 카탈로그 3차 카테고리 (5/12~13)
+- 경로: `src/app/agent/product/page.tsx` (동일 로직이 `src/app/admin/products/page.tsx`에도 적용)
 - 탭 구조: Category(1행) → Subcategory(2행) → Partner pills(3행, 조건부)
-- **`PARTNER_GROUPED_SUBCATEGORIES = new Set(['Health Screening'])`** 상수로 파트너 필터가 필요한 subcategory 목록 관리. 새 subcategory 추가 시 이 Set에만 추가하면 됨.
+- **`PARTNER_GROUPED_SUBCATEGORIES = new Set(['Health Screening'])`** 상수로 파트너 필터가 필요한 subcategory 목록 관리.
+- **K-Beauty는 별도 로직**: `selectedCatName === 'K-Beauty'`이면 항상 partner pills 표시 (subcategory 선택 여부 무관). K-Medical처럼 Row2=시술타입, Row3=클리닉 구조.
 - partner pills 노출 조건: `availablePartnerNames.length > 1` — 파트너 1개면 pills 숨김(그룹 헤더도 생략).
 - K-Medical > All 상태에서도 visible product 전부 `PARTNER_GROUPED_SUBCATEGORIES`에 속하면 파트너 그룹핑 적용.
-- subcategory sections view(홈 All 패턴 재사용): `selectedSubcategoryName === '' && selectedPartnerName === '' && availableSubcategories.length > 1`일 때 subcategory별 섹션 카드(최대 6 preview + "See all (N) →" 링크)로 표시. 치과/한방 등 신규 subcategory 추가 시 자동 전환.
+- subcategory sections view(홈 All 패턴 재사용): `selectedSubcategoryName === '' && selectedPartnerName === '' && availableSubcategories.length > 1`일 때 subcategory별 섹션 카드(최대 6 preview + "See all (N) →" 링크)로 표시.
+- **멀티태그**: `productTagNames(p)` 헬퍼로 `product_subcategory_tags` 배열 읽고 없으면 primary `subcategory_id` fallback. 한 상품이 여러 subcategory 버킷에 동시 노출 가능.
+- **Admin Jump-to 카운트**: 필터 상태 무관, 전체 products 기준 (`products.filter(p => p.category_id === cat.id).length`).
+
+### Bulk 이미지 업로드 파일명 규칙
+- `P-001.jpg` — P-001 primary 이미지
+- `P-001-2.jpg` — P-001 추가 이미지 (order 2)
+- `P-101,102,103.jpg` — 세 상품 동시 primary 적용 (5/13 추가, 공백 허용)
+- `P-101, 102, 103-2.jpg` — 세 상품 동시 추가 이미지
+- 같은 product 업로드 시 기존 이미지 전체 교체됨
 
 ### 파괴적 액션 확인 UX 패턴
 - 상품 이름 등 **정확한 텍스트를 직접 입력해야 Delete 버튼 활성화** (`deleteConfirmInput.trim() !== targetName.trim()` → disabled).

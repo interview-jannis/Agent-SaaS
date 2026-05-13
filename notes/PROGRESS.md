@@ -1,11 +1,12 @@
 # Project Progress
 
 ## 현재 상태
-- **Phase**: 시뮬 D+1(5/12). 오전: 버튼 체계+Invoice+canEdit+인코딩 복구. 오후: Health Screening 상품 분리, 카탈로그 3차 카테고리 필터, 상품 삭제 확인 모달, vehicle per_day 자동 일수, Edit picker sticky + 자동스크롤, completed 케이스 Financials 최상단, agent 비활성화 3-layer 차단.
-- **마지막 작업**: 2026-05-12 저녁 — agent deactivation 3-layer block (로그인 차단 + Guard + /deactivated 전용 페이지).
-- **마지막 업데이트**: 2026-05-12 (시뮬레이션 5/11~15, 런칭 5/18)
-- **SaaS 브랜드명**: **TikkTakk** (5/9 전역 치환 완료)
+- **Phase**: 시뮬 D+2(5/13). 카테고리별 마진율 재설계, Agent 초대 이메일, 상품 멀티태그(product_subcategory_tags), PGRST201 FK 모호성 버그 해결, K-Beauty 3단계 카탈로그, Bulk 이미지 다중 상품 적용.
+- **마지막 작업**: 2026-05-13 — K-Beauty 3단계 nav + PGRST201 fix + Bulk image 다중 상품.
+- **마지막 업데이트**: 2026-05-13 (시뮬레이션 5/11~15, 런칭 5/18)
+- **SaaS 브랜드명**: **TikkTakk** (전역 치환 완료)
 
+> 2026-05-13: `notes/26.05.13.md` §1–7 (카테고리별 마진율 재설계. Agent 초대 이메일. 상품 멀티 서브카테고리 junction table. PGRST201 FK 모호성 버그. K-Beauty 3단계 카탈로그. K-Medical Male/Female 별도 유지 결정. Bulk 이미지 다중 상품 적용).
 > 2026-05-12 저녁: `notes/26.05.12.md` §9–12 + §13–19 (vehicle per_day. Edit picker sticky. completed 케이스 Financials 최상단. Agent 비활성화 3-layer. Agent 삭제 이름 확인. Schedule Shared 탭 제거. 파트너사 공유 링크. 고객 intake 링크. 여권 사본 업로드. Agent 평가. 이메일 인프라).
 > 2026-05-12: `notes/26.05.12.md` §1–5 (인코딩 복구. 버튼 4-tier. Invoice SVG+이메일. canEdit 픽스. Agent 승인/활성화 알림 양방향 + Setup draft 저장). §6–8 (Health Screening 파싱. 카탈로그 partner pills. 상품 삭제 확인 모달).
 > 2026-05-11 추가: `notes/26.05.11.md` §10–15 (Agent 계약서 재열람. Subpackage free→호텔 0원 버그. 케이스 금액 환율 불일치. 고객 정보 admin 패널. Concierge footer admin fallback. Financials 항상 열림).
@@ -107,7 +108,7 @@
 - [x] **Subpackage 서비스 일수 수량 컨트롤** — vehicle `per_day` 아이템을 호텔과 동일하게 `daysLive` auto 방식으로 구현 (−/+ UI 대신 날짜 기반 자동 계산). `pricing.ts daysBetween` early-return + `agent/product/page.tsx daysLive` useMemo. (5/12 §9)
 - [x] **Setup Wizard localStorage draft** — `src/app/onboarding/setup/page.tsx`에 `loadDraft/saveDraft/clearDraft` 구현됨. key: `tiktak_setup_draft`. 비밀번호 필드 제외. (코드 확인 5/12)
 - [x] **Agent setup 완료 → Admin 알림+이메일** — `src/app/api/agent/setup/route.ts`에서 setup 완료 시 `notifyAssignedAdmin` + `sendEmailToAdmin()` 구현됨. (코드 확인 5/12)
-- [ ] **상품 카탈로그 3번째 티어 (Phase 2)** — `K-Medical > Health Screening > A센터` 같이 provider/clinic 단위 하위 분류. `product_subsubcategories` 테이블 신규 + FK 체인 + Excel upload + ProductForm + 에이전트 카탈로그 UI. 현재는 Female/Male/Junior를 같은 subcategory 내 별도 product로 처리. 센터 2곳 이상 되는 시점에 설계.
+- [x] **상품 카탈로그 3번째 티어** — `product_subcategory_tags` junction table + 멀티태그 Excel 파싱 + K-Beauty/K-Medical partner pills 3단계 UI. PGRST201 FK 모호성 버그 수반 → explicit FK name으로 해결. (5/13)
 - [ ] **호텔 객실 정원 검증 (Phase 2)** — `product_variants`에 `min_occupancy/max_occupancy` 컬럼, ProductForm + Excel upload에 입력, v18 데이터 backfill, 카트에서 group memberCount > max_occupancy 시 경고. 견적 금액엔 영향 없음 (UX 안전장치). 시뮬에서 발견해도 늦지 않음
 - [x] **데이터 마스터 v17 → v18** (5/4 저녁: DIAR 159 rows → 11 base + 159 variants, Hotel 37 rows → 13 base + 37 variants. `[★5 Hotel]` strip + grade paren strip + Hanok inline. 사용자 검수 후 deleteMissing으로 옛 row 정리)
 - [x] **Agent 카탈로그 정렬 정책** — 가격 desc 적용 (5/4 저녁). 인기순(5건+)은 케이스 쌓이면 도입 (backlog)
