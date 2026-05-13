@@ -614,22 +614,35 @@ export default function AdminAgentDetailPage() {
                   {inviteUrl}
                 </p>
                 <div className="space-y-2">
+                  {inviteEmailSent && (
+                    <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+                      <svg className="w-3.5 h-3.5 text-green-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                      </svg>
+                      <span className="text-xs text-green-800">Invite email sent to <span className="font-medium">{inviteEmailInput}</span></span>
+                    </div>
+                  )}
                   <div className="flex gap-2">
-                    <input
-                      type="email"
-                      value={inviteEmailInput}
-                      onChange={e => { setInviteEmailInput(e.target.value); setInviteEmailSent(false); setInviteEmailError('') }}
-                      placeholder="Send via email — agent@example.com"
-                      className="flex-1 text-sm text-gray-900 border border-gray-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-[#0f4c35]/30"
-                    />
+                    {inviteEmailInput ? (
+                      <span className="flex-1 text-sm text-gray-700 border border-gray-200 rounded-lg px-3 py-1.5 bg-white truncate">
+                        {inviteEmailInput}
+                      </span>
+                    ) : (
+                      <input
+                        type="email"
+                        value={inviteEmailInput}
+                        onChange={e => { setInviteEmailInput(e.target.value); setInviteEmailSent(false); setInviteEmailError('') }}
+                        placeholder="Send via email — agent@example.com"
+                        className="flex-1 text-sm text-gray-900 border border-gray-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-[#0f4c35]/30"
+                      />
+                    )}
                     <button
                       onClick={handleSendInviteEmail}
                       disabled={sendingInviteEmail || !inviteEmailInput.trim()}
                       className="text-xs font-medium bg-gray-700 text-white hover:bg-gray-600 px-3 py-1.5 rounded-lg disabled:opacity-40 shrink-0">
-                      {sendingInviteEmail ? 'Sending...' : 'Send Email'}
+                      {sendingInviteEmail ? 'Sending...' : inviteEmailSent ? 'Resend' : 'Send Email'}
                     </button>
                   </div>
-                  {inviteEmailSent && <p className="text-xs text-[#0f4c35]">Invite email sent to {inviteEmailInput}</p>}
                   {inviteEmailError && <p className="text-xs text-red-500">{inviteEmailError}</p>}
                 </div>
                 <p className="text-[11px] text-gray-500">
