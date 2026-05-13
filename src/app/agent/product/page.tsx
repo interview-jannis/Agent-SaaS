@@ -34,6 +34,7 @@ type Product = {
   subcategory_id: string | null
   product_categories: { name: string } | null
   product_subcategories: { name: string } | null
+  product_subcategory_tags: { product_subcategories: { name: string } | null }[]
   product_images: { image_url: string; is_primary: boolean }[]
   product_variants: Variant[]
 }
@@ -241,7 +242,7 @@ export default function AgentProductPage() {
         supabase.from('system_settings').select('value').eq('key', 'markup_rates').maybeSingle(),
         supabase
           .from('products')
-          .select('id, name, description, base_price, price_currency, duration_value, duration_unit, quantity_type, partner_name, has_female_doctor, has_prayer_room, dietary_type, category_id, subcategory_id, product_categories(name), product_subcategories(name), product_images(image_url, is_primary), product_variants(id, variant_label, base_price, price_currency, sort_order, is_active)')
+          .select('id, name, description, base_price, price_currency, duration_value, duration_unit, quantity_type, partner_name, has_female_doctor, has_prayer_room, dietary_type, category_id, subcategory_id, product_categories(name), product_subcategories!products_subcategory_id_fkey(name), product_subcategory_tags(product_subcategories!product_subcategory_tags_subcategory_id_fkey(name)), product_images(image_url, is_primary), product_variants(id, variant_label, base_price, price_currency, sort_order, is_active)')
           .eq('is_active', true),
         supabase.from('product_categories').select('id, name').order('sort_order').order('name'),
         supabase.from('product_subcategories').select('id, category_id, name, sort_order').order('sort_order').order('name'),
@@ -310,7 +311,7 @@ export default function AgentProductPage() {
   const filteredProducts = useMemo(() => {
     const list = products.filter((p) => {
       if (selectedCategoryId && p.category_id !== selectedCategoryId) return false
-      if (selectedSubcategoryName && p.product_subcategories?.name !== selectedSubcategoryName) return false
+      if (selectedSubcategoryName && !productTagNames(p).includes(selectedSubcategoryName)) return false
       if (selectedPartnerName && p.partner_name !== selectedPartnerName) return false
       return passesCrossFilters(p)
     })
@@ -318,24 +319,43 @@ export default function AgentProductPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [products, search, selectedCategoryId, selectedSubcategoryName, selectedPartnerName, filterPrayerRoom, filterDietary, filterFemaleMedical, exchangeRate, markupRatesConfig])
 
+  // Helper: get subcategory tag names for a product (falls back to primary subcategory)
+  function productTagNames(p: Product): string[] {
+    const tags = (p.product_subcategory_tags ?? [])
+      .map(t => t.product_subcategories?.name)
+      .filter((n): n is string => !!n)
+    if (tags.length > 0) return tags
+    const primary = p.product_subcategories?.name
+    return primary ? [primary] : []
+  }
+
   const availableSubcategories = useMemo(() => {
     if (!selectedCategoryId) return [] as string[]
-    const productSubIds = new Set(
-      products.filter(p => p.category_id === selectedCategoryId && p.subcategory_id).map(p => p.subcategory_id)
-    )
+    const names = new Set<string>()
+    for (const p of products) {
+      if (p.category_id !== selectedCategoryId) continue
+      for (const n of productTagNames(p)) names.add(n)
+    }
     return subcategories
-      .filter(s => s.category_id === selectedCategoryId && productSubIds.has(s.id))
+      .filter(s => s.category_id === selectedCategoryId && names.has(s.name))
       .map(s => s.name)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [products, subcategories, selectedCategoryId])
 
   const productsBySubcategory = useMemo(() => {
     const map = new Map<string, Product[]>()
     for (const sub of availableSubcategories) map.set(sub, [])
+    const seen = new Map<string, Set<string>>() // sub → product ids already added
+    for (const sub of availableSubcategories) seen.set(sub, new Set())
     for (const p of products) {
       if (p.category_id !== selectedCategoryId) continue
       if (!passesCrossFilters(p)) continue
-      const sub = p.product_subcategories?.name ?? ''
-      if (sub && map.has(sub)) map.get(sub)!.push(p)
+      for (const sub of productTagNames(p)) {
+        if (!map.has(sub)) continue
+        if (seen.get(sub)!.has(p.id)) continue
+        map.get(sub)!.push(p)
+        seen.get(sub)!.add(p.id)
+      }
     }
     for (const bucket of map.values()) {
       bucket.sort((a, b) => priceSortKey(b) - priceSortKey(a))
@@ -346,18 +366,21 @@ export default function AgentProductPage() {
 
   const availablePartnerNames = useMemo(() => {
     if (!selectedCategoryId) return [] as string[]
+    const selectedCatName = categories.find(c => c.id === selectedCategoryId)?.name ?? ''
     const relevant = products.filter(p => {
       if (p.category_id !== selectedCategoryId) return false
-      if (selectedSubcategoryName && p.product_subcategories?.name !== selectedSubcategoryName) return false
+      if (selectedSubcategoryName && !productTagNames(p).includes(selectedSubcategoryName)) return false
       return true
     })
     const allPartnerGrouped = relevant.length > 0 &&
-      relevant.every(p => PARTNER_GROUPED_SUBCATEGORIES.has(p.product_subcategories?.name ?? ''))
-    if (!PARTNER_GROUPED_SUBCATEGORIES.has(selectedSubcategoryName) && !allPartnerGrouped) return [] as string[]
+      relevant.every(p => productTagNames(p).some(n => PARTNER_GROUPED_SUBCATEGORIES.has(n)))
+    const isKBeauty = selectedCatName === 'K-Beauty'
+    if (!PARTNER_GROUPED_SUBCATEGORIES.has(selectedSubcategoryName) && !isKBeauty && !allPartnerGrouped) return [] as string[]
     const names = new Set<string>()
     for (const p of relevant) { if (p.partner_name) names.add(p.partner_name) }
     return Array.from(names).sort()
-  }, [products, selectedCategoryId, selectedSubcategoryName])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [products, categories, selectedCategoryId, selectedSubcategoryName])
 
   const productsByCategory = useMemo(() => {
     const map = new Map<string, Product[]>()
@@ -979,7 +1002,7 @@ export default function AgentProductPage() {
             <div className="flex items-center justify-center h-48"><p className="text-sm text-gray-400">No products found</p></div>
           ) : (PARTNER_GROUPED_SUBCATEGORIES.has(selectedSubcategoryName) ||
             (selectedSubcategoryName === '' && filteredProducts.length > 0 &&
-              filteredProducts.every(p => PARTNER_GROUPED_SUBCATEGORIES.has(p.product_subcategories?.name ?? '')))) ? (
+              filteredProducts.every(p => productTagNames(p).some(n => PARTNER_GROUPED_SUBCATEGORIES.has(n))))) ? (
             (() => {
               const byPartner = new Map<string, Product[]>()
               for (const p of filteredProducts) {

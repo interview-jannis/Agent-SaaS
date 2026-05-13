@@ -5,6 +5,9 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { getMarkupRate, isHotelItem, type MarkupRatesConfig, DEFAULT_MARKUP_RATES } from '@/lib/pricing'
 
+// Subcategories where products are grouped by partner_name (3rd tier)
+const PARTNER_GROUPED_SUBCATEGORIES = new Set(['Health Screening'])
+
 type Category = {
   id: string
   name: string
@@ -32,6 +35,7 @@ type Product = {
   subcategory_id: string | null
   product_categories: { name: string } | null
   product_subcategories: { name: string } | null
+  product_subcategory_tags: { product_subcategories: { name: string } | null }[]
   product_images: { image_url: string; is_primary: boolean }[]
   product_variants: Variant[]
 }
@@ -91,8 +95,8 @@ export default function AdminProductsPage() {
       supabase.from('product_subcategories').select('id, category_id, name, sort_order').order('sort_order').order('name'),
       supabase
         .from('products')
-        .select('id, product_number, name, description, partner_name, base_price, price_currency, is_active, category_id, subcategory_id, product_categories(name), product_subcategories(name), product_images(image_url, is_primary), product_variants(id, variant_label, base_price, price_currency, sort_order, is_active)')
-        .order('product_number', { ascending: false }),
+        .select('id, product_number, name, description, partner_name, base_price, price_currency, is_active, category_id, subcategory_id, product_categories(name), product_subcategories!products_subcategory_id_fkey(name), product_subcategory_tags(product_subcategories!product_subcategory_tags_subcategory_id_fkey(name)), product_images(image_url, is_primary), product_variants(id, variant_label, base_price, price_currency, sort_order, is_active)')
+        .order('product_number', { ascending: true }),
       supabase.from('system_settings').select('value').eq('key', 'markup_rates').maybeSingle(),
       supabase.from('system_settings').select('value').eq('key', 'product_price_rate').single(),
     ])
@@ -127,22 +131,46 @@ export default function AdminProductsPage() {
 
 
 
-  // Subcategories available within the selected category — ordered by sort_order
-  const availableSubcategories = subcategories
-    .filter((s) => categoryFilter === '' || s.category_id === categoryFilter)
-    .filter((s) => products.some((p) => p.subcategory_id === s.id))
-    .map((s) => s.name)
+  // Helper: get subcategory tag names for a product (falls back to primary subcategory)
+  function productTagNames(p: Product): string[] {
+    const tags = (p.product_subcategory_tags ?? [])
+      .map(t => t.product_subcategories?.name)
+      .filter((n): n is string => !!n)
+    if (tags.length > 0) return tags
+    const primary = p.product_subcategories?.name
+    return primary ? [primary] : []
+  }
 
-  // Partners available in the current category+subcategory scope
-  const availablePartners = Array.from(
-    new Set(
-      products
-        .filter((p) => categoryFilter === '' || p.category_id === categoryFilter)
-        .filter((p) => subcategoryFilter === '' || p.product_subcategories?.name === subcategoryFilter)
-        .map((p) => p.partner_name)
-        .filter((n): n is string => !!n)
-    )
-  ).sort()
+  // Subcategories available within the selected category — tag-based
+  const availableSubcategories = (() => {
+    if (categoryFilter === '') return [] as string[]
+    const names = new Set<string>()
+    for (const p of products) {
+      if (p.category_id !== categoryFilter) continue
+      for (const n of productTagNames(p)) names.add(n)
+    }
+    return subcategories
+      .filter(s => s.category_id === categoryFilter && names.has(s.name))
+      .map(s => s.name)
+  })()
+
+  // Partners available in the current category+subcategory scope —
+  // only computed for PARTNER_GROUPED_SUBCATEGORIES or K-Beauty with a subcategory selected
+  const availablePartners = (() => {
+    if (categoryFilter === '') return [] as string[]
+    const selectedCatName = categories.find(c => c.id === categoryFilter)?.name ?? ''
+    const relevant = products.filter((p) => {
+      if (p.category_id !== categoryFilter) return false
+      if (subcategoryFilter && !productTagNames(p).includes(subcategoryFilter)) return false
+      return true
+    })
+    const allPartnerGrouped =
+      relevant.length > 0 &&
+      relevant.every((p) => productTagNames(p).some(n => PARTNER_GROUPED_SUBCATEGORIES.has(n)))
+    const isKBeauty = selectedCatName === 'K-Beauty'
+    if (!PARTNER_GROUPED_SUBCATEGORIES.has(subcategoryFilter) && !isKBeauty && !allPartnerGrouped) return [] as string[]
+    return Array.from(new Set(relevant.map((p) => p.partner_name).filter((n): n is string => !!n))).sort()
+  })()
 
   const filtered = products.filter((p) => {
     const matchSearch =
@@ -150,7 +178,7 @@ export default function AdminProductsPage() {
       p.name.toLowerCase().includes(search.toLowerCase()) ||
       p.product_number.toLowerCase().includes(search.toLowerCase())
     const matchCategory = categoryFilter === '' || p.category_id === categoryFilter
-    const matchSubcategory = subcategoryFilter === '' || p.product_subcategories?.name === subcategoryFilter
+    const matchSubcategory = subcategoryFilter === '' || productTagNames(p).includes(subcategoryFilter)
     const matchPartner = partnerFilter === '' || p.partner_name === partnerFilter
     const matchActive =
       activeFilter === '' ||
@@ -452,12 +480,11 @@ export default function AdminProductsPage() {
     <div className="flex flex-col h-full bg-white">
       <div className="shrink-0 border-b border-gray-100 px-4 md:px-6 py-3 xl:py-0 xl:h-14 flex flex-wrap xl:flex-nowrap items-center gap-y-2 gap-x-4">
         <h1 className="text-base font-semibold text-gray-900 shrink-0">Products</h1>
-        {!loading && filtered.length > 0 && (
+        {!loading && (
           <div className="flex-1 min-w-0 flex items-center gap-1 bg-gray-50 border border-gray-100 rounded-lg px-2 py-1 overflow-x-auto no-scrollbar">
             <span className="shrink-0 text-[10px] font-semibold text-gray-400 uppercase tracking-wider pr-1.5 mr-0.5 border-r border-gray-200">Jump</span>
             {categories.map((cat) => {
-              const count = groupedByCategory.get(cat.id)?.length ?? 0
-              if (count === 0) return null
+              const count = products.filter(p => p.category_id === cat.id).length
               return (
                 <button
                   key={cat.id}
@@ -852,69 +879,68 @@ export default function AdminProductsPage() {
         )}
 
         {/* Filters */}
-        <div className="flex items-center gap-2 md:gap-3 flex-wrap">
-          {/* Search */}
-          <div className="relative flex-1 max-w-xs">
-            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
-            </svg>
-            <input
-              type="text"
-              placeholder="Search by name or number"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#0f4c35] focus:ring-2 focus:ring-[#0f4c35]/10 transition-all bg-white"
-            />
-          </div>
-
-          {/* Category filter */}
-          <select
-            value={categoryFilter}
-            onChange={(e) => { setCategoryFilter(e.target.value); setSubcategoryFilter('') }}
-            className="px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#0f4c35] bg-white text-gray-700"
-          >
-            <option value="">All Categories</option>
-            {categories.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
-
-          {/* Subcategory filter — only when a category is selected and has subcategories */}
-          {categoryFilter !== '' && availableSubcategories.length > 0 && (
+        <div className="space-y-2">
+          {/* Row 1: search + status */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="relative flex-1 max-w-xs">
+              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+              </svg>
+              <input
+                type="text"
+                placeholder="Search by name or number"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#0f4c35] focus:ring-2 focus:ring-[#0f4c35]/10 transition-all bg-white"
+              />
+            </div>
             <select
-              value={subcategoryFilter}
-              onChange={(e) => setSubcategoryFilter(e.target.value)}
+              value={activeFilter}
+              onChange={(e) => setActiveFilter(e.target.value)}
               className="px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#0f4c35] bg-white text-gray-700"
             >
-              <option value="">All Sub-categories</option>
-              {availableSubcategories.map((s) => (
-                <option key={s} value={s}>{s}</option>
-              ))}
+              <option value="">All Status</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
             </select>
+          </div>
+
+          {/* Row 2: category pills */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {[{ id: '', name: 'All' }, ...categories].map((c) => (
+              <button key={c.id || 'all'}
+                onClick={() => { setCategoryFilter(c.id); setSubcategoryFilter(''); setPartnerFilter('') }}
+                className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${categoryFilter === c.id ? 'bg-[#0f4c35] border-[#0f4c35] text-white' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+                {c.name}
+              </button>
+            ))}
+          </div>
+
+          {/* Row 3: subcategory pills — only when a category is selected */}
+          {categoryFilter !== '' && availableSubcategories.length > 0 && (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {['', ...availableSubcategories].map((s) => (
+                <button key={s || 'all'}
+                  onClick={() => { setSubcategoryFilter(s); setPartnerFilter('') }}
+                  className={`px-2.5 py-1 text-[11px] rounded-full border transition-colors ${subcategoryFilter === s ? 'bg-gray-800 border-gray-800 text-white' : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'}`}>
+                  {s || 'All'}
+                </button>
+              ))}
+            </div>
           )}
 
-          {/* Partner filter */}
-          <select
-            value={partnerFilter}
-            onChange={(e) => setPartnerFilter(e.target.value)}
-            className="px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#0f4c35] bg-white text-gray-700"
-          >
-            <option value="">All Partners</option>
-            {availablePartners.map((n) => (
-              <option key={n} value={n}>{n}</option>
-            ))}
-          </select>
-
-          {/* Active filter */}
-          <select
-            value={activeFilter}
-            onChange={(e) => setActiveFilter(e.target.value)}
-            className="px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#0f4c35] bg-white text-gray-700"
-          >
-            <option value="">All Status</option>
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-          </select>
+          {/* Row 4: partner pills — when multiple partners available */}
+          {availablePartners.length > 1 && (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {['', ...availablePartners].map((p) => (
+                <button key={p || 'all'}
+                  onClick={() => setPartnerFilter(p)}
+                  className={`px-2.5 py-1 text-[11px] rounded-full border transition-colors ${partnerFilter === p ? 'bg-[#0f4c35] border-[#0f4c35] text-white' : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'}`}>
+                  {p || 'All Partners'}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Mobile card view */}
@@ -1208,19 +1234,19 @@ export default function AdminProductsPage() {
                                     <div className="flex items-baseline gap-3">
                                       <span className="text-[10px] w-6 shrink-0 text-gray-400">Cost</span>
                                       <span className="text-base font-bold text-[#0f4c35] tabular-nums">
-                                        {isMulti ? `${fmtUSD(costUsd)} – ${fmtUSD(costUsdHi)}` : fmtUSD(costUsd)}
+                                        {isMulti ? `${fmtKrw(costUsd)} – ${fmtKrw(costUsdHi)}` : fmtKrw(costUsd)}
                                       </span>
                                       <span className="text-xs text-gray-500 tabular-nums">
-                                        {isMulti ? `${fmtKrw(costUsd)} – ${fmtKrw(costUsdHi)}` : fmtKrw(costUsd)}
+                                        {isMulti ? `${fmtUSD(costUsd)} – ${fmtUSD(costUsdHi)}` : fmtUSD(costUsd)}
                                       </span>
                                     </div>
                                     <div className="flex items-baseline gap-3">
                                       <span className="text-[10px] w-6 shrink-0 text-gray-400">Sell</span>
                                       <span className="text-xs font-medium text-gray-500 tabular-nums">
-                                        {isMulti ? `${fmtUSD(sellUsd)} – ${fmtUSD(sellUsdHi)}` : fmtUSD(sellUsd)}
+                                        {isMulti ? `${fmtKrw(sellUsd)} – ${fmtKrw(sellUsdHi)}` : fmtKrw(sellUsd)}
                                       </span>
                                       <span className="text-[11px] text-gray-400 tabular-nums">
-                                        {isMulti ? `${fmtKrw(sellUsd)} – ${fmtKrw(sellUsdHi)}` : fmtKrw(sellUsd)}
+                                        {isMulti ? `${fmtUSD(sellUsd)} – ${fmtUSD(sellUsdHi)}` : fmtUSD(sellUsd)}
                                       </span>
                                     </div>
                                     {sorted.length > 1 && (

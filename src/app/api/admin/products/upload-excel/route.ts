@@ -28,6 +28,7 @@ import * as XLSX from 'xlsx'
 // ════════════════════════════════════════════════════════════════════════════
 
 type Row = {
+  product_number?: string
   category?: string
   subcategory?: string
   partner_name?: string
@@ -171,7 +172,7 @@ export async function POST(req: Request) {
 
   // Group input rows by (category, partner, name). Order preserved.
   type GroupKey = string
-  const groups = new Map<GroupKey, { cat: string; sub: string; partner: string; name: string; rows: Row[] }>()
+  const groups = new Map<GroupKey, { cat: string; subs: string[]; partner: string; name: string; productNumber: string | null; rows: Row[] }>()
   const groupOrder: GroupKey[] = []
   const errors: string[] = []
   for (let i = 0; i < rows.length; i++) {
@@ -179,7 +180,9 @@ export async function POST(req: Request) {
     const cat = normStr(r.category)
     const partner = normStr(r.partner_name)
     const name = normStr(r.name)
-    const sub = normStr(r.subcategory) ?? ''
+    // subcategory column may be comma-separated for multi-tag (e.g. "Stem Cell, Lifting")
+    const rawSub = normStr(r.subcategory) ?? ''
+    const subs = rawSub ? rawSub.split(',').map(s => s.trim()).filter(Boolean) : []
     if (!cat || !partner || !name) {
       errors.push(`Row ${i + 2}: missing category / partner_name / name (skipped)`)
       continue
@@ -188,9 +191,12 @@ export async function POST(req: Request) {
       errors.push(`Row ${i + 2}: unknown category "${cat}" (skipped)`)
       continue
     }
+    // product_number from Excel — normalise to "#P-XXX" format if present
+    const rawNum = normStr(r.product_number)
+    const productNumber = rawNum ? (rawNum.startsWith('#') ? rawNum : `#${rawNum}`) : null
     const key: GroupKey = `${cat}::${partner}::${name}`
     if (!groups.has(key)) {
-      groups.set(key, { cat, sub, partner, name, rows: [] })
+      groups.set(key, { cat, subs, partner, name, productNumber, rows: [] })
       groupOrder.push(key)
     }
     groups.get(key)!.rows.push(r)
@@ -211,29 +217,31 @@ export async function POST(req: Request) {
     const catId = catMap.get(grp.cat)!
     seenKeys.add(`${catId}::${grp.partner}::${grp.name}`)
 
-    // Ensure subcategory row exists
-    let subId: string | null = null
-    if (grp.sub) {
-      const sk = subKey(catId, grp.sub)
+    // Ensure all subcategory rows exist; collect their IDs for tag sync
+    // subs[0] = primary subcategory_id on product, all subs = tags
+    const resolvedSubIds: string[] = []
+    for (const subName of grp.subs) {
+      const sk = subKey(catId, subName)
       if (subMap.has(sk)) {
-        subId = subMap.get(sk)!
+        resolvedSubIds.push(subMap.get(sk)!)
       } else if (dryRun) {
-        // pretend a fresh subcategory id; product will report subcategory diff if existing had different one
-        subId = `dryrun-sub-${sk}`
-        subMap.set(sk, subId)
+        const placeholder = `dryrun-sub-${sk}`
+        subMap.set(sk, placeholder)
+        resolvedSubIds.push(placeholder)
       } else {
         const { data: created, error: subErr } = await supabase
           .from('product_subcategories')
-          .insert({ category_id: catId, name: grp.sub })
+          .insert({ category_id: catId, name: subName })
           .select('id').single()
         if (subErr) {
-          errors.push(`Subcategory create failed for "${grp.cat} > ${grp.sub}": ${subErr.message}`)
+          errors.push(`Subcategory create failed for "${grp.cat} > ${subName}": ${subErr.message}`)
         } else {
-          subId = created.id as string
-          subMap.set(sk, subId)
+          subMap.set(sk, created.id as string)
+          resolvedSubIds.push(created.id as string)
         }
       }
     }
+    const subId = resolvedSubIds[0] ?? null
 
     // Build product row from first variant's metadata (shared across variants)
     const first = grp.rows[0]
@@ -267,7 +275,9 @@ export async function POST(req: Request) {
       // Per-field diff. Skip subcategory_id when both are dryrun- placeholders
       // (their string ids would falsely diverge), and use description as the
       // most user-visible field name.
+      const existingNum = (existing as ProductRecord & { product_number?: string | null }).product_number ?? null
       const checks: Array<[string, unknown, unknown]> = [
+        ['product_number', existingNum, grp.productNumber ?? existingNum],
         ['subcategory_id', existing.subcategory_id, desired.subcategory_id],
         ['description', existing.description ?? '', desired.description],
         ['highlights', (existing as ProductRecord & { highlights?: string | null }).highlights ?? null, desired.highlights],
@@ -295,7 +305,10 @@ export async function POST(req: Request) {
           changes: productChanges,
         })
         if (!dryRun) {
-          const { error: updErr } = await supabase.from('products').update(desired).eq('id', existing.id)
+          const updatePayload = grp.productNumber
+            ? { ...desired, product_number: grp.productNumber }
+            : desired
+          const { error: updErr } = await supabase.from('products').update(updatePayload).eq('id', existing.id)
           if (updErr) {
             errors.push(`Product update failed for "${grp.partner} / ${grp.name}": ${updErr.message}`)
             continue
@@ -310,24 +323,24 @@ export async function POST(req: Request) {
       if (dryRun) {
         productId = `dryrun-prod-${grp.partner}::${grp.name}`
       } else {
-        // Need a product_number. Use MAX(numeric part) + 1 — count-based
-        // numbering collides when existing #P-XXX values are sparse (e.g.
-        // #P-306..#P-311 occupied while count = 109 → tries #P-110 then
-        // crashes into an existing high number).
-        const { data: maxRow } = await supabase
-          .from('products')
-          .select('product_number')
-          .order('product_number', { ascending: false })
-          .limit(200)
-        let maxNum = 0
-        for (const r of (maxRow as { product_number: string | null }[] | null) ?? []) {
-          const m = /(\d+)/.exec(r.product_number ?? '')
-          if (m) {
-            const n = parseInt(m[1], 10)
-            if (n > maxNum) maxNum = n
+        // Use product_number from Excel if present; fall back to MAX(numeric)+1.
+        let productNumber = grp.productNumber
+        if (!productNumber) {
+          const { data: maxRow } = await supabase
+            .from('products')
+            .select('product_number')
+            .order('product_number', { ascending: false })
+            .limit(200)
+          let maxNum = 0
+          for (const r of (maxRow as { product_number: string | null }[] | null) ?? []) {
+            const m = /(\d+)/.exec(r.product_number ?? '')
+            if (m) {
+              const n = parseInt(m[1], 10)
+              if (n > maxNum) maxNum = n
+            }
           }
+          productNumber = `#P-${String(maxNum + 1).padStart(3, '0')}`
         }
-        const productNumber = `#P-${String(maxNum + 1).padStart(3, '0')}`
         const { data: created, error: insErr } = await supabase
           .from('products')
           .insert({
@@ -344,6 +357,17 @@ export async function POST(req: Request) {
         productId = created.id as string
       }
       productsInserted++
+    }
+
+    // Sync subcategory tags — replace all tags for this product with the current subs list
+    if (!dryRun && !productId.startsWith('dryrun-')) {
+      const realSubIds = resolvedSubIds.filter(id => !id.startsWith('dryrun-'))
+      await supabase.from('product_subcategory_tags').delete().eq('product_id', productId)
+      if (realSubIds.length > 0) {
+        await supabase.from('product_subcategory_tags').insert(
+          realSubIds.map(sid => ({ product_id: productId, subcategory_id: sid }))
+        )
+      }
     }
 
     // Variants — for dry-run-created products, no existing variants to compare
