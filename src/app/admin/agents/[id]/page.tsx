@@ -34,6 +34,7 @@ type Agent = {
   rejected_at: string | null
   invite_token: string | null
   invite_expires_at: string | null
+  invite_email: string | null
   assigned_admin_id: string | null
 }
 
@@ -110,7 +111,7 @@ export default function AdminAgentDetailPage() {
   const fetchData = useCallback(async () => {
     const [agentRes, casesRes, settlementsRes, contractsRes, rateRes, adminsRes, sessionRes, evalsRes] = await Promise.all([
       supabase.from('agents')
-        .select('id, agent_number, name, email, phone, country, margin_rate, is_active, bank_info, business_info, onboarding_status, rejection_reason, rejected_at, invite_token, invite_expires_at, assigned_admin_id')
+        .select('id, agent_number, name, email, phone, country, margin_rate, is_active, bank_info, business_info, onboarding_status, rejection_reason, rejected_at, invite_token, invite_expires_at, invite_email, assigned_admin_id')
         .eq('id', id).single(),
       supabase.from('cases')
         .select('id, case_number, status, travel_start_date, travel_end_date, travel_completed_at, payment_date, created_at, documents(type, total_price, company_margin_rate, agent_margin_rate), case_members(is_lead, clients(name))')
@@ -153,6 +154,10 @@ export default function AdminAgentDetailPage() {
     async function init() { await fetchData(); setLoading(false) }
     init()
   }, [fetchData])
+
+  useEffect(() => {
+    if (agent?.invite_email) setInviteEmailInput(agent.invite_email)
+  }, [agent?.invite_email])
 
 
   async function toggleActive() {
@@ -573,7 +578,7 @@ export default function AdminAgentDetailPage() {
                 const res = await fetch('/api/admin/send-invite-email', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ invite_url: inviteUrl, recipient_email: inviteEmailInput.trim(), expires_at: agent?.invite_expires_at, agent_id: agent?.id }),
+                  body: JSON.stringify({ invite_url: inviteUrl, recipient_email: inviteEmailInput.trim(), expires_at: agent?.invite_expires_at, agent_id: agent?.id ?? undefined }),
                 })
                 if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? 'Failed') }
                 setInviteEmailSent(true)

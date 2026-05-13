@@ -66,6 +66,7 @@ export async function POST(req: Request) {
     agent_number: agentNumber,
     name: 'Invited Agent',
     email: placeholderEmail,
+    invite_email: recipientEmail,
     onboarding_status: 'pending_onboarding',
     is_active: false,
     invite_token: token,
