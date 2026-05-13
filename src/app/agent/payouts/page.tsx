@@ -52,7 +52,7 @@ function fmtUSD(n: number) {
 
 function commissionKrw(totalKrw: number, agentMargin: number): number {
   if (!agentMargin || agentMargin <= 0) return 0
-  return Math.round(totalKrw * agentMargin / (1 + agentMargin))
+  return Math.round(totalKrw * agentMargin)
 }
 
 export default function AgentPayoutsPage() {

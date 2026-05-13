@@ -1006,7 +1006,7 @@ export default function CaseDetailPage() {
         .reduce((s, it) => s + (it.final_price ?? 0), 0)
     : (quote?.total_price ?? 0)
   const agentMarginRate = quote?.agent_margin_rate ?? 0
-  const earningsKrw = agentMarginRate > 0 ? Math.round(totalKrw * agentMarginRate / (1 + agentMarginRate)) : 0
+  const earningsKrw = agentMarginRate > 0 ? Math.round(totalKrw * agentMarginRate) : 0
   const toUsd = (krw: number) => krw / exchangeRate
   const fmtUsd = (usd: number) => `$${usd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 

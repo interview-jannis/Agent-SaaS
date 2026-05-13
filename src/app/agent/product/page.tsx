@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import DOBPicker from '@/components/DOBPicker'
-import { appliesMargin, isHotelItem, nightsBetween, daysBetween, variantPriceUsd, subpackageMult, type SubpackageMarginConfig } from '@/lib/pricing'
+import { getMarkupRate, isHotelItem, nightsBetween, daysBetween, variantPriceUsd, type MarkupRatesConfig, DEFAULT_MARKUP_RATES } from '@/lib/pricing'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -125,9 +125,7 @@ export default function AgentProductPage() {
   // Agent info
   const [agentId, setAgentId] = useState('')
   const [exchangeRate, setExchangeRate] = useState(1350)
-  const [companyMargin, setCompanyMargin] = useState(0.5)
-  const [agentMargin, setAgentMargin] = useState(0.15)
-  const [subpkgConfig, setSubpkgConfig] = useState<SubpackageMarginConfig | null>(null)
+  const [markupRatesConfig, setMarkupRatesConfig] = useState<MarkupRatesConfig>(DEFAULT_MARKUP_RATES)
 
   // DB data
   const [products, setProducts] = useState<Product[]>([])
@@ -237,17 +235,16 @@ export default function AgentProductPage() {
       const userId = session?.user?.id
       if (!userId) return
 
-      const [agentRes, rateRes, companyRateRes, productsRes, catsRes, subcatsRes, subpkgRes] = await Promise.all([
+      const [agentRes, rateRes, markupRatesRes, productsRes, catsRes, subcatsRes] = await Promise.all([
         supabase.from('agents').select('id, margin_rate').eq('auth_user_id', userId).single(),
         supabase.from('system_settings').select('value').eq('key', 'product_price_rate').single(),
-        supabase.from('system_settings').select('value').eq('key', 'company_margin_rate').single(),
+        supabase.from('system_settings').select('value').eq('key', 'markup_rates').maybeSingle(),
         supabase
           .from('products')
           .select('id, name, description, base_price, price_currency, duration_value, duration_unit, quantity_type, partner_name, has_female_doctor, has_prayer_room, dietary_type, category_id, subcategory_id, product_categories(name), product_subcategories(name), product_images(image_url, is_primary), product_variants(id, variant_label, base_price, price_currency, sort_order, is_active)')
           .eq('is_active', true),
         supabase.from('product_categories').select('id, name').order('sort_order').order('name'),
         supabase.from('product_subcategories').select('id, category_id, name, sort_order').order('sort_order').order('name'),
-        supabase.from('system_settings').select('value').eq('key', 'subpackage_margin').maybeSingle(),
       ])
 
       const aid = agentRes.data?.id ?? ''
@@ -256,18 +253,12 @@ export default function AgentProductPage() {
       const rate = (rateRes.data?.value as { usd_krw?: number } | null)?.usd_krw
       if (rate) setExchangeRate(rate)
 
-      const cm = (companyRateRes.data?.value as { rate?: number } | null)?.rate
-      if (typeof cm === 'number') setCompanyMargin(cm)
-
-      const am = (agentRes.data as { margin_rate?: number } | null)?.margin_rate
-      if (typeof am === 'number') setAgentMargin(am)
+      const mr = markupRatesRes.data?.value as MarkupRatesConfig | null
+      if (mr) setMarkupRatesConfig({ ...DEFAULT_MARKUP_RATES, ...mr })
 
       setProducts((productsRes.data as unknown as Product[]) ?? [])
       setCategories(catsRes.data ?? [])
       setSubcategories((subcatsRes.data as unknown as { id: string; category_id: string; name: string; sort_order: number }[]) ?? [])
-
-      const sp = subpkgRes.data?.value as { enabled?: boolean; rate?: number } | null
-      if (sp != null) setSubpkgConfig({ enabled: !!sp.enabled, rate: sp.rate ?? 0.5 })
 
       if (aid) {
         const { data: clientsData } = await supabase
@@ -293,7 +284,6 @@ export default function AgentProductPage() {
     return true
   }
 
-  const marginMult = 1 + companyMargin + agentMargin
   const nights = useMemo(() => nightsBetween(dateStart, dateEnd), [dateStart, dateEnd])
   const daysLive = useMemo(() => daysBetween(dateStart, dateEnd), [dateStart, dateEnd])
 
@@ -310,8 +300,7 @@ export default function AgentProductPage() {
     for (const v of variants) {
       const usd = variantPriceUsd({
         basePrice: v.base_price, priceCurrency: v.price_currency, exchangeRate,
-        marginMult: isSubpkg ? subpackageMult(subpkgConfig) : marginMult,
-        applyMargin: isSubpkg ? true : appliesMargin(cat, sub),
+        markupRate: getMarkupRate(cat, sub, markupRatesConfig),
       })
       if (usd > max) max = usd
     }
@@ -327,7 +316,7 @@ export default function AgentProductPage() {
     })
     return list.sort((a, b) => priceSortKey(b) - priceSortKey(a))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [products, search, selectedCategoryId, selectedSubcategoryName, selectedPartnerName, filterPrayerRoom, filterDietary, filterFemaleMedical, exchangeRate, marginMult])
+  }, [products, search, selectedCategoryId, selectedSubcategoryName, selectedPartnerName, filterPrayerRoom, filterDietary, filterFemaleMedical, exchangeRate, markupRatesConfig])
 
   const availableSubcategories = useMemo(() => {
     if (!selectedCategoryId) return [] as string[]
@@ -353,7 +342,7 @@ export default function AgentProductPage() {
     }
     return map
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [products, selectedCategoryId, availableSubcategories, search, filterPrayerRoom, filterDietary, filterFemaleMedical, exchangeRate, marginMult])
+  }, [products, selectedCategoryId, availableSubcategories, search, filterPrayerRoom, filterDietary, filterFemaleMedical, exchangeRate, markupRatesConfig])
 
   const availablePartnerNames = useMemo(() => {
     if (!selectedCategoryId) return [] as string[]
@@ -388,7 +377,7 @@ export default function AgentProductPage() {
     }
     return map
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [products, categories, search, filterPrayerRoom, filterDietary, filterFemaleMedical, pinnedProductIds, exchangeRate, marginMult])
+  }, [products, categories, search, filterPrayerRoom, filterDietary, filterFemaleMedical, pinnedProductIds, exchangeRate, markupRatesConfig])
 
   useEffect(() => {
     if (selectedCategoryId === '') {
@@ -413,7 +402,7 @@ export default function AgentProductPage() {
         const sub = p.product_subcategories?.name
         const usd = variantPriceUsd({
           basePrice: v.base_price, priceCurrency: v.price_currency, exchangeRate,
-          marginMult, applyMargin: appliesMargin(cat, sub),
+          markupRate: getMarkupRate(cat, sub, markupRatesConfig),
         })
         const memberCount = g.id === 'shared' ? sharedMemberCount : g.memberCount
         return sum + usd * memberCount
@@ -429,14 +418,14 @@ export default function AgentProductPage() {
       const sub = p.product_subcategories?.name
       const usd = variantPriceUsd({
         basePrice: v.base_price, priceCurrency: v.price_currency, exchangeRate,
-        marginMult: subpackageMult(subpkgConfig), applyMargin: true,
+        markupRate: getMarkupRate(cat, sub, markupRatesConfig),
       })
       const daysForItem = isHotelItem(cat, sub) ? nights : (p.quantity_type === 'per_day' ? daysLive : it.days)
       return sum + usd * daysForItem
     }, 0)
 
     return groupTotal + servicesTotal
-  }, [groups, tripServices, products, exchangeRate, marginMult, subpkgConfig, nights, daysLive, sharedMemberCount])
+  }, [groups, tripServices, products, exchangeRate, markupRatesConfig, nights, daysLive, sharedMemberCount])
 
   // ── Cart handlers — groups ─────────────────────────────────────────────────
 
@@ -594,15 +583,13 @@ export default function AgentProductPage() {
     if (variants.length === 0) return '—'
     const cat = p.product_categories?.name
     const sub = p.product_subcategories?.name
-    const isSubpkg = cat === 'Subpackage'
+    const markupRate = getMarkupRate(cat, sub, markupRatesConfig)
     const prices = variants.map(v => variantPriceUsd({
       basePrice: v.base_price, priceCurrency: v.price_currency, exchangeRate,
-      marginMult: isSubpkg ? subpackageMult(subpkgConfig) : marginMult,
-      applyMargin: isSubpkg ? true : appliesMargin(cat, sub),
+      markupRate,
     }))
     const min = Math.min(...prices), max = Math.max(...prices)
-    if (isSubpkg && subpackageMult(subpkgConfig) === 0) return 'Free'
-    if (min === 0 && max === 0) return 'Price on request'
+    if (min === 0 && max === 0) return cat === 'Subpackage' ? 'Free' : 'Price on request'
     const fmt = (n: number) => `$${n.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
     if (min === max) return `$${min.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
     return `${fmt(min)} – ${fmt(max)}`
@@ -1200,8 +1187,7 @@ export default function AgentProductPage() {
                 const detailIsSubpkg = isSubpkg
                 const variantUsd = (v: Variant) => variantPriceUsd({
                   basePrice: v.base_price, priceCurrency: v.price_currency, exchangeRate,
-                  marginMult: detailIsSubpkg ? subpackageMult(subpkgConfig) : marginMult,
-                  applyMargin: detailIsSubpkg ? true : appliesMargin(detailCat, detailSub),
+                  markupRate: getMarkupRate(detailCat, detailSub, markupRatesConfig),
                 })
                 const variants = (detailProduct.product_variants ?? [])
                   .filter(v => v.is_active)
@@ -1252,7 +1238,7 @@ export default function AgentProductPage() {
                         <p className="text-sm font-medium text-gray-900">{display}</p>
                       </div>
                       <div className="text-right">
-                        {usd === 0 && detailIsSubpkg && subpackageMult(subpkgConfig) === 0
+                        {usd === 0 && detailIsSubpkg
                           ? <p className="text-sm font-semibold text-gray-500">Free</p>
                           : usd === 0
                             ? <p className="text-sm font-bold text-amber-600">Price on request</p>
@@ -1284,7 +1270,7 @@ export default function AgentProductPage() {
                       const expanded = expandedVariantGroup[`${detailProduct.id}::${gi}`] ?? anyInCart
                       const prices = g.items.map(usdFor)
                       const min = Math.min(...prices), max = Math.max(...prices)
-                      const range = (detailIsSubpkg && subpackageMult(subpkgConfig) === 0) ? 'Free'
+                      const range = (detailIsSubpkg && min === 0 && max === 0) ? 'Free'
                         : (min === 0 && max === 0) ? 'Price on request'
                         : min === max ? `$${min.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
                         : `$${min.toLocaleString('en-US', { maximumFractionDigits: 0 })} – $${max.toLocaleString('en-US', { maximumFractionDigits: 0 })}`

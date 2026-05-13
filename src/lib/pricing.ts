@@ -1,45 +1,67 @@
 // Single source of truth for cart/quote pricing.
 //
-// Margin rule (per 4/30 + 5/4 decisions):
-//   Margin applied to: K-Medical, K-Beauty, K-Wellness > Spa, K-Wellness > Henna,
-//                      K-Starcation, K-Education
-//   Cost-only (no margin): K-Wellness > everything else (Tour/Leisure/Shopping/K-Content),
-//                          Subpackage — see subpackageMult() below
+// Markup rule:
+//   판가 = 원가 × (1 + markupRate)   — markupRate is per-category, set by super admin
+//   커미션 = 판가 × commissionRate    — commissionRate is per-agent tier (15/20/25%)
+//   회사수익 = 판가 - 원가 - 커미션
 //
-// Subpackage margin is configurable by super admin (system_settings.subpackage_margin).
-// When enabled, a flat rate is applied (separate from the compound company×agent margin).
-// When disabled, Subpackage items pass through at cost.
+// markupRate 0 = cost pass-through (원가 그대로 고객 청구)
 
-export function appliesMargin(category: string | null | undefined, subcategory: string | null | undefined): boolean {
-  if (!category) return false
-  if (category === 'K-Medical') return true
-  if (category === 'K-Beauty') return true
-  if (category === 'K-Education') return true
-  if (category === 'K-Starcation') return true
-  if (category === 'K-Wellness') return subcategory === 'Spa' || subcategory === 'Henna'
-  // Subpackage: handled separately via subpackageMult(). Cost-only by default.
-  return false
+export type MarkupRatesConfig = {
+  'K-Medical': number
+  'K-Beauty': number
+  'K-Wellness-Spa': number
+  'K-Wellness-Henna': number
+  'K-Wellness-Other': number
+  'K-Starcation': number
+  'K-Education': number
+  'Subpackage-Hotel': number
+  'Subpackage-Other': number
 }
 
-// Subpackage margin config — stored in system_settings.subpackage_margin
-export type SubpackageMarginConfig = { enabled: boolean; rate: number }
+export const DEFAULT_MARKUP_RATES: MarkupRatesConfig = {
+  'K-Medical': 1.0,
+  'K-Beauty': 0.8,
+  'K-Wellness-Spa': 0.5,
+  'K-Wellness-Henna': 0.5,
+  'K-Wellness-Other': 0.0,
+  'K-Starcation': 0.5,
+  'K-Education': 0.3,
+  'Subpackage-Hotel': 0.0,
+  'Subpackage-Other': 0.3,
+}
 
-// Returns the price multiplier for Subpackage items.
-// When disabled (or config null): 0 (free — 무상 제공).
-// When enabled: 1 + rate (flat markup, e.g. 0.5 → ×1.5 = 50% above cost).
-export function subpackageMult(config: SubpackageMarginConfig | null | undefined): number {
-  if (!config?.enabled) return 0
-  return 1 + (config.rate ?? 0)
+// Returns the markup rate for a given category/subcategory combination.
+// Falls back to DEFAULT_MARKUP_RATES if config is null/undefined.
+export function getMarkupRate(
+  category: string | null | undefined,
+  subcategory: string | null | undefined,
+  config: MarkupRatesConfig | null | undefined,
+): number {
+  const c = config ?? DEFAULT_MARKUP_RATES
+  if (!category) return 0
+  if (category === 'K-Medical') return c['K-Medical'] ?? 0
+  if (category === 'K-Beauty') return c['K-Beauty'] ?? 0
+  if (category === 'K-Education') return c['K-Education'] ?? 0
+  if (category === 'K-Starcation') return c['K-Starcation'] ?? 0
+  if (category === 'K-Wellness') {
+    if (subcategory === 'Spa') return c['K-Wellness-Spa'] ?? 0
+    if (subcategory === 'Henna') return c['K-Wellness-Henna'] ?? 0
+    return c['K-Wellness-Other'] ?? 0
+  }
+  if (category === 'Subpackage') {
+    if (subcategory === 'Hotel') return c['Subpackage-Hotel'] ?? 0
+    return c['Subpackage-Other'] ?? 0
+  }
+  return 0
 }
 
 // Hotel items price by room × nights, NOT per-person × memberCount.
-// (A hotel room costs the same regardless of how many guests share it.)
 export function isHotelItem(category: string | null | undefined, subcategory: string | null | undefined): boolean {
   return category === 'Subpackage' && subcategory === 'Hotel'
 }
 
-// Nights between two ISO dates (YYYY-MM-DD). Returns 1 as a safe minimum
-// if either date is missing or end is not strictly after start.
+// Nights between two ISO dates (YYYY-MM-DD). Returns 1 as a safe minimum.
 export function nightsBetween(dateStart: string | null | undefined, dateEnd: string | null | undefined): number {
   if (!dateStart || !dateEnd) return 1
   const start = new Date(dateStart).getTime()
@@ -48,38 +70,35 @@ export function nightsBetween(dateStart: string | null | undefined, dateEnd: str
   return Math.max(1, Math.round((end - start) / 86400000))
 }
 
-// Days between two ISO dates (inclusive of both start and end). Used for per_day items
-// like vehicles where the count includes the arrival and departure day.
+// Days between two ISO dates (inclusive). Used for per_day items (vehicles).
 export function daysBetween(dateStart: string | null | undefined, dateEnd: string | null | undefined): number {
   if (!dateStart || !dateEnd) return 1
   return nightsBetween(dateStart, dateEnd) + 1
 }
 
-// Convert a base price (per single member) to USD applying the margin rule.
-// `marginMult` is `(1 + companyMargin + agentMargin)` — additive, not compound.
+// Convert a base price to USD applying the markup rate.
+// markupRate: 0 = no markup, 1.0 = 100% markup (판가 = 원가 × 2)
 export function variantPriceUsd({
-  basePrice, priceCurrency, exchangeRate, marginMult, applyMargin,
+  basePrice, priceCurrency, exchangeRate, markupRate,
 }: {
   basePrice: number
   priceCurrency: string
   exchangeRate: number
-  marginMult: number
-  applyMargin: boolean
+  markupRate: number
 }): number {
   const baseUsd = priceCurrency === 'USD' ? basePrice : basePrice / exchangeRate
-  return applyMargin ? baseUsd * marginMult : baseUsd
+  return baseUsd * (1 + markupRate)
 }
 
-// Convert a base price to KRW (final, with or without margin per rule).
+// Convert a base price to KRW applying the markup rate.
 export function variantPriceKrw({
-  basePrice, priceCurrency, exchangeRate, marginMult, applyMargin,
+  basePrice, priceCurrency, exchangeRate, markupRate,
 }: {
   basePrice: number
   priceCurrency: string
   exchangeRate: number
-  marginMult: number
-  applyMargin: boolean
+  markupRate: number
 }): number {
   const baseKrw = priceCurrency === 'USD' ? basePrice * exchangeRate : basePrice
-  return applyMargin ? Math.round(baseKrw * marginMult) : Math.round(baseKrw)
+  return Math.round(baseKrw * (1 + markupRate))
 }

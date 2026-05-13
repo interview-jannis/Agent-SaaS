@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { sendEmailToAdmin } from '@/lib/email'
+import { notifyAssignedAdmin } from '@/lib/notifications'
 
 // Called from the post-approval setup wizard. Uses the service role to update
 // auth.users (email + password) without triggering a confirmation flow, then
@@ -122,29 +123,12 @@ export async function POST(req: Request) {
   }).eq('id', (agent as { id: string }).id)
   if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 })
 
-  // Notify assigned admin that the agent has completed setup
+  // Notify assigned admin (falls back to all super admins if no assigned admin)
   const ag = agent as { id: string; name: string | null; agent_number: string | null; assigned_admin_id: string | null }
-  if (ag.assigned_admin_id) {
-    const { data: adminRow } = await supabase.from('admins')
-      .select('auth_user_id, email').eq('id', ag.assigned_admin_id).maybeSingle()
-    if (adminRow) {
-      const label = ag.agent_number ? `${ag.agent_number} ${ag.name ?? ''}` : (ag.name ?? 'Agent')
-      const notifMessage = `${label.trim()} completed account setup and is ready`
-      const notifLink = `/admin/agents/${ag.id}`
-      await supabase.from('notifications').insert({
-        target_type: 'admin',
-        target_id: ag.assigned_admin_id,
-        auth_user_id: (adminRow as { auth_user_id: string; email: string | null }).auth_user_id,
-        message: notifMessage,
-        link_url: notifLink,
-        is_read: false,
-      })
-      const adminEmail = (adminRow as { auth_user_id: string; email: string | null }).email
-      if (adminEmail) {
-        await sendEmailToAdmin(adminEmail, notifMessage, notifLink)
-      }
-    }
-  }
+  const label = ag.agent_number ? `${ag.agent_number} ${ag.name ?? ''}` : (ag.name ?? 'Agent')
+  const notifMessage = `${label.trim()} completed account setup and is ready`
+  const notifLink = `/admin/agents/${ag.id}`
+  await notifyAssignedAdmin({ agent_id: ag.id }, notifMessage, notifLink)
 
   return NextResponse.json({ ok: true })
 }

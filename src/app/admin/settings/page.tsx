@@ -1,9 +1,10 @@
-﻿'use client'
+'use client'
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { logAsCurrentUser } from '@/lib/audit'
 import ChangePasswordCard from '@/components/ChangePasswordCard'
+import { MarkupRatesConfig, DEFAULT_MARKUP_RATES } from '@/lib/pricing'
 
 type BankDetails = {
   bank_name: string
@@ -19,11 +20,31 @@ const DEFAULT_BANK: BankDetails = {
   swift_code: '', beneficiary: '', beneficiary_number: '',
 }
 
+const MARKUP_RATE_ROWS: { key: keyof MarkupRatesConfig; label: string }[] = [
+  { key: 'K-Medical', label: 'K-Medical' },
+  { key: 'K-Beauty', label: 'K-Beauty' },
+  { key: 'K-Wellness-Spa', label: 'K-Wellness · Spa' },
+  { key: 'K-Wellness-Henna', label: 'K-Wellness · Henna' },
+  { key: 'K-Wellness-Other', label: 'K-Wellness · Other' },
+  { key: 'K-Starcation', label: 'K-Starcation' },
+  { key: 'K-Education', label: 'K-Education' },
+  { key: 'Subpackage-Hotel', label: 'Subpackage · Hotel' },
+  { key: 'Subpackage-Other', label: 'Subpackage · Other' },
+]
+
+function ratesToDraft(rates: MarkupRatesConfig): Record<string, string> {
+  const d: Record<string, string> = {}
+  for (const { key } of MARKUP_RATE_ROWS) {
+    d[key] = String(Math.round(rates[key] * 100))
+  }
+  return d
+}
+
 export default function AdminSettingsPage() {
   const [loading, setLoading] = useState(true)
 
   // Inline edit state — only one section editable at a time
-  type EditTarget = 'profile' | 'product_price_rate' | 'rate' | 'margin' | 'bank' | 'deposit' | 'stamp' | 'subpackage' | null
+  type EditTarget = 'profile' | 'product_price_rate' | 'rate' | 'markup_rates' | 'bank' | 'deposit' | 'stamp' | null
   const [editing, setEditing] = useState<EditTarget>(null)
 
   // My Display Info (per-admin, used as signer on invoices I finalize)
@@ -52,12 +73,13 @@ export default function AdminSettingsPage() {
   const [rateSaved, setRateSaved] = useState(false)
   const [rateError, setRateError] = useState('')
 
-  // Company margin
-  const [companyMargin, setCompanyMargin] = useState('')
-  const [companyMarginOriginal, setCompanyMarginOriginal] = useState('')
-  const [savingMargin, setSavingMargin] = useState(false)
-  const [marginSaved, setMarginSaved] = useState(false)
-  const [marginError, setMarginError] = useState('')
+  // Category markup rates (super admin only)
+  const [markupRates, setMarkupRates] = useState<MarkupRatesConfig>(DEFAULT_MARKUP_RATES)
+  const [markupRatesOriginal, setMarkupRatesOriginal] = useState<MarkupRatesConfig>(DEFAULT_MARKUP_RATES)
+  const [markupDraft, setMarkupDraft] = useState<Record<string, string>>(ratesToDraft(DEFAULT_MARKUP_RATES))
+  const [savingMarkup, setSavingMarkup] = useState(false)
+  const [markupSaved, setMarkupSaved] = useState(false)
+  const [markupError, setMarkupError] = useState('')
 
   // Bank details
   const [bank, setBank] = useState<BankDetails>(DEFAULT_BANK)
@@ -73,15 +95,6 @@ export default function AdminSettingsPage() {
   const [depositSaved, setDepositSaved] = useState(false)
   const [depositError, setDepositError] = useState('')
 
-  // Subpackage margin (super admin only)
-  const [subpkgEnabled, setSubpkgEnabled] = useState(false)
-  const [subpkgRate, setSubpkgRate] = useState('50')
-  const [subpkgEnabledOriginal, setSubpkgEnabledOriginal] = useState(false)
-  const [subpkgRateOriginal, setSubpkgRateOriginal] = useState('50')
-  const [savingSubpkg, setSavingSubpkg] = useState(false)
-  const [subpkgSaved, setSubpkgSaved] = useState(false)
-  const [subpkgError, setSubpkgError] = useState('')
-
   // Company stamp
   const [stampUrl, setStampUrl] = useState<string | null>(null)
   const [stampUrlOriginal, setStampUrlOriginal] = useState<string | null>(null)
@@ -93,15 +106,14 @@ export default function AdminSettingsPage() {
     async function load() {
       const { data: { session } } = await supabase.auth.getSession()
       const uid = session?.user?.id ?? null
-      const [productPriceRateRes, rateRes, marginRes, bankRes, depositRes, stampRes, adminRes, subpkgRes] = await Promise.all([
+      const [productPriceRateRes, rateRes, markupRatesRes, bankRes, depositRes, stampRes, adminRes] = await Promise.all([
         supabase.from('system_settings').select('value').eq('key', 'product_price_rate').maybeSingle(),
         supabase.from('system_settings').select('value').eq('key', 'exchange_rate').single(),
-        supabase.from('system_settings').select('value').eq('key', 'company_margin_rate').single(),
+        supabase.from('system_settings').select('value').eq('key', 'markup_rates').maybeSingle(),
         supabase.from('system_settings').select('value').eq('key', 'bank_details').single(),
         supabase.from('system_settings').select('value').eq('key', 'deposit_percentage').maybeSingle(),
         supabase.from('system_settings').select('value').eq('key', 'company_stamp').maybeSingle(),
         uid ? supabase.from('admins').select('id, name, title, is_super_admin').eq('auth_user_id', uid).maybeSingle() : Promise.resolve({ data: null }),
-        supabase.from('system_settings').select('value').eq('key', 'subpackage_margin').maybeSingle(),
       ])
 
       const admin = adminRes.data as { id: string; name: string | null; title: string | null; is_super_admin: boolean | null } | null
@@ -120,11 +132,11 @@ export default function AdminSettingsPage() {
       const r = (rateRes.data?.value as { usd_krw?: number } | null)?.usd_krw
       if (r) { setRate(String(r)); setRateOriginal(String(r)) }
 
-      const m = (marginRes.data?.value as { rate?: number } | null)?.rate
-      if (m !== undefined) {
-        const pct = String(Math.round(m * 100))
-        setCompanyMargin(pct); setCompanyMarginOriginal(pct)
-      }
+      const mr = markupRatesRes.data?.value as MarkupRatesConfig | null
+      const resolvedRates = mr ? { ...DEFAULT_MARKUP_RATES, ...mr } : DEFAULT_MARKUP_RATES
+      setMarkupRates(resolvedRates)
+      setMarkupRatesOriginal(resolvedRates)
+      setMarkupDraft(ratesToDraft(resolvedRates))
 
       const b = bankRes.data?.value as BankDetails | null
       if (b) {
@@ -140,12 +152,6 @@ export default function AdminSettingsPage() {
 
       const s = (stampRes.data?.value as { url?: string | null } | null)?.url ?? null
       setStampUrl(s); setStampUrlOriginal(s)
-
-      const sp = subpkgRes.data?.value as { enabled?: boolean; rate?: number } | null
-      const spEnabled = sp?.enabled ?? false
-      const spRate = String(Math.round((sp?.rate ?? 0.5) * 100))
-      setSubpkgEnabled(spEnabled); setSubpkgEnabledOriginal(spEnabled)
-      setSubpkgRate(spRate); setSubpkgRateOriginal(spRate)
 
       setLoading(false)
     }
@@ -196,26 +202,30 @@ export default function AdminSettingsPage() {
     setSavingRate(false)
   }
 
-  async function saveMargin() {
-    const pct = Number(companyMargin)
-    if (isNaN(pct) || pct < 0 || pct > 100) {
-      setMarginError('Please enter a value between 0 and 100.')
-      return
+  async function saveMarkupRates() {
+    const parsed: Partial<MarkupRatesConfig> = {}
+    for (const { key } of MARKUP_RATE_ROWS) {
+      const pct = Number(markupDraft[key])
+      if (isNaN(pct) || pct < 0 || pct > 500) {
+        setMarkupError(`Invalid value for ${key}. Enter 0–500.`)
+        return
+      }
+      parsed[key] = pct / 100
     }
-    setSavingMargin(true)
-    setMarginError('')
-    setMarginSaved(false)
+    const newRates = parsed as MarkupRatesConfig
+    setSavingMarkup(true); setMarkupError(''); setMarkupSaved(false)
     const { error } = await supabase
       .from('system_settings')
-      .upsert({ key: 'company_margin_rate', value: { rate: pct / 100 } }, { onConflict: 'key' })
-    if (error) { setMarginError(error.message) }
+      .upsert({ key: 'markup_rates', value: newRates }, { onConflict: 'key' })
+    if (error) { setMarkupError(error.message) }
     else {
-      await logAsCurrentUser('settings.updated', { type: 'system_setting', label: 'company_margin_rate' }, { from: companyMarginOriginal, to: companyMargin })
-      setCompanyMarginOriginal(companyMargin)
+      await logAsCurrentUser('settings.updated', { type: 'system_setting', label: 'markup_rates' }, { rates: newRates })
+      setMarkupRates(newRates)
+      setMarkupRatesOriginal(newRates)
       setEditing(null)
-      setMarginSaved(true); setTimeout(() => setMarginSaved(false), 3000)
+      setMarkupSaved(true); setTimeout(() => setMarkupSaved(false), 3000)
     }
-    setSavingMargin(false)
+    setSavingMarkup(false)
   }
 
   async function saveBank() {
@@ -227,7 +237,6 @@ export default function AdminSettingsPage() {
       .upsert({ key: 'bank_details', value: bank }, { onConflict: 'key' })
     if (error) { setBankError(error.message) }
     else {
-      // Diff which bank fields changed for the audit detail
       const changed: string[] = []
       const oldBank = bankOriginal as Record<string, string>
       const newBank = bank as Record<string, string>
@@ -320,40 +329,22 @@ export default function AdminSettingsPage() {
     setSavingProfile(false)
   }
 
-  async function saveSubpackageMargin() {
-    const rateNum = Number(subpkgRate)
-    if (isNaN(rateNum) || rateNum < 0 || rateNum > 200) {
-      setSubpkgError('Enter a rate between 0 and 200.')
-      return
-    }
-    setSavingSubpkg(true); setSubpkgError('')
-    const { error } = await supabase.from('system_settings')
-      .upsert({ key: 'subpackage_margin', value: { enabled: subpkgEnabled, rate: rateNum / 100 } }, { onConflict: 'key' })
-    if (error) { setSubpkgError(error.message) }
-    else {
-      await logAsCurrentUser('settings.updated', { type: 'system_setting', label: 'subpackage_margin' }, { enabled: subpkgEnabled, rate: rateNum })
-      setSubpkgEnabledOriginal(subpkgEnabled); setSubpkgRateOriginal(subpkgRate)
-      setEditing(null)
-      setSubpkgSaved(true); setTimeout(() => setSubpkgSaved(false), 3000)
-    }
-    setSavingSubpkg(false)
-  }
-
   function startEdit(target: Exclude<EditTarget, null>) {
-    setProductRateError(''); setRateError(''); setMarginError(''); setBankError(''); setProfileError(''); setDepositError(''); setStampError(''); setSubpkgError('')
+    setProductRateError(''); setRateError(''); setMarkupError(''); setBankError(''); setProfileError(''); setDepositError(''); setStampError('')
+    if (target === 'markup_rates') setMarkupDraft(ratesToDraft(markupRatesOriginal))
     setEditing(target)
   }
   function cancelEdit() {
     setProductPriceRate(productPriceRateOriginal)
     setProductRateConfirm('')
     setRate(rateOriginal)
-    setCompanyMargin(companyMarginOriginal)
+    setMarkupRates(markupRatesOriginal)
+    setMarkupDraft(ratesToDraft(markupRatesOriginal))
     setBank(bankOriginal)
     setProfileName(profileNameOriginal)
     setProfileTitle(profileTitleOriginal)
     setDepositPct(depositPctOriginal)
-    setSubpkgEnabled(subpkgEnabledOriginal); setSubpkgRate(subpkgRateOriginal)
-    setProductRateError(''); setRateError(''); setMarginError(''); setBankError(''); setProfileError(''); setDepositError(''); setStampError(''); setSubpkgError('')
+    setProductRateError(''); setRateError(''); setMarkupError(''); setBankError(''); setProfileError(''); setDepositError(''); setStampError('')
     setEditing(null)
   }
 
@@ -569,104 +560,101 @@ export default function AdminSettingsPage() {
             )}
           </div>
 
-          {/* Company Margin row */}
-          <div className="px-6 py-5">
-            {editing !== 'margin' ? (
-              <div className="flex items-start gap-4">
-                <div className="flex-1 min-w-0">
-                  <h2 className="text-sm font-semibold text-gray-900">Company Margin Rate</h2>
-                  <p className="text-xs text-gray-500 mt-0.5">Applied on top of product base price before the agent margin is added.</p>
-                  <p className="text-sm text-gray-800 mt-2 tabular-nums">
-                    {companyMarginOriginal ? `${companyMarginOriginal}%` : <span className="text-gray-400">Not set</span>}
-                  </p>
-                  {marginSaved && <p className="text-xs text-[#0f4c35] mt-1">Saved.</p>}
-                </div>
-                {isSuperAdmin && (
-                  <button onClick={() => startEdit('margin')}
-                    className="shrink-0 text-xs font-semibold bg-green-700 text-white hover:bg-green-800 px-2.5 py-1 rounded-lg transition-colors">Edit</button>
-                )}
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <div>
-                  <h2 className="text-sm font-semibold text-gray-900">Company Margin Rate</h2>
-                  <p className="text-xs text-gray-500 mt-0.5">Applied on top of product base price before the agent margin is added.</p>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1.5">Company Margin (%)</label>
-                  <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden focus-within:border-[#0f4c35] transition-all w-32">
-                    <input autoFocus type="number" value={companyMargin} onChange={(e) => setCompanyMargin(e.target.value)}
-                      placeholder="20" min={0} max={100}
-                      className="flex-1 w-full px-3 py-2 text-sm text-gray-900 focus:outline-none bg-white" />
-                    <span className="px-3 py-2 text-sm text-gray-600 bg-gray-50 border-l border-gray-200">%</span>
-                  </div>
-                  <p className="text-xs text-gray-500 mt-1.5">
-                    Customer price = base × (1 + {companyMargin || '?'}% + agent margin%)
-                  </p>
-                </div>
-                {marginError && <p className="text-xs text-red-500">{marginError}</p>}
-                <div className="flex items-center gap-2">
-                  <button onClick={saveMargin} disabled={savingMargin}
-                    className="px-4 py-1.5 text-xs font-medium bg-[#0f4c35] text-white rounded-lg hover:bg-[#0a3828] disabled:opacity-40 transition-colors">
-                    {savingMargin ? 'Saving...' : 'Save'}
-                  </button>
-                  <button onClick={cancelEdit} disabled={savingMargin}
-                    className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-800 disabled:opacity-40">Cancel</button>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Subpackage Margin row — super admin only */}
+          {/* Category Markup Rates row — super admin only */}
           {isSuperAdmin && (
           <div className="px-6 py-5">
-            {editing !== 'subpackage' ? (
+            {editing !== 'markup_rates' ? (
               <div className="flex items-start gap-4">
                 <div className="flex-1 min-w-0">
-                  <h2 className="text-sm font-semibold text-gray-900">Subpackage Margin</h2>
-                  <p className="text-xs text-gray-500 mt-0.5">Markup applied to Subpackage items (vehicle, interpreter, concierge, etc.). Hotel pricing is unaffected.</p>
-                  <div className="mt-2 text-sm text-gray-800">
-                    {subpkgEnabledOriginal
-                      ? <span className="text-[#0f4c35] font-medium">{subpkgRateOriginal}% markup</span>
-                      : <span className="text-gray-400">Off — Free</span>}
+                  <h2 className="text-sm font-semibold text-gray-900">Category Markup Rates</h2>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Selling price = cost × (1 + markup%). Agent commission is carved from the selling price, not added on top.
+                  </p>
+                  <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-1">
+                    {MARKUP_RATE_ROWS.map(({ key, label }) => (
+                      <div key={key} className="flex items-center justify-between gap-2">
+                        <span className="text-xs text-gray-500 truncate">{label}</span>
+                        <span className="text-xs font-medium tabular-nums text-gray-800 shrink-0">
+                          {key === 'Subpackage-Other' && markupRatesOriginal[key] === 0
+                            ? <span className="text-gray-400">Free</span>
+                            : `${Math.round(markupRatesOriginal[key] * 100)}%`}
+                        </span>
+                      </div>
+                    ))}
                   </div>
-                  {subpkgSaved && <p className="text-xs text-[#0f4c35] mt-1">Saved.</p>}
+                  {markupSaved && <p className="text-xs text-[#0f4c35] mt-2">Saved.</p>}
                 </div>
-                <button onClick={() => startEdit('subpackage')}
+                <button onClick={() => startEdit('markup_rates')}
                   className="shrink-0 text-xs font-semibold bg-green-700 text-white hover:bg-green-800 px-2.5 py-1 rounded-lg transition-colors">Edit</button>
               </div>
             ) : (
               <div className="space-y-4">
                 <div>
-                  <h2 className="text-sm font-semibold text-gray-900">Subpackage Margin</h2>
-                  <p className="text-xs text-gray-500 mt-0.5">Off = Subpackage items are free. On = flat markup applied (vehicle, interpreter, concierge, etc.). Hotel is always free.</p>
+                  <h2 className="text-sm font-semibold text-gray-900">Category Markup Rates</h2>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Selling price = cost × (1 + markup%). Agent commission is carved from selling price; not added on top.
+                  </p>
                 </div>
-                <div className="flex items-center gap-3">
-                  <button onClick={() => setSubpkgEnabled(v => !v)}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${subpkgEnabled ? 'bg-[#0f4c35]' : 'bg-gray-300'}`}>
-                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${subpkgEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
-                  </button>
-                  <span className="text-sm text-gray-700">{subpkgEnabled ? 'Enabled' : 'Disabled (Free)'}</span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
+                  {MARKUP_RATE_ROWS.map(({ key, label }) => {
+                    if (key === 'Subpackage-Other') {
+                      const isFree = markupDraft[key] === '0'
+                      return (
+                        <div key={key}>
+                          <label className="block text-xs font-medium text-gray-500 mb-1">{label}</label>
+                          <div className="flex items-center gap-2">
+                            <div className={`flex items-center border rounded-lg overflow-hidden transition-all w-28 ${isFree ? 'border-gray-100' : 'border-gray-200 focus-within:border-[#0f4c35]'}`}>
+                              <input
+                                type="number"
+                                value={markupDraft[key] ?? ''}
+                                onChange={(e) => setMarkupDraft(d => ({ ...d, [key]: e.target.value }))}
+                                min={0} max={500}
+                                disabled={isFree}
+                                className="flex-1 w-full px-3 py-1.5 text-sm focus:outline-none bg-white disabled:text-gray-300 text-gray-900" />
+                              <span className={`px-2 py-1.5 text-sm bg-gray-50 border-l ${isFree ? 'text-gray-300 border-gray-100' : 'text-gray-500 border-gray-200'}`}>%</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setMarkupDraft(d => ({
+                                ...d,
+                                'Subpackage-Other': isFree
+                                  ? (markupRatesOriginal['Subpackage-Other'] > 0
+                                      ? String(Math.round(markupRatesOriginal['Subpackage-Other'] * 100))
+                                      : '30')
+                                  : '0',
+                              }))}
+                              className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${isFree ? 'bg-gray-300' : 'bg-[#0f4c35]'}`}>
+                              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${isFree ? 'translate-x-1' : 'translate-x-6'}`} />
+                            </button>
+                            <span className="text-xs text-gray-500">{isFree ? 'Free' : 'Charged'}</span>
+                          </div>
+                        </div>
+                      )
+                    }
+                    return (
+                      <div key={key}>
+                        <label className="block text-xs font-medium text-gray-500 mb-1">{label}</label>
+                        <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden focus-within:border-[#0f4c35] transition-all w-28">
+                          <input
+                            type="number"
+                            value={markupDraft[key] ?? ''}
+                            onChange={(e) => setMarkupDraft(d => ({ ...d, [key]: e.target.value }))}
+                            min={0} max={500}
+                            className="flex-1 w-full px-3 py-1.5 text-sm text-gray-900 focus:outline-none bg-white" />
+                          <span className="px-2 py-1.5 text-sm text-gray-500 bg-gray-50 border-l border-gray-200">%</span>
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
-                {subpkgEnabled && (
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1.5">Markup rate (%)</label>
-                    <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden focus-within:border-[#0f4c35] transition-all w-32">
-                      <input autoFocus type="number" value={subpkgRate} onChange={e => setSubpkgRate(e.target.value)}
-                        placeholder="50" min={0} max={200}
-                        className="flex-1 w-full px-3 py-2 text-sm text-gray-900 focus:outline-none bg-white" />
-                      <span className="px-3 py-2 text-sm text-gray-600 bg-gray-50 border-l border-gray-200">%</span>
-                    </div>
-                    <p className="text-[11px] text-gray-400 mt-1">e.g. 50 → client pays 1.5× the base cost</p>
-                  </div>
-                )}
-                {subpkgError && <p className="text-xs text-red-500">{subpkgError}</p>}
+                <p className="text-[11px] text-gray-400">e.g. K-Medical 100% → client pays 2× cost. 0% = cost pass-through.</p>
+                {markupError && <p className="text-xs text-red-500">{markupError}</p>}
                 <div className="flex items-center gap-2">
-                  <button onClick={saveSubpackageMargin} disabled={savingSubpkg}
+                  <button onClick={saveMarkupRates} disabled={savingMarkup}
                     className="px-4 py-1.5 text-xs font-medium bg-[#0f4c35] text-white rounded-lg hover:bg-[#0a3828] disabled:opacity-40 transition-colors">
-                    {savingSubpkg ? 'Saving...' : 'Save'}
+                    {savingMarkup ? 'Saving...' : 'Save'}
                   </button>
-                  <button onClick={cancelEdit} disabled={savingSubpkg}
+                  <button onClick={cancelEdit} disabled={savingMarkup}
                     className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-800 disabled:opacity-40">Cancel</button>
                 </div>
               </div>

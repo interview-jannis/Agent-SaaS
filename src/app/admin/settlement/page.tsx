@@ -68,7 +68,7 @@ function fmtKRW(n: number) { return '₩' + n.toLocaleString('ko-KR') }
 function fmtUSD(n: number) { return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }
 function commissionKrw(totalKrw: number, agentMargin: number): number {
   if (!agentMargin || agentMargin <= 0) return 0
-  return Math.round(totalKrw * agentMargin / (1 + agentMargin))
+  return Math.round(totalKrw * agentMargin)
 }
 
 function daysWaiting(endDate: string | null): number | null {

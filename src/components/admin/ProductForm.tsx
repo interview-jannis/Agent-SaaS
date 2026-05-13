@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { logAsCurrentUser } from '@/lib/audit'
-import { appliesMargin } from '@/lib/pricing'
+import { getMarkupRate, type MarkupRatesConfig, DEFAULT_MARKUP_RATES } from '@/lib/pricing'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -133,18 +133,18 @@ export default function ProductForm({ productId, productNumber, categories, init
 
   // Exchange rate (KRW per 1 USD)
   const [exchangeRate, setExchangeRate] = useState(1350)
-  const [companyMargin, setCompanyMargin] = useState(0.5)
+  const [markupRatesConfig, setMarkupRatesConfig] = useState<MarkupRatesConfig>(DEFAULT_MARKUP_RATES)
 
   useEffect(() => {
     Promise.all([
       supabase.from('system_settings').select('value').eq('key', 'product_price_rate').maybeSingle(),
-      supabase.from('system_settings').select('value').eq('key', 'company_margin_rate').single(),
+      supabase.from('system_settings').select('value').eq('key', 'markup_rates').maybeSingle(),
       supabase.from('product_subcategories').select('id, category_id, name').order('sort_order'),
-    ]).then(([rateRes, cmRes, subRes]) => {
+    ]).then(([rateRes, mrRes, subRes]) => {
       const rate = (rateRes.data?.value as { usd_krw?: number } | null)?.usd_krw
       if (rate) setExchangeRate(rate)
-      const cm = (cmRes.data?.value as { rate?: number } | null)?.rate
-      if (typeof cm === 'number') setCompanyMargin(cm)
+      const mr = mrRes.data?.value as MarkupRatesConfig | null
+      if (mr) setMarkupRatesConfig({ ...DEFAULT_MARKUP_RATES, ...mr })
       setSubcategories((subRes.data as { id: string; category_id: string; name: string }[] | null) ?? [])
     })
   }, [])
@@ -696,21 +696,21 @@ export default function ProductForm({ productId, productNumber, categories, init
                   if (!v.base_price) return null
                   const catName = categories.find(c => c.id === form.category_id)?.name
                   const subName = subcategories.find(s => s.id === form.subcategory_id)?.name
-                  if (!appliesMargin(catName, subName)) return null
+                  const markup = getMarkupRate(catName, subName, markupRatesConfig)
                   return (
                     <div className="grid grid-cols-3 gap-2 pt-1">
                       {[0.15, 0.20, 0.25].map((tier) => {
                         const n = Number(v.base_price)
-                        const mult = 1 + companyMargin + tier
+                        const sellingPrice = n * (1 + markup)
                         const finalKrw = v.price_currency === 'USD'
-                          ? Math.round(n * exchangeRate * mult)
-                          : Math.round(n * mult)
+                          ? Math.round(sellingPrice * exchangeRate * (1 + tier))
+                          : Math.round(sellingPrice * (1 + tier))
                         const finalUsd = v.price_currency === 'USD'
-                          ? n * mult
-                          : (n * mult) / exchangeRate
+                          ? sellingPrice * (1 + tier)
+                          : (sellingPrice * (1 + tier)) / exchangeRate
                         return (
                           <div key={tier} className="bg-gray-50 rounded-md px-2 py-1.5 border border-gray-100">
-                            <p className="text-[9px] text-gray-400 uppercase tracking-wide">Co{Math.round(companyMargin * 100)}%+Agent{Math.round(tier * 100)}%</p>
+                            <p className="text-[9px] text-gray-400 uppercase tracking-wide">Mkup{Math.round(markup * 100)}%+Ag{Math.round(tier * 100)}%</p>
                             {v.price_currency === 'USD' ? (
                               <>
                                 <p className="text-[11px] font-semibold text-gray-800 tabular-nums">${finalUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>

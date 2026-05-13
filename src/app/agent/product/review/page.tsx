@@ -12,7 +12,7 @@ import {
   addDocumentGroupMember,
 } from '@/lib/documents'
 import { createCaseContract } from '@/lib/caseContracts'
-import { appliesMargin, isHotelItem, nightsBetween, daysBetween, variantPriceUsd, variantPriceKrw, subpackageMult, type SubpackageMarginConfig } from '@/lib/pricing'
+import { getMarkupRate, isHotelItem, nightsBetween, daysBetween, variantPriceUsd, variantPriceKrw, type MarkupRatesConfig, DEFAULT_MARKUP_RATES } from '@/lib/pricing'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -96,9 +96,8 @@ export default function QuoteReviewPage() {
   const [agentClients, setAgentClients] = useState<Client[]>([])
   const [agentId, setAgentId] = useState('')
   const [exchangeRate, setExchangeRate] = useState(1350)
-  const [companyMargin, setCompanyMargin] = useState(0.5)
-  const [agentMargin, setAgentMargin] = useState(0.15)
-  const [subpkgConfig, setSubpkgConfig] = useState<SubpackageMarginConfig | null>(null)
+  const [agentCommissionRate, setAgentCommissionRate] = useState(0.15)
+  const [markupRatesConfig, setMarkupRatesConfig] = useState<MarkupRatesConfig>(DEFAULT_MARKUP_RATES)
   const [tripServices, setTripServices] = useState<TripServiceItem[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -140,15 +139,14 @@ export default function QuoteReviewPage() {
       const userId = session?.user?.id
       if (!userId) return
 
-      const [leadRes, productsRes, rateRes, companyRateRes, agentRes, subpkgRes] = await Promise.all([
+      const [leadRes, productsRes, rateRes, markupRatesRes, agentRes] = await Promise.all([
         supabase.from('clients').select('id, client_number, name, nationality, gender, needs_muslim_friendly, dietary_restriction').eq('id', draft.clientId).single(),
         allProductIds.length
           ? supabase.from('products').select('id, name, quantity_type, product_categories(name), product_subcategories(name), product_variants(id, variant_label, base_price, price_currency, sort_order)').in('id', allProductIds)
           : Promise.resolve({ data: [] }),
         supabase.from('system_settings').select('value').eq('key', 'product_price_rate').single(),
-        supabase.from('system_settings').select('value').eq('key', 'company_margin_rate').single(),
+        supabase.from('system_settings').select('value').eq('key', 'markup_rates').maybeSingle(),
         supabase.from('agents').select('id, margin_rate').eq('auth_user_id', userId).single(),
-        supabase.from('system_settings').select('value').eq('key', 'subpackage_margin').maybeSingle(),
       ])
 
       setLead(leadRes.data)
@@ -156,14 +154,11 @@ export default function QuoteReviewPage() {
       const rate = (rateRes.data?.value as { usd_krw?: number } | null)?.usd_krw
       if (rate) setExchangeRate(rate)
 
-      const cm = (companyRateRes.data?.value as { rate?: number } | null)?.rate
-      if (typeof cm === 'number') setCompanyMargin(cm)
+      const mr = markupRatesRes.data?.value as MarkupRatesConfig | null
+      if (mr) setMarkupRatesConfig({ ...DEFAULT_MARKUP_RATES, ...mr })
 
       const am = (agentRes.data as { margin_rate?: number } | null)?.margin_rate
-      if (typeof am === 'number') setAgentMargin(am)
-
-      const sp = subpkgRes.data?.value as { enabled?: boolean; rate?: number } | null
-      if (sp != null) setSubpkgConfig({ enabled: !!sp.enabled, rate: sp.rate ?? 0.5 })
+      if (typeof am === 'number') setAgentCommissionRate(am)
 
       const aid = agentRes.data?.id ?? ''
       setAgentId(aid)
@@ -185,7 +180,6 @@ export default function QuoteReviewPage() {
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
-  const marginMult = 1 + companyMargin + agentMargin
   const nights = nightsBetween(cart?.dateStart, cart?.dateEnd)
   const days = daysBetween(cart?.dateStart, cart?.dateEnd)
 
@@ -208,13 +202,11 @@ export default function QuoteReviewPage() {
     if (!found) return 0
     const cat = found.product.product_categories?.name
     const sub = found.product.product_subcategories?.name
-    const isSubpkg = cat === 'Subpackage' && !isHotelItem(cat, sub)
     return variantPriceUsd({
       basePrice: found.variant.base_price,
       priceCurrency: found.variant.price_currency,
       exchangeRate,
-      marginMult: isSubpkg ? subpackageMult(subpkgConfig) : marginMult,
-      applyMargin: isSubpkg ? true : appliesMargin(cat, sub),
+      markupRate: getMarkupRate(cat, sub, markupRatesConfig),
     })
   }
 
@@ -243,12 +235,13 @@ export default function QuoteReviewPage() {
   function serviceItemUsd(svc: TripServiceItem): number {
     const found = findVariant(svc.productId, svc.variantId)
     if (!found) return 0
+    const cat = found.product.product_categories?.name
+    const sub = found.product.product_subcategories?.name
     return variantPriceUsd({
       basePrice: found.variant.base_price,
       priceCurrency: found.variant.price_currency,
       exchangeRate,
-      marginMult: subpackageMult(subpkgConfig),
-      applyMargin: true,
+      markupRate: getMarkupRate(cat, sub, markupRatesConfig),
     })
   }
 
@@ -358,9 +351,6 @@ export default function QuoteReviewPage() {
         .from('agents').select('id, name, country, margin_rate').eq('auth_user_id', session.user.id).single()
       if (!agentData) throw new Error('Agent not found')
 
-      const { data: companyRateSetting } = await supabase
-        .from('system_settings').select('value').eq('key', 'company_margin_rate').single()
-      const companyMargin = (companyRateSetting?.value as { rate?: number } | null)?.rate ?? 0.2
       const agentMargin = agentData.margin_rate ?? 0.15
 
       // Create case — use MAX+1 to avoid collision after deletions (count+1 breaks on sparse gaps)
@@ -403,13 +393,11 @@ export default function QuoteReviewPage() {
           if (!found) return gs
           const cat = found.product.product_categories?.name
           const sub = found.product.product_subcategories?.name
-          const isSubpkg = cat === 'Subpackage' && !isHotelItem(cat, sub)
           const krwPer = variantPriceKrw({
             basePrice: found.variant.base_price,
             priceCurrency: found.variant.price_currency,
             exchangeRate,
-            marginMult: isSubpkg ? subpackageMult(subpkgConfig) : marginMult,
-            applyMargin: isSubpkg ? true : appliesMargin(cat, sub),
+            markupRate: getMarkupRate(cat, sub, markupRatesConfig),
           })
           const gMemberCount = g.id === 'shared' ? sharedMemberCount : g.memberCount
           const mult = isHotelItem(cat, sub) ? nights : gMemberCount
@@ -419,12 +407,13 @@ export default function QuoteReviewPage() {
       const servicesKRW = tripServices.reduce((sum, svc) => {
         const found = findVariant(svc.productId, svc.variantId)
         if (!found) return sum
+        const cat = found.product.product_categories?.name
+        const sub = found.product.product_subcategories?.name
         const krwPer = variantPriceKrw({
           basePrice: found.variant.base_price,
           priceCurrency: found.variant.price_currency,
           exchangeRate,
-          marginMult: subpackageMult(subpkgConfig),
-          applyMargin: true,
+          markupRate: getMarkupRate(cat, sub, markupRatesConfig),
         })
         return sum + krwPer * svc.days
       }, 0)
@@ -440,7 +429,7 @@ export default function QuoteReviewPage() {
         fromParty: 'admin',
         toParty: 'client',
         totalPrice: totalKRW,
-        companyMarginRate: companyMargin,
+        companyMarginRate: null,
         agentMarginRate: agentMargin,
         paymentDueDate: paymentDue.toISOString().split('T')[0],
         priceRateSnapshot: exchangeRate,  // product_price_rate (1500) 스냅샷 — 문서 금액 고정
@@ -463,9 +452,6 @@ export default function QuoteReviewPage() {
           const cat = found.product.product_categories?.name
           const sub = found.product.product_subcategories?.name
           const isHotelLine = isHotelItem(cat, sub)
-          const isSubpkg = cat === 'Subpackage' && !isHotelLine
-          const apply = isSubpkg ? !!subpkgConfig?.enabled : appliesMargin(cat, sub)
-          const effectiveMult = isSubpkg ? subpackageMult(subpkgConfig) : marginMult
           const multiplier = isHotelLine ? nights : (it.quantity ?? groupMemberCount)
           const baseUnitKrw = found.variant.price_currency === 'USD'
             ? Math.round(found.variant.base_price * exchangeRate)
@@ -473,8 +459,8 @@ export default function QuoteReviewPage() {
           const finalUnitKrw = variantPriceKrw({
             basePrice: found.variant.base_price,
             priceCurrency: found.variant.price_currency,
-            exchangeRate, marginMult: effectiveMult,
-            applyMargin: apply,
+            exchangeRate,
+            markupRate: getMarkupRate(cat, sub, markupRatesConfig),
           })
           // Bake "· N nights" into the snapshot label so customer-facing
           // QuoteDocument and admin SelectedProductsSection render the
@@ -519,12 +505,13 @@ export default function QuoteReviewPage() {
           const baseUnitKrw = found.variant.price_currency === 'USD'
             ? Math.round(found.variant.base_price * exchangeRate)
             : found.variant.base_price
+          const svcCat = found.product.product_categories?.name
+          const svcSub = found.product.product_subcategories?.name
           const finalUnitKrw = variantPriceKrw({
             basePrice: found.variant.base_price,
             priceCurrency: found.variant.price_currency,
             exchangeRate,
-            marginMult: subpackageMult(subpkgConfig),
-            applyMargin: true,
+            markupRate: getMarkupRate(svcCat, svcSub, markupRatesConfig),
           })
           const labelBase = found.variant.variant_label ?? null
           const labelWithDays = labelBase
