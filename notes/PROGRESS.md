@@ -1,11 +1,12 @@
 # Project Progress
 
 ## 현재 상태
-- **Phase**: 시뮬 D+2(5/13). 카테고리별 마진율 재설계, Agent 초대 이메일, 상품 멀티태그(product_subcategory_tags), PGRST201 FK 모호성 버그 해결, K-Beauty 3단계 카탈로그, Bulk 이미지 다중 상품 적용.
-- **마지막 작업**: 2026-05-13 — K-Beauty 3단계 nav + PGRST201 fix + Bulk image 다중 상품.
-- **마지막 업데이트**: 2026-05-13 (시뮬레이션 5/11~15, 런칭 5/18)
+- **Phase**: 시뮬 D+3~4(5/14~15). 케이스 페이지 강조 일관성 sweep + Hero 글로벌 sticky + ScheduleEditor 후속 정리(group 강제 선택, row checkbox 제거, hotel 3-enum, hotel day span 박수 카운트, day-level concierge subpackage + per-day hours + Trip Services Summary).
+- **마지막 작업**: 2026-05-15 — Day-level concierge per-service hours + Trip Services Summary 박스.
+- **마지막 업데이트**: 2026-05-15 (시뮬레이션 5/11~15, 런칭 5/18)
 - **SaaS 브랜드명**: **TikkTakk** (전역 치환 완료)
 
+> 2026-05-14 상세: `notes/26.05.14.md` (낮: ScheduleEditor 세그먼트 컬럼 + full-width 레이아웃 + hotel sub-dropdown + Fill Transfers + admin-side bug sweep. 새벽: 케이스 페이지 강조 일관성 sweep, Hero 글로벌 sticky, 그룹 강제 선택, row checkbox 제거, hotel 3-enum(check-in/stay/check-out), hotel 박수 day-span 카운트, day-level concierge subpackage 도입. 후반: GroupMultiSelect radio 픽스, em-dash 정리, ItemRow padding 복구, day-level concierge에 per-service hours + Trip Services Summary 박스).
 > 2026-05-13: `notes/26.05.13.md` §1–7 (카테고리별 마진율 재설계. Agent 초대 이메일. 상품 멀티 서브카테고리 junction table. PGRST201 FK 모호성 버그. K-Beauty 3단계 카탈로그. K-Medical Male/Female 별도 유지 결정. Bulk 이미지 다중 상품 적용).
 > 2026-05-12 저녁: `notes/26.05.12.md` §9–12 + §13–19 (vehicle per_day. Edit picker sticky. completed 케이스 Financials 최상단. Agent 비활성화 3-layer. Agent 삭제 이름 확인. Schedule Shared 탭 제거. 파트너사 공유 링크. 고객 intake 링크. 여권 사본 업로드. Agent 평가. 이메일 인프라).
 > 2026-05-12: `notes/26.05.12.md` §1–5 (인코딩 복구. 버튼 4-tier. Invoice SVG+이메일. canEdit 픽스. Agent 승인/활성화 알림 양방향 + Setup draft 저장). §6–8 (Health Screening 파싱. 카탈로그 partner pills. 상품 삭제 확인 모달).
@@ -42,7 +43,7 @@
 
 #### 개발 (남은 것)
 - [ ] **Female/Male 상품 같은 그룹 내 복수 선택 방지** — 한 그룹 = 1인 기준, 성별 충돌 시 경고/차단
-- [ ] **통역 상품 시간 옵션 확장** — 시간 단위 늘리기 (4h/8h/연장)
+- [ ] **통역/컨시어지/차량 overage 단가 + invoice 자동 연동** — (5/15 설계 완료, 미구현) `product_variants.overage_hourly_rate NUMERIC` 컬럼 + Excel upload `overage_hourly_rate` 컬럼 + ProductForm UI + ScheduleEditor에서 contracted hours 초과 시 인라인 prompt → quotation `document_items` `origin='admin_added'` row 자동 생성. fallback 단가 = `base_price / (durationValue × quantity)`. 자세한 설계는 `notes/26.05.14.md` 후속 섹션 참조.
 - [ ] **Agent Home 사진 추가** — 9단계 절차 소개 화면에 이미지 삽입. 상품 사진 등록 완료 후 작업.
 - [ ] **Admin Approve & Activate → Agent 알림** — 카운터사인 후 승인 시 agent에게 notifyAgent 호출 미구현. `src/app/api/admin/sign-contract/route.ts` 수정 필요.
 
