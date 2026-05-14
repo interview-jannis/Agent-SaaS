@@ -54,8 +54,8 @@ export type ScheduleItem = {
   // meal-specific
   restaurantName?: string | null
   cuisine?: string | null
-  // hotel-specific
-  hotelCheckType?: 'checkin' | 'checkout' | 'stay' | 'depart' | 'return' | null  // depart/return legacy only
+  // hotel-specific — 3-enum (legacy 'depart'/'return' are read-tolerated and normalized to 'stay' on edit)
+  hotelCheckType?: 'checkin' | 'checkout' | 'stay' | null
   variantId: string | null         // optional ref to product_variants for context
   tripServiceVariantIds?: string[] | null  // trip services (interpreter/concierge/security) assigned to this appointment
   groupId?: string | null           // legacy single-group field — kept for backward compat

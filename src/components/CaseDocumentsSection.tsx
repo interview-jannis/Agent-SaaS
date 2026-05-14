@@ -328,6 +328,15 @@ export default function CaseDocumentsSection({
 
   async function doMarkPaid(docId: string) {
     if (!paidAtValue) return
+    const doc = documents.find(d => d.id === docId)
+    const confirmMsg = doc?.type === 'commission_invoice'
+      ? 'Have you confirmed the commission has been transferred to the agent?'
+      : doc?.type === 'deposit_invoice'
+      ? 'Have you confirmed the deposit payment was received?'
+      : doc?.type === 'final_invoice'
+      ? 'Have you confirmed the balance payment was received?'
+      : 'Have you confirmed this payment?'
+    if (!window.confirm(confirmMsg)) return
     setBusy(docId); setError('')
     try {
       await markPaymentReceived(docId, new Date(paidAtValue).toISOString(), exchangeRate)
@@ -829,7 +838,7 @@ export default function CaseDocumentsSection({
                     <button onClick={() => { setPaidAtEditingId(doc.id); setPaidAtValue(new Date().toISOString().slice(0, 10)) }}
                       disabled={!canMarkThisDoc}
                       className="text-[11px] font-semibold bg-[#0f4c35] text-white hover:bg-[#0a3828] px-3 py-1.5 rounded-lg transition-colors disabled:opacity-40">
-                      Mark Paid
+                      {doc.type === 'commission_invoice' ? 'Mark Sent' : 'Mark Received'}
                     </button>
                   )
                 )}
