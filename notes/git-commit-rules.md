@@ -21,6 +21,7 @@
 | `/.next/`, `/build/`, `/out/` | 빌드 산출물, 재빌드 가능 |
 | `~$*` | Excel 열려있을 때 생기는 임시 잠금 파일 |
 | `data/**/pdf to png/` | 로컬 OCR 작업용 임시 파일 |
+| `data/scripts/` | 데이터 가공용 일회성 스크립트 (빌드 도구, 앱 실행에 불필요) |
 | `notes/take-*.cjs`, `notes/upload-*.cjs` 등 | service-role 키 포함 스크립트 |
 | `notes/screenshots/` | 로컬 디버깅용 스크린샷 |
 | `.DS_Store` | macOS 시스템 파일 |

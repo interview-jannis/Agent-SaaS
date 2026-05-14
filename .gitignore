@@ -46,6 +46,9 @@ next-env.d.ts
 # Local-only PDF→PNG conversions (used as OCR helper; not production data)
 data/**/pdf to png/
 
+# Data build/processing scripts — one-off utilities, not needed in repo
+data/scripts/
+
 # Local E2E screenshot helper scripts (contain service-role keys — never commit)
 notes/take-*.cjs
 notes/take-*.mjs
