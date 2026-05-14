@@ -1598,8 +1598,11 @@ const inScope = itemGroupIds === null
             </span>
           )}
           {(itemType === 'appointment' || itemType === 'hotel') && !item.isPrayer && (() => {
-            const regularProducts = pickerProducts.filter(cp => !cp.isTripService)
-            const allTripServices = caseProducts.filter(cp => cp.isTripService && !cp.isVehicle)
+            // Hotels live under the Trip Services group but admins now pick them via the
+            // appointment dropdown (see hotel sub-dropdown below). Keep them in the
+            // dropdown; exclude them from the trip-service chips so they aren't duplicated.
+            const regularProducts = pickerProducts.filter(cp => !cp.isTripService || cp.isHotel)
+            const allTripServices = caseProducts.filter(cp => cp.isTripService && !cp.isVehicle && !cp.isHotel)
             // Detect if selected product is a hotel product
             const selectedHotelProduct = item.variantId
               ? caseProducts.find(cp => cp.variantId === item.variantId && cp.isHotel) ?? null
