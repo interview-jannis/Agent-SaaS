@@ -57,6 +57,7 @@ export type ScheduleItem = {
   // hotel-specific
   hotelCheckType?: 'checkin' | 'checkout' | 'depart' | 'return' | null
   variantId: string | null         // optional ref to product_variants for context
+  tripServiceVariantId?: string | null  // trip service (interpreter/concierge/security) assigned to this appointment
   groupId?: string | null           // legacy single-group field — kept for backward compat
   groupIds?: string[] | null        // null = shared (all groups), string[] = subset of groups
                                     // groupIds takes precedence over groupId when both present

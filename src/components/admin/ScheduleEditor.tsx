@@ -764,12 +764,16 @@ export default function ScheduleEditor({
           .map(([, cp]) => cp)
 
         // --- Trip Services n-day coverage ---
-        // Count unique days per variantId in committed rows (appointment + transfer variantId).
+        // Count unique days per variantId in committed rows.
+        // Counts both variantId and tripServiceVariantId so trip services assigned
+        // via the separate picker also satisfy coverage.
         const scheduledDaysByVariant = new Map<string, Set<number>>()
         for (const it of committedItems) {
-          if (!it.variantId) continue
-          if (!scheduledDaysByVariant.has(it.variantId)) scheduledDaysByVariant.set(it.variantId, new Set())
-          scheduledDaysByVariant.get(it.variantId)!.add(it.day)
+          for (const vid of [it.variantId, it.tripServiceVariantId ?? null]) {
+            if (!vid) continue
+            if (!scheduledDaysByVariant.has(vid)) scheduledDaysByVariant.set(vid, new Set())
+            scheduledDaysByVariant.get(vid)!.add(it.day)
+          }
         }
         // Deduplicate trip service products by variantId (quantity is the same across groups)
         const tripServiceProducts = new Map<string, CaseProduct>()
@@ -1125,7 +1129,7 @@ function ItemRow({
     if (isGroupUnset) return []
     const filtered = caseProducts.filter(cp => {
       if (cp.isHotel || cp.isVehicle) return false
-      const inScope = itemGroupIds === null
+const inScope = itemGroupIds === null
         ? cp.isSubpackage || sharedVariantIds.has(cp.variantId)
         : itemGroupIds.some(gid => cp.groupId === gid) || cp.isSubpackage
       return inScope
@@ -1361,7 +1365,8 @@ function ItemRow({
           )}
           {itemType === 'appointment' && !item.isPrayer && (() => {
             const regularProducts = pickerProducts.filter(cp => !cp.isTripService)
-            const tripServiceProducts = pickerProducts.filter(cp => cp.isTripService)
+            const allTripServices = caseProducts.filter(cp => cp.isTripService && !cp.isHotel && !cp.isVehicle)
+            const uniqueTripServices = [...new Map(allTripServices.map(cp => [cp.variantId, cp])).values()]
             const renderOption = (cp: CaseProduct) => {
               const isCommitted = cp.variantId !== item.variantId && committedVariantContexts.has(cp.variantId)
               const label = `${cp.partnerName ? `${cp.partnerName} · ` : ''}${cp.productName}${cp.variantLabel ? ` · ${cp.variantLabel}` : ''}`
@@ -1369,29 +1374,40 @@ function ItemRow({
               return <option key={cp.variantId} value={cp.variantId}>{isCommitted ? `✓ ${label}${dur}` : `${label}${dur}`}</option>
             }
             return (
-              <select
-                value={item.variantId ?? (item.title === 'Results Consultation' ? '__results_consultation__' : '')}
-                onChange={(e) => {
-                  if (e.target.value === '__results_consultation__') {
-                    onUpdate({ title: 'Results Consultation', variantId: null })
-                  } else {
-                    onApplyVariant(e.target.value || null)
-                  }
-                }}
-                disabled={!isPending}
-                className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-900 focus:outline-none focus:border-[#0f4c35] flex-1 min-w-[180px] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
-              >
-                <option value="">— Link a product (optional) —</option>
-                {regularProducts.map(renderOption)}
-                {tripServiceProducts.length > 0 && (
-                  <optgroup label="Trip Services">
-                    {tripServiceProducts.map(renderOption)}
-                  </optgroup>
+              <>
+                <select
+                  value={item.variantId ?? (item.title === 'Results Consultation' ? '__results_consultation__' : '')}
+                  onChange={(e) => {
+                    if (e.target.value === '__results_consultation__') {
+                      onUpdate({ title: 'Results Consultation', variantId: null })
+                    } else {
+                      onApplyVariant(e.target.value || null)
+                    }
+                  }}
+                  disabled={!isPending}
+                  className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-900 focus:outline-none focus:border-[#0f4c35] flex-1 min-w-[180px] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
+                >
+                  <option value="">— Link a product (optional) —</option>
+                  {regularProducts.map(renderOption)}
+                  {showResultsSuggestion && (
+                    <option value="__results_consultation__">Results Consultation</option>
+                  )}
+                </select>
+                {uniqueTripServices.length > 0 && (
+                  <select
+                    value={item.tripServiceVariantId ?? ''}
+                    onChange={(e) => onUpdate({ tripServiceVariantId: e.target.value || null })}
+                    disabled={!isPending}
+                    className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-900 focus:outline-none focus:border-[#0f4c35] min-w-[140px] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
+                  >
+                    <option value="">— Trip service —</option>
+                    {uniqueTripServices.map(cp => {
+                      const label = `${cp.partnerName ? `${cp.partnerName} · ` : ''}${cp.productName}`
+                      return <option key={cp.variantId} value={cp.variantId}>{label}</option>
+                    })}
+                  </select>
                 )}
-                {showResultsSuggestion && (
-                  <option value="__results_consultation__">Results Consultation</option>
-                )}
-              </select>
+              </>
             )
           })()}
           {coversGroups.length > 1 && (
