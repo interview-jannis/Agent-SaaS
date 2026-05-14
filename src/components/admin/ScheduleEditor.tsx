@@ -598,73 +598,155 @@ export default function ScheduleEditor({
               </div>
             </div>
             {!isCollapsed && (() => {
-              // Find index of first selected item in this day, to insert Transfer button after it
-              const firstSelectedIdx = dayItems.findIndex(i => selectedItemIds.has(i.id))
+              const groups = caseGroups ?? []
+              const hasGroups = groups.length > 0
+
+              // Reusable ItemRow renderer to avoid prop repetition
+              const renderItemRow = (it: ScheduleItem, allItems: ScheduleItem[]) => {
+                const idx = allItems.indexOf(it)
+                return (
+                  <ItemRow
+                    key={it.id}
+                    item={it}
+                    caseProducts={caseProducts}
+                    caseGroups={groups}
+                    sharedVariantIds={sharedVariantIds}
+                    committedVariantContexts={committedVariantContexts}
+                    isPending={pendingItemIds.has(it.id)}
+                    isEditSession={editSnapshots.has(it.id)}
+                    isGroupUnset={unsetGroupItemIds.has(it.id)}
+                    highlightEmptyTitle={emptyTitleIds.has(it.id)}
+                    showResultsSuggestion={
+                      !!(it.groupIds?.some(gid => healthCheckupGroupIds.has(gid)) ||
+                        (it.groupId && healthCheckupGroupIds.has(it.groupId)))
+                    }
+                    isNew={addedKeys.has(diffKeyFn(it))}
+                    isMarkedForRemoval={markedForRemoval.has(it.id)}
+                    isSelected={selectedItemIds.has(it.id)}
+                    onToggleSelect={() => toggleItemSelection(it.id, day)}
+                    selectionDisabled={!selectedItemIds.has(it.id) && (selectedItemIds.size >= 2 || (selectionDay !== null && selectionDay !== day))}
+                    onGroupChosen={() => markGroupChosen(it.id)}
+                    canMoveUp={idx > 0 && allItems[idx - 1].block === it.block}
+                    canMoveDown={idx < allItems.length - 1 && allItems[idx + 1].block === it.block}
+                    onUpdate={(patch) => {
+                      if (patch.title) setEmptyTitleIds(prev => { const n = new Set(prev); n.delete(it.id); return n })
+                      updateItem(it.id, patch)
+                    }}
+                    onApplyVariant={(vid) => applyVariantPick(it.id, vid)}
+                    onRemove={() => removeItem(it.id)}
+                    onMove={(dir) => moveItem(it.id, dir)}
+                    onEdit={() => editItem(it.id)}
+                    onCommit={() => commitPendingItem(it.id)}
+                    onCancelDraft={() => cancelPendingItem(it.id)}
+                  />
+                )
+              }
+
+              // --- Segmented layout (when groups exist) ---
+              type Seg = { type: 'shared'; item: ScheduleItem } | { type: 'group'; items: ScheduleItem[] }
+              const segments: Seg[] = []
+              if (hasGroups) {
+                let batch: ScheduleItem[] = []
+                for (const it of dayItems) {
+                  const gids = resolveGroupIds(it)
+                  const isShared = gids === null || gids.length === 0
+                  if (isShared) {
+                    if (batch.length > 0) { segments.push({ type: 'group', items: batch }); batch = [] }
+                    segments.push({ type: 'shared', item: it })
+                  } else {
+                    batch.push(it)
+                  }
+                }
+                if (batch.length > 0) segments.push({ type: 'group', items: batch })
+              }
+
               return (
               <div className="border-t border-gray-100 overflow-hidden rounded-b-2xl">
-                <div className="divide-y divide-gray-300">
-                  {dayItems.length === 0 ? (
-                    <p className="px-4 py-6 text-xs text-gray-400 text-center italic">No items yet — click &quot;Add Item&quot; to start.</p>
-                  ) : (
-                    dayItems.map((it, idx) => (
-                      <React.Fragment key={it.id}>
-                      <ItemRow
-                        item={it}
-                        caseProducts={caseProducts}
-                        caseGroups={caseGroups}
-                        sharedVariantIds={sharedVariantIds}
-                        committedVariantContexts={committedVariantContexts}
-                        isPending={pendingItemIds.has(it.id)}
-                        isEditSession={editSnapshots.has(it.id)}
-                        isGroupUnset={unsetGroupItemIds.has(it.id)}
-                        highlightEmptyTitle={emptyTitleIds.has(it.id)}
-                        showResultsSuggestion={
-                          !!(it.groupIds?.some(gid => healthCheckupGroupIds.has(gid)) ||
-                            (it.groupId && healthCheckupGroupIds.has(it.groupId)))
-                        }
-                        isNew={addedKeys.has(diffKeyFn(it))}
-                        isMarkedForRemoval={markedForRemoval.has(it.id)}
-                        isSelected={selectedItemIds.has(it.id)}
-                        onToggleSelect={() => toggleItemSelection(it.id, day)}
-                        selectionDisabled={!selectedItemIds.has(it.id) && (selectedItemIds.size >= 2 || (selectionDay !== null && selectionDay !== day))}
-                        onGroupChosen={() => markGroupChosen(it.id)}
-                        canMoveUp={idx > 0 && dayItems[idx - 1].block === it.block}
-                        canMoveDown={idx < dayItems.length - 1 && dayItems[idx + 1].block === it.block}
-                        onUpdate={(patch) => {
-                          if (patch.title) setEmptyTitleIds(prev => { const n = new Set(prev); n.delete(it.id); return n })
-                          updateItem(it.id, patch)
-                        }}
-                        onApplyVariant={(vid) => applyVariantPick(it.id, vid)}
-                        onRemove={() => removeItem(it.id)}
-                        onMove={(dir) => moveItem(it.id, dir)}
-                        onEdit={() => editItem(it.id)}
-                        onCommit={() => commitPendingItem(it.id)}
-                        onCancelDraft={() => cancelPendingItem(it.id)}
-                      />
-                      {/* + Transfer insert button — appears between the two selected items */}
-                      {hasDaySelection && selectedItemIds.size === 2 && idx === firstSelectedIdx && (
-                        <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 border-b border-blue-100">
-                          <div style={{ width: 32, flexShrink: 0 }} />
-                          <button
-                            onClick={createTransferFromSelection}
-                            className="text-xs font-semibold bg-[#0f4c35] text-white hover:bg-[#0a3828] px-3 py-1 rounded-lg"
-                          >
-                            + Transfer
-                          </button>
-                          <button onClick={clearSelection} className="text-xs text-blue-500 hover:text-blue-800">✕ Clear</button>
+                {dayItems.length === 0 ? (
+                  <p className="px-4 py-6 text-xs text-gray-400 text-center italic">No items yet — click &quot;Add Item&quot; to start.</p>
+                ) : !hasGroups ? (
+                  // ── Flat list (no groups configured) ──────────────────────
+                  <div className="divide-y divide-gray-300">
+                    {(() => {
+                      const firstSelectedIdx = dayItems.findIndex(i => selectedItemIds.has(i.id))
+                      return dayItems.map((it, idx) => (
+                        <React.Fragment key={it.id}>
+                          {renderItemRow(it, dayItems)}
+                          {hasDaySelection && selectedItemIds.size === 2 && idx === firstSelectedIdx && (
+                            <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 border-b border-blue-100">
+                              <div style={{ width: 32, flexShrink: 0 }} />
+                              <button onClick={createTransferFromSelection} className="text-xs font-semibold bg-[#0f4c35] text-white hover:bg-[#0a3828] px-3 py-1 rounded-lg">+ Transfer</button>
+                              <button onClick={clearSelection} className="text-xs text-blue-500 hover:text-blue-800">✕ Clear</button>
+                            </div>
+                          )}
+                        </React.Fragment>
+                      ))
+                    })()}
+                  </div>
+                ) : (
+                  // ── Segmented column layout ────────────────────────────────
+                  <div className="divide-y divide-gray-200">
+                    {/* Group column headers */}
+                    <div className="flex bg-gray-50 border-b border-gray-100">
+                      {groups.map(g => (
+                        <div key={g.id} className="flex-1 text-[10px] font-semibold text-gray-400 uppercase tracking-wider px-3 py-1.5 border-l first:border-l-0 border-gray-100">
+                          {g.name}
                         </div>
-                      )}
-                      </React.Fragment>
-                    ))
-                  )}
-                </div>
+                      ))}
+                    </div>
+
+                    {segments.map((seg, segIdx) => {
+                      if (seg.type === 'shared') {
+                        // Full-width shared item
+                        return (
+                          <div key={`seg-${segIdx}`} className="bg-green-50/30 border-l-2 border-[#0f4c35]/20">
+                            {renderItemRow(seg.item, dayItems)}
+                          </div>
+                        )
+                      }
+                      // Group columns segment
+                      return (
+                        <div key={`seg-${segIdx}`} className="flex" style={{ alignItems: 'stretch' }}>
+                          {groups.map(g => {
+                            const colItems = seg.items.filter(it => {
+                              const gids = resolveGroupIds(it)
+                              return gids !== null && gids.includes(g.id)
+                            })
+                            return (
+                              <div key={g.id} className="flex-1 flex flex-col justify-evenly border-l first:border-l-0 border-gray-200 min-w-0">
+                                {colItems.length === 0 ? (
+                                  <div className="flex-1 flex items-center justify-center py-6 min-h-[80px]">
+                                    <span className="text-xs text-gray-200">—</span>
+                                  </div>
+                                ) : (
+                                  <div className="flex flex-col justify-evenly flex-1 divide-y divide-gray-100">
+                                    {colItems.map(it => renderItemRow(it, dayItems))}
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )
+                    })}
+
+                    {/* Transfer button in segmented mode */}
+                    {hasDaySelection && selectedItemIds.size === 2 && (
+                      <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 border-t border-blue-100">
+                        <button onClick={createTransferFromSelection} className="text-xs font-semibold bg-[#0f4c35] text-white hover:bg-[#0a3828] px-3 py-1 rounded-lg">+ Transfer</button>
+                        <button onClick={clearSelection} className="text-xs text-blue-500 hover:text-blue-800">✕ Clear</button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <div className="flex items-center gap-3 px-4 py-2.5 border-t border-gray-100">
                   <button onClick={() => addItem(day, true)} className="text-xs font-semibold text-[#0f4c35] hover:bg-green-50 px-2 py-1 rounded-lg border border-[#0f4c35]/30 hover:border-[#0f4c35] transition-colors">+ Add Item</button>
                   <FreeTimeMenu onPick={(kind) => addFreeTime(day, kind)} />
                   <PrayerMenu onPick={(prayer) => addPrayerTime(day, prayer)} />
                 </div>
               </div>
-            )
+              )
             })()}
           </div>
         )
