@@ -1,11 +1,12 @@
 # Project Progress
 
 ## 현재 상태
-- **Phase**: 시뮬 D+2(5/13). 카테고리별 마진율 재설계, Agent 초대 이메일, 상품 멀티태그(product_subcategory_tags), PGRST201 FK 모호성 버그 해결, K-Beauty 3단계 카탈로그, Bulk 이미지 다중 상품 적용.
-- **마지막 작업**: 2026-05-13 — K-Beauty 3단계 nav + PGRST201 fix + Bulk image 다중 상품.
-- **마지막 업데이트**: 2026-05-13 (시뮬레이션 5/11~15, 런칭 5/18)
+- **Phase**: 시뮬 D+3(5/14). ScheduleEditor 그룹 컬럼 레이아웃 + 호텔 흡수 + Fill Transfers + admin-side 버그 스윕. (5/13의 카테고리별 마진율, Agent 초대 이메일, 상품 멀티태그 등은 별도 노트)
+- **마지막 작업**: 2026-05-14 — ScheduleEditor 그룹 컬럼 + 셀 스팬 + 비인접 banner + Hotel 흡수 + Fill Transfers + 버그 스윕 6건. (같은 날 다른 세션에서 products partner_short / Trip Services UI / 호텔 coverage gate도 진행 — git log 참조)
+- **마지막 업데이트**: 2026-05-14 (시뮬레이션 5/11~15, 런칭 5/18)
 - **SaaS 브랜드명**: **TikkTakk** (전역 치환 완료)
 
+> 2026-05-14: `notes/26.05.14.md` §1–6 (페이지 폭 분리. ScheduleEditor 그룹 컬럼 + 셀 스팬 + 비인접 banner row. Hotel→Appointment 흡수 + 서브드롭다운 Check-in/Out/Stay. Fill Transfers 자동 생성. Sticky bottom bar + dropUp 메뉴. admin-side 버그 스윕 6건). 다른 세션 5/14 커밋: 75f2176/85efe35/8ad7f91/923dd94/f4a00c2/a7b1a8a/bcad131/be5d26f.
 > 2026-05-13: `notes/26.05.13.md` §1–7 (카테고리별 마진율 재설계. Agent 초대 이메일. 상품 멀티 서브카테고리 junction table. PGRST201 FK 모호성 버그. K-Beauty 3단계 카탈로그. K-Medical Male/Female 별도 유지 결정. Bulk 이미지 다중 상품 적용).
 > 2026-05-12 저녁: `notes/26.05.12.md` §9–12 + §13–19 (vehicle per_day. Edit picker sticky. completed 케이스 Financials 최상단. Agent 비활성화 3-layer. Agent 삭제 이름 확인. Schedule Shared 탭 제거. 파트너사 공유 링크. 고객 intake 링크. 여권 사본 업로드. Agent 평가. 이메일 인프라).
 > 2026-05-12: `notes/26.05.12.md` §1–5 (인코딩 복구. 버튼 4-tier. Invoice SVG+이메일. canEdit 픽스. Agent 승인/활성화 알림 양방향 + Setup draft 저장). §6–8 (Health Screening 파싱. 카탈로그 partner pills. 상품 삭제 확인 모달).
@@ -37,6 +38,13 @@
 ---
 
 ## 다음 할 일
+
+### 5/14 시뮬 중 발견 (스케줄 에디터)
+
+- [ ] **Fill Transfers 동작 재검증** — 5/14 자동 생성 로직 도입했으나 일부 케이스에서 의도와 다른 결과 관찰. step-by-step 재검증 + 시간/sortOrder 보정 로직 점검 필요. `notes/26.05.14.md §4` 참조.
+- [ ] **Add Item 초기 group 기본값 재검토** — 처음 행 추가 시 `groupIds=null` (Shared all)이 기본. 케이스에 shared/subpackage 상품이 없으면 product dropdown이 비어 admin이 혼란. 옵션:
+  - (a) 기본을 unset("Select group")으로 두고, 그룹 선택 후 dropdown 활성화
+  - (b) Shared 기본 유지하되 dropdown이 비면 "No shared products in this case" 안내 + 그룹 선택 유도
 
 ### 5/11 시뮬 전 (🔥 시급) — 5/8 미팅 액션 아이템
 
