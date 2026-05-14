@@ -765,12 +765,12 @@ export default function ScheduleEditor({
 
         // --- Trip Services n-day coverage ---
         // Count unique days per variantId in committed rows.
-        // Counts both variantId and tripServiceVariantId so trip services assigned
+        // Counts variantId + all tripServiceVariantIds so trip services assigned
         // via the separate picker also satisfy coverage.
         const scheduledDaysByVariant = new Map<string, Set<number>>()
         for (const it of committedItems) {
-          for (const vid of [it.variantId, it.tripServiceVariantId ?? null]) {
-            if (!vid) continue
+          const vids = [it.variantId, ...(it.tripServiceVariantIds ?? [])].filter(Boolean) as string[]
+          for (const vid of vids) {
             if (!scheduledDaysByVariant.has(vid)) scheduledDaysByVariant.set(vid, new Set())
             scheduledDaysByVariant.get(vid)!.add(it.day)
           }
@@ -1393,20 +1393,38 @@ const inScope = itemGroupIds === null
                     <option value="__results_consultation__">Results Consultation</option>
                   )}
                 </select>
-                {uniqueTripServices.length > 0 && (
-                  <select
-                    value={item.tripServiceVariantId ?? ''}
-                    onChange={(e) => onUpdate({ tripServiceVariantId: e.target.value || null })}
-                    disabled={!isPending}
-                    className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-900 focus:outline-none focus:border-[#0f4c35] min-w-[140px] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
-                  >
-                    <option value="">— Trip service —</option>
-                    {uniqueTripServices.map(cp => {
-                      const label = `${cp.partnerName ? `${cp.partnerName} · ` : ''}${cp.productName}`
-                      return <option key={cp.variantId} value={cp.variantId}>{label}</option>
-                    })}
-                  </select>
-                )}
+                {uniqueTripServices.length > 0 && (() => {
+                  const selectedIds = item.tripServiceVariantIds ?? []
+                  const toggle = (vid: string) => {
+                    const next = selectedIds.includes(vid)
+                      ? selectedIds.filter(x => x !== vid)
+                      : [...selectedIds, vid]
+                    onUpdate({ tripServiceVariantIds: next.length ? next : null })
+                  }
+                  return (
+                    <div className="flex flex-wrap items-center gap-1">
+                      {uniqueTripServices.map(cp => {
+                        const label = `${cp.partnerName ? `${cp.partnerName} · ` : ''}${cp.productName}`
+                        const checked = selectedIds.includes(cp.variantId)
+                        return (
+                          <button
+                            key={cp.variantId}
+                            type="button"
+                            disabled={!isPending}
+                            onClick={() => toggle(cp.variantId)}
+                            className={`text-[11px] px-2 py-0.5 rounded-full border transition-colors disabled:cursor-default ${
+                              checked
+                                ? 'bg-[#0f4c35] text-white border-[#0f4c35]'
+                                : 'bg-white text-gray-600 border-gray-300 hover:border-[#0f4c35] hover:text-[#0f4c35]'
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )
+                })()}
               </>
             )
           })()}
