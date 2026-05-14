@@ -37,7 +37,7 @@ export default async function SchedulePage({
               product_name_snapshot,
               variant_label_snapshot,
               removed_at,
-              products(name, product_categories(name), product_subcategories(name))
+              products(name, product_categories(name), product_subcategories!products_subcategory_id_fkey(name))
             )
           )
         )

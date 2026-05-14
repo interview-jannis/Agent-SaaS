@@ -53,7 +53,8 @@ type QuoteItem = {
   variant_label_snapshot: string | null
   origin?: 'original' | 'admin_added'
   removed_at?: string | null
-  products: { id: string; name: string; description: string | null; partner_name: string | null; duration_value?: number | null; duration_unit?: string | null; has_female_doctor?: boolean | null; has_prayer_room?: boolean | null; dietary_type?: string | null; location_address?: string | null; product_categories?: { name: string } | null } | null
+  quantity: number
+  products: { id: string; name: string; description: string | null; partner_name: string | null; duration_value?: number | null; duration_unit?: string | null; has_female_doctor?: boolean | null; has_prayer_room?: boolean | null; dietary_type?: string | null; location_address?: string | null; product_categories?: { name: string } | null; product_subcategories?: { name: string } | null } | null
 }
 
 type PartnerPayment = {
@@ -300,7 +301,7 @@ export default function AdminCaseDetailPage() {
         ),
         documents(
           id, type, document_number, slug, total_price, payment_due_date, payment_received_at, agent_margin_rate, company_margin_rate, finalized_at, from_party, to_party, created_at,
-          document_groups(id, name, order, member_count, document_items(id, base_price, final_price, variant_id, variant_label_snapshot, origin, removed_at, products(id, name, description, partner_name, duration_value, duration_unit, has_female_doctor, has_prayer_room, dietary_type, location_address, product_categories(name))), document_group_members(id, case_member_id))
+          document_groups(id, name, order, member_count, document_items(id, base_price, final_price, quantity, variant_id, variant_label_snapshot, origin, removed_at, products(id, name, description, partner_name, duration_value, duration_unit, has_female_doctor, has_prayer_room, dietary_type, location_address, product_categories(name), product_subcategories!products_subcategory_id_fkey(name))), document_group_members(id, case_member_id))
         ),
         schedules(id, slug, pdf_url, items, status, version, file_name, revision_note, admin_note, confirmed_at, created_at, first_opened_at, concierge_name, concierge_phone)
       `)
@@ -401,7 +402,7 @@ export default function AdminCaseDetailPage() {
     let cancelled = false
     ;(async () => {
       const { data, error } = await supabase.from('products')
-        .select('id, name, partner_name, base_price, price_currency, is_active, quantity_type, product_categories(name, sort_order), product_subcategories(name), product_variants(id, variant_label, base_price, price_currency, is_active, sort_order)')
+        .select('id, name, partner_name, base_price, price_currency, is_active, quantity_type, product_categories(name, sort_order), product_subcategories!products_subcategory_id_fkey(name), product_variants(id, variant_label, base_price, price_currency, is_active, sort_order)')
         .order('name', { ascending: true })
       if (error) { console.error('[case] products fetch error:', error); return }
       if (cancelled) return
@@ -1855,22 +1856,31 @@ export default function AdminCaseDetailPage() {
             // Key is (groupId, variantId) — same variant in two groups = two
             // separate entries, so the coverage gate can track per-group.
             // Subpackage items are flagged so coverage is treated as shared.
+            // Trip Services (hotel/vehicle/interpreter/concierge/security) are
+            // now included: hotel items are excluded from the appointment picker
+            // but exposed for hotel-depart/return creation; vehicle items appear
+            // in the transfer picker; interpreter/concierge/security appear in
+            // the appointment picker.
             const seen = new Set<string>() // `${groupId}:${variantId}`
             const caseProducts: {
               variantId: string; productName: string; variantLabel: string | null
               partnerName: string | null; groupId: string; groupName: string; isSubpackage: boolean
-              isSharedGroup: boolean
+              isSharedGroup: boolean; isTripService: boolean; isHotel: boolean; isVehicle: boolean
+              quantity: number
               durationValue: number | null; durationUnit: string | null
               isHealthCheckup: boolean
             }[] = []
             for (const grp of sortedGroups) {
-              if (grp.name === 'Trip Services') continue
               for (const it of (grp.document_items ?? []).filter(x => !x.removed_at)) {
                 if (!it.variant_id) continue
                 const key = `${grp.id}:${it.variant_id}`
                 if (seen.has(key)) continue
                 seen.add(key)
                 const catName = it.products?.product_categories?.name ?? null
+                const subName = it.products?.product_subcategories?.name ?? null
+                const isTripService = grp.name === 'Trip Services'
+                const isHotel = isTripService && catName === 'Subpackage' && subName === 'Hotel'
+                const isVehicle = isTripService && catName === 'Subpackage' && subName === 'Vehicle'
                 caseProducts.push({
                   variantId: it.variant_id,
                   productName: it.products?.name ?? 'Service',
@@ -1880,6 +1890,10 @@ export default function AdminCaseDetailPage() {
                   groupName: grp.name,
                   isSubpackage: catName === 'Subpackage',
                   isSharedGroup: grp.name === 'Shared' || grp.name === 'Shared Activities',
+                  isTripService,
+                  isHotel,
+                  isVehicle,
+                  quantity: it.quantity ?? 1,
                   durationValue: it.products?.duration_value ?? null,
                   durationUnit: it.products?.duration_unit ?? null,
                   isHealthCheckup: catName === 'K-Medical',
@@ -1897,9 +1911,10 @@ export default function AdminCaseDetailPage() {
               : (caseData.schedule_draft_items ?? [])
             const nextVersion = (latestSchedule?.version ?? 0) + 1
             return (
-              <section id="schedule-upload" className={`scroll-mt-20 border-2 border-[#0f4c35] bg-white rounded-2xl p-4 space-y-3`}>
-                <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <p className={`text-xs font-semibold uppercase tracking-wide text-[#0f4c35]`}>
+              <div id="schedule-upload" className="scroll-mt-20">
+                {/* Sticky cap — carries the full green border on top/left/right */}
+                <div className="bg-white border-t-2 border-x-2 border-[#0f4c35] rounded-t-2xl px-4 py-3 flex items-center justify-between gap-2 flex-wrap">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[#0f4c35]">
                     {sortedSchedules.length === 0 ? 'Build Schedule' : `New Version (v${nextVersion})`}
                   </p>
                   <div className="flex items-center gap-3">
@@ -1921,35 +1936,39 @@ export default function AdminCaseDetailPage() {
                     )}
                   </div>
                 </div>
-                {sortedSchedules.length === 0 && (
-                  <p className="text-xs text-blue-700">Build day-by-day. Use &quot;Link a product&quot; to autofill titles from selected products.</p>
-                )}
-                <ScheduleEditor
-                  caseId={caseData.id}
-                  caseNumber={caseData.case_number}
-                  agentId={caseData.agent_id ?? null}
-                  travelStartDate={caseData.travel_start_date}
-                  travelEndDate={caseData.travel_end_date}
-                  initialItems={carryItems}
-                  defaultDayCount={defaultDays}
-                  caseProducts={caseProducts}
-                  caseGroups={(latestQuote?.document_groups ?? [])
-                    .filter(g => g.name !== 'Trip Services' && g.name !== 'Shared' && g.name !== 'Shared Activities')
-                    .slice()
-                    .sort((a, b) => a.order - b.order)
-                    .map(g => ({ id: g.id, name: g.name }))}
-                  onSaved={() => fetchCase()}
-                  onSaveDraft={async (items) => {
-                    await supabase.from('cases').update({ schedule_draft_items: items }).eq('id', caseData.id)
-                  }}
-                  slug={latestSchedule?.slug ?? null}
-                  nextVersion={nextVersion}
-                  initialConciergeName={latestSchedule?.concierge_name ?? lastConciergeInfo?.name ?? null}
-                  initialConciergePhone={latestSchedule?.concierge_phone ?? lastConciergeInfo?.phone ?? null}
-                  prevItems={latestSchedule?.items ?? undefined}
-                  readOnly={!canEdit}
-                />
-              </section>
+                {/* Scroll body — carries green border on left/right/bottom */}
+                <div className="border-x-2 border-b-2 border-[#0f4c35] rounded-b-2xl bg-white px-4 pb-4 pt-3 space-y-3">
+                  {sortedSchedules.length === 0 && (
+                    <p className="text-xs text-blue-700">Build day-by-day. Use &quot;Link a product&quot; to autofill titles from selected products.</p>
+                  )}
+                  <ScheduleEditor
+                    caseId={caseData.id}
+                    caseNumber={caseData.case_number}
+                    agentId={caseData.agent_id ?? null}
+                    travelStartDate={caseData.travel_start_date}
+                    travelEndDate={caseData.travel_end_date}
+                    initialItems={carryItems}
+                    defaultDayCount={defaultDays}
+                    caseProducts={caseProducts}
+                    caseGroups={(latestQuote?.document_groups ?? [])
+                      .filter(g => g.name !== 'Trip Services' && g.name !== 'Shared' && g.name !== 'Shared Activities')
+                      .slice()
+                      .sort((a, b) => a.order - b.order)
+                      .map(g => ({ id: g.id, name: g.name }))}
+                    onSaved={() => fetchCase()}
+                    onSaveDraft={async (items) => {
+                      await supabase.from('cases').update({ schedule_draft_items: items }).eq('id', caseData.id)
+                    }}
+                    slug={latestSchedule?.slug ?? null}
+                    nextVersion={nextVersion}
+                    initialConciergeName={latestSchedule?.concierge_name ?? lastConciergeInfo?.name ?? null}
+                    initialConciergePhone={latestSchedule?.concierge_phone ?? lastConciergeInfo?.phone ?? null}
+                    prevItems={latestSchedule?.items ?? undefined}
+                    readOnly={!canEdit}
+                    stickyTop={140}
+                  />
+                </div>
+              </div>
             )
           })()}
 

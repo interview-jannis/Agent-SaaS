@@ -142,7 +142,7 @@ export default function QuoteReviewPage() {
       const [leadRes, productsRes, rateRes, markupRatesRes, agentRes] = await Promise.all([
         supabase.from('clients').select('id, client_number, name, nationality, gender, needs_muslim_friendly, dietary_restriction').eq('id', draft.clientId).single(),
         allProductIds.length
-          ? supabase.from('products').select('id, name, quantity_type, product_categories(name), product_subcategories(name), product_variants(id, variant_label, base_price, price_currency, sort_order)').in('id', allProductIds)
+          ? supabase.from('products').select('id, name, quantity_type, product_categories(name), product_subcategories!products_subcategory_id_fkey(name), product_variants(id, variant_label, base_price, price_currency, sort_order)').in('id', allProductIds)
           : Promise.resolve({ data: [] }),
         supabase.from('system_settings').select('value').eq('key', 'product_price_rate').single(),
         supabase.from('system_settings').select('value').eq('key', 'markup_rates').maybeSingle(),

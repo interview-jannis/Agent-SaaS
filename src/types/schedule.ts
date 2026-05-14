@@ -55,7 +55,7 @@ export type ScheduleItem = {
   restaurantName?: string | null
   cuisine?: string | null
   // hotel-specific
-  hotelCheckType?: 'checkin' | 'checkout' | null
+  hotelCheckType?: 'checkin' | 'checkout' | 'depart' | 'return' | null
   variantId: string | null         // optional ref to product_variants for context
   groupId?: string | null           // legacy single-group field — kept for backward compat
   groupIds?: string[] | null        // null = shared (all groups), string[] = subset of groups
