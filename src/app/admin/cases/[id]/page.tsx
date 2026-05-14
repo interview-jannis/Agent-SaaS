@@ -54,7 +54,7 @@ type QuoteItem = {
   origin?: 'original' | 'admin_added'
   removed_at?: string | null
   quantity: number
-  products: { id: string; name: string; description: string | null; partner_name: string | null; duration_value?: number | null; duration_unit?: string | null; has_female_doctor?: boolean | null; has_prayer_room?: boolean | null; dietary_type?: string | null; location_address?: string | null; product_categories?: { name: string } | null; product_subcategories?: { name: string } | null } | null
+  products: { id: string; name: string; description: string | null; partner_name: string | null; duration_value?: number | null; duration_unit?: string | null; has_female_doctor?: boolean | null; has_prayer_room?: boolean | null; dietary_type?: string | null; location_address?: string | null; location?: string | null; full_address?: string | null; contact_channels?: { type: string; value: string }[] | null; product_categories?: { name: string } | null; product_subcategories?: { name: string } | null } | null
 }
 
 type PartnerPayment = {
@@ -301,7 +301,7 @@ export default function AdminCaseDetailPage() {
         ),
         documents(
           id, type, document_number, slug, total_price, payment_due_date, payment_received_at, agent_margin_rate, company_margin_rate, finalized_at, from_party, to_party, created_at,
-          document_groups(id, name, order, member_count, document_items(id, base_price, final_price, quantity, variant_id, variant_label_snapshot, origin, removed_at, products(id, name, description, partner_name, duration_value, duration_unit, has_female_doctor, has_prayer_room, dietary_type, location_address, product_categories(name), product_subcategories!products_subcategory_id_fkey(name))), document_group_members(id, case_member_id))
+          document_groups(id, name, order, member_count, document_items(id, base_price, final_price, quantity, variant_id, variant_label_snapshot, origin, removed_at, products(id, name, description, partner_name, duration_value, duration_unit, has_female_doctor, has_prayer_room, dietary_type, location_address, location, full_address, contact_channels, product_categories(name), product_subcategories!products_subcategory_id_fkey(name))), document_group_members(id, case_member_id))
         ),
         schedules(id, slug, pdf_url, items, status, version, file_name, revision_note, admin_note, confirmed_at, created_at, first_opened_at, concierge_name, concierge_phone)
       `)
@@ -1869,6 +1869,7 @@ export default function AdminCaseDetailPage() {
               quantity: number
               durationValue: number | null; durationUnit: string | null
               isHealthCheckup: boolean
+              location: string | null; fullAddress: string | null; contactPhone: string | null
             }[] = []
             for (const grp of sortedGroups) {
               for (const it of (grp.document_items ?? []).filter(x => !x.removed_at)) {
@@ -1897,6 +1898,9 @@ export default function AdminCaseDetailPage() {
                   durationValue: it.products?.duration_value ?? null,
                   durationUnit: it.products?.duration_unit ?? null,
                   isHealthCheckup: catName === 'K-Medical',
+                  location: it.products?.location ?? null,
+                  fullAddress: it.products?.full_address ?? null,
+                  contactPhone: it.products?.contact_channels?.find(c => c.type === 'Phone')?.value ?? null,
                 })
               }
             }

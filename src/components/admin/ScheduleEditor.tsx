@@ -47,6 +47,9 @@ type CaseProduct = {
   durationValue: number | null
   durationUnit: string | null
   isHealthCheckup: boolean
+  location: string | null
+  fullAddress: string | null
+  contactPhone: string | null
 }
 
 type Props = {
@@ -425,13 +428,19 @@ export default function ScheduleEditor({
       const autoTitleOld = prev ? [prev.productName, prev.variantLabel].filter(Boolean).join(' · ') : null
       const titleWasAuto = (autoTitleNew && current?.title === autoTitleNew) || (autoTitleOld && current?.title === autoTitleOld)
       const partnerWasAuto = prev?.partnerName && current?.partner === prev.partnerName
-      const locationWasAuto = prev?.partnerName && current?.location === prev.partnerName
+      const locationWasAuto = prev?.location
+        ? current?.location === prev.location
+        : prev?.partnerName && current?.location === prev.partnerName
+      const addressWasAuto = prev?.fullAddress && current?.address === prev.fullAddress
+      const partnerContactWasAuto = prev?.contactPhone && current?.partnerContact?.includes(prev.contactPhone)
       updateItem(itemId, {
         variantId: null,
         variantTag: null,
         ...(titleWasAuto ? { title: '' } : {}),
         ...(partnerWasAuto ? { partner: null } : {}),
         ...(locationWasAuto ? { location: null } : {}),
+        ...(addressWasAuto ? { address: null } : {}),
+        ...(partnerContactWasAuto ? { partnerContact: null } : {}),
       })
       return
     }
@@ -445,7 +454,9 @@ export default function ScheduleEditor({
       variantTag: cp.variantLabel ?? null,
       partner: cp.partnerName ?? null,
       title: cp.productName,
-      location: cp.partnerName ?? null,
+      location: cp.location ?? cp.partnerName ?? null,
+      ...(cp.fullAddress ? { address: cp.fullAddress } : {}),
+      ...(cp.contactPhone ? { partnerContact: [cp.partnerName, cp.contactPhone].filter(Boolean).join(' · ') } : {}),
     })
   }
 

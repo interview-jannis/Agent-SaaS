@@ -57,6 +57,7 @@ export default function AdminCaseContractSection({ caseId, caseNumber, caseStatu
     if (!contract || !adminProfile) return
     setSaving(true); setError('')
     try {
+      await supabase.auth.refreshSession()
       const { data: { session } } = await supabase.auth.getSession()
       if (!session?.access_token) throw new Error('Not signed in.')
       const res = await fetch('/api/case-contracts/sign-admin', {

@@ -95,6 +95,7 @@ export default function AgentCaseContractSection({
     if (!contract) return
     setSaving(true); setError('')
     try {
+      await supabase.auth.refreshSession()
       const { data: { session } } = await supabase.auth.getSession()
       if (!session?.access_token) throw new Error('Not signed in.')
       const res = await fetch('/api/case-contracts/sign-agent', {

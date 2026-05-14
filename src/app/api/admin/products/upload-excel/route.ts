@@ -45,6 +45,10 @@ type Row = {
   has_prayer_room?: boolean | string
   dietary_type?: string
   location_address?: string
+  location?: string
+  full_address?: string
+  contact_phone?: string
+  contact_email?: string
   is_active?: boolean | string
 }
 
@@ -62,6 +66,8 @@ type ProductRecord = {
   has_prayer_room: boolean | null
   dietary_type: string | null
   location_address: string | null
+  location: string | null
+  full_address: string | null
   is_active: boolean
 }
 
@@ -101,6 +107,18 @@ function normDietary(v: unknown): string {
   const s = normStr(v)
   const valid = new Set(['halal_certified', 'halal_friendly', 'muslim_friendly', 'pork_free', 'none'])
   return s && valid.has(s) ? s : 'none'
+}
+
+// Build contact_channels JSONB from flat Excel columns.
+// Only overwrites Phone/Email entries — preserves other channel types from existing rows.
+function buildContactChannels(row: Row): { type: string; value: string }[] | null {
+  const phone = normStr(row.contact_phone)
+  const email = normStr(row.contact_email)
+  if (!phone && !email) return null
+  const channels: { type: string; value: string }[] = []
+  if (phone) channels.push({ type: 'Phone', value: phone })
+  if (email) channels.push({ type: 'Email', value: email })
+  return channels
 }
 
 export async function POST(req: Request) {
@@ -261,6 +279,9 @@ export async function POST(req: Request) {
       has_prayer_room: normBool(first.has_prayer_room) ?? null,
       dietary_type: normDietary(first.dietary_type),
       location_address: normStr(first.location_address) ?? null,
+      location: normStr(first.location) ?? null,
+      full_address: normStr(first.full_address) ?? null,
+      contact_channels: buildContactChannels(first),
       is_active: normBool(first.is_active) ?? true,
     }
 
@@ -291,6 +312,11 @@ export async function POST(req: Request) {
         ['has_prayer_room', existing.has_prayer_room, desired.has_prayer_room],
         ['dietary_type', existing.dietary_type ?? 'none', desired.dietary_type],
         ['location_address', existing.location_address ?? null, desired.location_address],
+        ['location', existing.location ?? null, desired.location],
+        ['full_address', existing.full_address ?? null, desired.full_address],
+        ['contact_channels',
+          JSON.stringify((existing as ProductRecord & { contact_channels?: unknown }).contact_channels ?? null),
+          JSON.stringify(desired.contact_channels ?? null)],
         ['is_active', existing.is_active, desired.is_active],
       ]
       const productChanges: Change[] = []
