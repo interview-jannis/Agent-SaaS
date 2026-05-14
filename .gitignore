@@ -55,5 +55,11 @@ notes/take-*.mjs
 notes/upload-*.cjs
 notes/screenshots/
 
+# Claude Code local settings (machine-specific)
+.claude/settings.local.json
+
+# One-off scripts with hardcoded service-role keys — never commit
+scripts/insert-product-images.mjs
+
 # node_modules in subdirectories (e.g. data/scripts)
 **/node_modules/
