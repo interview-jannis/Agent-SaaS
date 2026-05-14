@@ -1678,7 +1678,9 @@ const inScope = itemGroupIds === null
             </span>
           )}
           {(itemType === 'appointment' || itemType === 'hotel') && !item.isPrayer && (() => {
-            const regularProducts = pickerProducts.filter(cp => !cp.isTripService)
+            // Regular products + hotels. Other trip services (vehicle = transfer picker,
+            // concierge/interpreter/security = Day concierge selector) stay out of this dropdown.
+            const regularProducts = pickerProducts.filter(cp => !cp.isTripService || cp.isHotel)
             // Subpackage selector lists concierge-type trip services (interpreter, concierge, security, etc.)
             // Hotel & vehicle are excluded — hotel is its own appointment type with hotelCheckType,
             // vehicle is selected on transfer items separately.
