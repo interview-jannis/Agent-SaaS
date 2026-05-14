@@ -5,16 +5,16 @@
 
 export type ScheduleItemBlock = 'morning' | 'afternoon' | 'evening'
 
-export type ScheduleItemType = 'appointment' | 'transfer' | 'meal' | 'hotel' | 'free'
+export type ScheduleItemType = 'appointment' | 'transfer' | 'meal' | 'hotel' | 'free'  // hotel/free kept for backward-compat read; new items use appointment/transfer/meal only
 
-export const SCHEDULE_ITEM_TYPES: ScheduleItemType[] = ['appointment', 'transfer', 'meal', 'hotel']
+export const SCHEDULE_ITEM_TYPES: ScheduleItemType[] = ['appointment', 'transfer', 'meal']
 
 export const SCHEDULE_ITEM_TYPE_LABEL: Record<ScheduleItemType, string> = {
   appointment: 'Appointment',
   transfer:    'Transfer',
   meal:        'Meal',
-  hotel:       'Hotel',
-  free:        'Free time',
+  hotel:       'Hotel',   // legacy
+  free:        'Free time', // legacy
 }
 
 export const SCHEDULE_BLOCKS: ScheduleItemBlock[] = ['morning', 'afternoon', 'evening']
@@ -55,7 +55,7 @@ export type ScheduleItem = {
   restaurantName?: string | null
   cuisine?: string | null
   // hotel-specific
-  hotelCheckType?: 'checkin' | 'checkout' | 'depart' | 'return' | null
+  hotelCheckType?: 'checkin' | 'checkout' | 'stay' | 'depart' | 'return' | null  // depart/return legacy only
   variantId: string | null         // optional ref to product_variants for context
   tripServiceVariantIds?: string[] | null  // trip services (interpreter/concierge/security) assigned to this appointment
   groupId?: string | null           // legacy single-group field — kept for backward compat

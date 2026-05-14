@@ -338,6 +338,56 @@ export default function ScheduleEditor({
     setPendingItemIds(prev => { const n = new Set(prev); n.add(newItem.id); return n })
   }
 
+  function fillTransfers(day: number) {
+    const dayItems = items
+      .filter(i => i.day === day && !pendingItemIds.has(i.id) && !markedForRemoval.has(i.id))
+      .sort(compareScheduleItems)
+    const newTransfers: ScheduleItem[] = []
+    for (let i = 0; i < dayItems.length - 1; i++) {
+      const a = dayItems[i]
+      const b = dayItems[i + 1]
+      const aType = a.itemType ?? 'appointment'
+      const bType = b.itemType ?? 'appointment'
+      if (aType === 'transfer' || bType === 'transfer') continue
+      if (aType === 'free' || bType === 'free') continue
+      if (a.isPrayer || b.isPrayer) continue
+      const aGroups = resolveGroupIds(a)
+      const bGroups = resolveGroupIds(b)
+      let transferGroups: string[] | null = null
+      if (aGroups === null && bGroups === null) {
+        transferGroups = null
+      } else if (aGroups === null) {
+        transferGroups = bGroups
+      } else if (bGroups === null) {
+        transferGroups = aGroups
+      } else {
+        const intersection = aGroups.filter(g => bGroups!.includes(g))
+        if (intersection.length === 0) continue
+        transferGroups = intersection
+      }
+      newTransfers.push({
+        id: generateScheduleItemId(),
+        day,
+        block: a.block,
+        endBlock: a.block !== b.block ? b.block : undefined,
+        time: null,
+        title: '',
+        itemType: 'transfer',
+        fromLocation: a.location ?? null,
+        toLocation: b.location ?? null,
+        location: null,
+        notes: null,
+        variantId: null,
+        groupIds: transferGroups,
+        sortOrder: items.filter(i => i.day === day).length + newTransfers.length,
+      })
+    }
+    if (newTransfers.length === 0) return
+    setItems(prev => [...prev, ...newTransfers])
+    setPendingItemIds(prev => { const n = new Set(prev); newTransfers.forEach(t => n.add(t.id)); return n })
+    setCollapsedDays(prev => { const n = new Set(prev); n.delete(day); return n })
+  }
+
   function addFreeTime(day: number, kind: 'morning' | 'afternoon' | 'evening' | 'full') {
     const baseSort = items.filter(i => i.day === day).length
     if (kind === 'full') {
@@ -567,7 +617,7 @@ export default function ScheduleEditor({
         return (
           <div key={day} className={`bg-white border border-gray-100 shadow-sm ${isCollapsed ? 'rounded-2xl' : 'rounded-2xl'}`}>
             {/* Day header */}
-            <div className="flex items-center justify-between px-4 py-3">
+            <div className="flex items-center justify-between px-4 py-3 max-w-3xl mx-auto w-full">
               <button
                 onClick={() => toggleDayCollapse(day)}
                 className="flex items-baseline gap-2 flex-1 text-left min-w-0"
@@ -587,6 +637,7 @@ export default function ScheduleEditor({
                     <button onClick={() => addItem(day)} className="text-xs font-semibold text-[#0f4c35] hover:bg-green-50 px-2 py-1 rounded-lg border border-[#0f4c35]/30 hover:border-[#0f4c35] transition-colors">+ Add Item</button>
                     <FreeTimeMenu onPick={(kind) => addFreeTime(day, kind)} />
                     <PrayerMenu onPick={(prayer) => addPrayerTime(day, prayer)} />
+                    <button onClick={() => fillTransfers(day)} className="text-xs font-medium text-blue-600 hover:text-blue-800 px-2 py-1 rounded-lg border border-blue-200 hover:bg-blue-50">⇄ Fill Transfers</button>
                   </>
                 )}
                 <button
@@ -661,12 +712,12 @@ export default function ScheduleEditor({
               }
 
               return (
-              <div className="border-t border-gray-100 overflow-hidden rounded-b-2xl">
+              <div className="border-t border-gray-100">
                 {dayItems.length === 0 ? (
                   <p className="px-4 py-6 text-xs text-gray-400 text-center italic">No items yet — click &quot;Add Item&quot; to start.</p>
                 ) : !hasGroups ? (
                   // ── Flat list (no groups configured) ──────────────────────
-                  <div className="divide-y divide-gray-300">
+                  <div className="divide-y divide-gray-300 max-w-3xl mx-auto w-full">
                     {(() => {
                       const firstSelectedIdx = dayItems.findIndex(i => selectedItemIds.has(i.id))
                       return dayItems.map((it, idx) => (
@@ -686,7 +737,7 @@ export default function ScheduleEditor({
                 ) : (
                   // ── Segmented column layout ────────────────────────────────
                   <div className="divide-y divide-gray-200">
-                    {/* Group column headers */}
+                    {/* Group column headers — full width to span all columns */}
                     <div className="flex bg-gray-50 border-b border-gray-100">
                       {groups.map(g => (
                         <div key={g.id} className="flex-1 text-[10px] font-semibold text-gray-400 uppercase tracking-wider px-3 py-1.5 border-l first:border-l-0 border-gray-100">
@@ -697,14 +748,14 @@ export default function ScheduleEditor({
 
                     {segments.map((seg, segIdx) => {
                       if (seg.type === 'shared') {
-                        // Full-width shared item
+                        // Shared item — constrained to match narrow sections
                         return (
-                          <div key={`seg-${segIdx}`} className="bg-green-50/30 border-l-2 border-[#0f4c35]/20">
+                          <div key={`seg-${segIdx}`} className="bg-green-50/30 border-l-2 border-[#0f4c35]/20 max-w-3xl mx-auto w-full">
                             {renderItemRow(seg.item, dayItems)}
                           </div>
                         )
                       }
-                      // Group columns segment
+                      // Group columns segment — full width
                       return (
                         <div key={`seg-${segIdx}`} className="flex" style={{ alignItems: 'stretch' }}>
                           {groups.map(g => {
@@ -740,10 +791,13 @@ export default function ScheduleEditor({
                   </div>
                 )}
 
-                <div className="flex items-center gap-3 px-4 py-2.5 border-t border-gray-100">
+                <div className="sticky bottom-0 z-20 bg-white border-t border-gray-100 rounded-b-2xl">
+                <div className="flex items-center gap-3 px-4 py-2.5 max-w-3xl mx-auto w-full">
                   <button onClick={() => addItem(day, true)} className="text-xs font-semibold text-[#0f4c35] hover:bg-green-50 px-2 py-1 rounded-lg border border-[#0f4c35]/30 hover:border-[#0f4c35] transition-colors">+ Add Item</button>
-                  <FreeTimeMenu onPick={(kind) => addFreeTime(day, kind)} />
-                  <PrayerMenu onPick={(prayer) => addPrayerTime(day, prayer)} />
+                  <FreeTimeMenu onPick={(kind) => addFreeTime(day, kind)} dropUp />
+                  <PrayerMenu onPick={(prayer) => addPrayerTime(day, prayer)} dropUp />
+                  <button onClick={() => fillTransfers(day)} className="text-xs font-medium text-blue-600 hover:text-blue-800 px-2 py-1 rounded-lg border border-blue-200 hover:bg-blue-50">⇄ Fill Transfers</button>
+                </div>
                 </div>
               </div>
               )
@@ -947,9 +1001,10 @@ export default function ScheduleEditor({
 // drop a single "Free time" row in that block; full-day drops three (morning
 // + afternoon + evening) so the editorial render shows the full day blank.
 function FreeTimeMenu({
-  onPick,
+  onPick, dropUp,
 }: {
   onPick: (kind: 'morning' | 'afternoon' | 'evening' | 'full') => void
+  dropUp?: boolean
 }) {
   const [open, setOpen] = useState(false)
   return (
@@ -963,7 +1018,7 @@ function FreeTimeMenu({
         + Free time ▾
       </button>
       {open && (
-        <div className="absolute right-0 top-full mt-1 z-10 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[150px] divide-y divide-gray-100">
+        <div className={`absolute right-0 z-50 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[150px] divide-y divide-gray-100 ${dropUp ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
           {[
             { k: 'morning' as const, label: 'Morning free' },
             { k: 'afternoon' as const, label: 'Afternoon free' },
@@ -988,7 +1043,7 @@ function FreeTimeMenu({
 
 // ?? Prayer time menu ?????????????????????????????????????????????????????????
 
-function PrayerMenu({ onPick }: { onPick: (prayer: string) => void }) {
+function PrayerMenu({ onPick, dropUp }: { onPick: (prayer: string) => void; dropUp?: boolean }) {
   const [open, setOpen] = useState(false)
   const prayers = ['Fajr', 'Dhuhr', 'Asr', 'Maghrib', 'Isha']
   return (
@@ -1002,7 +1057,7 @@ function PrayerMenu({ onPick }: { onPick: (prayer: string) => void }) {
         + Prayer ▾
       </button>
       {open && (
-        <div className="absolute right-0 top-full mt-1 z-10 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[130px] divide-y divide-gray-100">
+        <div className={`absolute right-0 z-50 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[130px] divide-y divide-gray-100 ${dropUp ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
           {prayers.map(p => (
             <button
               key={p}
@@ -1210,7 +1265,7 @@ function ItemRow({
   const pickerProducts = useMemo(() => {
     if (isGroupUnset) return []
     const filtered = caseProducts.filter(cp => {
-      if (cp.isHotel || cp.isVehicle) return false
+      if (cp.isVehicle) return false  // hotel products are now included in appointment picker
 const inScope = itemGroupIds === null
         ? cp.isSubpackage || sharedVariantIds.has(cp.variantId)
         : itemGroupIds.some(gid => cp.groupId === gid) || cp.isSubpackage
@@ -1412,106 +1467,13 @@ const inScope = itemGroupIds === null
               />
             </span>
           )}
-          {itemType === 'hotel' && (() => {
-            const hotelProduct = caseProducts.find(cp => cp.isHotel)
-            const hotelLabel = hotelProduct
-              ? `${hotelProduct.partnerName ? hotelProduct.partnerName + ' · ' : ''}${hotelProduct.productName}`
-              : null
-            // Location options for departure/return selects
-            const locationOptions = [
-              ...new Set(
-                caseProducts
-                  .filter(cp => !cp.isHotel && !cp.isVehicle && !cp.isTripService)
-                  .map(cp => cp.location ?? cp.partnerName)
-                  .filter(Boolean) as string[]
-              ),
-              'Incheon International Airport (ICN)',
-              'Gimpo Airport (GMP)',
-            ]
-            return (
-              <>
-                <select value={item.hotelCheckType ?? ''}
-                  onChange={(e) => {
-                    const v = (e.target.value || null) as ScheduleItem['hotelCheckType']
-                    const autoTitles: Record<string, string> = { checkin: 'Hotel Check-in', checkout: 'Hotel Check-out', depart: 'Hotel Departure', return: 'Hotel Return' }
-                    const prevAuto = item.hotelCheckType ? (autoTitles[item.hotelCheckType] ?? '') : ''
-                    const updates: Partial<ScheduleItem> = { hotelCheckType: v }
-                    if (!item.title.trim() || item.title === prevAuto)
-                      updates.title = v ? (autoTitles[v] ?? '') : ''
-                    if (!item.variantId && hotelProduct) updates.variantId = hotelProduct.variantId
-                    // Auto-fill hotel name into the fixed side
-                    if (v === 'depart' && hotelLabel) updates.fromLocation = hotelLabel
-                    if (v === 'return' && hotelLabel) updates.toLocation = hotelLabel
-                    onUpdate(updates)
-                  }}
-                  disabled={!isPending}
-                  className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
-                >
-                  <option value="">— Hotel type —</option>
-                  <option value="checkin">Check-in</option>
-                  <option value="checkout">Check-out</option>
-                  <option value="depart">Departure</option>
-                  <option value="return">Return</option>
-                </select>
-
-                {/* Check-in / Check-out: show linked hotel name */}
-                {(item.hotelCheckType === 'checkin' || item.hotelCheckType === 'checkout') && hotelLabel && (
-                  <span className="text-xs px-2 py-1 bg-gray-100 rounded-lg text-gray-700 truncate max-w-[220px]">
-                    {hotelLabel}
-                  </span>
-                )}
-
-                {/* Departure: fromLocation = hotel (auto, readonly), toLocation = select */}
-                {item.hotelCheckType === 'depart' && (
-                  <>
-                    {hotelLabel && (
-                      <span className="text-xs px-2 py-1 bg-gray-100 rounded-lg text-gray-700 truncate max-w-[180px]" title={hotelLabel}>
-                        {hotelLabel}
-                      </span>
-                    )}
-                    <span className="text-gray-300 text-xs">→</span>
-                    <select
-                      value={item.toLocation ?? ''}
-                      onChange={(e) => onUpdate({ toLocation: e.target.value || null })}
-                      disabled={!isPending}
-                      className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default flex-1 min-w-[140px]"
-                    >
-                      <option value="">— Destination —</option>
-                      {locationOptions.map(loc => (
-                        <option key={loc} value={loc}>{loc}</option>
-                      ))}
-                    </select>
-                  </>
-                )}
-
-                {/* Return: fromLocation = select, toLocation = hotel (auto, readonly) */}
-                {item.hotelCheckType === 'return' && (
-                  <>
-                    <select
-                      value={item.fromLocation ?? ''}
-                      onChange={(e) => onUpdate({ fromLocation: e.target.value || null })}
-                      disabled={!isPending}
-                      className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default flex-1 min-w-[140px]"
-                    >
-                      <option value="">— Departure point —</option>
-                      {locationOptions.map(loc => (
-                        <option key={loc} value={loc}>{loc}</option>
-                      ))}
-                    </select>
-                    <span className="text-gray-300 text-xs">→</span>
-                    {hotelLabel && (
-                      <span className="text-xs px-2 py-1 bg-gray-100 rounded-lg text-gray-700 truncate max-w-[180px]" title={hotelLabel}>
-                        {hotelLabel}
-                      </span>
-                    )}
-                  </>
-                )}
-              </>
-            )
-          })()}
-          {itemType === 'appointment' && !item.isPrayer && (() => {
+          {(itemType === 'appointment' || itemType === 'hotel') && !item.isPrayer && (() => {
             const regularProducts = pickerProducts.filter(cp => !cp.isTripService)
-            const allTripServices = caseProducts.filter(cp => cp.isTripService && !cp.isHotel && !cp.isVehicle)
+            const allTripServices = caseProducts.filter(cp => cp.isTripService && !cp.isVehicle)
+            // Detect if selected product is a hotel product
+            const selectedHotelProduct = item.variantId
+              ? caseProducts.find(cp => cp.variantId === item.variantId && cp.isHotel) ?? null
+              : null
             const uniqueTripServices = [...new Map(allTripServices.map(cp => [cp.variantId, cp])).values()]
             const renderOption = (cp: CaseProduct) => {
               const isCommitted = cp.variantId !== item.variantId && committedVariantContexts.has(cp.variantId)
@@ -1539,6 +1501,27 @@ const inScope = itemGroupIds === null
                     <option value="__results_consultation__">Results Consultation</option>
                   )}
                 </select>
+                {selectedHotelProduct && (
+                  <select
+                    value={item.hotelCheckType ?? ''}
+                    onChange={(e) => {
+                      const v = (e.target.value || null) as ScheduleItem['hotelCheckType']
+                      const autoTitles: Record<string, string> = { checkin: 'Hotel Check-in', checkout: 'Hotel Check-out', stay: 'Hotel Stay' }
+                      const updates: Partial<ScheduleItem> = { hotelCheckType: v }
+                      const currentTitle = item.title.trim()
+                      if (!currentTitle || Object.values(autoTitles).includes(currentTitle))
+                        updates.title = v ? (autoTitles[v] ?? '') : ''
+                      onUpdate(updates)
+                    }}
+                    disabled={!isPending}
+                    className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
+                  >
+                    <option value="">— Hotel type —</option>
+                    <option value="checkin">Check-in</option>
+                    <option value="checkout">Check-out</option>
+                    <option value="stay">Stay</option>
+                  </select>
+                )}
                 {uniqueTripServices.length > 0 && (() => {
                   const selectedIds = item.tripServiceVariantIds ?? []
                   const toggle = (vid: string) => {

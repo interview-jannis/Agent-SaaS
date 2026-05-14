@@ -744,7 +744,8 @@ export default function AdminCaseDetailPage() {
       {/* Body — split when client panel is open */}
       <div className="flex-1 flex min-h-0">
         <div className="flex-1 overflow-y-auto">
-        <div className="w-full px-4 md:px-8 py-4 md:py-6 flex flex-col gap-5">
+        <div className="w-full px-4 md:px-6 py-4 md:py-6 flex flex-col gap-5">
+          <div className="max-w-3xl mx-auto w-full flex flex-col gap-5">
 
           {/* Canceled banner */}
           {caseData.status === 'canceled' && (
@@ -1591,6 +1592,8 @@ export default function AdminCaseDetailPage() {
             )
           })()}
 
+          </div>{/* /max-w-3xl pre-schedule */}
+
           {/* Schedule History */}
           {sortedSchedules.length > 0 && (
             <section id="schedule-history" className={`scroll-mt-20 rounded-2xl border-2 overflow-hidden ${(caseData.status === 'reviewing_schedule' || caseData.status === 'awaiting_schedule') ? 'bg-white border-[#0f4c35]' : 'bg-gray-50 border-gray-300'}`}>
@@ -1975,6 +1978,8 @@ export default function AdminCaseDetailPage() {
               </div>
             )
           })()}
+
+          <div className="max-w-3xl mx-auto w-full flex flex-col gap-5">
 
           {/* Admin Actions */}
           {actionError && <p className="text-xs text-red-500 px-1">{actionError}</p>}
@@ -2991,6 +2996,7 @@ export default function AdminCaseDetailPage() {
           })()}
           {/* ─── /ATTACHMENTS ─── */}
 
+          </div>{/* /max-w-3xl post-schedule */}
         </div>
         </div>
 
