@@ -1979,7 +1979,7 @@ export default function AdminCaseDetailPage() {
                     nextVersion={nextVersion}
                     initialConciergeName={latestSchedule?.concierge_name ?? lastConciergeInfo?.name ?? null}
                     initialConciergePhone={latestSchedule?.concierge_phone ?? lastConciergeInfo?.phone ?? null}
-                    initialDaySubpackages={(latestSchedule as { day_subpackages?: Record<number, string[]> } | null)?.day_subpackages ?? undefined}
+                    initialDaySubpackages={(latestSchedule as { day_subpackages?: Record<number, Array<string | { variantId: string; hours: number }>> } | null)?.day_subpackages ?? undefined}
                     prevItems={latestSchedule?.items ?? undefined}
                     readOnly={!canEdit}
                     stickyTop={140}

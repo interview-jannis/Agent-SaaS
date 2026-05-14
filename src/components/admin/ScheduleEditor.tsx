@@ -31,6 +31,11 @@ import {
   resolveGroupIds,
 } from '@/types/schedule'
 
+// Per-day per-service assignment with hours. Hours default to the product's
+// durationValue and admin can override per day. Total contracted = quantity ×
+// durationValue; sum of `hours` across all days = actual; difference = overage.
+export type DaySubpackageEntry = { variantId: string; hours: number }
+
 type CaseProduct = {
   variantId: string
   productName: string
@@ -82,11 +87,14 @@ type Props = {
   initialConciergePhone?: string | null
   // Previous version's items for diff display while editing.
   prevItems?: ScheduleItem[]
-  // Day-level concierge subpackage assignments: { [day]: variantId[] }.
+  // Day-level concierge subpackage assignments: { [day]: { variantId, hours }[] }.
   // Drives the Trip Services coverage count — only days listed here count toward
-  // the contracted quantity. Item-level tripServiceVariantIds remain as optional
-  // per-item overrides (informational; not counted).
-  initialDaySubpackages?: Record<number, string[]>
+  // the contracted quantity. Per-day `hours` defaults to the product's durationValue
+  // but admin can override per day (will trigger overage flow in finalize stage).
+  // Item-level tripServiceVariantIds remain as optional per-item overrides
+  // (informational; not counted).
+  // Legacy shape `string[]` is read-tolerated and migrated to objects on load.
+  initialDaySubpackages?: Record<number, Array<string | DaySubpackageEntry>>
   // Pixel offset from viewport top for sticky day headers (accounts for any fixed/sticky parent).
   stickyTop?: number
 }
@@ -147,22 +155,53 @@ export default function ScheduleEditor({
   // Items whose group hasn't been explicitly chosen yet (shows "??Choose group ?? prompt).
   // Cleared the moment admin changes the group select.
   const [unsetGroupItemIds, setUnsetGroupItemIds] = useState<Set<string>>(new Set())
-  // Day-level concierge subpackage assignments. variantIds per day.
-  const [daySubpackages, setDaySubpackages] = useState<Record<number, string[]>>(() => initialDaySubpackages ?? {})
-  function setDayVariants(day: number, variantIds: string[]) {
+  // Day-level concierge subpackage assignments with hours per service per day.
+  // Legacy data may be string[] (variantIds only) — normalize to entries on init.
+  const [daySubpackages, setDaySubpackages] = useState<Record<number, DaySubpackageEntry[]>>(() => {
+    const out: Record<number, DaySubpackageEntry[]> = {}
+    if (!initialDaySubpackages) return out
+    for (const [dayStr, arr] of Object.entries(initialDaySubpackages)) {
+      const day = Number(dayStr)
+      const entries = (arr ?? []).map(v => {
+        if (typeof v === 'string') {
+          // Legacy: pull default hours from product durationValue (hours unit)
+          const cp = caseProducts.find(p => p.variantId === v)
+          const isHours = (cp?.durationUnit ?? '').toLowerCase().startsWith('h')
+          return { variantId: v, hours: isHours ? (cp?.durationValue ?? 0) : 0 }
+        }
+        return v
+      })
+      if (entries.length > 0) out[day] = entries
+    }
+    return out
+  })
+  // Default hours for a service variant (from product.durationValue when unit is hours).
+  function defaultHoursForVariant(variantId: string): number {
+    const cp = caseProducts.find(p => p.variantId === variantId)
+    if (!cp) return 0
+    const unit = (cp.durationUnit ?? '').toLowerCase()
+    return unit.startsWith('h') ? (cp.durationValue ?? 0) : 0
+  }
+  function setDayEntries(day: number, entries: DaySubpackageEntry[]) {
     setDaySubpackages(prev => {
       const next = { ...prev }
-      if (variantIds.length === 0) delete next[day]
-      else next[day] = variantIds
+      if (entries.length === 0) delete next[day]
+      else next[day] = entries
       return next
     })
   }
   function toggleDayVariant(day: number, variantId: string) {
     const current = daySubpackages[day] ?? []
-    const next = current.includes(variantId)
-      ? current.filter(v => v !== variantId)
-      : [...current, variantId]
-    setDayVariants(day, next)
+    const hasIt = current.some(e => e.variantId === variantId)
+    const next = hasIt
+      ? current.filter(e => e.variantId !== variantId)
+      : [...current, { variantId, hours: defaultHoursForVariant(variantId) }]
+    setDayEntries(day, next)
+  }
+  function setDayVariantHours(day: number, variantId: string, hours: number) {
+    const current = daySubpackages[day] ?? []
+    const next = current.map(e => e.variantId === variantId ? { ...e, hours } : e)
+    setDayEntries(day, next)
   }
   // Snapshot of items at the moment Edit was clicked, keyed by item id.
   // Used to restore original state if admin cancels an edit (vs new items which are removed entirely).
@@ -734,7 +773,8 @@ export default function ScheduleEditor({
                   .filter(cp => cp.isTripService && !cp.isHotel && !cp.isVehicle)
                   .map(cp => [cp.variantId, cp])
               ).values()]
-              const selectedForDay = new Set(daySubpackages[day] ?? [])
+              const entriesForDay = daySubpackages[day] ?? []
+              const entryByVariant = new Map(entriesForDay.map(e => [e.variantId, e]))
 
               return (
               <div className="border-t border-gray-100">
@@ -742,21 +782,37 @@ export default function ScheduleEditor({
                   <div className="px-4 py-2 bg-gray-50/60 border-b border-gray-100 flex items-center gap-2 flex-wrap">
                     <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide shrink-0">Day concierge</span>
                     {dayConciergeOptions.map(cp => {
-                      const checked = selectedForDay.has(cp.variantId)
-                      const label = `${cp.partnerName ? `${cp.partnerName} · ` : ''}${cp.productName}${cp.variantLabel ? ` · ${cp.variantLabel}` : ''}`
+                      const entry = entryByVariant.get(cp.variantId)
+                      const checked = !!entry
+                      const baseLabel = `${cp.partnerName ? `${cp.partnerName} · ` : ''}${cp.productName}${cp.variantLabel ? ` · ${cp.variantLabel}` : ''}`
+                      const hoursUnit = (cp.durationUnit ?? '').toLowerCase().startsWith('h')
                       return (
-                        <button
-                          key={cp.variantId}
-                          type="button"
-                          onClick={() => toggleDayVariant(day, cp.variantId)}
-                          className={`text-[11px] font-medium px-2 py-0.5 rounded-full border transition-colors ${
-                            checked
-                              ? 'bg-[#0f4c35] text-white border-[#0f4c35]'
-                              : 'bg-white text-gray-600 border-gray-200 hover:border-[#0f4c35]'
-                          }`}
-                        >
-                          {checked ? '✓ ' : '+ '}{label}
-                        </button>
+                        <span key={cp.variantId} className="inline-flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => toggleDayVariant(day, cp.variantId)}
+                            className={`text-[11px] font-medium px-2 py-0.5 rounded-full border transition-colors ${
+                              checked
+                                ? 'bg-[#0f4c35] text-white border-[#0f4c35]'
+                                : 'bg-white text-gray-600 border-gray-200 hover:border-[#0f4c35]'
+                            }`}
+                          >
+                            {checked ? '✓ ' : '+ '}{baseLabel}
+                          </button>
+                          {checked && hoursUnit && (
+                            <span className="inline-flex items-center gap-0.5 text-[10px] text-gray-600 bg-white border border-gray-200 rounded-full px-1.5 py-0.5">
+                              <input
+                                type="number"
+                                min={0}
+                                step={0.5}
+                                value={entry?.hours ?? 0}
+                                onChange={(e) => setDayVariantHours(day, cp.variantId, Number(e.target.value) || 0)}
+                                className="w-9 text-[10px] text-gray-900 bg-transparent focus:outline-none text-right"
+                              />
+                              <span className="text-gray-400">h</span>
+                            </span>
+                          )}
+                        </span>
                       )
                     })}
                   </div>
@@ -922,7 +978,7 @@ export default function ScheduleEditor({
 
       <div className="bg-white rounded-xl border border-gray-100 p-3">
         <label className="block text-[11px] text-gray-500 mb-1">
-          Note to agent / client <span className="text-gray-400">(optional ??shown on schedule)</span>
+          Note to agent / client <span className="text-gray-400">(optional — shown on schedule)</span>
         </label>
         <textarea
           value={adminNote}
@@ -998,12 +1054,15 @@ export default function ScheduleEditor({
         //   `variantId` (vehicle items linked to that variant). Item-level
         //   `tripServiceVariantIds` are informational overrides only — not counted.
         const scheduledDaysByVariant = new Map<string, Set<number>>()
+        // Hours actually scheduled (sum across days) — used for Trip Services summary.
+        const scheduledHoursByVariant = new Map<string, number>()
         // Day-level subpackage selections (the source of truth for non-hotel count)
-        for (const [dayStr, vids] of Object.entries(daySubpackages)) {
+        for (const [dayStr, entries] of Object.entries(daySubpackages)) {
           const day = Number(dayStr)
-          for (const vid of vids) {
-            if (!scheduledDaysByVariant.has(vid)) scheduledDaysByVariant.set(vid, new Set())
-            scheduledDaysByVariant.get(vid)!.add(day)
+          for (const e of entries) {
+            if (!scheduledDaysByVariant.has(e.variantId)) scheduledDaysByVariant.set(e.variantId, new Set())
+            scheduledDaysByVariant.get(e.variantId)!.add(day)
+            scheduledHoursByVariant.set(e.variantId, (scheduledHoursByVariant.get(e.variantId) ?? 0) + (e.hours ?? 0))
           }
         }
         // Item-direct variantId coverage (so hotel-day span & vehicle-linked transfers still count)
@@ -1019,20 +1078,44 @@ export default function ScheduleEditor({
           if (!tripServiceProducts.has(cp.variantId)) tripServiceProducts.set(cp.variantId, cp)
         }
         type TripMissing = { cp: CaseProduct; required: number; scheduled: number }
+        type TripSummary = {
+          cp: CaseProduct
+          scheduledDays: number
+          requiredDays: number
+          scheduledHours: number
+          contractedHours: number
+          hasHours: boolean
+          overage: number  // positive = overage; 0 = matches; negative = under (not used)
+        }
         const missingTripServices: TripMissing[] = []
+        const tripSummary: TripSummary[] = []
         for (const [vid, cp] of tripServiceProducts) {
           const daySet = scheduledDaysByVariant.get(vid)
-          let scheduled = 0
+          let scheduledDays = 0
           if (daySet && daySet.size > 0) {
             if (cp.isHotel) {
               const days = [...daySet]
-              scheduled = Math.max(...days) - Math.min(...days) + 1
+              scheduledDays = Math.max(...days) - Math.min(...days) + 1
             } else {
-              scheduled = daySet.size
+              scheduledDays = daySet.size
             }
           }
-          if (scheduled < cp.quantity) missingTripServices.push({ cp, required: cp.quantity, scheduled })
+          if (scheduledDays < cp.quantity) missingTripServices.push({ cp, required: cp.quantity, scheduled: scheduledDays })
+          const hasHours = (cp.durationUnit ?? '').toLowerCase().startsWith('h')
+          const baseHours = hasHours ? (cp.durationValue ?? 0) : 0
+          const contractedHours = baseHours * cp.quantity
+          const scheduledHours = scheduledHoursByVariant.get(vid) ?? 0
+          tripSummary.push({
+            cp,
+            scheduledDays,
+            requiredDays: cp.quantity,
+            scheduledHours,
+            contractedHours,
+            hasHours,
+            overage: Math.max(0, scheduledHours - contractedHours),
+          })
         }
+        tripSummary.sort((a, b) => (a.cp.partnerName ?? a.cp.productName).localeCompare(b.cp.partnerName ?? b.cp.productName))
 
         const hasPending = pendingItemIds.size > 0
         const hasUnsetGroup = unsetGroupItemIds.size > 0
@@ -1068,6 +1151,32 @@ export default function ScheduleEditor({
                       <span className="ml-1 text-amber-600">({scheduled}/{required} days)</span>
                     </li>
                   ))}
+                </ul>
+              </div>
+            )}
+            {tripSummary.length > 0 && (
+              <div className="text-xs bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 space-y-1">
+                <p className="font-semibold text-gray-700">Trip Services Summary</p>
+                <ul className="text-gray-700 space-y-0.5 pl-3 list-disc">
+                  {tripSummary.map(s => {
+                    const dayOK = s.scheduledDays >= s.requiredDays
+                    const hourOK = !s.hasHours || s.scheduledHours <= s.contractedHours
+                    return (
+                      <li key={s.cp.variantId}>
+                        {s.cp.partnerName && <span className="text-gray-500">{s.cp.partnerName} · </span>}
+                        <span className="text-gray-900">{s.cp.productName}</span>{s.cp.variantLabel ? <span className="text-gray-500"> · {s.cp.variantLabel}</span> : null}
+                        <span className={`ml-1 ${dayOK ? 'text-gray-500' : 'text-amber-700'}`}>
+                          · {s.scheduledDays}/{s.requiredDays} days
+                        </span>
+                        {s.hasHours && (
+                          <span className={`ml-1 ${hourOK ? 'text-gray-500' : 'text-amber-700 font-semibold'}`}>
+                            · {s.scheduledHours}h / {s.contractedHours}h
+                            {s.overage > 0 && <span className="ml-1">(+{s.overage}h overage)</span>}
+                          </span>
+                        )}
+                      </li>
+                    )
+                  })}
                 </ul>
               </div>
             )}
@@ -1271,7 +1380,7 @@ function GroupMultiSelect({
           <label className="flex items-center gap-2.5 px-3 py-1.5 hover:bg-gray-50 cursor-pointer">
             <input
               type="radio"
-              checked={isShared}
+              checked={isShared && !isGroupUnset}
               onChange={() => { onChange(null); onGroupChosen(); setOpen(false) }}
               className="accent-[#0f4c35]"
             />
@@ -1421,7 +1530,7 @@ const inScope = itemGroupIds === null
       {/* Left gutter: 4px stripe */}
       <div style={{ width: 4, flexShrink: 0, background: stripeBackground, alignSelf: 'stretch' }} />
       {/* Main content */}
-      <div className="flex-1 py-4 pr-4 space-y-2 min-w-0">
+      <div className="flex-1 py-4 pl-4 pr-4 space-y-2 min-w-0">
       {/* Row 1: committed = compact text labels; pending = full selects */}
       <div className="flex items-center gap-2">
         {isPending ? (
@@ -1832,7 +1941,7 @@ const inScope = itemGroupIds === null
             value={item.notes ?? ''}
             onChange={(e) => onUpdate({ notes: e.target.value || null })}
             disabled={!isPending}
-            placeholder="Notes ??visible to client (optional)"
+            placeholder="Notes — visible to client (optional)"
             className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
           />
 
@@ -1884,7 +1993,7 @@ const inScope = itemGroupIds === null
 
       {isPending && (
         <div className="flex items-center justify-end gap-2 pt-1">
-          <span className="text-[10px] text-amber-700 mr-auto">Draft ??not counted toward schedule coverage until saved</span>
+          <span className="text-[10px] text-amber-700 mr-auto">Draft — not counted toward schedule coverage until saved</span>
           <button
             type="button"
             onClick={() => {
