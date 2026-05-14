@@ -98,6 +98,20 @@ export default function ScheduleEditor({
   stickyTop = 0,
 }: Props) {
   const [items, setItems] = useState<ScheduleItem[]>(initialItems)
+  // Keep a ref to the latest items so callbacks like commitPendingItem read the freshest
+  // value, not the one captured in their closure at render time.
+  const itemsRef = useRef(items)
+  itemsRef.current = items
+
+  // Next sortOrder for a day. Uses max(sortOrder)+1 over surviving items so new rows
+  // always land after existing ones — robust to gaps and to marked-for-removal items
+  // (which are excluded so their sortOrder doesn't shift new rows into a collision).
+  function nextSortOrderForDay(day: number): number {
+    const orders = items
+      .filter(i => i.day === day && !markedForRemoval.has(i.id))
+      .map(i => i.sortOrder)
+    return orders.length === 0 ? 0 : Math.max(...orders) + 1
+  }
   const [markedForRemoval, setMarkedForRemoval] = useState<Set<string>>(new Set())
   const diffKeyFn = (it: ScheduleItem) => it.variantId ?? it.title.trim().toLowerCase()
   const prevKeySet = useMemo(() => new Set((prevItems ?? []).map(diffKeyFn)), [prevItems])
@@ -188,7 +202,7 @@ export default function ScheduleEditor({
       location: null,
       notes: null,
       variantId: null,
-      sortOrder: items.filter(i => i.day === day).length,
+      sortOrder: nextSortOrderForDay(day),
     }
     setItems(prev => [...prev, newItem])
     setPendingItemIds(prev => { const n = new Set(prev); n.add(id); return n })
@@ -211,7 +225,9 @@ export default function ScheduleEditor({
     setPendingItemIds(prev => { const n = new Set(prev); n.delete(id); return n })
     setEditSnapshots(prev => { const n = new Map(prev); n.delete(id); return n })
     setUnsetGroupItemIds(prev => { const n = new Set(prev); n.delete(id); return n })
-    void saveDraft(items)
+    // Use the ref so the saved draft includes the freshest edit (closure `items` can be
+    // one tick behind if the user's last keystroke fired in the same handler chain).
+    void saveDraft(itemsRef.current)
   }
   function editItem(id: string) {
     const snapshot = items.find(i => i.id === id)
@@ -273,7 +289,7 @@ export default function ScheduleEditor({
       fromLocation: first.location ?? null,
       toLocation: second.location ?? null,
       location: null, notes: null, variantId: null,
-      sortOrder: items.filter(i => i.day === selectionDay).length,
+      sortOrder: nextSortOrderForDay(selectionDay),
     }
     setItems(prev => [...prev, newItem])
     setPendingItemIds(prev => { const n = new Set(prev); n.add(newId); return n })
@@ -299,7 +315,7 @@ export default function ScheduleEditor({
       toLocation: type === 'depart' ? (otherLocation ?? null) : null,
       location: null, notes: null,
       variantId: hotelProduct?.variantId ?? null,
-      sortOrder: items.filter(i => i.day === selectionDay).length,
+      sortOrder: nextSortOrderForDay(selectionDay),
     }
     setItems(prev => [...prev, newItem])
     setPendingItemIds(prev => { const n = new Set(prev); n.add(newId); return n })
@@ -332,20 +348,39 @@ export default function ScheduleEditor({
       notes: null,
       variantId: null,
       isPrayer: true,
-      sortOrder: items.filter(i => i.day === day).length,
+      sortOrder: nextSortOrderForDay(day),
     }
     setItems(prev => [...prev, newItem])
     setPendingItemIds(prev => { const n = new Set(prev); n.add(newItem.id); return n })
   }
 
   function fillTransfers(day: number) {
-    const dayItems = items
-      .filter(i => i.day === day && !pendingItemIds.has(i.id) && !markedForRemoval.has(i.id))
+    // Include pending items so they (a) anchor new transfers and (b) prevent duplicates
+    // when a pending transfer already sits between two activities. Exclude only items
+    // marked for removal — those will disappear on save.
+    const baseItems = items
+      .filter(i => i.day === day && !markedForRemoval.has(i.id))
       .sort(compareScheduleItems)
-    const newTransfers: ScheduleItem[] = []
-    for (let i = 0; i < dayItems.length - 1; i++) {
-      const a = dayItems[i]
-      const b = dayItems[i + 1]
+
+    // Pick a human-readable label for from/to and title fallback.
+    const labelOf = (it: ScheduleItem): string => {
+      if (it.location) return it.location
+      if (it.itemType === 'meal' && it.restaurantName) return it.restaurantName
+      if (it.title) return it.title
+      return ''
+    }
+    const locOf = (it: ScheduleItem): string | null => {
+      if (it.location) return it.location
+      if (it.itemType === 'meal' && it.restaurantName) return it.restaurantName
+      return null
+    }
+
+    type Insertion = { afterIdx: number; transfer: ScheduleItem }
+    const insertions: Insertion[] = []
+
+    for (let i = 0; i < baseItems.length - 1; i++) {
+      const a = baseItems[i]
+      const b = baseItems[i + 1]
       const aType = a.itemType ?? 'appointment'
       const bType = b.itemType ?? 'appointment'
       if (aType === 'transfer' || bType === 'transfer') continue
@@ -365,31 +400,53 @@ export default function ScheduleEditor({
         if (intersection.length === 0) continue
         transferGroups = intersection
       }
-      newTransfers.push({
+
+      const toLabel = labelOf(b)
+      const transfer: ScheduleItem = {
         id: generateScheduleItemId(),
         day,
         block: a.block,
         endBlock: a.block !== b.block ? b.block : undefined,
-        time: null,
-        title: '',
+        // Inherit a's end/start time so the transfer sorts naturally between a and b.
+        time: a.endTime ?? a.time ?? null,
+        title: toLabel ? `Transfer to ${toLabel}` : 'Transfer',
         itemType: 'transfer',
-        fromLocation: a.location ?? null,
-        toLocation: b.location ?? null,
+        fromLocation: locOf(a),
+        toLocation: locOf(b),
+        transportMode: 'car',
         location: null,
         notes: null,
         variantId: null,
         groupIds: transferGroups,
-        sortOrder: items.filter(i => i.day === day).length + newTransfers.length,
-      })
+        sortOrder: 0, // re-numbered below
+      }
+      insertions.push({ afterIdx: i, transfer })
     }
-    if (newTransfers.length === 0) return
-    setItems(prev => [...prev, ...newTransfers])
+
+    if (insertions.length === 0) return
+
+    // Rebuild the day's sorted list with each transfer inserted right after its `a`,
+    // then renumber sortOrders so the new transfer doesn't get pushed to the end.
+    const merged: ScheduleItem[] = []
+    for (let i = 0; i < baseItems.length; i++) {
+      merged.push(baseItems[i])
+      const ins = insertions.find(x => x.afterIdx === i)
+      if (ins) merged.push(ins.transfer)
+    }
+    const renumbered = merged.map((it, idx) => ({ ...it, sortOrder: idx }))
+    const baseIds = new Set(baseItems.map(it => it.id))
+    const newTransfers = insertions.map(x => x.transfer)
+
+    setItems(prev => {
+      const kept = prev.filter(i => !baseIds.has(i.id))
+      return [...kept, ...renumbered]
+    })
     setPendingItemIds(prev => { const n = new Set(prev); newTransfers.forEach(t => n.add(t.id)); return n })
     setCollapsedDays(prev => { const n = new Set(prev); n.delete(day); return n })
   }
 
   function addFreeTime(day: number, kind: 'morning' | 'afternoon' | 'evening' | 'full') {
-    const baseSort = items.filter(i => i.day === day).length
+    const baseSort = nextSortOrderForDay(day)
     if (kind === 'full') {
       const blocks: Array<'morning' | 'afternoon' | 'evening'> = ['morning', 'afternoon', 'evening']
       const additions: ScheduleItem[] = blocks.map((b, i) => ({
@@ -448,14 +505,19 @@ export default function ScheduleEditor({
       const idx = prev.findIndex(i => i.id === id)
       if (idx < 0) return prev
       const target = prev[idx]
-      // Sort within same (day, block) by current sortOrder
+      // Peer order must match the displayed order, otherwise ▲/▼ swaps with the wrong
+      // row. The renderer uses compareScheduleItems (block → time → sortOrder), so use
+      // the same comparator here.
       const peers = prev
         .filter(i => i.day === target.day && i.block === target.block)
-        .sort((a, b) => a.sortOrder - b.sortOrder)
+        .sort(compareScheduleItems)
       const peerIdx = peers.findIndex(i => i.id === id)
+      if (peerIdx < 0) return prev
       const swapWith = peers[peerIdx + direction]
       if (!swapWith) return prev
-      // Swap sortOrders
+      // Swap sortOrders. For same-time pairs this produces a visible reorder; for
+      // time-distinguished pairs sortOrder is the tiebreaker so the swap is a no-op
+      // (admin should change the time to reorder time-anchored items).
       return prev.map(i => {
         if (i.id === target.id) return { ...i, sortOrder: swapWith.sortOrder }
         if (i.id === swapWith.id) return { ...i, sortOrder: target.sortOrder }
@@ -476,7 +538,10 @@ export default function ScheduleEditor({
       // Handle both legacy format (title included variant) and new format (title = productName only)
       const autoTitleNew = prev?.productName ?? null
       const autoTitleOld = prev ? [prev.productName, prev.variantLabel].filter(Boolean).join(' · ') : null
-      const titleWasAuto = (autoTitleNew && current?.title === autoTitleNew) || (autoTitleOld && current?.title === autoTitleOld)
+      // Hotel sub-dropdown can auto-fill these titles regardless of product name.
+      const HOTEL_AUTO_TITLES = ['Hotel Check-in', 'Hotel Check-out', 'Hotel Stay']
+      const titleWasHotelAuto = !!current?.title && HOTEL_AUTO_TITLES.includes(current.title)
+      const titleWasAuto = (autoTitleNew && current?.title === autoTitleNew) || (autoTitleOld && current?.title === autoTitleOld) || titleWasHotelAuto
       const partnerWasAuto = prev?.partnerName && current?.partner === prev.partnerName
       const locationWasAuto = prev?.location
         ? current?.location === prev.location
@@ -486,6 +551,8 @@ export default function ScheduleEditor({
       updateItem(itemId, {
         variantId: null,
         variantTag: null,
+        // Hotel check-type only makes sense while a hotel product is linked.
+        hotelCheckType: null,
         ...(titleWasAuto ? { title: '' } : {}),
         ...(partnerWasAuto ? { partner: null } : {}),
         ...(locationWasAuto ? { location: null } : {}),
@@ -507,6 +574,8 @@ export default function ScheduleEditor({
       location: cp.location ?? cp.partnerName ?? null,
       ...(cp.fullAddress ? { address: cp.fullAddress } : {}),
       ...(cp.contactPhone ? { partnerContact: [cp.partnerName, cp.contactPhone].filter(Boolean).join(' · ') } : {}),
+      // Switching to a non-hotel product? Drop any stale hotel check-type.
+      ...(cp.isHotel ? {} : { hotelCheckType: null }),
     })
   }
 
@@ -617,7 +686,7 @@ export default function ScheduleEditor({
         return (
           <div key={day} className={`bg-white border border-gray-100 shadow-sm ${isCollapsed ? 'rounded-2xl' : 'rounded-2xl'}`}>
             {/* Day header */}
-            <div className="flex items-center justify-between px-4 py-3 max-w-3xl mx-auto w-full">
+            <div className="flex items-center justify-between px-4 py-3">
               <button
                 onClick={() => toggleDayCollapse(day)}
                 className="flex items-baseline gap-2 flex-1 text-left min-w-0"
@@ -748,33 +817,94 @@ export default function ScheduleEditor({
 
                     {segments.map((seg, segIdx) => {
                       if (seg.type === 'shared') {
-                        // Shared item — constrained to match narrow sections
+                        // Shared item — full width (distinguished by tint + left border)
                         return (
-                          <div key={`seg-${segIdx}`} className="bg-green-50/30 border-l-2 border-[#0f4c35]/20 max-w-3xl mx-auto w-full">
+                          <div key={`seg-${segIdx}`} className="bg-green-50/30 border-l-2 border-[#0f4c35]/20">
                             {renderItemRow(seg.item, dayItems)}
                           </div>
                         )
                       }
-                      // Group columns segment — full width
+                      // Group columns segment — row-based with colspan merging.
+                      // Multi-group items whose groups don't form a contiguous range in the
+                      // current column order get pulled out as full-width "subset shared"
+                      // banner rows (the Covers chip inside ItemRow names the groups).
+                      const colItemsPerGroup = groups.map(g =>
+                        seg.items.filter(it => {
+                          const gids = resolveGroupIds(it)
+                          return gids !== null && gids.includes(g.id)
+                        })
+                      )
+                      const maxRows = Math.max(0, ...colItemsPerGroup.map(c => c.length))
                       return (
-                        <div key={`seg-${segIdx}`} className="flex" style={{ alignItems: 'stretch' }}>
-                          {groups.map(g => {
-                            const colItems = seg.items.filter(it => {
-                              const gids = resolveGroupIds(it)
-                              return gids !== null && gids.includes(g.id)
+                        <div key={`seg-${segIdx}`} className="flex flex-col divide-y divide-gray-100">
+                          {Array.from({ length: maxRows }, (_, rIdx) => {
+                            const row = colItemsPerGroup.map(col => col[rIdx] ?? null)
+
+                            // Identify items that appear at non-contiguous column positions.
+                            const positionsById = new Map<string, { item: ScheduleItem; positions: number[] }>()
+                            row.forEach((it, idx) => {
+                              if (!it) return
+                              const entry = positionsById.get(it.id) ?? { item: it, positions: [] }
+                              entry.positions.push(idx)
+                              positionsById.set(it.id, entry)
                             })
+                            const bannerItemIds = new Set<string>()
+                            const bannerItems: ScheduleItem[] = []
+                            positionsById.forEach(({ item, positions }, id) => {
+                              if (positions.length <= 1) return
+                              const sorted = [...positions].sort((a, b) => a - b)
+                              const isContiguous = sorted[sorted.length - 1] - sorted[0] === sorted.length - 1
+                              if (!isContiguous) {
+                                bannerItemIds.add(id)
+                                bannerItems.push(item)
+                              }
+                            })
+
+                            // Column row excludes banner items — their column slots show placeholder.
+                            const colRow = row.map(it => (it && bannerItemIds.has(it.id) ? null : it))
+                            const colRowEmpty = colRow.every(c => c === null)
+
+                            // Build cells with merging for the remaining column items.
+                            const cells: Array<{ item: ScheduleItem | null; span: number; startIdx: number }> = []
+                            let i = 0
+                            while (i < colRow.length) {
+                              const item = colRow[i]
+                              if (item === null) {
+                                cells.push({ item: null, span: 1, startIdx: i })
+                                i++
+                              } else {
+                                let span = 1
+                                while (i + span < colRow.length && colRow[i + span]?.id === item.id) span++
+                                cells.push({ item, span, startIdx: i })
+                                i += span
+                              }
+                            }
+
                             return (
-                              <div key={g.id} className="flex-1 flex flex-col justify-evenly border-l first:border-l-0 border-gray-200 min-w-0">
-                                {colItems.length === 0 ? (
-                                  <div className="flex-1 flex items-center justify-center py-6 min-h-[80px]">
-                                    <span className="text-xs text-gray-200">—</span>
+                              <React.Fragment key={`r-${rIdx}`}>
+                                {bannerItems.map(it => (
+                                  <div key={`r${rIdx}-banner-${it.id}`} className="bg-emerald-50/40 border-l-2 border-emerald-400/40">
+                                    {renderItemRow(it, dayItems)}
                                   </div>
-                                ) : (
-                                  <div className="flex flex-col justify-evenly flex-1 divide-y divide-gray-100">
-                                    {colItems.map(it => renderItemRow(it, dayItems))}
+                                ))}
+                                {!colRowEmpty && (
+                                  <div className="flex" style={{ alignItems: 'stretch' }}>
+                                    {cells.map(c => (
+                                      <div
+                                        key={`r${rIdx}-c${c.startIdx}`}
+                                        className={`min-w-0 ${c.startIdx === 0 ? '' : 'border-l border-gray-200'}`}
+                                        style={{ flex: `${c.span} 1 0` }}
+                                      >
+                                        {c.item ? renderItemRow(c.item, dayItems) : (
+                                          <div className="h-full flex items-center justify-center py-6 min-h-[80px]">
+                                            <span className="text-xs text-gray-200">—</span>
+                                          </div>
+                                        )}
+                                      </div>
+                                    ))}
                                   </div>
                                 )}
-                              </div>
+                              </React.Fragment>
                             )
                           })}
                         </div>
@@ -792,7 +922,7 @@ export default function ScheduleEditor({
                 )}
 
                 <div className="sticky bottom-0 z-20 bg-white border-t border-gray-100 rounded-b-2xl">
-                <div className="flex items-center gap-3 px-4 py-2.5 max-w-3xl mx-auto w-full">
+                <div className="flex items-center gap-3 px-4 py-2.5">
                   <button onClick={() => addItem(day, true)} className="text-xs font-semibold text-[#0f4c35] hover:bg-green-50 px-2 py-1 rounded-lg border border-[#0f4c35]/30 hover:border-[#0f4c35] transition-colors">+ Add Item</button>
                   <FreeTimeMenu onPick={(kind) => addFreeTime(day, kind)} dropUp />
                   <PrayerMenu onPick={(prayer) => addPrayerTime(day, prayer)} dropUp />
