@@ -738,11 +738,11 @@ export default function ScheduleEditor({
       {(() => {
         const committedItems = items.filter(i => !pendingItemIds.has(i.id) && !markedForRemoval.has(i.id))
 
-        // --- Regular coverage (non-trip-service, plus hotel which uses a single booking) ---
+        // --- Regular coverage (non-trip-service) ---
         const requiredKeys = new Map<string, CaseProduct>()
         for (const cp of caseProducts) {
-          if (cp.isTripService && !cp.isHotel) continue
-          const key = cp.isSubpackage || cp.isHotel ? `sub:${cp.variantId}` : `${cp.groupId}:${cp.variantId}`
+          if (cp.isTripService) continue
+          const key = cp.isSubpackage ? `sub:${cp.variantId}` : `${cp.groupId}:${cp.variantId}`
           if (!requiredKeys.has(key)) requiredKeys.set(key, cp)
         }
         const coveredKeys = new Set<string>()
@@ -776,10 +776,9 @@ export default function ScheduleEditor({
           }
         }
         // Deduplicate trip service products by variantId (quantity is the same across groups)
-        // Hotel products are excluded — they use regular (single-booking) coverage above.
         const tripServiceProducts = new Map<string, CaseProduct>()
         for (const cp of caseProducts) {
-          if (!cp.isTripService || cp.isHotel) continue
+          if (!cp.isTripService) continue
           if (!tripServiceProducts.has(cp.variantId)) tripServiceProducts.set(cp.variantId, cp)
         }
         type TripMissing = { cp: CaseProduct; required: number; scheduled: number }
@@ -1196,8 +1195,12 @@ const inScope = itemGroupIds === null
                 const t = e.target.value as ScheduleItemType
                 const updates: Partial<ScheduleItem> = { itemType: t }
                 if (t === 'free' && !item.title.trim()) updates.title = 'Free time'
-                if (t === 'hotel' && item.hotelCheckType && !item.title.trim())
-                  updates.title = item.hotelCheckType === 'checkin' ? 'Hotel Check-in' : 'Hotel Check-out'
+                if (t === 'hotel') {
+                  if (item.hotelCheckType && !item.title.trim())
+                    updates.title = item.hotelCheckType === 'checkin' ? 'Hotel Check-in' : item.hotelCheckType === 'checkout' ? 'Hotel Check-out' : item.hotelCheckType === 'depart' ? 'Hotel Departure' : 'Hotel Return'
+                  const hotelProduct = caseProducts.find(cp => cp.isHotel)
+                  if (hotelProduct && !item.variantId) updates.variantId = hotelProduct.variantId
+                }
                 onUpdate(updates)
               }}
               className="text-xs font-medium border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-900 focus:outline-none focus:border-[#0f4c35]"
@@ -1327,43 +1330,103 @@ const inScope = itemGroupIds === null
               />
             </span>
           )}
-          {itemType === 'hotel' && (
-            <>
-              <select value={item.hotelCheckType ?? ''}
-                onChange={(e) => {
-                  const v = (e.target.value || null) as ScheduleItem['hotelCheckType']
-                  const autoTitles: Record<string, string> = { checkin: 'Hotel Check-in', checkout: 'Hotel Check-out', depart: 'Hotel Departure', return: 'Hotel Return' }
-                  const prevAuto = item.hotelCheckType ? (autoTitles[item.hotelCheckType] ?? '') : ''
-                  const updates: Partial<ScheduleItem> = { hotelCheckType: v }
-                  if (!item.title.trim() || item.title === prevAuto)
-                    updates.title = v ? (autoTitles[v] ?? '') : ''
-                  onUpdate(updates)
-                }}
-                disabled={!isPending}
-                className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
-              >
-                <option value="">— Hotel type —</option>
-                <option value="checkin">Check-in</option>
-                <option value="checkout">Check-out</option>
-                <option value="depart">Departure</option>
-                <option value="return">Return</option>
-              </select>
-              {item.hotelCheckType === 'depart' && (isPending || detailsOpen) && (
-                <input type="text" value={item.toLocation ?? ''}
-                  onChange={(e) => onUpdate({ toLocation: e.target.value || null })}
-                  disabled={!isPending} placeholder="Destination"
-                  className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default flex-1 min-w-[140px]"
-                />
-              )}
-              {item.hotelCheckType === 'return' && (isPending || detailsOpen) && (
-                <input type="text" value={item.fromLocation ?? ''}
-                  onChange={(e) => onUpdate({ fromLocation: e.target.value || null })}
-                  disabled={!isPending} placeholder="Departure point"
-                  className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default flex-1 min-w-[140px]"
-                />
-              )}
-            </>
-          )}
+          {itemType === 'hotel' && (() => {
+            const hotelProduct = caseProducts.find(cp => cp.isHotel)
+            const hotelLabel = hotelProduct
+              ? `${hotelProduct.partnerName ? hotelProduct.partnerName + ' · ' : ''}${hotelProduct.productName}`
+              : null
+            // Location options for departure/return selects
+            const locationOptions = [
+              ...new Set(
+                caseProducts
+                  .filter(cp => !cp.isHotel && !cp.isVehicle && !cp.isTripService)
+                  .map(cp => cp.location ?? cp.partnerName)
+                  .filter(Boolean) as string[]
+              ),
+              'Incheon International Airport (ICN)',
+              'Gimpo Airport (GMP)',
+            ]
+            return (
+              <>
+                <select value={item.hotelCheckType ?? ''}
+                  onChange={(e) => {
+                    const v = (e.target.value || null) as ScheduleItem['hotelCheckType']
+                    const autoTitles: Record<string, string> = { checkin: 'Hotel Check-in', checkout: 'Hotel Check-out', depart: 'Hotel Departure', return: 'Hotel Return' }
+                    const prevAuto = item.hotelCheckType ? (autoTitles[item.hotelCheckType] ?? '') : ''
+                    const updates: Partial<ScheduleItem> = { hotelCheckType: v }
+                    if (!item.title.trim() || item.title === prevAuto)
+                      updates.title = v ? (autoTitles[v] ?? '') : ''
+                    if (!item.variantId && hotelProduct) updates.variantId = hotelProduct.variantId
+                    // Auto-fill hotel name into the fixed side
+                    if (v === 'depart' && hotelLabel) updates.fromLocation = hotelLabel
+                    if (v === 'return' && hotelLabel) updates.toLocation = hotelLabel
+                    onUpdate(updates)
+                  }}
+                  disabled={!isPending}
+                  className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
+                >
+                  <option value="">— Hotel type —</option>
+                  <option value="checkin">Check-in</option>
+                  <option value="checkout">Check-out</option>
+                  <option value="depart">Departure</option>
+                  <option value="return">Return</option>
+                </select>
+
+                {/* Check-in / Check-out: show linked hotel name */}
+                {(item.hotelCheckType === 'checkin' || item.hotelCheckType === 'checkout') && hotelLabel && (
+                  <span className="text-xs px-2 py-1 bg-gray-100 rounded-lg text-gray-700 truncate max-w-[220px]">
+                    {hotelLabel}
+                  </span>
+                )}
+
+                {/* Departure: fromLocation = hotel (auto, readonly), toLocation = select */}
+                {item.hotelCheckType === 'depart' && (
+                  <>
+                    {hotelLabel && (
+                      <span className="text-xs px-2 py-1 bg-gray-100 rounded-lg text-gray-700 truncate max-w-[180px]" title={hotelLabel}>
+                        {hotelLabel}
+                      </span>
+                    )}
+                    <span className="text-gray-300 text-xs">→</span>
+                    <select
+                      value={item.toLocation ?? ''}
+                      onChange={(e) => onUpdate({ toLocation: e.target.value || null })}
+                      disabled={!isPending}
+                      className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default flex-1 min-w-[140px]"
+                    >
+                      <option value="">— Destination —</option>
+                      {locationOptions.map(loc => (
+                        <option key={loc} value={loc}>{loc}</option>
+                      ))}
+                    </select>
+                  </>
+                )}
+
+                {/* Return: fromLocation = select, toLocation = hotel (auto, readonly) */}
+                {item.hotelCheckType === 'return' && (
+                  <>
+                    <select
+                      value={item.fromLocation ?? ''}
+                      onChange={(e) => onUpdate({ fromLocation: e.target.value || null })}
+                      disabled={!isPending}
+                      className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default flex-1 min-w-[140px]"
+                    >
+                      <option value="">— Departure point —</option>
+                      {locationOptions.map(loc => (
+                        <option key={loc} value={loc}>{loc}</option>
+                      ))}
+                    </select>
+                    <span className="text-gray-300 text-xs">→</span>
+                    {hotelLabel && (
+                      <span className="text-xs px-2 py-1 bg-gray-100 rounded-lg text-gray-700 truncate max-w-[180px]" title={hotelLabel}>
+                        {hotelLabel}
+                      </span>
+                    )}
+                  </>
+                )}
+              </>
+            )
+          })()}
           {itemType === 'appointment' && !item.isPrayer && (() => {
             const regularProducts = pickerProducts.filter(cp => !cp.isTripService)
             const allTripServices = caseProducts.filter(cp => cp.isTripService && !cp.isHotel && !cp.isVehicle)
