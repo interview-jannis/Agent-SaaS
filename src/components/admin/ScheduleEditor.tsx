@@ -738,11 +738,11 @@ export default function ScheduleEditor({
       {(() => {
         const committedItems = items.filter(i => !pendingItemIds.has(i.id) && !markedForRemoval.has(i.id))
 
-        // --- Regular coverage (non-trip-service) ---
+        // --- Regular coverage (non-trip-service, plus hotel which uses a single booking) ---
         const requiredKeys = new Map<string, CaseProduct>()
         for (const cp of caseProducts) {
-          if (cp.isTripService) continue
-          const key = cp.isSubpackage ? `sub:${cp.variantId}` : `${cp.groupId}:${cp.variantId}`
+          if (cp.isTripService && !cp.isHotel) continue
+          const key = cp.isSubpackage || cp.isHotel ? `sub:${cp.variantId}` : `${cp.groupId}:${cp.variantId}`
           if (!requiredKeys.has(key)) requiredKeys.set(key, cp)
         }
         const coveredKeys = new Set<string>()
@@ -776,9 +776,10 @@ export default function ScheduleEditor({
           }
         }
         // Deduplicate trip service products by variantId (quantity is the same across groups)
+        // Hotel products are excluded — they use regular (single-booking) coverage above.
         const tripServiceProducts = new Map<string, CaseProduct>()
         for (const cp of caseProducts) {
-          if (!cp.isTripService) continue
+          if (!cp.isTripService || cp.isHotel) continue
           if (!tripServiceProducts.has(cp.variantId)) tripServiceProducts.set(cp.variantId, cp)
         }
         type TripMissing = { cp: CaseProduct; required: number; scheduled: number }
