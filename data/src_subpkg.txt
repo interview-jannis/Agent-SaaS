@@ -1,0 +1,47 @@
+=== 6. Vehicle (21 rows) ===
+R1: ['Vehicle for Muslim VIP K-BMW Premium Tour', None, None, None, None, None, None, None]
+R2: [' ', None, None, None, None, None, None, None]
+R6: ['Premium Package ', None, None, None, None, None, None, 'Information']
+R7: ['Package', 'Partners', 'Vehicle Category', 'Vehicle Model', 'Quotation (KRW)', 'Check-up-Detail', 'Check-up-Detail', None]
+R8: ['Vehicle', 'NOBLE KLASSE\n070.5210.7678\nvipriding@kcmotors.co.kr', 'NOBLE KLASSE SOLATI ', 'NOBLE KLASSE SOLATI \nS11', '별도 상담', '별도 상담', '세계최초 할랄인증 리무진으로 제공하는 무슬림 전용 라이딩 서비스로\n차량 내 무슬림을 위한  기도 공간을 구성하여,  \n무슬림 고객들이 국내 관광시 시간과 공간의 제약없이\n기도를 할수 있는  무슬림 관광에 최적화된 모빌리티 서비스', None]
+R9: [None, '그랜드리무진코리아\n(vehicle + driver)\n1644-1065\nbaboo-1052@naver.com', '럭셔리 세단', '제네시스 G90(신형)', 450000, '8시간 초과 시 5만원 추가\n시트수: 4', '8시간 기준', 'https://www.grandlimousine.co.kr/home']
+R10: [None, None, '프리미엄 SUV', '벤츠 S580(신형)', 800000, '8시간 초과 시 7만원 추가\n시트수: 6', None, None]
+R11: [None, None, '벤츠 스프린터', '리무진(9인승)', 800000, '8시간 초과 시 7만원 추가\n시트수: 9', None, None]
+R12: [None, None, '다인승 리무진', '리무진 버스(28인승 / 45인승)', '별도 상담', None, None, None]
+R13: [None, 'CK Company\n(vehicle + driver)\n1688-2271\nckkoreacom@naver.com', '럭셔리 세단', 'GENESIS G90 RS4 신형', 850000, None, '10시간 기준', 'http://ckkorea.net/']
+R14: [None, None, '럭셔리 세단', 'BENZ S-Class', 850000, None, None, None]
+R15: [None, None, '벤츠 스프린터', 'BENZ SPRINTER VIP', 850000, None, None, None]
+R16: [None, 'VIP 리무진 코리아\n(vehicle + driver)\n1877-6411\n010-7599-6411\nlimousines-korea@naver.com', '럭셔리 세단', '최신형 제네시스 G90 리무진(롱휠)', 800000, None, '이용 가능 고객: 외국인(바이어 등) / 국가 및 지방자치단체 / \n일반 및 주 법인사업자 / 기업의전방문\n주유비, 톨비, 주차비, 기사 숙식비 소요 경비 별도\nOver Time 적용: 9시간 기준(09:00 -18:00), 18시 이후에는 시간당 O/T 발생', 'https://limousines-korea.com/']
+R17: [None, None, '벤츠 스프린터', '최신형 벤츠 스프린터 리무진 519 최고급형\n9인승,11인승,12인승', 800000, None, None, None]
+R18: [None, None, '다인승 리무진', '리무진(20인승 / 28인승)', '별도 상담', None, None, None]
+R19: [None, '메리트리무진\n(only vehicle / vehicle + driver)\n010-5215-2467\nktw1358@hanmail.net', '프리미엄 SUV', '벤츠 S580L 4matic', 880000, '기준 4인(최대 4인)', '차량 + 기사님(8h): over time(시간 당) 132,000\n유류, 톨비, 식사, 숙박 등 행사종류 후 별도 청구\n영어 가능 인원 요청시 추가요금 발생\n\n차량만(24h): 자차보험 55,000', 'https://meritlimo.kr/Reservation']
+R20: [None, None, '벤츠 스프린터', '스프린터 R-VIP 크리스탈', 1320000, '기준 8인(최대 8인)', None, None]
+R21: [None, None, '벤츠 스프린터', '스프린터 비즈니스 15', 660000, '기준 14인(최대 14인)', None, None]
+
+=== 7. Interpreter (9 rows) ===
+R1: ['Interpreter for Muslim VIP K-BMW Premium Tour', None, None, None, None, None, None]
+R2: [' ', None, None, None, None, None, None]
+R6: ['Premium Package ', None, None, None, None, 'Information', None]
+R7: ['Package', 'Partners', 'Service', 'Quotation (1,000 KRW)', 'Check-up-Detail', None, None]
+R8: ['Interpreter', 'TRABIC\n02-2652-2645\n010-5805-5505\nservice@trabic.kr', 'Arabic-Korean translation', '1hour: 800\n6 hour: 1,000\n(초과 시 20 / 1h)', None, 'https://trabic.kr/', None]
+R9: [None, 'VERITAS\nservice@veritasco.co.kr', 'Arabic-Korean translation', 'General Interpreter: 1,012 / 8h\nProfessional Interpreter : 2,420  / 8h', None, 'https://m.blog.naver.com/veritas614/224103518574', None]
+
+=== 8. Concierge (11 rows) ===
+R1: ['Concierge for Muslim VIP K-BMW Premium Tour', None, None, None, None, None]
+R2: [' ', None, None, None, None, None]
+R6: ['Premium Package ', None, None, None, None, 'Information']
+R7: ['Package', 'Partners', 'Service', 'Quotation (KRW)', 'Check-up-Detail', None]
+R8: ['CONCIERGE', 'OK KOREA COMPANY\n010-6661-4871\nokkoreacompany@naver.com', '인력 지원 비용', '의전 전문 매니저: 시간당 5-10만원\n의전도우미: 시간당 3-5만원\n수행기사: 시간당 4-7만원\n동시통역사: 시간당 15-30만원', None, 'https://okkoreacompany.com/page/56']
+R9: [None, None, '개인 의전', '개인 VIP 수행: 시간당 10-20만원', None, None]
+R10: [None, 'AS CONCIERGE\nsy.lee@aysconcierge.kr', 'CORPORATE CONCIERGE', '가격 문의 필요', '행사 기획 및 운영: 전략 기획 / 세부 실행 / 브랜드 일관성 / 위기 관리\n출장 및 미팅 어레인지: 일정 통합 관리 / 맞춤형 편의 / 효율성 향상\nVIP 의전: 고품격 환대 / 세심한 일정 / 전문 통역 / 전담 컨시어지 ', 'https://aysconcierge.kr/?act=main']
+R11: [None, 'COSMIJN\n02-318-0345', 'VIP HOSPITALITY', '가격 문의 필요', '입국전부터 출국까지 / 일정에 맞춘 수송, 통역, 가이드배치 /\n항공 호텔 각종 수배 / 다양한 테마 럭셔리 투어', 'https://home.cosmojin.com/vip-hospitality/']
+
+=== 11. Security (10 rows) ===
+R1: ['Security for Muslim VIP K-BMW Premium Tour', None, None, None, None, None, None]
+R2: [' ', None, None, None, None, None, None]
+R6: ['Premium Package ', None, None, None, None, None, 'Information']
+R7: ['Package', 'Partners', 'Contact Point', 'Service', 'Quotation (KRW)', 'Check-up-Detail', None]
+R8: ['Security', 'KOREA SPECIAL SECURITY', '1688-8596\npia707@naver.com', 'VIP 의전수행 및 경호', '가격 문의 필요', '해외 VIP 수행경호 및 통역가이드 / \n해외(기업인, 정치인, 연예인, 종교인) 국내 출장(여행) 수행 경호', 'http://kss007.com/']
+R9: [None, 'TEAMGUARD COMPANY', '1668-1028\ntg.si@outlook.kr', '신변보호 / VIP의전수행', '1,000 / 10h', '국내/외 VIP 수행 경호 및 통역', 'https://teamguard.muv.kr/59']
+R10: [None, 'TRIPLE SECURITY', '1670-1780\ntriplesecu@triplesecu.co.kr', '경호서비스', '가격 문의 필요', 'VIP 의전 업무: 국내/외 VIP 의전수행 및 통역가이드\n개인신변보호업무: 개인경호\n수행비서/기사 업무: VP 맞춤 서비스 / 의전 및 비서 업무 수행 / 경호운전 및 차량관리 서비스', 'http://xn--oy2ba961ev3n6zczj09j.com/bbs/content.php?co_id=0201']
+

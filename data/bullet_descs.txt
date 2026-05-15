@@ -1,0 +1,607 @@
+=== #P-208 | K-Wellness | K-Shopping | Premium Optical & Eyewear ===
+partner=KUMKANG OPTICAL | tertiary=K-Glasses | location=Seoul (multiple branches) | duration=None None
+DESC:
+* Korea's largest Lindberg dealer — premium international designer eyewear
+* State-of-the-art digital lens fitting and advanced 3D diagnostic equipment
+* Highly trained optometrists with precision fitting systems
+* Branches: Dogok, Samsung Medical Center, Apgujeong, KINTEX, Pangyo, Cheonho, Express Bus Terminal, Apgujeong Rodeo, Gwanggyo, Yeouido, Myeongdong, Jamsil
+HIGHLIGHTS:
+* Korea's premier optical brand trusted by VIPs and presidents; 12+ branches across Seoul
+
+=== #P-209 | K-Wellness | K-Shopping | K-Beauty Shopping ===
+partner=OLIVE YOUNG | tertiary=K-Cosmetic | location=Seoul (Myeongdong Town, Gangnam Town, Seongsu N flagship) | duration=None None
+DESC:
+* Korea's first and largest health & beauty retail chain
+* Curated selection of K-cosmetics, health supplements, beauty tools, and lifestyle products
+* Mix of Korean indie brands and global favorites under one roof
+HIGHLIGHTS:
+* Leading K-beauty destination; first stop for trendy Korean skincare and cosmetic brands
+
+=== #P-210 | K-Wellness | K-Shopping | K-Stationery & Lifestyle Shopping ===
+partner=ART BOX | tertiary=K-Stationery&Lifestyle | location=Seoul (Myeongdong, multiple branches) | duration=None None
+DESC:
+* Korea's first design-focused stationery and lifestyle brand
+* Pioneered the transformation of stationery into a design-driven lifestyle category
+* Stylish stationery, planners, home goods, and K-culture merchandise
+HIGHLIGHTS:
+* Iconic K-stationery brand; a must-visit for design lovers and K-culture souvenir shopping
+
+=== #P-211 | K-Wellness | K-Content | K-POP Demon Hunters Tour ===
+partner=Life World tour | tertiary=K-Tour | location=None | duration=1 days
+DESC:
+* Immersive mission-based XR/AR K-POP adventure through iconic Seoul landmarks
+* Gyeongbokgung → Bukchon/Seochon → Myeongdong → VAN Entertainment DIY Workshop → Naksan Park → souvenir shopping
+* Includes: 1 van, English guide, professional photographer, and lunch
+* Min. 2 / max. 6–7 persons per group
+HIGHLIGHTS:
+* K-POP Demon Hunters world brought to life with cutting-edge XR/AR technology
+* Professional photographer and English guide included; mission-style immersive format
+
+=== #P-212 | K-Wellness | K-Content | SBS Inkigayo K-POP Concert Package ===
+partner=Korea Trevel Easy | tertiary=K-Tour | location=None | duration=1 days
+DESC:
+* Live taping ticket for SBS Inkigayo at SBS Public Hall (every Sunday)
+* Walking tour with monthly-changing itinerary + transportation to SBS Public Hall
+* Passport required; exclusive to foreign visitors
+HIGHLIGHTS:
+* Attend a real K-POP music show taping (SBS Inkigayo) every Sunday
+* Exclusive foreign-visitor package: walking tour + live show entry
+
+=== #P-213 | K-Wellness | K-Content | K-Drama Filming Location Tour (Seoul) ===
+partner=eTour | tertiary=K-Tour | location=None | duration=1 days
+DESC:
+* Descendants of the Sun, Guardian: The Lonely and Great God, My Love From the Star filming locations
+* Route: Songdo Dalkomm Coffee → Songdo Central Park → Deoksugung → Hakrim Coffee → N Seoul Tower
+* Lunch at BBQ restaurant (Guardian filming site) included; private guide throughout
+HIGHLIGHTS:
+* Visit real filming sites of three legendary K-dramas across Seoul and Incheon with private guide
+
+=== #P-214 | K-Wellness | K-Content | K-Drama Filming Location Tour (Jeju) ===
+partner=eTour | tertiary=K-Tour | location=None | duration=1 days
+DESC:
+* Welcome to Samdal-ri, Extraordinary Attorney Woo, When Life Gives You Tangerines — Jeju filming locations
+* Route A: Gwaneumsa Temple, Secret Forest Andol-oreum, Gwangchigi Beach, Seongsan Ilchulbong, Seongiwpean Bakery
+* Route B: Dodubong Peak, Rainbow Coastal Road, Iho Taewooja Horse Lighthouses, Myeongwol Elementary School, Changsindo
+* Private guide-accompanied tour; vehicle included; meals at guest discretion
+HIGHLIGHTS:
+* Explore Jeju K-drama filming sites from three beloved recent dramas with private guide
+
+=== #P-215 | K-Wellness | K-Content | Squid Game Tour (Incheon) ===
+partner=GET YOUR GUIDE | tertiary=K-Tour | location=None | duration=1 days
+DESC:
+* Visit Gyodong Elementary — a real Squid Game filming location
+* On-screen challenges: dalgona carving and punch machine
+* Retro "lunchbox" meal as seen on screen + sea-view monorail loop
+* Archery Café at Wolmi Island + Songdo Central Park mission game
+* Hotel pickup/drop-off included
+HIGHLIGHTS:
+* Authentic Squid Game experience at real Incheon filming locations with themed missions and dining
+
+=== #P-216 | K-Wellness | K-Content | K-POP Idol VIP Experience ===
+partner=Korea Tour Tip | tertiary=K-POP Idol Experience | location=None | duration=1 days
+DESC:
+* VIP-only private K-POP idol experience — limited to 4 participants per day
+* K-POP idol dance training + vocal training → idol concept makeup → idol concept photo shoot
+* Lunch (Korean cuisine) included
+HIGHLIGHTS:
+* Ultra-exclusive private K-POP program: max. 4 guests per day
+* Full idol training experience — dance, vocals, makeup, and professional photo shoot
+
+=== #P-217 | K-Wellness | K-Content | K-POP One Day Dance Lesson ===
+partner=DANCEJOA | tertiary=K-Dance | location=None | duration=120 minutes
+DESC:
+* Private K-POP one-day dance class tailored to group skill level and purpose
+* Lesson counseling → instructor assignment → lesson start
+* Small-group format with professional choreography instructor; studio in Seoul
+HIGHLIGHTS:
+* Customized private K-POP dance lesson; goal-oriented choreography by professional instructor
+
+=== #P-218 | K-Wellness | K-Content | K-Fashion Personal Shopping Tour ===
+partner=K Look | tertiary=K-Fashion | location=None | duration=120 minutes
+DESC:
+* 1-on-1 styling session with a professional Korean fashion stylist
+* 6–7 curated outfit recommendations per hour from popular Korean fashion brands
+* Final purchase decisions entirely at the guest discretion; Seoul Gangnam area
+HIGHLIGHTS:
+* Personal shopping tour with a Korean stylist — hands-on K-fashion experience in Gangnam
+
+=== #P-219 | K-Wellness | K-Content | K-Beauty Makeup & Hair Styling ===
+partner=Korea Trevel Easy | tertiary=K-Styling | location=None | duration=240 minutes
+DESC:
+* Professional K-Beauty styling at studios where Korean celebrities prepare for performances
+* Makeup + Hair Styling + Photoshoot package
+* Studio in Gangnam Cheongdam-dong, Dosan Park area; near Supreme, Louis Vuitton, Stussy
+HIGHLIGHTS:
+* Get styled at the same salon Korean entertainment stars use before shows
+* Complete K-Beauty transformation: hair, makeup, and professional photoshoot
+
+=== #P-220 | K-Wellness | K-Content | Master Style Consulting ===
+partner=REHANNAIMAGE | tertiary=K-Styling | location=None | duration=300 minutes
+DESC:
+* I Style Consulting: professional image consulting — hair, makeup, personal color, and body type analysis
+* Fit Style Consulting: advanced body-type fit styling based on data from 15,000+ measurements
+* In-person analysis plus practical shopping guidance; combined I Style + Fit Style package (300 min)
+HIGHLIGHTS:
+* Data-driven style consulting using 15,000+ measurement insights; comprehensive image overhaul
+
+=== #P-221 | K-Wellness | K-Content | VIP Private Consulting ===
+partner=Rarelee | tertiary=K-Styling | location=None | duration=None None
+DESC:
+* Ultra-premium VIP offline service by prior inquiry only
+* Comprehensive consulting: hair, makeup, fashion, and signature style design
+* 1:1 customized analysis and style proposal; inquiries via email only
+HIGHLIGHTS:
+* Exclusive VIP-only premium consulting; by appointment — not available as a walk-in service
+
+=== #P-222 | K-Wellness | K-Content | VIP Offline Consulting ===
+partner=Merizzbeauty | tertiary=K-Styling | location=None | duration=None None
+DESC:
+* VIP private consulting by a team of specialist consultants
+* Includes: Beauty, Fashion, Hair, and Makeup consulting
+* KakaoTalk channel inquiries accepted
+HIGHLIGHTS:
+* All-in-one VIP beauty & style consulting by a dedicated team of professional consultants
+
+=== #P-223 | K-Wellness | K-Content | Master Premium Personal Color Diagnosis ===
+partner=COLOR PLACE | tertiary=K-Styling | location=None | duration=150 minutes
+DESC:
+* 25-type detailed seasonal tone color draping analysis
+* Color cosmetics, fashion style, accessories, perfume, glasses/lens, and nail recommendations
+* Body structure analysis + strategic fashion coaching + signature image consulting
+HIGHLIGHTS:
+* Comprehensive personal color diagnosis covering 25 sub-tones with full image and fashion coaching
+
+=== #P-224 | K-Wellness | K-Content | Palette Premium Personal Color Diagnosis ===
+partner=NEUF COULEUR | tertiary=K-Styling | location=None | duration=150 minutes
+DESC:
+* In-depth personal color diagnosis after body color analysis
+* Hair, jewelry, and lens color recommendations
+* Face zone mini analysis + fashion coaching + perfume, necklace, earring, ring, and watch recommendations
+HIGHLIGHTS:
+* Refined personal color and image consulting with detailed color palette and accessory guidance
+
+=== #P-225 | K-Wellness | Tour | Seoul City Tour ===
+partner=COSMOJIN | tertiary=Seoul | location=Seoul | duration=1 days
+DESC:
+* VIP Special Full-Day Seoul City Tour — min. 4 persons / 09:00–17:30
+* Hotel → City Hall/Gwanghwamun/Cheonggyecheon → Royal Guard Ceremony → Gyeongbokgung → National Folk Museum
+* → Amethyst/Ginseng Center → N Seoul Tower → Lunch → Changdeokgung → Insadong → Han River Cruise → Hotel
+* Private vehicle, professional English guide, and lunch included
+HIGHLIGHTS:
+* Full-day premium private Seoul tour covering history, culture, and scenic landmarks
+* Private vehicle + English guide + lunch all included
+
+=== #P-226 | K-Wellness | Tour | Seoul City Night Tour ===
+partner=Gold Sky Tour | tertiary=Seoul | location=Seoul | duration=4 hours
+DESC:
+* Bamdokkaebi (Night Goblin) night driving tour of Seoul illuminated landmarks
+* Route: Gwanghwamun Square → Cheonggyecheon → DDP → N Seoul Tower → Han River Park → Banpo Moonbow Fountain → Itaewon
+* English-speaking guide; exclusive to foreign visitors; passport required
+HIGHLIGHTS:
+* Seoul after dark — iconic landmarks lit up at night with English guide and scenic driving route
+
+=== #P-227 | K-Wellness | Tour | Islamic Seoul City Tour ===
+partner=KOREA TOUR NET | tertiary=Seoul | location=Seoul | duration=4 hours
+DESC:
+* Muslim-only private Seoul city tour with halal meals and dedicated prayer time
+* Route: Hotel → Hanbok → Royal Guard Ceremony → Gyeongbokgung → N Seoul Tower → Itaewon Mosque → Halal Lunch → Prayer Time → Bukchon Village → Dongdaemun Market → Gwangjang Market → Myeongdong
+* Includes: private vehicle, halal lunch, entrance fees, Arabic/English guide
+HIGHLIGHTS:
+* Fully Muslim-friendly Seoul tour with halal dining and prayer time arranged
+* Arabic and English-speaking guide; private vehicle included
+
+=== #P-228 | K-Wellness | Tour | DMZ + NLL Tour ===
+partner=COSMOJIN | tertiary=Near Seoul | location=Imjingak / Ganghwa Island, Gyeonggi-do | duration=1 days
+DESC:
+* VIP Private DMZ + NLL Tour — min. 4 persons / 07:00–17:30
+* Route: Hotel → Imjingak → Unification Bridge → Passport check → DMZ Theater & Exhibition → 3rd Tunnel → Dora Observatory → Unification Village → Lunch → Ganghwa Island coastal fence → Ganghwa Peace Observatory → Hotel
+* Private vehicle and professional guide; lunch included
+HIGHLIGHTS:
+* Exclusive VIP tour to the Korean DMZ and NLL — Korea's most politically significant restricted zones
+* Includes 3rd Tunnel, Dora Observatory, and Ganghwa Island NLL area
+
+=== #P-229 | K-Wellness | Tour | Islamic Nami Island Tour ===
+partner=KOREA TOUR NET | tertiary=Near Seoul | location=Nami Island, Gangwon-do | duration=4 hours
+DESC:
+* Muslim-only private tour to Nami Island and Garden of Morning Calm
+* Route: Hotel → Nami Island → Halal lunch → Prayer time → Garden of Morning Calm → Hotel or Myeongdong
+* Includes: private vehicle, halal lunch, Arabic/English guide
+HIGHLIGHTS:
+* Muslim-friendly private nature tour combining Nami Island and the Garden of Morning Calm
+
+=== #P-230 | K-Wellness | Tour | Jeju Island Private Tour ===
+partner=LOTTE TOUR | tertiary=Jeju | location=Jeju Island | duration=3 days
+DESC:
+* Private 3-day Jeju Island tour with Grand Hyatt Jeju accommodation
+* Inclusions: round-trip airfare, Grand Hyatt Jeju, private vehicle + driver (Solati 4–10P / Combi Bus 11P+)
+* Meals per itinerary (breakfast, lunch, one dinner daily)
+* Admission: Pacific Marina Yacht, Hwansang Forest Gotjawal Park + foot bath, full-body massage
+* Travel insurance included; itinerary customizable
+HIGHLIGHTS:
+* Fully inclusive luxury 3-day Jeju tour: Grand Hyatt, private driver, yacht, and spa massage
+* Travel insurance and all admission fees included
+
+=== #P-231 | K-Wellness | Tour | Jeju Island Golf Tour ===
+partner=LOTTE TOUR | tertiary=Jeju | location=Jeju Island | duration=3 days
+DESC:
+* Premium 3-day Jeju golf tour with Blackstone Villa Suite accommodation
+* 3 rounds of 18-hole golf: 2 rounds at Blackstone CC + 1 round at Elysian CC
+* Both courses ranked in Asia Top 100; 2 nights private villa; private vehicle
+* Meals not included
+HIGHLIGHTS:
+* Play three rounds at Jeju's top-ranked courses: Blackstone CC and Elysian CC (Asia Top 100)
+* Blackstone Villa Suite accommodation with private vehicle
+
+=== #P-232 | K-Wellness | Tour | Gyeongbuk Tourpass ===
+partner=Gyeongsangbuk-do Cultural Tourism | tertiary=Regional | location=Gyeongsangbuk-do | duration=1 days
+DESC:
+* Free-pass ticket for major paid attractions across Gyeongsangbuk-do
+* Single barcode grants 24/48/72-hour unlimited access to multiple attractions
+* Covers: Gyeongju, Pohang, Ulleungdo, and partner cafés; various route options
+HIGHLIGHTS:
+* Cost-effective multi-attraction pass for Gyeongsangbuk-do — one barcode, 24/48/72 hours
+
+=== #P-233 | K-Wellness | Tour | Busan One-Night Cruise ===
+partner=NATOUR | tertiary=Regional | location=Busan | duration=2 days
+DESC:
+* Busan Fanstar one-night luxury cruise departing from Busan Port
+* Inclusions: Panstar Bridge Tour, onboard dinner buffet, live performances and events, fireworks
+* Breakfast included on return; operates every Saturday (rotating routes)
+HIGHLIGHTS:
+* Overnight luxury cruise from Busan with fireworks, live shows, and scenic Korea Strait seascape
+* All-inclusive: dinner buffet, breakfast, entertainment, and duty-free shopping
+
+=== #P-234 | K-Wellness | Tour | Grand Tour of Korea by Rail Cruise ===
+partner=HAERANG | tertiary=Regional | location=Seoul → Suncheon → Busan → Gyeongju → Jeongdongjin → Donghae | duration=3 days
+DESC:
+* 3-day nationwide AURA rail cruise across Korea's most scenic regions
+* Route: Suncheon → Yeosu → Busan → Gyeongju → Jeongdongjin → Donghae → Seoul
+* All-inclusive: train fare, connecting buses, onboard accommodation, all meals & snacks, beverages, entrance & activity fees, onboard events
+HIGHLIGHTS:
+* All-inclusive 3-day luxury rail journey through Korea's most beautiful scenic regions
+* Accommodation, meals, entrance fees, and entertainment all included on Rail Cruise Haerang
+
+=== #P-235 | K-Wellness | Leisure | MONA Yongpyong Ski Package ===
+partner=TATATA RENTAL SHOP | tertiary=Ski | location=MONA Yongpyong Resort, Gangwon-do Pyeongchang | duration=1–2 days
+DESC:
+* MONA Yongpyong Resort — Korea's largest ski resort; 28 slopes, 14 lifts, 13 FIS-certified runs
+* Rental: ski/snowboard equipment and clothing; lift ticket included
+* Lesson: professional instructor (group or private); separate pricing
+HIGHLIGHTS:
+* Korea's largest and most prestigious ski resort; FIS-certified slopes; full rental & lesson service
+
+=== #P-236 | K-Wellness | Leisure | High 1 Resort Ski Package ===
+partner=SERENO SKISHOP | tertiary=Ski | location=High 1 Resort, Gangwon-do Jeongseon | duration=1–2 days
+DESC:
+* High 1 Resort — 15 FIS-certified slopes, 5 lifts, 3 gondolas; sleigh riding also available
+* Rental: ski/snowboard equipment and clothing; lift ticket included
+* Lesson: professional instructor available
+HIGHLIGHTS:
+* FIS-certified 15-slope resort with gondola access; complete rental and lesson service
+
+=== #P-237 | K-Wellness | Leisure | Vivaldi Park Ski Package ===
+partner=NUMBER.1 RENTALSHOP | tertiary=Ski | location=Vivaldi Park Resort, Gangwon-do Hongcheon | duration=1–2 days
+DESC:
+* Vivaldi Park Resort — 13 slopes, 10 lifts
+* Rental: ski/snowboard equipment and clothing; lift ticket included
+* Lesson: professional instructor available
+HIGHLIGHTS:
+* Popular ski destination near Seoul with 13 slopes; full rental and lesson service
+
+=== #P-238 | K-Wellness | Leisure | Konjiam Resort Ski Package ===
+partner=V SKI | tertiary=Ski | location=Konjiam Resort, Gyeonggi-do Gwangju | duration=1–2 days
+DESC:
+* Konjiam Resort — 9 slopes, 5 lifts; closest major ski resort to Seoul
+* Rental: ski/snowboard equipment and clothing; lift ticket included
+* Lesson: professional instructor available
+HIGHLIGHTS:
+* Closest major ski resort to Seoul; ideal for day trips; full rental and lesson service
+
+=== #P-239 | K-Wellness | Leisure | Caribbean Bay Water Park ===
+partner=Caribbean Bay | tertiary=Water Park | location=Everland Resort, Gyeonggi-do Yongin | duration=1 days
+DESC:
+* Caribbean Bay — Korea's premier water park at Everland Resort
+* Caribbean-themed: wave pool, diving pool, surfing ride, and slides
+* Seasonal pricing (Middle / High / Gold season)
+HIGHLIGHTS:
+* Korea's largest and most popular water park with Caribbean ocean theme
+
+=== #P-240 | K-Wellness | Leisure | Ocean World Water Park ===
+partner=Ocean World | tertiary=Water Park | location=Vivaldi Park Resort, Gangwon-do Hongcheon | duration=1 days
+DESC:
+* Ocean World — large-scale water park at Vivaldi Park Resort
+* Ancient Egyptian theme: wave pool, mega slides, and adventure zones
+* Seasonal pricing (Mid-Summer / Hot Summer)
+HIGHLIGHTS:
+* Vivaldi Park's flagship water park with Egyptian theme and wide range of slide attractions
+
+=== #P-241 | K-Wellness | Leisure | Cimer Spa & Water Park ===
+partner=Cimer | tertiary=Water Park | location=Paradise City Resort, Incheon Jung-gu | duration=6 hours
+DESC:
+* Cimer — Paradise City's upscale spa & water park
+* European art-spa aesthetics + pool party + Korean-style sauna (jjimjilbang)
+* Slides, infinity pool; 6-hour pass; seasonal pricing
+HIGHLIGHTS:
+* Luxury spa water park combining European art-spa and Korean sauna aesthetics at Paradise City
+
+=== #P-242 | K-Wellness | Leisure | Water Leisure Day Package ===
+partner=Le Point Water Leisure | tertiary=Water Leisure | location=Gyeonggi-do Gapyeong | duration=1 days
+DESC:
+* 1-day pass: unlimited water park access + 1-time jet boat ride
+* Water skiing, wakeboarding, towable rides, slides, and unlimited BBQ included
+HIGHLIGHTS:
+* Full-day river water leisure with jet boat, water ski, and unlimited BBQ in scenic Gapyeong
+
+=== #P-243 | K-Wellness | Leisure | Water Leisure Afternoon Package ===
+partner=RIVER LAND | tertiary=Water Leisure | location=Gyeonggi-do Gapyeong | duration=1 days
+DESC:
+* Afternoon pass: water park access + 1-time jet boat ride
+* Water skiing, wakeboarding, towable rides, slides, and unlimited BBQ included
+HIGHLIGHTS:
+* Affordable afternoon water leisure with jet boat and unlimited BBQ in Gapyeong
+
+=== #P-244 | K-Wellness | Leisure | Baseball Skybox (Kiwoom Heroes) ===
+partner=Kiwoom Heroes (Gocheok) | tertiary=Baseball | location=Gocheok Sky Dome, Seoul Guro-gu | duration=4 hours
+DESC:
+* VIP Skybox at Gocheok Sky Dome for Kiwoom Heroes games
+* Dedicated entrance via Central C Gate, private parking, mascot photo service
+HIGHLIGHTS:
+* VIP skybox at Korea's top covered baseball dome; exclusive private entrance and parking
+
+=== #P-245 | K-Wellness | Leisure | Baseball Skybox (SSG Landers) ===
+partner=SSG Landers | tertiary=Baseball | location=Incheon SSG Landers Field, Incheon Michuhol-gu | duration=4 hours
+DESC:
+* VIP Skybox at Incheon SSG Landers Field for SSG Landers games
+* Premium private skybox seating; food and beverages available in-seat
+HIGHLIGHTS:
+* Premium baseball skybox at Incheon's modern stadium; weekday/weekend seasonal pricing
+
+=== #P-246 | K-Wellness | Leisure | Soccer Skybox (FC Seoul) ===
+partner=FC Seoul | tertiary=Soccer | location=Seoul World Cup Stadium, Seoul Mapo-gu | duration=3 hours
+DESC:
+* VIP Skybox at Seoul World Cup Stadium for FC Seoul matches
+* Private skybox with premium stadium views and in-seat dining service
+HIGHLIGHTS:
+* VIP soccer skybox at Seoul's iconic World Cup Stadium; private group viewing experience
+
+=== #P-247 | K-Wellness | Leisure | Lotte World 1-Day Pass + Magic Pass ===
+partner=LOTTE WORLD | tertiary=Thema Park | location=Seoul Songpa-gu | duration=1 days
+DESC:
+* 1-Day Pass to Lotte World (indoor + outdoor) with Magic Pass for priority attraction access
+* 5-ride or 7-ride Magic Pass options; no queuing at priority attractions
+HIGHLIGHTS:
+* Lotte World with priority access pass — skip queues at Korea's most popular indoor theme park
+
+=== #P-248 | K-Wellness | Leisure | Everland Dream Tour ===
+partner=EVER LAND | tertiary=Thema Park | location=Gyeonggi-do Yongin | duration=1 days
+DESC:
+* Everland Dream Tour — VIP guided park experience with full priority access
+* Dedicated parking, front gate priority entry, private guide throughout the park
+* Priority boarding at all major attractions; commemorative photo; restaurant meal included
+* Safari Special Tour (subject to availability)
+HIGHLIGHTS:
+* VIP Everland experience with personal guide, priority access, and restaurant dining
+* No waiting in queues — dedicated guide escorts through all major attractions
+
+=== #P-249 | K-Wellness | Leisure | Seoul Land 1-Day Pass ===
+partner=Seoul Land | tertiary=Thema Park | location=Gyeonggi-do Gwacheon | duration=1 days
+DESC:
+* Full-day access to Seoul Land amusement park in Gwacheon
+* Classic Korean theme park with rides, attractions, and family entertainment
+HIGHLIGHTS:
+* Family-friendly classic Korean theme park; affordable full-day access pass
+
+=== #P-301 | K-Starcation | K-POP Camp | K-POP CAMP · Basic ===
+partner=World K-POP Center | tertiary=None | location=Seoul | duration=3 days
+DESC:
+* Group K-POP basic training (vocal & dance fundamentals)
+* K-POP idol hair & makeup styling
+* Premium studio profile photo shoot
+* Short-form (Reels/Shorts) challenge video production
+* Official completion certificate issued
+HIGHLIGHTS:
+* Premium residence accommodation and small-group K-POP experience
+* Professional video production team, trending short-form content creation
+* Halal/vegan catering, ISO-certified dance & vocal courses
+* Dedicated instructor, staff, and simultaneous interpretation guide
+
+=== #P-302 | K-Starcation | K-POP Camp | K-POP CAMP · Gold ===
+partner=World K-POP Center | tertiary=None | location=Seoul | duration=5 days
+DESC:
+* Small-group intensive K-POP training (vocal, dance, stage performance)
+* Premium idol styling (stage costume fitting available on request)
+* Individual concept photo shoot (album-style)
+* Professional studio music recording session
+* Highlight music video (MV) production
+* Performance showcase at venue
+* Completion certificate issued
+HIGHLIGHTS:
+* Premium residence accommodation and small-group K-POP experience
+* Professional video production team, trending short-form content creation
+* Halal/vegan catering, ISO-certified dance & vocal courses
+* Dedicated instructor, staff, and simultaneous interpretation guide
+
+=== #P-303 | K-Starcation | K-POP Camp | K-POP CAMP · Platinum ===
+partner=World K-POP Center | tertiary=None | location=Seoul | duration=5 days
+DESC:
+* 1:1 master training with dedicated vocal/dance director
+* VVIP dedicated styling and custom stage design
+* Solo original track production & recording
+* Full-length solo music video (MV) production
+* Private showcase performance
+* Dedicated protocol & VIP care (prayer room / halal catering etc.)
+* Entertainment agency audition visit
+HIGHLIGHTS:
+* Premium residence accommodation and small-group K-POP experience
+* Professional video production team, trending short-form content creation
+* Halal/vegan catering, ISO-certified dance & vocal courses
+* Dedicated instructor, staff, and simultaneous interpretation guide
+
+=== #P-545 | Subpackage | Interpreter | Arabic-Korean Interpretation ===
+partner=TRABIC | tertiary=None | location=None | duration=1 hours
+DESC:
+* Professional Arabic-Korean simultaneous and consecutive interpretation
+* Specialized in medical, business, and VIP tourism settings
+* Based in Seoul; available nationwide
+HIGHLIGHTS:
+* Professional Arabic-Korean interpretation for medical and VIP tourism contexts
+
+=== #P-546 | Subpackage | Interpreter | Arabic-Korean Interpretation ===
+partner=TRABIC | tertiary=None | location=None | duration=6 hours
+DESC:
+* Professional Arabic-Korean simultaneous and consecutive interpretation
+* Specialized in medical, business, and VIP tourism settings
+* Based in Seoul; available nationwide
+HIGHLIGHTS:
+* Professional Arabic-Korean interpretation for medical and VIP tourism contexts
+
+=== #P-547 | Subpackage | Interpreter | Arabic-Korean Interpretation ===
+partner=VERITAS | tertiary=None | location=None | duration=8 hours
+DESC:
+* Professional Arabic-Korean interpretation (General or Senior/Professional level)
+* 8-hour daily rate; overtime billed separately
+* Experienced with VIP clients, medical consultations, and high-profile engagements
+HIGHLIGHTS:
+* Certified professional Arabic-Korean interpreters with VIP and medical expertise
+
+=== #P-548 | Subpackage | Interpreter | Arabic-Korean Interpretation ===
+partner=VERITAS | tertiary=None | location=None | duration=8 hours
+DESC:
+* Professional Arabic-Korean interpretation (General or Senior/Professional level)
+* 8-hour daily rate; overtime billed separately
+* Experienced with VIP clients, medical consultations, and high-profile engagements
+HIGHLIGHTS:
+* Certified professional Arabic-Korean interpreters with VIP and medical expertise
+
+=== #P-549 | Subpackage | Vehicle | Halal-Certified VIP Limousine ===
+partner=Noble Klasse | tertiary=None | location=None | duration=None None
+DESC:
+* Noble Klasse Solati S11 — world's first halal-certified limousine in Korea
+* Dedicated in-vehicle prayer space with qibla direction, prayer mat provided
+* Muslim VIP-optimized mobility service for travel, sightseeing, and medical visits
+* Price on inquiry
+HIGHLIGHTS:
+* World's first halal-certified limousine service in Korea
+* In-vehicle prayer space specifically designed for Muslim passengers
+* Enables prayers at any time without stopping — ideal for busy itineraries
+
+=== #P-550 | Subpackage | Vehicle | Charter Service ===
+partner=Grand Limousine Korea | tertiary=None | location=None | duration=8 hours
+DESC:
+* 8-hour charter includes driver; base fare covers up to 8h
+* Fuel, tolls, parking, and driver meals/accommodation not included
+* English-speaking driver available on request (additional charge)
+HIGHLIGHTS:
+* Premium vehicle charter service with experienced VIP drivers; English-speaking drivers available on request
+
+=== #P-551 | Subpackage | Vehicle | Charter Service ===
+partner=Grand Limousine Korea | tertiary=None | location=None | duration=8 hours
+DESC:
+* 8-hour charter includes driver; base fare covers up to 8h
+* Fuel, tolls, parking, and driver meals/accommodation not included
+* English-speaking driver available on request (additional charge)
+HIGHLIGHTS:
+* Premium vehicle charter service with experienced VIP drivers; English-speaking drivers available on request
+
+=== #P-552 | Subpackage | Vehicle | Charter Service ===
+partner=Grand Limousine Korea | tertiary=None | location=None | duration=8 hours
+DESC:
+* 8-hour charter includes driver; base fare covers up to 8h
+* Fuel, tolls, parking, and driver meals/accommodation not included
+* English-speaking driver available on request (additional charge)
+HIGHLIGHTS:
+* Premium vehicle charter service with experienced VIP drivers; English-speaking drivers available on request
+
+=== #P-553 | Subpackage | Vehicle | Charter Service ===
+partner=Grand Limousine Korea | tertiary=None | location=None | duration=8 hours
+DESC:
+* 8-hour charter includes driver; base fare covers up to 8h
+* Fuel, tolls, parking, and driver meals/accommodation not included
+* English-speaking driver available on request (additional charge)
+HIGHLIGHTS:
+* Premium vehicle charter service with experienced VIP drivers; English-speaking drivers available on request
+
+=== #P-554 | Subpackage | Vehicle | Charter Service ===
+partner=CK Company | tertiary=None | location=None | duration=10 hours
+DESC:
+* 10-hour charter includes driver; all three vehicle types priced equally
+* Latest model fleet: Genesis G90 RS4 / Mercedes S-Class / Mercedes Sprinter VIP
+* Fuel, tolls, parking, and driver meals/accommodation not included
+HIGHLIGHTS:
+* Flat-rate VIP charter service with latest luxury vehicle fleet; uniform pricing across all models
+
+=== #P-555 | Subpackage | Vehicle | Charter Service ===
+partner=CK Company | tertiary=None | location=None | duration=10 hours
+DESC:
+* 10-hour charter includes driver; all three vehicle types priced equally
+* Latest model fleet: Genesis G90 RS4 / Mercedes S-Class / Mercedes Sprinter VIP
+* Fuel, tolls, parking, and driver meals/accommodation not included
+HIGHLIGHTS:
+* Flat-rate VIP charter service with latest luxury vehicle fleet; uniform pricing across all models
+
+=== #P-556 | Subpackage | Vehicle | Charter Service ===
+partner=CK Company | tertiary=None | location=None | duration=10 hours
+DESC:
+* 10-hour charter includes driver; all three vehicle types priced equally
+* Latest model fleet: Genesis G90 RS4 / Mercedes S-Class / Mercedes Sprinter VIP
+* Fuel, tolls, parking, and driver meals/accommodation not included
+HIGHLIGHTS:
+* Flat-rate VIP charter service with latest luxury vehicle fleet; uniform pricing across all models
+
+=== #P-557 | Subpackage | Vehicle | Charter Service ===
+partner=VIP Limousine Korea | tertiary=None | location=None | duration=9 hours
+DESC:
+* 9-hour charter (09:00–18:00); overtime billed per hour after 18:00
+* Eligible clients: foreign VIPs/buyers, government bodies, corporate accounts
+* Fuel, tolls, parking, and driver meals/accommodation billed separately
+HIGHLIGHTS:
+* Premium VIP limousine service catering to foreign VIP visitors, corporate delegations, and government officials
+
+=== #P-558 | Subpackage | Vehicle | Charter Service ===
+partner=VIP Limousine Korea | tertiary=None | location=None | duration=9 hours
+DESC:
+* 9-hour charter (09:00–18:00); overtime billed per hour after 18:00
+* Eligible clients: foreign VIPs/buyers, government bodies, corporate accounts
+* Fuel, tolls, parking, and driver meals/accommodation billed separately
+HIGHLIGHTS:
+* Premium VIP limousine service catering to foreign VIP visitors, corporate delegations, and government officials
+
+=== #P-559 | Subpackage | Vehicle | Charter Service ===
+partner=VIP Limousine Korea | tertiary=None | location=None | duration=9 hours
+DESC:
+* 9-hour charter (09:00–18:00); overtime billed per hour after 18:00
+* Eligible clients: foreign VIPs/buyers, government bodies, corporate accounts
+* Fuel, tolls, parking, and driver meals/accommodation billed separately
+HIGHLIGHTS:
+* Premium VIP limousine service catering to foreign VIP visitors, corporate delegations, and government officials
+
+=== #P-560 | Subpackage | Vehicle | Charter Service ===
+partner=Merit Limousine | tertiary=None | location=None | duration=8 hours
+DESC:
+* 8-hour charter with driver; vehicle-only (24h) also available
+* English-speaking driver: additional surcharge applies
+* 24h vehicle-only option: ₩55,000 own insurance per day
+* Fuel, tolls, driver meals/accommodation billed after the event
+HIGHLIGHTS:
+* Premium Mercedes fleet; vehicle-only or vehicle + driver options available; English-speaking drivers on request
+
+=== #P-561 | Subpackage | Vehicle | Charter Service ===
+partner=Merit Limousine | tertiary=None | location=None | duration=8 hours
+DESC:
+* 8-hour charter with driver; vehicle-only (24h) also available
+* English-speaking driver: additional surcharge applies
+* 24h vehicle-only option: ₩55,000 own insurance per day
+* Fuel, tolls, driver meals/accommodation billed after the event
+HIGHLIGHTS:
+* Premium Mercedes fleet; vehicle-only or vehicle + driver options available; English-speaking drivers on request
+
+=== #P-562 | Subpackage | Vehicle | Charter Service ===
+partner=Merit Limousine | tertiary=None | location=None | duration=8 hours
+DESC:
+* 8-hour charter with driver; vehicle-only (24h) also available
+* English-speaking driver: additional surcharge applies
+* 24h vehicle-only option: ₩55,000 own insurance per day
+* Fuel, tolls, driver meals/accommodation billed after the event
+HIGHLIGHTS:
+* Premium Mercedes fleet; vehicle-only or vehicle + driver options available; English-speaking drivers on request
+

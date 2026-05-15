@@ -1,0 +1,438 @@
+=== K-Medical ===
+--- #P-001 | Health Screening | VIP Premium
+★ VIP Premium Full body screening
+★ Location : Seoul City, Gangnam
+★ Program
+     ▶Assessment by a Specialist•Escorted by a Nurse •Provided Meals •Brain MRI+MRA •  Gastroscopy with  Conscious sedation
+•Colonoscopy with Conscious sedation • Abdominal Ultrasonography
+• Carotid  Ultrasonography•Abdominal & Pelvic CT •Chest CT
+•Coronary CT •Thyroid   Ultrasonography•Echocardiography •Treadmill Test •  Arterial Stiffness and Peripheral Artery Stenosis•Electrocardiogram •Blood Pressure •Chest X-ray
+   (Front/Lateral) •Bone Densitometry •T-L Spine X-ray
+•Body Measurement •Dental X-ray •Dental Assessment •Ophthalmic Exam •Urine Test•Urine Cytology •Audiometry Test
+•Blood Sampling (Diabetes, Hypercholesteremia, Liver Function, Heart Function, 3 Types of Allergy, 3 Types of Osteoporosis, Hepatitis A
+
+--- #P-002 | Health Screening | VIP Premium
+★ VIP Premium Full body screening
+★ Location : Seoul City, Gangnam
+★ Program
+     ▶Assessment by a Specialist•Escorted by a Nurse •Provided Meals •Brain MRI+MRA •  Gastroscopy with  Conscious sedation
+•Colonoscopy with Conscious sedation • Abdominal Ultrasonography
+• Carotid  Ultrasonography•Abdominal & Pelvic CT •Chest CT
+•Coronary CT •Thyroid   Ultrasonography•Echocardiography •Treadmill Test •  Arterial Stiffness and Peripheral Artery Stenosis•Electrocardiogram •Blood Pressure •Chest X-ray
+   (Front/Lateral) •Bone Densitometry •T-L Spine X-ray
+•Body Measurement •Dental X-ray •Dental Assessment •Ophthalmic Exam •Urine Test•Urine Cytology •Audiometry Test
+•Blood Sampling (Diabetes, Hypercholesteremia, Liver Function, Heart Function, 3 Types of Allergy, 3 Types of Osteoporosis, Hepatitis A
+
+--- #P-003 | Health Screening | VIP Premium
+★ VIP Premium Junior Full body screening
+★ Location : Seoul City, Gangnam
+★ Youth under the age of 18
+★ Program
+• Abdominal Ultrasonography •Electrocardiogram •Blood Pressure •Chest X-ray (Front/Lateral) •Ophthalmic Exam
+• Audiometry Test •Body Measurement •Urine Test
+•   Blood Sampling (Anemia, 3 Types of Anemia, Diabetes, Hypercholesteremia, Liver Function, Hepatitis A/B/C, Kidney Function, 
+Electrolyte, Blood Coagulation Test, Blood Type, Complete Blood Count, Thyroid Function, Helicobacter Pylori, Measles, Rubella, 
+Mumps, Varicella, Vitamin D, Allergy)
+•Dental Assessmen
+
+--- #P-004 | Health Screening | VIP Premium
+★ VIP Premium Full body screening
+★ Location : Seoul City, Gangnam
+★ Program
+     ▶Health Questionnaire, Medical Consultation/Lifestyle Assessment, Body Composition Analysis, Blood Pressure, Visual Acuity, Intraocular Pressure, Electrocardiography,
+Pulmonary Function, Chest X-ray, Blood Test[Anemia, Liver & Renal & Thyroid Function, Lipid, Fasting Blood Sugar, HbA1c, Uric Acid, Electrolytes, HIV, Hepatitis(Type A/B/C), Helicobacter Pylori Antibody,
+Tumor Markers(Pancreatobiliary, Liver, Colon)], Urinalysis, Sedative Gastric Endoscopy, Abdominal Ultrasonography
+
+    ▶ Premium Medical Consultation, Nutrition Guidance, Dental Exam/X-ray, Audiometry, Thyroid Ultrasonography, Urine(Microalbuminuria),
+Blood[Rheumatoid Factor, Allergy(108kinds), Detailed Lipid Panel, Serum Pepsinogen, Vit. D, Blo
+
+--- #P-005 | Health Screening | VIP Premium
+★ VIP Premium Full body screening
+★ Location : Seoul City, Gangnam
+★ Program
+     ▶Health Questionnaire, Medical Consultation/Lifestyle Assessment, Body Composition Analysis, Blood Pressure, Visual Acuity, Intraocular Pressure, Electrocardiography,
+Pulmonary Function, Chest X-ray, Blood Test[Anemia, Liver & Renal & Thyroid Function, Lipid, Fasting Blood Sugar, HbA1c, Uric Acid, Electrolytes, HIV, Hepatitis(Type A/B/C), Helicobacter Pylori Antibody,
+Tumor Markers(Pancreatobiliary, Liver, Colon)], Urinalysis, Sedative Gastric Endoscopy, Abdominal Ultrasonography
+
+    ▶ Premium Medical Consultation, Nutrition Guidance, Dental Exam/X-ray, Audiometry, Thyroid Ultrasonography, Urine(Microalbuminuria),
+Blood[Rheumatoid Factor, Allergy(108kinds), Detailed Lipid Panel, Serum Pepsinogen, Vit. D, Blo
+
+--- #P-006 | Health Screening | VIP Premium
+★ VIP Premium Full body screening
+★ Location : Seoul City, Gangnam
+★ Program
+     ▶Body Measurements : Blood Pressure, Height, Weight, 
+Body Composition Analysis
+    ▶Head & Neck, Eyes
+Visual acuity, Fundus photography, Tonometry, Cataract, Audiometry, Thyroid Ultrasound, Brain MRI & MRA, Carotid Doppler Ultrasound, Dental Examination & Panorama X-ray
+   ▶ Chest Exam : Lung([hest X-ray, Low-Dose Chest CT, Heart[Electrocardiogram (ECG), Echocardiography,
+Pulse Wave Velocity, Coronary artery Ca CT]
+   ▶ Abdomen & Pelvis
+(Sedation) Esophagogastroduodenoscopy (EGD)
+(Sedation) Colonoscopy, Abdominal Ultrasound
+  ▶ Imaging Tests : Bone Densitometry, PET-CT (age 40+)
+  ▶ Laboratory Tests
+Complete Blood Cell Count, PT/aPTT/Fibrinogen, Chemistry (liver function, kidney function, uric acid),Blood ty
+
+--- #P-007 | Health Screening | VIP Premium
+★ VIP Premium Full body screening
+★ Location : Seoul City, Gangnam
+★ Program
+     ▶Body Measurements : Blood Pressure, Height, Weight, 
+Body Composition Analysis
+    ▶Head & Neck, Eyes
+Visual acuity, Fundus photography, Tonometry, Cataract, Audiometry, Thyroid Ultrasound, Brain MRI & MRA, Carotid Doppler Ultrasound, Dental Examination & Panorama X-ray
+   ▶ Chest Exam : Lung([hest X-ray, Low-Dose Chest CT, Heart[Electrocardiogram (ECG), Echocardiography,
+Pulse Wave Velocity, Coronary artery Ca CT]
+   ▶ Abdomen & Pelvis
+(Sedation) Esophagogastroduodenoscopy (EGD)
+(Sedation) Colonoscopy, Abdominal Ultrasound
+  ▶ Imaging Tests : Bone Densitometry, PET-CT (age 40+)
+  ▶ Laboratory Tests
+Complete Blood Cell Count, PT/aPTT/Fibrinogen, Chemistry (liver function, kidney function, uric acid),Blood ty
+
+--- #P-008 | Health Screening | VIP Premium
+★ VIP Premium Full body screening
+★ Location : Incheon City
+★ Program
+   ▶ Body Measurement
+   ▶ Laboratory Test
+       : Complete blood composition, Blood type, Anemia,   Diabetes, Electrolytes, Lipid profile, Liver/Kidney/Thyroid function, Coagulation profile, Vitamin D, Rheumatoid factor, Gout, Hepatitis A/B/C, Tumor markers (Liver, Pancreas, Colon, Prostate(Male), Ovarian(Female)), Syphilis, HIV, Urinalysis
+  ▶ Oral Exam, Cerebrovascular Test, Thyroid Test, Gastrointestinal Test
+  ▶ Special Exam : SPick 1 Special Examination from the Following (① or ②):
+     ① Pick 2 MRI Options : Cervical, Lumbar, Knee (One Side), Foot (One Side), Pelvis
+     ② PET-CT(*) (if selected, Performed on Day 2)
+
+--- #P-009 | Health Screening | VIP Premium
+★ VIP Premium Full body screening
+★ Location : Incheon City
+★ Program
+   ▶ Body Measurement
+   ▶ Laboratory Test
+       : Complete blood composition, Blood type, Anemia,   Diabetes, Electrolytes, Lipid profile, Liver/Kidney/Thyroid function, Coagulation profile, Vitamin D, Rheumatoid factor, Gout, Hepatitis A/B/C, Tumor markers (Liver, Pancreas, Colon, Prostate(Male), Ovarian(Female)), Syphilis, HIV, Urinalysis
+  ▶ Oral Exam, Cerebrovascular Test, Thyroid Test, Gastrointestinal Test
+  ▶ Special Exam : SPick 1 Special Examination from the Following (① or ②):
+     ① Pick 2 MRI Options : Cervical, Lumbar, Knee (One Side), Foot (One Side), Pelvis
+     ② PET-CT(*) (if selected, Performed on Day 2)
+
+--- #P-010 | Health Screening | VIP Premium
+★ VIP Premium Junior Full body screening
+★ Location : Incheon City
+★ Youth under the age of 18
+★ Program
+     ▶Body : Height/Weight, Blood pressure, Pulse, Body Composition analysis
+   ▶ Laboratory Test : Complete blood composition, Comprehensive Anemia, Comprehensive Diabetes, Coagulation Profile · Electrolytes, Lipid Profile, Liver/Kidney/Thyroid Function, Vit D, Rheumatoid Factor, Gout, Pancreatic Enzymes, Tumor Marker (Liver), Hepatitis A/B/C, Syphilis, HIV, Urinalysis
+  ▶ Others : Eye & Ear Exam, Oral Exam, Thyroid Test, Gastrointestinal Test, Pulmonary Test, Cardiac Test
+
+--- #P-011 | Woman Clinic | Premium Feminine 
+Rejuvenation Package
+★ VIP Premium Feminine Rejuvenation Package
+★ Location : Seoul City, Gangnam
+★ Female Doctor / Private Room
+★ Duration : 2 hr
+★ Program
+ Jilsera 600 Shots + Jil Elibaba + Sensual Dress Injection + Vaginal Moisturizing Injection + Labia Majora Elibaba Whitening/Hydration Injection + Premium Nutritional Program (High-Concentration Amino Acids + B-Com + Vitamins + Garlic Injection) + Wink Peel 10cc + Female Hormone Test + Basic Function Test + Detailed Ultrasound (Uterus, Ovary, Bladder) + Female Cancer Screening + STD Test
+
+--- #P-012 | Woman Clinic | VIP Feminine
+Anti-Aging Package
+★ VIP Premium Feminine Rejuvenation Package
+★ Location : Seoul City, Gangnam
+★ Female Doctor  / Private Room
+★ Duration : 3 hr
+★ Program
+ Jilsera 600 Shots + Jil Elibaba + Sensual Dress Injection + Vaginal Moisturizing Injection + Labia Majora Elibaba Whitening/Hydration Injection + Premium Nutritional Program (High-Concentration Amino Acids + B-Com + Vitamins + Garlic Injection) + Wink Peel 15cc + Female Hormone Test + Basic Function Test + Precision Ultrasound (Uterus, Ovary, Bladder) + Female Cancer Screening + STD Test + Stem Cell Ovarian Aging Care Injection
+
+--- #P-013 | Woman Clinic | Royal Total Feminine Luxury Package
+★ VIP Premium Feminine Rejuvenation Package
+★ Location : Seoul City, Gangnam
+★ Female Doctor /  Private Room
+★ Duration : 3 hr
+★ Program
+   Jilsera 600 Shots + Jil Elibaba + Sensual Dress Injection + Vaginal Moisturizing Injection + Labia Majora Elibaba Whitening/Hydration Injection + Premium Nutritional Program (High-Concentration Amino Acids + B-Com + Vitamins + Garlic Injection) + Wink Peel 25cc + Female Hormone Test + Basic Function Test + Precision Ultrasound (Uterus, Ovary, Bladder) + Female Cancer Screening + STD Test + Stem Cell Ovarian Aging Care Injection + Vulvar Volume Up Program (Juvelux Volume)
+
+=== K-Beauty ===
+--- #P-101 | Stem Cell, Lifting | Premium Full Body Stem Cell Package
+★ VIP Premium Dermatology Clinic
+★ Location : Seoul City, Gangnam
+                  (VIP Private Room, Luxury Interior)
+★ Female Doctor
+★ Program : Full Body Stem Cell IV Therapy
+Ultherapy Prime 3,000 shots (Abdomen, Arms, Thighs); + Sofwave 1,500 pulses (Abdomen, Arms, Thighs); + Full Body BBL HERO + Manual Body Treatment; + Hyperbaric Oxygen Therapy + Stem Cell IV Therapy; + Premium Skin Care Treatment
+
+--- #P-102 | Stem Cell, Lifting | Premium Stem Cell Anti-Aging Package
+★ VIP Premium Dermatology Clinic
+★ Location : Seoul City, Gangnam
+                  (VIP Private Room, Luxury Interior)
+★ Female Doctor
+★ Program : Facial Stem Cell IV Therapy
+Activated Stem Cell IV Therapy + Stem Cell Facial Treatment + Ultherapy 600 shots + Sofwave 300 pulses + Titanium or BBL Hero + Premium Skin Care Treatment
+
+--- #P-103 | Stem Cell, Lifting | Premium Anti-Aging Package
+★ VIP Premium Dermatology Clinic
+★ Location : Seoul City, Gangnam
+                  (VIP Private Room, Luxury Interior)
+★ Female Doctor
+★ Program : Standard Stem Cell IV Therapy
+Stem Cell IV Therapy + Ultherapy 400 shots + Sofwave 300 pulses + Eye Thermage 450 shots + Titanium or BBL Hero , Premium Rejuran Glow Toxin + Premium Skin Care Treatment
+
+--- #P-104 | Stem Cell, Lifting | Stem Cell Therapy · Platinum
+★ VIP Premium Dermatology Clinic
+★ Location : Seoul City, Gangnam
+                  (VIP Private Room)
+★ Female Doctor
+★ Program
+[Blood Stem Cell Full Face, Premium SkinCeuticals Antioxidant Care] or [Stem Cell intravenous injection] + Rejuran HB 4cc + Full Face Skin Botox + Ultherapy HIFU Prime 600 shot + Thermage FLX 900 Shot(Face+Neck) + Premium SkinCeuticals Antioxidant Care + Premium SkinCeuticals(55ml) Ampoule giveaway
+
+--- #P-105 | Stem Cell, Lifting | Stem Cell Therapy · Gold
+★ VIP Premium Dermatology Clinic
+★ Location : Seoul City, Gangnam
+                  (VIP Private Room)
+★ Female Doctor
+★ Program
+[Blood Stem Cell Full Face, Premium SkinCeuticals Antioxidant Care] or [Stem Cell intravenous injection] +  Rejuran HB 4cc + Full Face Skin Botox; + Thermage FLX 900 Shot(Face+Neck) + 1 vial Sculptra (No restrictions on body part) + Premium SkinCeuticals Antioxidant Care
+
+--- #P-106 | Stem Cell | Stem Cell Therapy · Basic
+★ VIP Premium Dermatology Clinic
+★ Location : Seoul City, Gangnam
+                  (VIP Private Room)
+★ Female Doctor
+★ Program
+[Blood Stem Cell Full Face, Premium SkinCeuticals Antioxidant Care] or [Stem Cell intravenous injection]+ 1 vial Sculptra or Juvederm Filler 3cc (No restrictions on body part); + Premium SkinCeuticals Antioxidant Care
+
+--- #P-107 | Lifting | Full Body Therapy
+★ VIP Premium Dermatology Clinic
+★ Location : Seoul City, Gangnam
+                  (VIP Private Room)
+★ Female Doctor
+★ Program
+[Slimming, Total Antiaging] Body Thermage FLX 3000 shots(total 5area selectable)+Body Slimming Violet 6vial+Hand Wrinkle Radiesse 2syringe+Premium Medical Care
+
+--- #P-108 | Lifting, Skin Care | Royal Face & Body Refinement (Royal Hospital Takeover)
+★ VIP Premium Dermatology Clinic
+★ Location : Seoul City, Mapo-Gu(Hongik Univ.)
+                  (VIP Private Room)
+★ Female Doctor
+★ Program
+Ultherapy Prime 600 shots, Ultherapy Prime 200 shots (Neck); Eye Ultherapy Prime 200 shots; Thermage 600 shots, Volumer 200 shots (Neck), Eye Thermage 225 shots, Titanium 100 kJ; Pico Dual Toning, Rejuran Healer 4cc, Rejuran Eye 2cc, Juvelook Skin 4cc; Mega Complex Vitamin IV Therapy, Premium Nutrition IV Therapy; RejuDM Premium Care(24K Gold therapy+Cryo therapy, LDM Rejuran Skin Booster(2 vials)+LED light therapy+Modeling pack); Radio-Frequency facial & neck care, Ultrasound facial & neck care
+
+--- #P-109 | Lifting, Skin Care | Royal Signature Lifting (Including neck & fatigue recovery)
+★ VIP Premium Dermatology Clinic
+★ Location : Seoul City, Mapo-Gu(Hongik Univ.)
+                  (VIP Private Room)
+★ Female Doctor
+★ Program
+Ultherapy Prime 600 shots, Ultherapy Prime 200 shots (Neck); Eye Ultherapy Prime 200 shots; Thermage 600 shots, Volumer 200 shots (Neck), Eye Thermage 225 shots, Titanium 100 kJ; Pico Toning, Rejuran Healer 4cc, Rejuran Eye 2cc, Juvelook Skin 4cc; Mega Complex Vitamin IV Therapy, Premium Nutrition IV Therapy, RejuDM Premium Care(24K Gold therapy+Cryo therapy+LDM Rejuran Skin Booster(2 vials)+LED light therapy+Modeling pack); Radio-Frequency facial & neck care
+
+--- #P-110 | Lifting, Skin Care | Dermatological procedures · Royal Refresh Day (Face only, no injection)
+★ VIP Premium Dermatology Clinic
+★ Location : Seoul City, Mapo-Gu(Hongik Univ.)
+                  (VIP Private Room)
+★ Female Doctor
+★ Program
+Ultherapy Prime 600 shots, Thermage 600 shots, Eye Thermage 225 shots, LDM therapy (12 minutes), Radio-Frequency facial care, 24K Gold Therapy, Regenerative LED treatment
+
+--- #P-111 | Stem Cell | Autologous Blood Stem Cell Therapy Package
+★ VIP Premium Dermatology Clinic
+★ Location : Seoul City, Gangnam
+                  (VIP Private Room)
+★ Female Doctor
+★ Program
+Face exfoliation +Stem Cell IV + skin + scalp (240cc) + LDM + Recovery therapy + Hyperbaric oxygen therapy
+
+--- #P-112 | Lifting, Skin Care | Custermize Lifting Package
+★ VIP Premium Dermatology Clinic
+★ Location : Seoul City, Gangnam
+                  (VIP Private Room)
+★ Female Doctor
+★ Program
+Ultherapy Prime + Thermage + ONDA Lifting + Full face Botox + Hyperbaric oxygen therapy + Face exfoliation + LDM + Recovery therapy + Customized IV drip + Modeling mask pack
+
+--- #P-113 | Skin Care | Custermize Pigmentation Package
+★ VIP Premium Dermatology Clinic
+★ Location : Seoul City, Gangnam
+(VIP Private Room)
+★ Female Doctor
+★ Program
+5 types of pigmentation laser + Regeneration & Whitening laser + Full face skin booster + Full face ECM booster + Hyperbaric oxygen therapy + Face exfoliation + LDM + Recovery therapy + Customized IV drip + Modeling mask pack
+
+--- #P-114 | Skin Care | Oxygen Care Package(Full Body)
+★ VIP Premium Dermatology Clinic
+★ Location : Seoul City, Gangnam
+                  (VIP Private Room)
+★ Female Doctor
+★ Program
+Astronaut therapy (full body care) + Oxygen exfoliation + Hyperbaric oxygen therapy + Hair therapy (shampoo, exosome, growth factor injection, oxygen therapy) + LDM + Recovery therapy + Customized IV drip + Modeling mask pack
+
+--- #P-115 | Stem Cell, Lifting | DIAR VIP Premium Private Programs
+(Lifting + Stem Cell) · Premium
+★ VIP Premium Dermatology Clinic
+★ Location : Seoul City, Gangnam
+                  (VIP Private Room)
+★ Female Doctor
+★ Program
+Private stem cell care, 2.4B cells.+ Thermage 900 shots + Ultherapy Prime 600 shots + Triple pore care + E Clinic Secret injection + RE2O 2syr. 
+
+--- #P-116 | Stem Cell, Lifting | DIAR VIP Premium Private Programs
+(Lifting + Stem Cell) · Platinum
+★ VIP Premium Dermatology Clinic
+★ Location : Seoul City, Gangnam
+                  (VIP Private Room)
+★ Female Doctor
+★ Program
+Private stem cell care, 2.4B cells.+ Thermage 900 shots + Ultherapy Prime 300 shots + ONDA + E Clinic Secret injection.
+
+--- #P-117 | Stem Cell, Lifting | DIAR VIP Premium Private Programs
+(Lifting + Stem Cell) · Gold
+★ VIP Premium Dermatology Clinic
+★ Location : Seoul City, Gangnam
+                  (VIP Private Room)
+★ Female Doctor
+★ Program
+Private stem cell care, 2.4B cells.+ Thermage 600 shots + Ultherapy Prime 400 shots + E Clinic Secret injection.
+
+--- #P-118 | Dental Clinic | Laminate
+★ VIP Premium Dental Clinic
+★ Location : Seoul City, Gangnam
+                  (VIP Private Room)
+★ Female Doctor
+★ Duration : 2day (4hr/1day)
+★ Program
+  ▶0.02mm LAMINATING is A Dental Clinicʼs signature minimal- preparation ceramic laminate veneer, designed with precision up to 0.02 mm. Made from ceramic that gently wraps around the tooth, it allows you to achieve a perfect smile with minimal removal of natural tooth structure.
+
+  ▶Because it is thinner and more precisely crafted than conventional laminates, it preserves the natural look and function of your teeth while enhancing aesthetics.
+Produced with A Dental Clinicʼs unique technology and expertise, 0.02mm LAMINATING blends so seamlessly with your natural teeth that it is almost impossible to tell them apart.
+
+ ▶By introducing the 
+
+--- #P-119 | Dental Clinic | Whitening
+★ VIP Premium Dental Clinic
+★ Location : Seoul City, Gangnam
+                  (VIP Private Room)
+★ Female Doctor
+★ Program
+  ▶Teeth whitening is an effective procedure performed at a dental clinic under the supervision of professional medical staff. With just 2 to 3 hours of investment per day, we can brighten the visible color of your teeth by at least two shades. 
+ The effects of this treatment last for about 1 to 2 years, and using at-home whitening products can further extend this period. Utilizing the latest whitening technology and safe agents, we provide effective whitening results without damaging your teeth.
+
+  ▶Treatment Effect & Merit
+ * Fast Procedure
+ A procedure completed in just 2-3 hours, making it suitable for busy modern people.
+
+ * Immediate Effect
+ You can immediately 
+
+--- None | None | None
+
+
+--- None | None | None
+
+
+--- None | None | None
+
+
+=== K-Wellness ===
+--- #P-201 | SPA & Aesthetic | Chocolate Whole Body
+★ VIP Premium Body Therapy Center
+★ Location : Seoul City, Gangnam
+                  (VIP Private Room, Luxury Interior)
+★ Female Therapist
+★ Duration : 4 hr
+★ Program
+ The world’s first chocolate treatment, developed as a true escape from 
+everyday life. During the treatment, the warming effects of chocolate 
+and the polyphenols and theobromines of cacao will lead your body and 
+mind into a state of ultimate equilibrium, setting you on a unique journey 
+that helps even the negative energies inside you dissipate on their own. 
+
+--- #P-202 | SPA & Aesthetic | Aroma + Body + Scalp Therapy Programs
+★ VIP Premium Body Therapy Center
+★ Location : Seoul City, Gangnam
+                  (VIP Private Room, Luxury Interior)
+★ Female Therapist
+★ Duration : 5 hr 
+★ Program
+  ▶ Aroma (100m)
+ A scrub containing natural moisturizing factors removes dead skin cells
+from the body surface without irritation, and a body ampoule that adds
+vitality to the body and a deep massage smoothens the flow of stagnant
+circulation. Afterwards, we apply the mask to the back area to purify 
+the body by removing chronic fatigue and waste.
+
+  ▶Contour Whole Body Program(140m)
+ The Les Nouvels signature detox program is carefully designed to allow 
+the absorption of active ingredients and the removal of unwanted impurities 
+for a beautiful figure. The V-line facial program fills areas lacking volume and redefines th
+
+--- #P-203 | SPA & Aesthetic | Maternity Programs & Postnatal Programs
+★ VIP Premium Body Therapy Center
+★ Location : Seoul City, Gangnam
+                  (VIP Private Room, Luxury Interior)
+★ Female Therapist
+★ Duration : 8 hr (1day)
+★ Program
+ The Acquarome water-soluble aromatic oil bandage is used to care for 
+the extreme physical fatigue and weakness that follow the milestone of 
+childbirth. Notably, the program reduces postpartum residual swelling 
+in the body and quickly restores skin pigmentation.
+
+ It relaxes muscles that have stiffened throughout the body from the 
+build-up of fatigue and tension, promoting pelvic balance and lymphatic 
+circulation for a slender figure. It is also a program for mothers to 
+recuperate from childbirth, rest and relax with aromas suited to specific 
+energy points in the body.
+
+ It uses specially designed aromas to man
+
+--- #P-204 | SPA & Aesthetic | Signature + Facial + Body Therapies Programs
+★ VIP Premium Body Therapy Center
+★ Location : Seoul City, Jongno-gu
+                  (VIP Private Room, Luxury Interior)
+★ Female Therapist
+★ Duration : 5 hr
+★ Program
+  ▶Signature Programs(140m)
+ Inspired by the royal philosophy of “renewal with each new day,” this rejuvenating program is designed to awaken dormant senses and restore vitality and radiance. Rhythmic and dynamic body techniques gently stimulate circulation and the flow of energy, guiding the body toward a harmonious state of well-being from head to toe.
+
+  ▶Facial Therapies(80m)
+ Refining skin tone and restoring clarity, this brightening facial therapy reveals a more even, luminous complexion. A vitamin C–based antioxidant formula helps boost vitality and improve transparency, leaving the skin fresh and naturally radiant.
+
+--- #P-205 | SPA & Aesthetic | Facial(Skin Reset)+Body Therapies +
+ Nail Therapies Programs
+★ VIP Premium Body Therapy Center
+★ Location : Seoul City, Jongno-gu
+                  (VIP Private Room, Luxury Interior)
+★ Female Therapist
+★ Duration : 5 hr
+★ Program
+   ▶ Facial(Skin Reset, 80m)
+ Enhancing vitality and balance, this facial therapy improves firmness and refines facial contours. Targeted techniques help activate the skin’s natural functions, leaving it firmer, lifted and more defined.
+
+   ▶ Body Therapies(Sleep Ritual, 90m)
+ Encouraging a natural transition into rest, this therapy prepares the body and mind for restorative sleep. As the senses soften and breathing deepens, the body’s rhythm settles into a quiet, deeply relaxed state.
+
+   ▶ Nail Therapies(Manicure+Pedicure, 130m)
+ Achieve ultra-smooth nails with a rich, high-gloss gel finish and enhanced overall hand appe
+
+--- #P-206 | SPA & Aesthetic | Medi Course (Diamond Premium)
+★ VIP Premium Body Therapy Center
+★ Location : Incheon City, Songdo
+                  (VIP Private Room, Luxury Interior)
+★ Female Therapist
+★ Duration : 4 hr
+★ Program
+  ▶Body Care
+ Restore your body's balance by controlling the device's temperature 
+and pressure
+  ▶Slimming Body Care
+ Body Slimming Care that selectively breaks down only the fat layer using ultrasound
+
+--- #P-207 | SPA & Aesthetic | Special Program (Special Body Therapy) 
+★ VIP Premium Body Therapy Center
+★ Location : Incheon City, Songdo
+                  (VIP Private Room, Luxury Interior)
+★ Female Therapist
+★ Duration : 4 hr
+★ Program
+  ▶Head to Foot Full Line (Body Care managed with spa-specific technology)
+  ▶Elimination of active oxygen and waste products from the skin, 
+A treatment that helps to organize lymph and body lines and relieve swelling
+
