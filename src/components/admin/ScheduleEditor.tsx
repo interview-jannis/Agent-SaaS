@@ -1683,7 +1683,20 @@ const inScope = itemGroupIds === null
             <div className="flex items-center gap-1.5">
               <Time24Input value={item.time ?? null} onChange={(v) => onUpdate({ time: v, ...(v ? { block: blockFromTime(v) } : {}) })} />
               <span className="text-xs text-gray-400">→</span>
-              <Time24Input value={item.endTime ?? null} onChange={(v) => onUpdate({ endTime: v, ...(!item.time && v ? { block: blockFromTime(v) } : {}) })} />
+              <Time24Input value={item.endTime ?? null} onChange={(v) => {
+                const updates: Partial<ScheduleItem> = { endTime: v }
+                if (!item.time && v) {
+                  // end-time-only: start block follows end time
+                  updates.block = blockFromTime(v)
+                } else if (v) {
+                  // set endBlock based on end time; null if same as start block
+                  const eb = blockFromTime(v)
+                  updates.endBlock = eb !== item.block ? eb : null
+                } else {
+                  updates.endBlock = null
+                }
+                onUpdate(updates)
+              }} />
             </div>
           </div>
         ) : (
