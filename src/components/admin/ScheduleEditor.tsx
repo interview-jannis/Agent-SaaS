@@ -31,6 +31,11 @@ import {
   resolveGroupIds,
 } from '@/types/schedule'
 
+// Per-day per-service assignment with hours. Hours default to the product's
+// durationValue and admin can override per day. Total contracted = quantity ×
+// durationValue; sum of `hours` across all days = actual; difference = overage.
+export type DaySubpackageEntry = { variantId: string; hours: number }
+
 type CaseProduct = {
   variantId: string
   productName: string
@@ -82,6 +87,14 @@ type Props = {
   initialConciergePhone?: string | null
   // Previous version's items for diff display while editing.
   prevItems?: ScheduleItem[]
+  // Day-level concierge subpackage assignments: { [day]: { variantId, hours }[] }.
+  // Drives the Trip Services coverage count — only days listed here count toward
+  // the contracted quantity. Per-day `hours` defaults to the product's durationValue
+  // but admin can override per day (will trigger overage flow in finalize stage).
+  // Item-level tripServiceVariantIds remain as optional per-item overrides
+  // (informational; not counted).
+  // Legacy shape `string[]` is read-tolerated and migrated to objects on load.
+  initialDaySubpackages?: Record<number, Array<string | DaySubpackageEntry>>
   // Pixel offset from viewport top for sticky day headers (accounts for any fixed/sticky parent).
   stickyTop?: number
 }
@@ -95,6 +108,7 @@ export default function ScheduleEditor({
   initialConciergeName = null, initialConciergePhone = null,
   readOnly = false,
   prevItems,
+  initialDaySubpackages,
   stickyTop = 0,
 }: Props) {
   const [items, setItems] = useState<ScheduleItem[]>(initialItems)
@@ -128,8 +142,6 @@ export default function ScheduleEditor({
   // Pending rows show with dashed border + inline Cancel/Save and don't count
   // for the global coverage gate (so admin can stage incomplete drafts).
   const [pendingItemIds, setPendingItemIds] = useState<Set<string>>(new Set())
-  const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set())
-  const [selectionDay, setSelectionDay] = useState<number | null>(null)
   // Days that are collapsed. Initialised to all days that already have committed items ??
   // so a loaded schedule starts compact and admins expand only what they want to edit.
   const [collapsedDays, setCollapsedDays] = useState<Set<number>>(() => {
@@ -143,6 +155,54 @@ export default function ScheduleEditor({
   // Items whose group hasn't been explicitly chosen yet (shows "??Choose group ?? prompt).
   // Cleared the moment admin changes the group select.
   const [unsetGroupItemIds, setUnsetGroupItemIds] = useState<Set<string>>(new Set())
+  // Day-level concierge subpackage assignments with hours per service per day.
+  // Legacy data may be string[] (variantIds only) — normalize to entries on init.
+  const [daySubpackages, setDaySubpackages] = useState<Record<number, DaySubpackageEntry[]>>(() => {
+    const out: Record<number, DaySubpackageEntry[]> = {}
+    if (!initialDaySubpackages) return out
+    for (const [dayStr, arr] of Object.entries(initialDaySubpackages)) {
+      const day = Number(dayStr)
+      const entries = (arr ?? []).map(v => {
+        if (typeof v === 'string') {
+          // Legacy: pull default hours from product durationValue (hours unit)
+          const cp = caseProducts.find(p => p.variantId === v)
+          const isHours = (cp?.durationUnit ?? '').toLowerCase().startsWith('h')
+          return { variantId: v, hours: isHours ? (cp?.durationValue ?? 0) : 0 }
+        }
+        return v
+      })
+      if (entries.length > 0) out[day] = entries
+    }
+    return out
+  })
+  // Default hours for a service variant (from product.durationValue when unit is hours).
+  function defaultHoursForVariant(variantId: string): number {
+    const cp = caseProducts.find(p => p.variantId === variantId)
+    if (!cp) return 0
+    const unit = (cp.durationUnit ?? '').toLowerCase()
+    return unit.startsWith('h') ? (cp.durationValue ?? 0) : 0
+  }
+  function setDayEntries(day: number, entries: DaySubpackageEntry[]) {
+    setDaySubpackages(prev => {
+      const next = { ...prev }
+      if (entries.length === 0) delete next[day]
+      else next[day] = entries
+      return next
+    })
+  }
+  function toggleDayVariant(day: number, variantId: string) {
+    const current = daySubpackages[day] ?? []
+    const hasIt = current.some(e => e.variantId === variantId)
+    const next = hasIt
+      ? current.filter(e => e.variantId !== variantId)
+      : [...current, { variantId, hours: defaultHoursForVariant(variantId) }]
+    setDayEntries(day, next)
+  }
+  function setDayVariantHours(day: number, variantId: string, hours: number) {
+    const current = daySubpackages[day] ?? []
+    const next = current.map(e => e.variantId === variantId ? { ...e, hours } : e)
+    setDayEntries(day, next)
+  }
   // Snapshot of items at the moment Edit was clicked, keyed by item id.
   // Used to restore original state if admin cancels an edit (vs new items which are removed entirely).
   const [editSnapshots, setEditSnapshots] = useState<Map<string, ScheduleItem>>(new Map())
@@ -254,74 +314,6 @@ export default function ScheduleEditor({
     setUnsetGroupItemIds(prev => { const n = new Set(prev); n.add(id); return n })
   }
 
-  function toggleItemSelection(id: string, day: number) {
-    setSelectedItemIds(prev => {
-      const n = new Set(prev)
-      if (n.has(id)) {
-        n.delete(id)
-        if (n.size === 0) setSelectionDay(null)
-      } else {
-        if (n.size >= 2) return prev
-        if (selectionDay !== null && selectionDay !== day) return prev
-        n.add(id)
-        setSelectionDay(day)
-      }
-      return n
-    })
-  }
-  function clearSelection() {
-    setSelectedItemIds(new Set())
-    setSelectionDay(null)
-  }
-  function createTransferFromSelection() {
-    if (selectedItemIds.size !== 2 || selectionDay === null) return
-    const [idA, idB] = [...selectedItemIds]
-    const itemA = items.find(i => i.id === idA)
-    const itemB = items.find(i => i.id === idB)
-    if (!itemA || !itemB) return
-    const [first, second] = [itemA, itemB].sort(compareScheduleItems)
-    const newId = generateScheduleItemId()
-    const newItem: ScheduleItem = {
-      id: newId, day: selectionDay, block: first.block,
-      time: first.endTime ?? null,    // starts when the earlier item ends
-      endTime: second.time ?? null,   // ends when the later item starts
-      title: '', itemType: 'transfer',
-      fromLocation: first.location ?? null,
-      toLocation: second.location ?? null,
-      location: null, notes: null, variantId: null,
-      sortOrder: nextSortOrderForDay(selectionDay),
-    }
-    setItems(prev => [...prev, newItem])
-    setPendingItemIds(prev => { const n = new Set(prev); n.add(newId); return n })
-    setCollapsedDays(prev => { const n = new Set(prev); n.delete(selectionDay!); return n })
-    clearSelection()
-  }
-  function createHotelBookendFromSelection(type: 'depart' | 'return') {
-    if (selectedItemIds.size !== 2 || selectionDay === null) return
-    const [idA, idB] = [...selectedItemIds]
-    const itemA = items.find(i => i.id === idA)
-    const itemB = items.find(i => i.id === idB)
-    if (!itemA || !itemB) return
-    const [first, second] = [itemA, itemB].sort(compareScheduleItems)
-    const hotelProduct = caseProducts.find(cp => cp.isHotel)
-    const hotelName = hotelProduct?.productName ?? (type === 'depart' ? 'Hotel Departure' : 'Hotel Return')
-    const otherLocation = type === 'depart' ? second.location : first.location
-    const newId = generateScheduleItemId()
-    const newItem: ScheduleItem = {
-      id: newId, day: selectionDay,
-      block: type === 'depart' ? first.block : second.block,
-      time: null, title: hotelName, itemType: 'hotel', hotelCheckType: type,
-      fromLocation: type === 'return' ? (otherLocation ?? null) : null,
-      toLocation: type === 'depart' ? (otherLocation ?? null) : null,
-      location: null, notes: null,
-      variantId: hotelProduct?.variantId ?? null,
-      sortOrder: nextSortOrderForDay(selectionDay),
-    }
-    setItems(prev => [...prev, newItem])
-    setPendingItemIds(prev => { const n = new Set(prev); n.add(newId); return n })
-    setCollapsedDays(prev => { const n = new Set(prev); n.delete(selectionDay!); return n })
-    clearSelection()
-  }
 
   // Free-time presets ??common enough that admins shouldn't have to type
   // "Free time" + pick a block every time. Half-day = single block (morning
@@ -407,8 +399,10 @@ export default function ScheduleEditor({
         day,
         block: a.block,
         endBlock: a.block !== b.block ? b.block : undefined,
-        // Inherit a's end/start time so the transfer sorts naturally between a and b.
+        // Inherit a's end/start time as the transfer start, and b's start time as
+        // the transfer arrival. transfer는 정확히 a 끝 ~ b 시작 사이에 끼는 이동.
         time: a.endTime ?? a.time ?? null,
+        endTime: b.time ?? null,
         title: toLabel ? `Transfer to ${toLabel}` : 'Transfer',
         itemType: 'transfer',
         fromLocation: locOf(a),
@@ -616,6 +610,7 @@ export default function ScheduleEditor({
         slug: newSlug,
         status: 'pending',
         items: normalized,
+        day_subpackages: daySubpackages,
         pdf_url: null,
         revision_note: revisionNote.trim() || null,
         admin_note: adminNote.trim() || null,
@@ -672,6 +667,19 @@ export default function ScheduleEditor({
       .flatMap(i => (i.groupIds ?? (i.groupId ? [i.groupId] : [])))
   )
 
+  // Available locations for transfer From/To datalist suggestions. Only case
+  // product locations — airports stay as free-text (admin types directly) since
+  // airports aren't products. Hybrid: input stays as <input> so admin can type
+  // any value; datalist provides product-location autocomplete.
+  const availableLocations = useMemo<string[]>(() => {
+    const set = new Set<string>()
+    for (const cp of caseProducts) {
+      const loc = cp.location?.trim()
+      if (loc) set.add(loc)
+    }
+    return [...set].sort((a, b) => a.localeCompare(b))
+  }, [caseProducts])
+
   return (
     <div className="space-y-4">
       {visibleDays.map(day => {
@@ -682,7 +690,6 @@ export default function ScheduleEditor({
         const hasPending = dayItems.some(i => pendingItemIds.has(i.id))
         // Collapse unless there are pending (unsaved) items in this day
         const isCollapsed = collapsedDays.has(day) && !hasPending
-        const hasDaySelection = selectionDay === day && selectedItemIds.size > 0
         return (
           <div key={day} className={`bg-white border border-gray-100 shadow-sm ${isCollapsed ? 'rounded-2xl' : 'rounded-2xl'}`}>
             {/* Day header */}
@@ -695,9 +702,6 @@ export default function ScheduleEditor({
                 {dateObj && <p className="text-xs text-gray-400 truncate">{formatDayHeader(dateObj)}</p>}
                 {isCollapsed && dayItems.length > 0 && (
                   <span className="text-xs text-gray-400 shrink-0">· {dayItems.length} item{dayItems.length !== 1 ? 's' : ''}</span>
-                )}
-                {hasDaySelection && selectedItemIds.size === 1 && (
-                  <span className="text-xs text-blue-400 italic shrink-0">— select 1 more to add Transfer</span>
                 )}
               </button>
               <div className="flex items-center gap-3 shrink-0">
@@ -730,6 +734,7 @@ export default function ScheduleEditor({
                     item={it}
                     caseProducts={caseProducts}
                     caseGroups={groups}
+                    availableLocations={availableLocations}
                     sharedVariantIds={sharedVariantIds}
                     committedVariantContexts={committedVariantContexts}
                     isPending={pendingItemIds.has(it.id)}
@@ -742,9 +747,6 @@ export default function ScheduleEditor({
                     }
                     isNew={addedKeys.has(diffKeyFn(it))}
                     isMarkedForRemoval={markedForRemoval.has(it.id)}
-                    isSelected={selectedItemIds.has(it.id)}
-                    onToggleSelect={() => toggleItemSelection(it.id, day)}
-                    selectionDisabled={!selectedItemIds.has(it.id) && (selectedItemIds.size >= 2 || (selectionDay !== null && selectionDay !== day))}
                     onGroupChosen={() => markGroupChosen(it.id)}
                     canMoveUp={idx > 0 && allItems[idx - 1].block === it.block}
                     canMoveDown={idx < allItems.length - 1 && allItems[idx + 1].block === it.block}
@@ -780,28 +782,63 @@ export default function ScheduleEditor({
                 if (batch.length > 0) segments.push({ type: 'group', items: batch })
               }
 
+              // Day-level concierge subpackages: trip services (excluding hotel & vehicle)
+              // that apply to this day by default. Drives the Trip Services coverage count.
+              const dayConciergeOptions = [...new Map(
+                caseProducts
+                  .filter(cp => cp.isTripService && !cp.isHotel && !cp.isVehicle)
+                  .map(cp => [cp.variantId, cp])
+              ).values()]
+              const entriesForDay = daySubpackages[day] ?? []
+              const entryByVariant = new Map(entriesForDay.map(e => [e.variantId, e]))
+
               return (
               <div className="border-t border-gray-100">
+                {dayConciergeOptions.length > 0 && (
+                  <div className="px-4 py-2 bg-gray-50/60 border-b border-gray-100 flex items-center gap-2 flex-wrap">
+                    <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide shrink-0">Day concierge</span>
+                    {dayConciergeOptions.map(cp => {
+                      const entry = entryByVariant.get(cp.variantId)
+                      const checked = !!entry
+                      const baseLabel = `${cp.partnerName ? `${cp.partnerName} · ` : ''}${cp.productName}${cp.variantLabel ? ` · ${cp.variantLabel}` : ''}`
+                      const hoursUnit = (cp.durationUnit ?? '').toLowerCase().startsWith('h')
+                      return (
+                        <span key={cp.variantId} className="inline-flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => toggleDayVariant(day, cp.variantId)}
+                            className={`text-[11px] font-medium px-2 py-0.5 rounded-full border transition-colors ${
+                              checked
+                                ? 'bg-[#0f4c35] text-white border-[#0f4c35]'
+                                : 'bg-white text-gray-600 border-gray-200 hover:border-[#0f4c35]'
+                            }`}
+                          >
+                            {checked ? '✓ ' : '+ '}{baseLabel}
+                          </button>
+                          {checked && hoursUnit && (
+                            <span className="inline-flex items-center gap-0.5 text-[10px] text-gray-600 bg-white border border-gray-200 rounded-full px-1.5 py-0.5">
+                              <input
+                                type="number"
+                                min={0}
+                                step={0.5}
+                                value={entry?.hours ?? 0}
+                                onChange={(e) => setDayVariantHours(day, cp.variantId, Number(e.target.value) || 0)}
+                                className="w-9 text-[10px] text-gray-900 bg-transparent focus:outline-none text-right"
+                              />
+                              <span className="text-gray-400">h</span>
+                            </span>
+                          )}
+                        </span>
+                      )
+                    })}
+                  </div>
+                )}
                 {dayItems.length === 0 ? (
                   <p className="px-4 py-6 text-xs text-gray-400 text-center italic">No items yet — click &quot;Add Item&quot; to start.</p>
                 ) : !hasGroups ? (
                   // ── Flat list (no groups configured) ──────────────────────
                   <div className="divide-y divide-gray-300 max-w-3xl mx-auto w-full">
-                    {(() => {
-                      const firstSelectedIdx = dayItems.findIndex(i => selectedItemIds.has(i.id))
-                      return dayItems.map((it, idx) => (
-                        <React.Fragment key={it.id}>
-                          {renderItemRow(it, dayItems)}
-                          {hasDaySelection && selectedItemIds.size === 2 && idx === firstSelectedIdx && (
-                            <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 border-b border-blue-100">
-                              <div style={{ width: 32, flexShrink: 0 }} />
-                              <button onClick={createTransferFromSelection} className="text-xs font-semibold bg-[#0f4c35] text-white hover:bg-[#0a3828] px-3 py-1 rounded-lg">+ Transfer</button>
-                              <button onClick={clearSelection} className="text-xs text-blue-500 hover:text-blue-800">✕ Clear</button>
-                            </div>
-                          )}
-                        </React.Fragment>
-                      ))
-                    })()}
+                    {dayItems.map(it => renderItemRow(it, dayItems))}
                   </div>
                 ) : (
                   // ── Segmented column layout ────────────────────────────────
@@ -911,13 +948,6 @@ export default function ScheduleEditor({
                       )
                     })}
 
-                    {/* Transfer button in segmented mode */}
-                    {hasDaySelection && selectedItemIds.size === 2 && (
-                      <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 border-t border-blue-100">
-                        <button onClick={createTransferFromSelection} className="text-xs font-semibold bg-[#0f4c35] text-white hover:bg-[#0a3828] px-3 py-1 rounded-lg">+ Transfer</button>
-                        <button onClick={clearSelection} className="text-xs text-blue-500 hover:text-blue-800">✕ Clear</button>
-                      </div>
-                    )}
                   </div>
                 )}
 
@@ -964,7 +994,7 @@ export default function ScheduleEditor({
 
       <div className="bg-white rounded-xl border border-gray-100 p-3">
         <label className="block text-[11px] text-gray-500 mb-1">
-          Note to agent / client <span className="text-gray-400">(optional ??shown on schedule)</span>
+          Note to agent / client <span className="text-gray-400">(optional — shown on schedule)</span>
         </label>
         <textarea
           value={adminNote}
@@ -1030,16 +1060,32 @@ export default function ScheduleEditor({
           .map(([, cp]) => cp)
 
         // --- Trip Services n-day coverage ---
-        // Count unique days per variantId in committed rows.
-        // Counts variantId + all tripServiceVariantIds so trip services assigned
-        // via the separate picker also satisfy coverage.
+        // Hotels: count the SPAN of days from first appearance to last appearance
+        //   (max - min + 1) on committed items, since the VIP stays at the hotel on
+        //   every day between check-in and check-out even if the schedule only
+        //   mentions it at the start/end.
+        // Non-hotel trip services (interpreter / concierge / security / vehicle):
+        //   count days listed in daySubpackages (day-level concierge selector) +
+        //   any day where a committed item directly carries the variantId in
+        //   `variantId` (vehicle items linked to that variant). Item-level
+        //   `tripServiceVariantIds` are informational overrides only — not counted.
         const scheduledDaysByVariant = new Map<string, Set<number>>()
-        for (const it of committedItems) {
-          const vids = [it.variantId, ...(it.tripServiceVariantIds ?? [])].filter(Boolean) as string[]
-          for (const vid of vids) {
-            if (!scheduledDaysByVariant.has(vid)) scheduledDaysByVariant.set(vid, new Set())
-            scheduledDaysByVariant.get(vid)!.add(it.day)
+        // Hours actually scheduled (sum across days) — used for Trip Services summary.
+        const scheduledHoursByVariant = new Map<string, number>()
+        // Day-level subpackage selections (the source of truth for non-hotel count)
+        for (const [dayStr, entries] of Object.entries(daySubpackages)) {
+          const day = Number(dayStr)
+          for (const e of entries) {
+            if (!scheduledDaysByVariant.has(e.variantId)) scheduledDaysByVariant.set(e.variantId, new Set())
+            scheduledDaysByVariant.get(e.variantId)!.add(day)
+            scheduledHoursByVariant.set(e.variantId, (scheduledHoursByVariant.get(e.variantId) ?? 0) + (e.hours ?? 0))
           }
+        }
+        // Item-direct variantId coverage (so hotel-day span & vehicle-linked transfers still count)
+        for (const it of committedItems) {
+          if (!it.variantId) continue
+          if (!scheduledDaysByVariant.has(it.variantId)) scheduledDaysByVariant.set(it.variantId, new Set())
+          scheduledDaysByVariant.get(it.variantId)!.add(it.day)
         }
         // Deduplicate trip service products by variantId (quantity is the same across groups)
         const tripServiceProducts = new Map<string, CaseProduct>()
@@ -1048,15 +1094,49 @@ export default function ScheduleEditor({
           if (!tripServiceProducts.has(cp.variantId)) tripServiceProducts.set(cp.variantId, cp)
         }
         type TripMissing = { cp: CaseProduct; required: number; scheduled: number }
-        const missingTripServices: TripMissing[] = []
-        for (const [vid, cp] of tripServiceProducts) {
-          const scheduled = scheduledDaysByVariant.get(vid)?.size ?? 0
-          if (scheduled < cp.quantity) missingTripServices.push({ cp, required: cp.quantity, scheduled })
+        type TripSummary = {
+          cp: CaseProduct
+          scheduledDays: number
+          requiredDays: number
+          scheduledHours: number
+          contractedHours: number
+          hasHours: boolean
+          overage: number  // positive = overage; 0 = matches; negative = under (not used)
         }
+        const missingTripServices: TripMissing[] = []
+        const tripSummary: TripSummary[] = []
+        for (const [vid, cp] of tripServiceProducts) {
+          const daySet = scheduledDaysByVariant.get(vid)
+          let scheduledDays = 0
+          if (daySet && daySet.size > 0) {
+            if (cp.isHotel) {
+              const days = [...daySet]
+              scheduledDays = Math.max(...days) - Math.min(...days) + 1
+            } else {
+              scheduledDays = daySet.size
+            }
+          }
+          if (scheduledDays < cp.quantity) missingTripServices.push({ cp, required: cp.quantity, scheduled: scheduledDays })
+          const hasHours = (cp.durationUnit ?? '').toLowerCase().startsWith('h')
+          const baseHours = hasHours ? (cp.durationValue ?? 0) : 0
+          const contractedHours = baseHours * cp.quantity
+          const scheduledHours = scheduledHoursByVariant.get(vid) ?? 0
+          tripSummary.push({
+            cp,
+            scheduledDays,
+            requiredDays: cp.quantity,
+            scheduledHours,
+            contractedHours,
+            hasHours,
+            overage: Math.max(0, scheduledHours - contractedHours),
+          })
+        }
+        tripSummary.sort((a, b) => (a.cp.partnerName ?? a.cp.productName).localeCompare(b.cp.partnerName ?? b.cp.productName))
 
         const hasPending = pendingItemIds.size > 0
+        const hasUnsetGroup = unsetGroupItemIds.size > 0
         const allCovered = missingRegular.length === 0 && missingTripServices.length === 0
-        const canSave = !saving && allCovered && !hasPending && items.length > 0
+        const canSave = !saving && allCovered && !hasPending && !hasUnsetGroup && items.length > 0
 
         return (
           <div className="space-y-2">
@@ -1090,9 +1170,40 @@ export default function ScheduleEditor({
                 </ul>
               </div>
             )}
+            {tripSummary.length > 0 && (
+              <div className="text-xs bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 space-y-1">
+                <p className="font-semibold text-gray-700">Trip Services Summary</p>
+                <ul className="text-gray-700 space-y-0.5 pl-3 list-disc">
+                  {tripSummary.map(s => {
+                    const dayOK = s.scheduledDays >= s.requiredDays
+                    const hourOK = !s.hasHours || s.scheduledHours <= s.contractedHours
+                    return (
+                      <li key={s.cp.variantId}>
+                        {s.cp.partnerName && <span className="text-gray-500">{s.cp.partnerName} · </span>}
+                        <span className="text-gray-900">{s.cp.productName}</span>{s.cp.variantLabel ? <span className="text-gray-500"> · {s.cp.variantLabel}</span> : null}
+                        <span className={`ml-1 ${dayOK ? 'text-gray-500' : 'text-amber-700'}`}>
+                          · {s.scheduledDays}/{s.requiredDays} days
+                        </span>
+                        {s.hasHours && (
+                          <span className={`ml-1 ${hourOK ? 'text-gray-500' : 'text-amber-700 font-semibold'}`}>
+                            · {s.scheduledHours}h / {s.contractedHours}h
+                            {s.overage > 0 && <span className="ml-1">(+{s.overage}h overage)</span>}
+                          </span>
+                        )}
+                      </li>
+                    )
+                  })}
+                </ul>
+              </div>
+            )}
             {hasPending && (
               <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
                 {pendingItemIds.size} item{pendingItemIds.size !== 1 ? 's' : ''} still in draft — Save or Cancel each before sending.
+              </p>
+            )}
+            {hasUnsetGroup && (
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                {unsetGroupItemIds.size} item{unsetGroupItemIds.size !== 1 ? 's' : ''} missing a group — choose a group (or Shared) for each before sending.
               </p>
             )}
             {readOnly ? (
@@ -1111,7 +1222,7 @@ export default function ScheduleEditor({
               <button
                 onClick={handleSave}
                 disabled={!canSave}
-                title={!allCovered ? 'Schedule all products and trip services before sending' : (hasPending ? 'Resolve pending drafts first' : '')}
+                title={!allCovered ? 'Schedule all products and trip services before sending' : (hasPending ? 'Resolve pending drafts first' : (hasUnsetGroup ? 'Choose a group for every item first' : ''))}
                 className="text-sm font-medium bg-[#0f4c35] text-white hover:bg-[#0a3828] px-4 py-2 rounded-xl disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {saving ? 'Saving…' : `Save v${nextVersion} & Send to Agent`}
@@ -1207,6 +1318,61 @@ function PrayerMenu({ onPick, dropUp }: { onPick: (prayer: string) => void; drop
 
 // ?? Group multi-select ????????????????????????????????????????????????????????
 
+function LocationCombobox({
+  value, onChange, options, disabled, placeholder,
+}: {
+  value: string
+  onChange: (v: string) => void
+  options: string[]
+  disabled?: boolean
+  placeholder?: string
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+  return (
+    <div ref={ref} className="relative">
+      <input type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={disabled}
+        placeholder={placeholder}
+        className="w-full text-xs border border-gray-200 rounded-lg pl-2 pr-7 py-1.5 text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
+      />
+      {!disabled && options.length > 0 && (
+        <button type="button"
+          onClick={() => setOpen(o => !o)}
+          className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 text-xs px-1"
+          tabIndex={-1}
+        >
+          ▾
+        </button>
+      )}
+      {open && (
+        <div className="absolute left-0 right-0 top-full mt-1 z-30 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+          {options.map(opt => (
+            <button key={opt}
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => { onChange(opt); setOpen(false) }}
+              className={`w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 ${opt === value ? 'bg-green-50 text-[#0f4c35] font-medium' : 'text-gray-700'}`}
+            >
+              {opt}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function GroupMultiSelect({
   groupIds, caseGroups, isPending, isGroupUnset, onChange, onGroupChosen,
 }: {
@@ -1259,7 +1425,9 @@ function GroupMultiSelect({
   // Pending state ??button that opens dropdown.
   // Always shows the current selection; amber border signals "not yet confirmed".
   const buttonContent = isShared ? (
-    <span className={`text-xs font-semibold ${isGroupUnset ? 'text-amber-700' : 'text-gray-900'}`}>Shared (all)</span>
+    <span className={`text-xs font-semibold ${isGroupUnset ? 'text-amber-700' : 'text-gray-900'}`}>
+      {isGroupUnset ? '— Choose group —' : 'Shared (all)'}
+    </span>
   ) : (
     <span className="flex items-center gap-1">{renderGroupChips(groupIds!)}</span>
   )
@@ -1283,7 +1451,7 @@ function GroupMultiSelect({
           <label className="flex items-center gap-2.5 px-3 py-1.5 hover:bg-gray-50 cursor-pointer">
             <input
               type="radio"
-              checked={isShared}
+              checked={isShared && !isGroupUnset}
               onChange={() => { onChange(null); onGroupChosen(); setOpen(false) }}
               className="accent-[#0f4c35]"
             />
@@ -1334,9 +1502,8 @@ const SHARED_TONE = { hex: '#111827', chip: 'bg-white border-gray-800', chipText
 const PRAYER_HEX = '#fb923c'
 
 function ItemRow({
-  item, caseProducts, caseGroups, sharedVariantIds, committedVariantContexts,
+  item, caseProducts, caseGroups, availableLocations, sharedVariantIds, committedVariantContexts,
   isPending, isEditSession, isGroupUnset, highlightEmptyTitle, showResultsSuggestion, isNew, isMarkedForRemoval,
-  isSelected, onToggleSelect, selectionDisabled,
   canMoveUp, canMoveDown,
   onUpdate, onApplyVariant, onRemove, onMove,
   onEdit, onCommit, onCancelDraft, onGroupChosen,
@@ -1344,6 +1511,7 @@ function ItemRow({
   item: ScheduleItem
   caseProducts: CaseProduct[]
   caseGroups: Array<{ id: string; name: string }>
+  availableLocations: string[]
   sharedVariantIds: Set<string>
   committedVariantContexts: Map<string, Set<string | null>>
   isPending: boolean
@@ -1353,9 +1521,6 @@ function ItemRow({
   showResultsSuggestion?: boolean
   isNew?: boolean
   isMarkedForRemoval?: boolean
-  isSelected?: boolean
-  onToggleSelect?: () => void
-  selectionDisabled?: boolean
   canMoveUp: boolean
   canMoveDown: boolean
   onUpdate: (patch: Partial<ScheduleItem>) => void
@@ -1434,23 +1599,10 @@ const inScope = itemGroupIds === null
 
   return (
     <div className={`flex ${isPending ? 'bg-amber-50/40 border border-dashed border-amber-300 m-2 rounded-lg overflow-hidden' : isMarkedForRemoval ? 'bg-rose-50/60 opacity-60' : showTitleAlert ? 'bg-rose-50/60' : isNew ? 'bg-green-50/50' : isTransportType ? 'bg-gray-100/60' : 'bg-white'}`}>
-      {/* Left gutter: 4px stripe (leftmost) + checkbox (committed only) */}
-      <div style={{ width: 32, flexShrink: 0, display: 'flex', alignSelf: 'stretch' }}>
-        <div style={{ width: 4, flexShrink: 0, background: stripeBackground, alignSelf: 'stretch' }} />
-        {!isPending && (
-          <div className="flex items-start justify-center pt-[18px]" style={{ width: 28 }}>
-            <input
-              type="checkbox"
-              checked={isSelected ?? false}
-              onChange={() => onToggleSelect?.()}
-              disabled={selectionDisabled}
-              className="w-3.5 h-3.5 accent-[#0f4c35] cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
-            />
-          </div>
-        )}
-      </div>
+      {/* Left gutter: 4px stripe */}
+      <div style={{ width: 4, flexShrink: 0, background: stripeBackground, alignSelf: 'stretch' }} />
       {/* Main content */}
-      <div className="flex-1 py-4 pr-4 space-y-2 min-w-0">
+      <div className="flex-1 py-4 pl-4 pr-4 space-y-2 min-w-0">
       {/* Row 1: committed = compact text labels; pending = full selects */}
       <div className="flex items-center gap-2">
         {isPending ? (
@@ -1464,7 +1616,7 @@ const inScope = itemGroupIds === null
                 if (t === 'free' && !item.title.trim()) updates.title = 'Free time'
                 if (t === 'hotel') {
                   if (item.hotelCheckType && !item.title.trim())
-                    updates.title = item.hotelCheckType === 'checkin' ? 'Hotel Check-in' : item.hotelCheckType === 'checkout' ? 'Hotel Check-out' : item.hotelCheckType === 'depart' ? 'Hotel Departure' : 'Hotel Return'
+                    updates.title = item.hotelCheckType === 'checkin' ? 'Hotel Check-in' : item.hotelCheckType === 'checkout' ? 'Hotel Check-out' : 'Hotel Stay'
                   const hotelProduct = caseProducts.find(cp => cp.isHotel)
                   if (hotelProduct && !item.variantId) updates.variantId = hotelProduct.variantId
                 }
@@ -1598,10 +1750,12 @@ const inScope = itemGroupIds === null
             </span>
           )}
           {(itemType === 'appointment' || itemType === 'hotel') && !item.isPrayer && (() => {
-            // Hotels live under the Trip Services group but admins now pick them via the
-            // appointment dropdown (see hotel sub-dropdown below). Keep them in the
-            // dropdown; exclude them from the trip-service chips so they aren't duplicated.
+            // Regular products + hotels. Other trip services (vehicle = transfer picker,
+            // concierge/interpreter/security = Day concierge selector) stay out of this dropdown.
             const regularProducts = pickerProducts.filter(cp => !cp.isTripService || cp.isHotel)
+            // Subpackage selector lists concierge-type trip services (interpreter, concierge, security, etc.)
+            // Hotel & vehicle are excluded — hotel is its own appointment type with hotelCheckType,
+            // vehicle is selected on transfer items separately.
             const allTripServices = caseProducts.filter(cp => cp.isTripService && !cp.isVehicle && !cp.isHotel)
             // Detect if selected product is a hotel product
             const selectedHotelProduct = item.variantId
@@ -1730,17 +1884,22 @@ const inScope = itemGroupIds === null
       {/* Type-specific fields */}
       {itemType === 'transfer' && (
         <>
-          {/* From / To ??always visible (core summary) */}
+          {/* From / To — free text input + visible ▾ dropdown pick from case product locations.
+              Airports and ad-hoc locations stay as free-text since they aren't products. */}
           <div className="grid grid-cols-2 gap-2">
-            <input type="text" value={item.fromLocation ?? ''}
-              onChange={(e) => onUpdate({ fromLocation: e.target.value || null })}
-              disabled={!isPending} placeholder="From (e.g. Grand Hyatt)"
-              className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
+            <LocationCombobox
+              value={item.fromLocation ?? ''}
+              onChange={(v) => onUpdate({ fromLocation: v || null })}
+              options={availableLocations}
+              disabled={!isPending}
+              placeholder="From (type or pick)"
             />
-            <input type="text" value={item.toLocation ?? ''}
-              onChange={(e) => onUpdate({ toLocation: e.target.value || null })}
-              disabled={!isPending} placeholder="To (e.g. Gil Hospital)"
-              className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
+            <LocationCombobox
+              value={item.toLocation ?? ''}
+              onChange={(v) => onUpdate({ toLocation: v || null })}
+              options={availableLocations}
+              disabled={!isPending}
+              placeholder="To (type or pick)"
             />
           </div>
           {/* Transport mode + vehicle (or label override) — in Details for committed rows */}
@@ -1861,7 +2020,7 @@ const inScope = itemGroupIds === null
             value={item.notes ?? ''}
             onChange={(e) => onUpdate({ notes: e.target.value || null })}
             disabled={!isPending}
-            placeholder="Notes ??visible to client (optional)"
+            placeholder="Notes — visible to client (optional)"
             className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
           />
 
@@ -1913,7 +2072,7 @@ const inScope = itemGroupIds === null
 
       {isPending && (
         <div className="flex items-center justify-end gap-2 pt-1">
-          <span className="text-[10px] text-amber-700 mr-auto">Draft ??not counted toward schedule coverage until saved</span>
+          <span className="text-[10px] text-amber-700 mr-auto">Draft — not counted toward schedule coverage until saved</span>
           <button
             type="button"
             onClick={() => {

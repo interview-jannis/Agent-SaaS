@@ -89,9 +89,9 @@ export default function AdminCaseContractSection({ caseId, caseNumber, caseStatu
   if (loading) return null
   if (!contract) {
     return (
-      <section className="bg-indigo-50 border border-indigo-200 rounded-2xl p-4">
-        <p className="text-xs font-semibold text-indigo-700 uppercase tracking-wide mb-1">3-Party Contract</p>
-        <p className="text-xs text-indigo-800">Agent has not generated the contract yet.</p>
+      <section className={`rounded-2xl p-4 ${caseStatus === 'awaiting_contract' ? 'bg-white border-2 border-[#0f4c35]' : 'bg-gray-50 border-2 border-gray-300'}`}>
+        <p className={`text-xs font-semibold uppercase tracking-wide mb-1 ${caseStatus === 'awaiting_contract' ? 'text-[#0f4c35]' : 'text-gray-700'}`}>3-Party Contract</p>
+        <p className="text-xs text-gray-500">Agent has not generated the contract yet.</p>
       </section>
     )
   }

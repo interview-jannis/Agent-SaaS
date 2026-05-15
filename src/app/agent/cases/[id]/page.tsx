@@ -1090,7 +1090,7 @@ export default function CaseDetailPage() {
 
           {/* ─── FINANCIALS — always second, right after Hero ─── */}
           {quote && (() => {
-            const financialStages = ['awaiting_deposit', 'awaiting_pricing', 'awaiting_payment', 'awaiting_settlement', 'completed']
+            const financialStages = ['awaiting_deposit', 'awaiting_pricing', 'awaiting_payment', 'awaiting_travel', 'awaiting_review', 'awaiting_settlement', 'completed']
             const isFinancialActive = financialStages.includes(caseData.status)
             const sectionClass = isFinancialActive
               ? 'scroll-mt-20 bg-white border-2 border-[#0f4c35] rounded-2xl overflow-hidden'
@@ -1303,15 +1303,13 @@ export default function CaseDetailPage() {
           )}
 
           {/* ─── TRIP SETUP — Travel + Trip Info + Lead Client + Members all-in-one ─── */}
-          <section className="bg-gray-50 rounded-2xl border border-gray-200 overflow-hidden">
-            <div className="flex items-center justify-between flex-wrap gap-2 px-5 py-2.5 bg-gray-100 border-b border-gray-200">
+          {(() => {
+            const tripSetupActionNeeded = caseData.status === 'awaiting_info' && !scheduleReady
+            return (
+          <section className={`rounded-2xl border-2 overflow-hidden ${tripSetupActionNeeded ? 'bg-white border-[#0f4c35]' : 'bg-gray-50 border-gray-200'}`}>
+            <div className={`flex items-center justify-between flex-wrap gap-2 px-5 py-2.5 border-b ${tripSetupActionNeeded ? 'bg-green-50 border-green-200' : 'bg-gray-100 border-gray-200'}`}>
               <div className="flex items-center gap-2">
-                <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Trip Setup</h3>
-                {(caseInfoComplete && allClientsComplete && groupsComplete && caseData.travel_start_date) ? (
-                  <span className="text-[10px] font-medium text-green-700 bg-green-50 border border-green-200 px-1.5 py-0.5 rounded">Ready</span>
-                ) : infoCollectionActive ? (
-                  <span className="text-[10px] font-medium text-gray-500 bg-gray-100 border border-gray-200 px-1.5 py-0.5 rounded">In progress</span>
-                ) : null}
+                <h3 className={`text-xs font-semibold uppercase tracking-wide ${tripSetupActionNeeded ? 'text-[#0f4c35]' : 'text-gray-700'}`}>Trip Setup</h3>
               </div>
               <button onClick={() => setSetupCollapsed(!setupCollapsed)}
                 className="text-xs font-medium bg-gray-700 text-white hover:bg-gray-600 px-2.5 py-1.5 rounded-lg transition-colors">
@@ -1385,11 +1383,10 @@ export default function CaseDetailPage() {
           </div>
 
           {/* Trip Info (case-level) */}
-          <div id="trip-info" className={`scroll-mt-20 ${(caseInfoComplete || !infoCollectionActive) ? '' : '-mx-2 px-2 py-3 rounded-xl bg-white border-2 border-[#0f4c35]'} pt-5 border-t border-gray-200`}>
+          <div id="trip-info" className={`scroll-mt-20 pt-5 border-t border-gray-200 ${(!caseInfoComplete && caseData.status === 'awaiting_info') ? '-mx-3 px-3 py-3 rounded-xl bg-green-50' : ''}`}>
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Trip Info</h3>
-                {!caseInfoComplete && infoCollectionActive && <span className="text-[10px] font-medium text-green-700 bg-green-100 px-1.5 py-0.5 rounded">Required</span>}
               </div>
               {!editTrip ? (
                 !tripMembersLocked && (
@@ -1408,7 +1405,7 @@ export default function CaseDetailPage() {
             </div>
 
             {!caseInfoComplete && !editTrip && (
-              <p className="text-xs text-amber-800 mb-3">Missing: {missingCaseFields.join(' · ')}</p>
+              <p className="text-xs text-[#0f4c35] mb-3">Missing: {missingCaseFields.join(' · ')}</p>
             )}
 
             {!editTrip ? (
@@ -1521,15 +1518,12 @@ export default function CaseDetailPage() {
             const memberIssueCount = (memberShortfall ? 1 : 0) + groupGaps.length + clientsMissingInfo.length
             const memberReady = memberIssueCount === 0 && caseData.case_members.length > 0
             return (
-          <div id="members" className="scroll-mt-20 pt-5 border-t border-gray-200 space-y-3">
+          <div id="members" className={`scroll-mt-20 pt-5 border-t border-gray-200 space-y-3 ${(!memberReady && caseData.status === 'awaiting_info') ? '-mx-3 px-3 py-3 rounded-xl bg-green-50' : ''}`}>
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div className="flex items-center gap-2">
                 <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
                   Members ({pendingMembers.filter(p => !p.isRemoved).length}{expectedMemberCount > 0 ? ` / ${expectedMemberCount}` : ''})
                 </h3>
-                {!memberReady
-                  ? <span className="text-[10px] font-medium text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">{memberIssueCount} issue{memberIssueCount > 1 ? 's' : ''}</span>
-                  : <span className="text-[10px] font-medium text-green-700 bg-green-100 px-1.5 py-0.5 rounded">Ready</span>}
                 {editMembers && dirty && <span className="text-[10px] font-medium text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">Unsaved</span>}
               </div>
               {!editMembers ? (
@@ -1673,7 +1667,7 @@ export default function CaseDetailPage() {
                       )),
                       ...(unassigned.length > 0 ? [(
                         <div key="unassigned">
-                          <p className="text-[10px] font-semibold text-amber-600 uppercase tracking-wide mb-1.5">Unassigned</p>
+                          <p className="text-[10px] font-semibold text-[#0f4c35] uppercase tracking-wide mb-1.5">Unassigned</p>
                           <div className="space-y-1">
                             {unassigned.map(p => (
                               <div key={p.id} className="flex items-center gap-2 text-sm">
@@ -1803,9 +1797,9 @@ export default function CaseDetailPage() {
             )}
 
             {/* Member-related readiness checklist (embedded, view mode only) */}
-            {!editMembers && !memberReady && infoCollectionActive && (
-              <div className="bg-white border border-gray-200 rounded-xl px-4 py-3 mt-1">
-                <p className="text-[10px] font-semibold text-gray-600 uppercase tracking-wide mb-1.5">{memberIssueCount} issue{memberIssueCount > 1 ? 's' : ''} to resolve</p>
+            {!editMembers && !memberReady && caseData.status === 'awaiting_info' && (
+              <div className="rounded-xl px-4 py-3 mt-1 bg-white/70 border border-green-100">
+                <p className="text-[10px] font-semibold text-[#0f4c35] uppercase tracking-wide mb-1.5">{memberIssueCount} item{memberIssueCount > 1 ? 's' : ''} to complete</p>
                 <ul className="space-y-1 text-xs text-gray-600">
                   {memberShortfall && (
                     <li>· Members: {caseData.case_members.length} of {expectedMemberCount} registered</li>
@@ -1819,7 +1813,7 @@ export default function CaseDetailPage() {
                     return (
                       <li key={member.id}>
                         · <Link href={`/agent/clients/${c.id}`} className="text-[#0f4c35] hover:underline font-medium">{c.name}</Link>
-                        <span className="text-amber-700"> info incomplete ({missing.length} field{missing.length > 1 ? 's' : ''})</span>
+                        <span className="text-green-800"> — info incomplete ({missing.length} field{missing.length > 1 ? 's' : ''})</span>
                       </li>
                     )
                   })}
@@ -1834,6 +1828,8 @@ export default function CaseDetailPage() {
             )}
             </div>{/* /p-5 content wrapper */}
           </section>
+            )
+          })()}
           {/* ─── /TRIP SETUP ─── */}
 
           {/* ─── NOTES TO TIKTAK ADMIN ─── */}
