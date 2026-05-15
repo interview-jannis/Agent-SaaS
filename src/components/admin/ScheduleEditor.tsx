@@ -399,8 +399,10 @@ export default function ScheduleEditor({
         day,
         block: a.block,
         endBlock: a.block !== b.block ? b.block : undefined,
-        // Inherit a's end/start time so the transfer sorts naturally between a and b.
+        // Inherit a's end/start time as the transfer start, and b's start time as
+        // the transfer arrival. transfer는 정확히 a 끝 ~ b 시작 사이에 끼는 이동.
         time: a.endTime ?? a.time ?? null,
+        endTime: b.time ?? null,
         title: toLabel ? `Transfer to ${toLabel}` : 'Transfer',
         itemType: 'transfer',
         fromLocation: locOf(a),
@@ -1316,6 +1318,61 @@ function PrayerMenu({ onPick, dropUp }: { onPick: (prayer: string) => void; drop
 
 // ?? Group multi-select ????????????????????????????????????????????????????????
 
+function LocationCombobox({
+  value, onChange, options, disabled, placeholder,
+}: {
+  value: string
+  onChange: (v: string) => void
+  options: string[]
+  disabled?: boolean
+  placeholder?: string
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+  return (
+    <div ref={ref} className="relative">
+      <input type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={disabled}
+        placeholder={placeholder}
+        className="w-full text-xs border border-gray-200 rounded-lg pl-2 pr-7 py-1.5 text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
+      />
+      {!disabled && options.length > 0 && (
+        <button type="button"
+          onClick={() => setOpen(o => !o)}
+          className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 text-xs px-1"
+          tabIndex={-1}
+        >
+          ▾
+        </button>
+      )}
+      {open && (
+        <div className="absolute left-0 right-0 top-full mt-1 z-30 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+          {options.map(opt => (
+            <button key={opt}
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => { onChange(opt); setOpen(false) }}
+              className={`w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 ${opt === value ? 'bg-green-50 text-[#0f4c35] font-medium' : 'text-gray-700'}`}
+            >
+              {opt}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function GroupMultiSelect({
   groupIds, caseGroups, isPending, isGroupUnset, onChange, onGroupChosen,
 }: {
@@ -1827,24 +1884,23 @@ const inScope = itemGroupIds === null
       {/* Type-specific fields */}
       {itemType === 'transfer' && (
         <>
-          {/* From / To — free text input + datalist autocomplete from case product locations.
+          {/* From / To — free text input + visible ▾ dropdown pick from case product locations.
               Airports and ad-hoc locations stay as free-text since they aren't products. */}
           <div className="grid grid-cols-2 gap-2">
-            <input type="text" list={`loc-suggestions-${item.id}`}
+            <LocationCombobox
               value={item.fromLocation ?? ''}
-              onChange={(e) => onUpdate({ fromLocation: e.target.value || null })}
-              disabled={!isPending} placeholder="From (type or pick)"
-              className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
+              onChange={(v) => onUpdate({ fromLocation: v || null })}
+              options={availableLocations}
+              disabled={!isPending}
+              placeholder="From (type or pick)"
             />
-            <input type="text" list={`loc-suggestions-${item.id}`}
+            <LocationCombobox
               value={item.toLocation ?? ''}
-              onChange={(e) => onUpdate({ toLocation: e.target.value || null })}
-              disabled={!isPending} placeholder="To (type or pick)"
-              className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
+              onChange={(v) => onUpdate({ toLocation: v || null })}
+              options={availableLocations}
+              disabled={!isPending}
+              placeholder="To (type or pick)"
             />
-            <datalist id={`loc-suggestions-${item.id}`}>
-              {availableLocations.map(loc => <option key={loc} value={loc} />)}
-            </datalist>
           </div>
           {/* Transport mode + vehicle (or label override) — in Details for committed rows */}
           {(isPending || detailsOpen) && (
