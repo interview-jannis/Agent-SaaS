@@ -438,8 +438,16 @@ export default function AgentProductPage() {
 
   const activeGroupIndex = groups.findIndex((g) => g.id === activeGroupId)
 
+  // Upgrade cost above cheapest variant (KRW), converted to USD for display.
+  function subpkgUpgradeUsd(p: Product, v: Variant): number {
+    const variants = p.product_variants ?? []
+    const toKrw = (x: { base_price: number; price_currency: string }) =>
+      x.price_currency === 'USD' ? Math.round(x.base_price * exchangeRate) : x.base_price
+    const minKrw = variants.length > 0 ? Math.min(...variants.map(toKrw)) : toKrw(v)
+    return Math.max(0, toKrw(v) - minKrw) / exchangeRate
+  }
+
   const totalUSD = useMemo(() => {
-    // Group items (non-Subpackage)
     const groupTotal = groups.reduce((total, g) => {
       return total + g.items.reduce((sum, it) => {
         const p = products.find(x => x.id === it.productId)
@@ -447,26 +455,25 @@ export default function AgentProductPage() {
         if (!p || !v) return sum
         const cat = p.product_categories?.name
         const sub = p.product_subcategories?.name
-        const usd = variantPriceUsd({
-          basePrice: v.base_price, priceCurrency: v.price_currency, exchangeRate,
-          markupRate: getMarkupRate(cat, sub, markupRatesConfig),
-        })
+        const mr = getMarkupRate(cat, sub, markupRatesConfig)
+        const usd = cat === 'Subpackage' && mr === 0
+          ? subpkgUpgradeUsd(p, v)
+          : variantPriceUsd({ basePrice: v.base_price, priceCurrency: v.price_currency, exchangeRate, markupRate: mr })
         const memberCount = g.id === 'shared' ? sharedMemberCount : g.memberCount
         return sum + usd * memberCount
       }, 0)
     }, 0)
 
-    // Trip Services (Subpackage — interpreter, car, hotel, concierge…)
     const servicesTotal = tripServices.reduce((sum, it) => {
       const p = products.find(x => x.id === it.productId)
       const v = p?.product_variants?.find(x => x.id === it.variantId)
       if (!p || !v) return sum
       const cat = p.product_categories?.name
       const sub = p.product_subcategories?.name
-      const usd = variantPriceUsd({
-        basePrice: v.base_price, priceCurrency: v.price_currency, exchangeRate,
-        markupRate: getMarkupRate(cat, sub, markupRatesConfig),
-      })
+      const mr = getMarkupRate(cat, sub, markupRatesConfig)
+      const usd = cat === 'Subpackage' && mr === 0
+        ? subpkgUpgradeUsd(p, v)
+        : variantPriceUsd({ basePrice: v.base_price, priceCurrency: v.price_currency, exchangeRate, markupRate: mr })
       const daysForItem = isHotelItem(cat, sub) ? nights : (p.quantity_type === 'per_day' ? daysLive : it.days)
       return sum + usd * daysForItem
     }, 0)
@@ -1271,19 +1278,19 @@ export default function AgentProductPage() {
                         if (!p || !v) return null
                         const cat = p.product_categories?.name
                         const sub = p.product_subcategories?.name
-                        const usd = variantPriceUsd({
-                          basePrice: v.base_price, priceCurrency: v.price_currency, exchangeRate,
-                          markupRate: getMarkupRate(cat, sub, markupRatesConfig),
-                        })
+                        const mr = getMarkupRate(cat, sub, markupRatesConfig)
+                        const usd = cat === 'Subpackage' && mr === 0
+                          ? subpkgUpgradeUsd(p, v)
+                          : variantPriceUsd({ basePrice: v.base_price, priceCurrency: v.price_currency, exchangeRate, markupRate: mr })
                         return (
                           <div key={`${item.productId}-${item.variantId}`} className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg">
                             <div className="flex-1 min-w-0">
                               <p className="text-xs text-gray-800 truncate font-medium">{p.name}</p>
                               <p className="text-[10px] text-gray-400 truncate">
-                                {v.variant_label ? `${v.variant_label} · ` : ''}{fmtUSD(usd)} × {memberCount}
+                                {v.variant_label ? `${v.variant_label} · ` : ''}{usd === 0 ? 'Free' : `${fmtUSD(usd)} × ${memberCount}`}
                               </p>
                             </div>
-                            <p className="text-xs font-semibold text-gray-700 shrink-0">{fmtUSD(usd * memberCount)}</p>
+                            <p className="text-xs font-semibold text-gray-700 shrink-0">{usd === 0 ? 'Free' : fmtUSD(usd * memberCount)}</p>
                             <button
                               onClick={() => removeFromGroup(group.id, item.productId, item.variantId)}
                               className="text-gray-300 hover:text-red-400 shrink-0 text-base leading-none ml-1">×</button>
@@ -1311,11 +1318,10 @@ export default function AgentProductPage() {
                       const isHotel = isHotelItem(cat, sub)
                       const unit = isHotel ? 'n' : 'd'
                       const qty = isHotel ? nights : (p.quantity_type === 'per_day' ? daysLive : it.days)
-                      const usd = variantPriceUsd({
-                        basePrice: v.base_price, priceCurrency: v.price_currency, exchangeRate,
-                        markupRate: getMarkupRate(cat, sub, markupRatesConfig),
-                      })
-                      const isSubpkgFree = cat === 'Subpackage' && getMarkupRate(cat, sub, markupRatesConfig) === 0
+                      const mr = getMarkupRate(cat, sub, markupRatesConfig)
+                      const usd = cat === 'Subpackage' && mr === 0
+                        ? subpkgUpgradeUsd(p, v)
+                        : variantPriceUsd({ basePrice: v.base_price, priceCurrency: v.price_currency, exchangeRate, markupRate: mr })
                       return (
                         <div key={`${it.productId}-${it.variantId}`} className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg">
                           <div className="flex-1 min-w-0">
@@ -1325,7 +1331,7 @@ export default function AgentProductPage() {
                             </p>
                           </div>
                           <p className="text-xs font-semibold text-gray-700 shrink-0">
-                            {isSubpkgFree ? 'Free' : fmtUSD(usd * qty)}
+                            {usd === 0 ? 'Free' : fmtUSD(usd * qty)}
                           </p>
                           <button
                             onClick={() => toggleServiceItem(it.productId, it.variantId)}
@@ -1401,11 +1407,17 @@ export default function AgentProductPage() {
                 const detailSub = detailProduct.product_subcategories?.name
                 const detailIsSubpkg = isSubpkg
                 const detailMarkupRate = getMarkupRate(detailCat, detailSub, markupRatesConfig)
-                const variantUsd = (v: Variant) =>
-                  detailIsSubpkg && detailMarkupRate === 0 ? 0
-                  : variantPriceUsd({ basePrice: v.base_price, priceCurrency: v.price_currency, exchangeRate, markupRate: detailMarkupRate })
-                const variants = (detailProduct.product_variants ?? [])
-                  .filter(v => v.is_active)
+                const allDetailVariants = (detailProduct.product_variants ?? []).filter(v => v.is_active)
+                const toKrwDetail = (v: Variant) =>
+                  v.price_currency === 'USD' ? Math.round(v.base_price * exchangeRate) : v.base_price
+                const minDetailKrw = allDetailVariants.length > 0
+                  ? Math.min(...allDetailVariants.map(toKrwDetail)) : 0
+                const variantUsd = (v: Variant) => {
+                  if (detailIsSubpkg && detailMarkupRate === 0)
+                    return Math.max(0, toKrwDetail(v) - minDetailKrw) / exchangeRate
+                  return variantPriceUsd({ basePrice: v.base_price, priceCurrency: v.price_currency, exchangeRate, markupRate: detailMarkupRate })
+                }
+                const variants = allDetailVariants
                   .sort((a, b) => variantUsd(b) - variantUsd(a) || a.sort_order - b.sort_order)
 
                 if (variants.length <= 1) {

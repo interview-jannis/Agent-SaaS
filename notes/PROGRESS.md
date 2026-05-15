@@ -1,11 +1,12 @@
 # Project Progress
 
 ## 현재 상태
-- **Phase**: 시뮬 D+3~4(5/14~15). 케이스 페이지 강조 일관성 sweep + Hero 글로벌 sticky + ScheduleEditor 후속 정리(group 강제 선택, row checkbox 제거, hotel 3-enum, hotel day span 박수 카운트, day-level concierge subpackage + per-day hours + Trip Services Summary).
-- **마지막 작업**: 2026-05-15 — Day-level concierge per-service hours + Trip Services Summary 박스.
+- **Phase**: 시뮬 D+4(5/15). Hero CTA 개편 + 이메일 확인 모달 + Subpackage 차액 가격 로직.
+- **마지막 작업**: 2026-05-15 (2차) — Hero awaiting_contract/deposit CTA 재설계, ConfirmModal 전역 적용, Subpackage Free = 최저 variant 무료 + 차액만 청구 로직.
 - **마지막 업데이트**: 2026-05-15 (시뮬레이션 5/11~15, 런칭 5/18)
 - **SaaS 브랜드명**: **TikkTakk** (전역 치환 완료)
 
+> 2026-05-15 (2차): `notes/26.05.15.md` §9–10 (이메일 ConfirmModal 전역 적용. Hero awaiting_contract Agent 2버튼/Admin 2×1그리드, awaiting_deposit Agent/Admin 글귀 재설계. Financials awaiting_contract green border + 항상 펼침. Admin Financials Preview 버튼 eye+gray-700. 3-party 계약 금액 $포맷. Subpackage markup=0 견적 버그 수정 + 최저 variant Free + 차액 로직).
 > 2026-05-14 상세: `notes/26.05.14.md` (낮: ScheduleEditor 세그먼트 컬럼 + full-width 레이아웃 + hotel sub-dropdown + Fill Transfers + admin-side bug sweep. 새벽: 케이스 페이지 강조 일관성 sweep, Hero 글로벌 sticky, 그룹 강제 선택, row checkbox 제거, hotel 3-enum(check-in/stay/check-out), hotel 박수 day-span 카운트, day-level concierge subpackage 도입. 후반: GroupMultiSelect radio 픽스, em-dash 정리, ItemRow padding 복구, day-level concierge에 per-service hours + Trip Services Summary 박스).
 > 2026-05-13: `notes/26.05.13.md` §1–7 (카테고리별 마진율 재설계. Agent 초대 이메일. 상품 멀티 서브카테고리 junction table. PGRST201 FK 모호성 버그. K-Beauty 3단계 카탈로그. K-Medical Male/Female 별도 유지 결정. Bulk 이미지 다중 상품 적용).
 > 2026-05-12 저녁: `notes/26.05.12.md` §9–12 + §13–19 (vehicle per_day. Edit picker sticky. completed 케이스 Financials 최상단. Agent 비활성화 3-layer. Agent 삭제 이름 확인. Schedule Shared 탭 제거. 파트너사 공유 링크. 고객 intake 링크. 여권 사본 업로드. Agent 평가. 이메일 인프라).

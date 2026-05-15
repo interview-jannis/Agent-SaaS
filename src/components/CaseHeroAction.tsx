@@ -145,23 +145,17 @@ export function AgentCaseHero(p: AgentHeroProps) {
       )
 
     case 'awaiting_deposit': {
-      // SOP: admin issues a settlement invoice to the agent. Agent collects
-      // deposit from client off-platform, then forwards to admin. Once the
-      // settlement is marked paid, status advances to the info phase.
-      const headline = p.depositSettlementPaid
-        ? 'Deposit settled — moving to info phase'
-        : 'Forward deposit to admin'
       return (
         <HeroShell
-          tone="green"
-          eyebrow="Action needed"
-          headline={headline}
-          subline={<span>{p.depositSettlementPaid ? 'Settlement received by admin ✓' : 'Awaiting deposit settlement to admin'}.</span>}
+          tone="gray"
+          eyebrow="In progress"
+          headline={p.depositSettlementPaid ? 'Deposit settled ✓' : 'Deposit settlement in progress'}
+          subline={<span>{p.depositSettlementPaid ? 'Admin confirmed receipt. Moving to the next phase.' : 'Admin will issue a deposit invoice. Collect the deposit from your client and forward it to admin.'}</span>}
         >
-          {p.onScrollToDocuments && (
-            <button onClick={p.onScrollToDocuments}
-              className={`text-xs font-medium px-3 py-2 rounded-lg ${TONE.green.primaryBtn}`}>
-              Go to Invoices
+          {!p.depositSettlementPaid && (
+            <button onClick={p.onScrollToFinancials}
+              className={`text-xs font-medium px-3 py-2 rounded-lg ${TONE.gray.primaryBtn}`}>
+              Go to Financials
             </button>
           )}
         </HeroShell>
@@ -388,18 +382,13 @@ export function AdminCaseHero(p: AdminHeroProps) {
     case 'awaiting_deposit':
       return (
         <HeroShell
-          tone="gray"
-          eyebrow="Waiting on agent"
-          headline="Deposit settlement in progress"
-          subline={
-            <span>
-              Agent → Admin {p.depositSettlementPaid ? '✓' : '✗'}
-              {' '}— info collection starts once settlement is paid.
-            </span>
-          }
+          tone="green"
+          eyebrow="Action needed"
+          headline="Issue deposit invoice to agent"
+          subline={<span>Issue a deposit invoice to the agent. Once they forward payment, confirm receipt to advance the case.</span>}
         >
           <button onClick={p.onScrollToConfirmPayment}
-            className={`text-xs font-medium px-3 py-2 rounded-lg ${TONE.gray.primaryBtn}`}>
+            className={`text-xs font-medium px-3 py-2 rounded-lg ${TONE.green.primaryBtn}`}>
             Go to Financials
           </button>
         </HeroShell>

@@ -74,7 +74,7 @@ export default function AgentCaseContractSection({
   async function generate() {
     setCreating(true); setError('')
     try {
-      const total = totalKrw ? `₩${totalKrw.toLocaleString('ko-KR')}` : '[Total]'
+      const total = totalKrw ? `$${Number(totalKrw).toLocaleString('en-US')}` : '[Total]'
       const c = await createCaseContract(caseId, 'three_party', {
         AGENT_NAME: agentName,
         AGENT_COUNTRY: agentCountry ?? '',

@@ -31,6 +31,7 @@
 - 고객 견적가 = 원가 × (1 + markupRate). 커미션 = 판가 × commissionRate.
 - **카테고리별 독립 마진율** (`system_settings.markup_rates`, `MarkupRatesConfig`): K-Medical / K-Beauty / K-Wellness Spa / K-Wellness Other / K-Starcation / K-Education / Subpackage Hotel / Subpackage Other / Concierge 각각 설정. super admin 전용 편집.
 - `src/lib/pricing.ts` `getMarkupRate(category, subcategory, config)` — 단일 진실 소스.
+- **Subpackage markup=0 특칙 (5/15)**: 다른 카테고리와 달리 "무료 포함" 의미. 최저가 variant = ₩0 (Free), 상위 variant = `max(0, 선택가 − 최저가)` 차액만 고객 청구. 반면 K-Wellness-Other/Hotel 등 타 카테고리 markup=0은 원가 pass-through(변경 없음). `agent/product/page.tsx`의 `subpkgUpgradeUsd()`, `agent/product/review/page.tsx`의 `subpkgUpgradeKrw()`가 이 로직 담당.
 - 에이전트 커미션율 자동 적용 (당월 travel_completed 환자 수 기준, case_members 합산)
   - 0~10명: 15%
   - 11~30명: 20%

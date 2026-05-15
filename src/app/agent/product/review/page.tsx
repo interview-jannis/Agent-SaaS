@@ -196,17 +196,30 @@ export default function QuoteReviewPage() {
     return isHotelItem(found.product.product_categories?.name, found.product.product_subcategories?.name)
   }
 
+  // Subpackage markup=0: cheapest variant is free; client pays only the upgrade
+  // above the cheapest (max 0). Returns the upgrade in KRW.
+  function subpkgUpgradeKrw(found: { product: Product; variant: Variant }): number {
+    const variants = found.product.product_variants ?? []
+    const toKrw = (v: { base_price: number; price_currency: string }) =>
+      v.price_currency === 'USD' ? Math.round(v.base_price * exchangeRate) : v.base_price
+    const selectedKrw = toKrw(found.variant)
+    const minKrw = variants.length > 0 ? Math.min(...variants.map(toKrw)) : selectedKrw
+    return Math.max(0, selectedKrw - minKrw)
+  }
+
   // Per-unit USD (per person, or per night for hotels).
   function itemUsd(item: CartItem): number {
     const found = findVariant(item.productId, item.variantId)
     if (!found) return 0
     const cat = found.product.product_categories?.name
     const sub = found.product.product_subcategories?.name
+    const mr = getMarkupRate(cat, sub, markupRatesConfig)
+    if (cat === 'Subpackage' && mr === 0) return subpkgUpgradeKrw(found) / exchangeRate
     return variantPriceUsd({
       basePrice: found.variant.base_price,
       priceCurrency: found.variant.price_currency,
       exchangeRate,
-      markupRate: getMarkupRate(cat, sub, markupRatesConfig),
+      markupRate: mr,
     })
   }
 
@@ -237,11 +250,13 @@ export default function QuoteReviewPage() {
     if (!found) return 0
     const cat = found.product.product_categories?.name
     const sub = found.product.product_subcategories?.name
+    const mr = getMarkupRate(cat, sub, markupRatesConfig)
+    if (cat === 'Subpackage' && mr === 0) return subpkgUpgradeKrw(found) / exchangeRate
     return variantPriceUsd({
       basePrice: found.variant.base_price,
       priceCurrency: found.variant.price_currency,
       exchangeRate,
-      markupRate: getMarkupRate(cat, sub, markupRatesConfig),
+      markupRate: mr,
     })
   }
 
@@ -351,6 +366,16 @@ export default function QuoteReviewPage() {
         .from('agents').select('id, name, country, margin_rate').eq('auth_user_id', session.user.id).single()
       if (!agentData) throw new Error('Agent not found')
 
+      // Re-fetch markup rates at submit time to guarantee the latest admin
+      // config is used — avoids stale state if the row didn't exist at page
+      // load or was saved after this page mounted.
+      const { data: freshMrData } = await supabase
+        .from('system_settings').select('value').eq('key', 'markup_rates').maybeSingle()
+      const freshMr = freshMrData?.value as MarkupRatesConfig | null
+      const liveMarkupRates: MarkupRatesConfig = freshMr
+        ? { ...DEFAULT_MARKUP_RATES, ...freshMr }
+        : markupRatesConfig
+
       const agentMargin = agentData.margin_rate ?? 0.15
 
       // Create case — use MAX+1 to avoid collision after deletions (count+1 breaks on sparse gaps)
@@ -385,22 +410,26 @@ export default function QuoteReviewPage() {
       const memberIdMap: Record<string, string> = {}
       caseMembersData?.forEach((m) => { memberIdMap[m.client_id] = m.id })
 
-      // Create quote — totalKRW respects per-category margin rule (Subpackage
-      // and non-Spa/Henna Wellness pass through at cost unless subpkgConfig enabled).
+      const liveSubpkgUpgradeKrw = (found: { product: Product; variant: Variant }) => {
+        const variants = found.product.product_variants ?? []
+        const toKrw = (v: { base_price: number; price_currency: string }) =>
+          v.price_currency === 'USD' ? Math.round(v.base_price * exchangeRate) : v.base_price
+        const minKrw = variants.length > 0 ? Math.min(...variants.map(toKrw)) : toKrw(found.variant)
+        return Math.max(0, toKrw(found.variant) - minKrw)
+      }
+
       const groupsKRW = cart.groups.reduce((sum, g) =>
         sum + g.items.reduce((gs, it) => {
           const found = findVariant(it.productId, it.variantId)
           if (!found) return gs
           const cat = found.product.product_categories?.name
           const sub = found.product.product_subcategories?.name
-          const krwPer = variantPriceKrw({
-            basePrice: found.variant.base_price,
-            priceCurrency: found.variant.price_currency,
-            exchangeRate,
-            markupRate: getMarkupRate(cat, sub, markupRatesConfig),
-          })
+          const mr = getMarkupRate(cat, sub, liveMarkupRates)
           const gMemberCount = g.id === 'shared' ? sharedMemberCount : g.memberCount
           const mult = isHotelItem(cat, sub) ? nights : gMemberCount
+          const krwPer = cat === 'Subpackage' && mr === 0
+            ? liveSubpkgUpgradeKrw(found)
+            : variantPriceKrw({ basePrice: found.variant.base_price, priceCurrency: found.variant.price_currency, exchangeRate, markupRate: mr })
           return gs + krwPer * mult
         }, 0), 0)
 
@@ -409,12 +438,10 @@ export default function QuoteReviewPage() {
         if (!found) return sum
         const cat = found.product.product_categories?.name
         const sub = found.product.product_subcategories?.name
-        const krwPer = variantPriceKrw({
-          basePrice: found.variant.base_price,
-          priceCurrency: found.variant.price_currency,
-          exchangeRate,
-          markupRate: getMarkupRate(cat, sub, markupRatesConfig),
-        })
+        const mr = getMarkupRate(cat, sub, liveMarkupRates)
+        const krwPer = cat === 'Subpackage' && mr === 0
+          ? liveSubpkgUpgradeKrw(found)
+          : variantPriceKrw({ basePrice: found.variant.base_price, priceCurrency: found.variant.price_currency, exchangeRate, markupRate: mr })
         return sum + krwPer * svc.days
       }, 0)
 
@@ -456,12 +483,10 @@ export default function QuoteReviewPage() {
           const baseUnitKrw = found.variant.price_currency === 'USD'
             ? Math.round(found.variant.base_price * exchangeRate)
             : found.variant.base_price
-          const finalUnitKrw = variantPriceKrw({
-            basePrice: found.variant.base_price,
-            priceCurrency: found.variant.price_currency,
-            exchangeRate,
-            markupRate: getMarkupRate(cat, sub, markupRatesConfig),
-          })
+          const itemMarkupRate = getMarkupRate(cat, sub, liveMarkupRates)
+          const finalUnitKrw = cat === 'Subpackage' && itemMarkupRate === 0
+            ? liveSubpkgUpgradeKrw(found)
+            : variantPriceKrw({ basePrice: found.variant.base_price, priceCurrency: found.variant.price_currency, exchangeRate, markupRate: itemMarkupRate })
           // Bake "· N nights" into the snapshot label so customer-facing
           // QuoteDocument and admin SelectedProductsSection render the
           // multiplier without having to re-derive nights from the case.
@@ -507,12 +532,10 @@ export default function QuoteReviewPage() {
             : found.variant.base_price
           const svcCat = found.product.product_categories?.name
           const svcSub = found.product.product_subcategories?.name
-          const finalUnitKrw = variantPriceKrw({
-            basePrice: found.variant.base_price,
-            priceCurrency: found.variant.price_currency,
-            exchangeRate,
-            markupRate: getMarkupRate(svcCat, svcSub, markupRatesConfig),
-          })
+          const svcMarkupRate = getMarkupRate(svcCat, svcSub, liveMarkupRates)
+          const finalUnitKrw = svcCat === 'Subpackage' && svcMarkupRate === 0
+            ? liveSubpkgUpgradeKrw(found)
+            : variantPriceKrw({ basePrice: found.variant.base_price, priceCurrency: found.variant.price_currency, exchangeRate, markupRate: svcMarkupRate })
           const labelBase = found.variant.variant_label ?? null
           const labelWithDays = labelBase
             ? `${labelBase} · ${svc.days} ${svc.days === 1 ? 'day' : 'days'}`
@@ -543,7 +566,7 @@ export default function QuoteReviewPage() {
         const { data: depositSetting } = await supabase
           .from('system_settings').select('value').eq('key', 'deposit_percentage').maybeSingle()
         const depositPct = String((depositSetting?.value as { percentage?: number } | null)?.percentage ?? 50)
-        const totalDisplay = `₩${totalKRW.toLocaleString('ko-KR')}`
+        const totalDisplay = `$${Number(totalKRW).toLocaleString('en-US')}`
         await createCaseContract(caseData.id, 'three_party', {
           AGENT_NAME: agentData.name,
           AGENT_COUNTRY: (agentData as { country: string | null }).country ?? '',
