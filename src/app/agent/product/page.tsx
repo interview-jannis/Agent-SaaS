@@ -351,9 +351,16 @@ export default function AgentProductPage() {
       if (p.category_id !== selectedCategoryId) continue
       for (const n of productTagNames(p)) names.add(n)
     }
-    return subcategories
-      .filter(s => s.category_id === selectedCategoryId && names.has(s.name))
-      .map(s => s.name)
+    const out: string[] = []
+    const seenName = new Set<string>()
+    for (const s of subcategories) {
+      if (s.category_id !== selectedCategoryId) continue
+      if (!names.has(s.name)) continue
+      if (seenName.has(s.name)) continue
+      seenName.add(s.name)
+      out.push(s.name)
+    }
+    return out
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [products, subcategories, selectedCategoryId])
 
@@ -652,14 +659,19 @@ export default function AgentProductPage() {
     const cat = p.product_categories?.name
     const sub = p.product_subcategories?.name
     const markupRate = getMarkupRate(cat, sub, markupRatesConfig)
-    if (cat === 'Subpackage' && markupRate === 0) return 'Free'
-    const prices = variants.map(v => variantPriceUsd({
-      basePrice: v.base_price, priceCurrency: v.price_currency, exchangeRate,
-      markupRate,
-    }))
+    const isSubpkgFree = cat === 'Subpackage' && markupRate === 0
+    const prices = isSubpkgFree
+      ? variants.map(v => subpkgUpgradeUsd(p, v))
+      : variants.map(v => variantPriceUsd({
+          basePrice: v.base_price, priceCurrency: v.price_currency, exchangeRate,
+          markupRate,
+        }))
     const min = Math.min(...prices), max = Math.max(...prices)
     if (min === 0 && max === 0) return cat === 'Subpackage' ? 'Free' : 'Price on request'
     const fmt = (n: number) => `$${n.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
+    if (isSubpkgFree) {
+      return max === 0 ? 'Free' : `Free – ${fmt(max)}`
+    }
     if (min === max) return `$${min.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
     return `${fmt(min)} – ${fmt(max)}`
   }
@@ -1417,8 +1429,11 @@ export default function AgentProductPage() {
                     return Math.max(0, toKrwDetail(v) - minDetailKrw) / exchangeRate
                   return variantPriceUsd({ basePrice: v.base_price, priceCurrency: v.price_currency, exchangeRate, markupRate: detailMarkupRate })
                 }
+                const subpkgFreeSort = detailIsSubpkg && detailMarkupRate === 0
                 const variants = allDetailVariants
-                  .sort((a, b) => variantUsd(b) - variantUsd(a) || a.sort_order - b.sort_order)
+                  .sort((a, b) => (subpkgFreeSort
+                    ? variantUsd(a) - variantUsd(b)
+                    : variantUsd(b) - variantUsd(a)) || a.sort_order - b.sort_order)
 
                 if (variants.length <= 1) {
                   return (

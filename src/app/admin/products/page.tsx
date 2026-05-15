@@ -152,9 +152,16 @@ export default function AdminProductsPage() {
       if (p.category_id !== categoryFilter) continue
       for (const n of productTagNames(p)) names.add(n)
     }
-    return subcategories
-      .filter(s => s.category_id === categoryFilter && names.has(s.name))
-      .map(s => s.name)
+    const out: string[] = []
+    const seenName = new Set<string>()
+    for (const s of subcategories) {
+      if (s.category_id !== categoryFilter) continue
+      if (!names.has(s.name)) continue
+      if (seenName.has(s.name)) continue
+      seenName.add(s.name)
+      out.push(s.name)
+    }
+    return out
   })()
 
   // Row 3 pills: partner names (K-Medical/K-Beauty) or tertiary_category values (K-Wellness)
