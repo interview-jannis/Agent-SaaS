@@ -49,29 +49,147 @@ def smart_clean(text):
                 .replace('“', '"').replace('”', '"'))
 
 
+def collapse_ws(s):
+    """Collapse 2+ spaces into 1 (preserves leading whitespace decisions made by caller)."""
+    return re.sub(r'  +', ' ', s)
+
+
+def split_inline_bullets(line):
+    """Split on inline `•` or `·` (middle dot) separators when 2+ present."""
+    count = line.count('•') + line.count('·')
+    if count < 2:
+        return [line.strip()]
+    parts = re.split(r'[•·]', line)
+    return [collapse_ws(p.strip()) for p in parts if p.strip()]
+
+
+def paren_aware_split(text, sep):
+    """Split text on sep but only when sep occurs at paren-depth 0."""
+    out, buf, depth = [], [], 0
+    i = 0
+    while i < len(text):
+        ch = text[i]
+        if ch == '(':
+            depth += 1
+            buf.append(ch)
+        elif ch == ')':
+            depth = max(0, depth - 1)
+            buf.append(ch)
+        elif ch == sep and depth == 0:
+            out.append(''.join(buf))
+            buf = []
+        else:
+            buf.append(ch)
+        i += 1
+    if buf:
+        out.append(''.join(buf))
+    return out
+
+
+def collect_paragraph_block(lines, idx):
+    """Collect consecutive non-empty plain-text lines into a single paragraph string,
+    starting at idx. Returns (joined_text, end_idx). Stops at blank line, ★, ▶."""
+    pieces = []
+    i = idx
+    while i < len(lines):
+        s = lines[i].strip()
+        if not s:
+            break
+        if s.startswith('★') or s.startswith('▶'):
+            break
+        pieces.append(s)
+        i += 1
+    return ' '.join(pieces), i
+
+
 def normalize_existing(desc):
+    """Description already has ★/▶ structure. Normalize indent + split inline `•`."""
     text = smart_clean(desc)
+    lines = [ln.rstrip() for ln in text.split('\n')]
+
     out = []
-    for ln in text.split('\n'):
-        s = ln.lstrip().rstrip()
+    i = 0
+    while i < len(lines):
+        s = lines[i].lstrip().rstrip()
         if not s:
             if out and out[-1] != '':
                 out.append('')
+            i += 1
             continue
-        if s.startswith('★'):  # ★
+        if s.startswith('★'):
+            out.append('★ ' + collapse_ws(s[1:].lstrip()))
+            i += 1
+            continue
+        if s.startswith('▶'):
             head = s[1:].lstrip()
-            out.append('★ ' + head)
-            continue
-        if s.startswith('▶'):  # ▶
-            out.append('   ▶ ' + s[1:].lstrip())
-            continue
+            # If header line itself has inline `•`, treat the part before first `•` as section name
+            if '•' in head:
+                cut = head.index('•')
+                section = head[:cut].rstrip()
+                rest = head[cut:]
+                if section:
+                    out.append('   ▶ ' + collapse_ws(section))
+                # join any continuation paragraph lines under this section
+                para_text = rest
+                tail, j = collect_paragraph_block(lines, i + 1)
+                if tail:
+                    para_text = para_text + ' ' + tail
+                    i = j
+                else:
+                    i += 1
+                items = split_inline_bullets(para_text)
+                for it in items:
+                    if it:
+                        out.append('      • ' + it)
+                continue
+            else:
+                out.append('   ▶ ' + collapse_ws(head))
+                i += 1
+                continue
         if s.startswith('*') and not s.startswith('**'):
-            out.append('      • ' + s[1:].lstrip())
+            content = s[1:].lstrip()
+            if '•' in content:
+                for it in split_inline_bullets(content):
+                    if it:
+                        out.append('      • ' + it)
+            else:
+                out.append('      • ' + collapse_ws(content))
+            i += 1
             continue
-        if s.startswith('•') or s.startswith('·'):  # • ·
-            out.append('      • ' + s.lstrip('•·').lstrip())
+        if s.startswith('•') or s.startswith('·'):
+            content = s.lstrip('•·').lstrip()
+            # Glue with continuation lines (until blank or ★/▶), then split inline `•`
+            tail, j = collect_paragraph_block(lines, i + 1)
+            if tail:
+                content = content + ' ' + tail
+                i = j
+            else:
+                i += 1
+            for it in split_inline_bullets(content):
+                if it:
+                    out.append('      • ' + it)
             continue
-        out.append('      ' + s)
+        # Plain paragraph line — gather full paragraph then split on bullets/separators
+        para, j = collect_paragraph_block(lines, i)
+        i = j
+        if '•' in para:
+            for it in split_inline_bullets(para):
+                if it:
+                    out.append('      • ' + it)
+        elif para.count(';') >= 2:
+            for piece in paren_aware_split(para, ';'):
+                p = piece.strip(' ,;+')
+                if p:
+                    out.append('      • ' + collapse_ws(p))
+        elif paren_aware_split(para, '+').__len__() >= 4 and len(para) > 60:
+            # `+` separated inline run, paren-aware (4+ pieces to avoid false splits)
+            for piece in paren_aware_split(para, '+'):
+                p = piece.strip(' ,;+')
+                if p:
+                    out.append('      • ' + collapse_ws(p))
+        else:
+            out.append('      ' + collapse_ws(para))
+
     cleaned, prev_blank = [], True
     for ln in out:
         if not ln.strip():
