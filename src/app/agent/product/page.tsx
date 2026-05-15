@@ -31,6 +31,7 @@ type Product = {
   has_female_doctor: boolean
   has_prayer_room: boolean
   dietary_type: string
+  tertiary_category: string | null
   category_id: string
   subcategory_id: string | null
   product_categories: { name: string } | null
@@ -243,7 +244,7 @@ export default function AgentProductPage() {
         supabase.from('system_settings').select('value').eq('key', 'markup_rates').maybeSingle(),
         supabase
           .from('products')
-          .select('id, name, description, base_price, price_currency, duration_value, duration_unit, quantity_type, partner_name, partner_short, has_female_doctor, has_prayer_room, dietary_type, category_id, subcategory_id, product_categories(name), product_subcategories!products_subcategory_id_fkey(name), product_subcategory_tags(product_subcategories!product_subcategory_tags_subcategory_id_fkey(name)), product_images(image_url, is_primary), product_variants(id, variant_label, base_price, price_currency, sort_order, is_active)')
+          .select('id, name, description, base_price, price_currency, duration_value, duration_unit, quantity_type, partner_name, partner_short, has_female_doctor, has_prayer_room, dietary_type, tertiary_category, category_id, subcategory_id, product_categories(name), product_subcategories!products_subcategory_id_fkey(name), product_subcategory_tags(product_subcategories!product_subcategory_tags_subcategory_id_fkey(name)), product_images(image_url, is_primary), product_variants(id, variant_label, base_price, price_currency, sort_order, is_active)')
           .eq('is_active', true),
         supabase.from('product_categories').select('id, name').order('sort_order').order('name'),
         supabase.from('product_subcategories').select('id, category_id, name, sort_order').order('sort_order').order('name'),
@@ -313,7 +314,14 @@ export default function AgentProductPage() {
     const list = products.filter((p) => {
       if (selectedCategoryId && p.category_id !== selectedCategoryId) return false
       if (selectedSubcategoryName && !productTagNames(p).includes(selectedSubcategoryName)) return false
-      if (selectedPartnerName && p.partner_name !== selectedPartnerName) return false
+      if (selectedPartnerName) {
+        const catName = categories.find(c => c.id === p.category_id)?.name ?? ''
+        if (catName === 'K-Wellness') {
+          if (p.tertiary_category !== selectedPartnerName) return false
+        } else {
+          if (p.partner_name !== selectedPartnerName) return false
+        }
+      }
       return passesCrossFilters(p)
     })
     return list.sort((a, b) => priceSortKey(b) - priceSortKey(a))
@@ -373,6 +381,15 @@ export default function AgentProductPage() {
       if (selectedSubcategoryName && !productTagNames(p).includes(selectedSubcategoryName)) return false
       return true
     })
+
+    // K-Wellness: Row 3 pills come from tertiary_category (only when a subcategory is selected)
+    if (selectedCatName === 'K-Wellness' && selectedSubcategoryName !== '') {
+      const values = new Set<string>()
+      for (const p of relevant) { if (p.tertiary_category) values.add(p.tertiary_category) }
+      return values.size > 1 ? Array.from(values).sort() : []
+    }
+
+    // K-Medical / K-Beauty: Row 3 pills come from partner_name
     const allPartnerGrouped = relevant.length > 0 &&
       relevant.every(p => productTagNames(p).some(n => PARTNER_GROUPED_SUBCATEGORIES.has(n)))
     const isKBeauty = selectedCatName === 'K-Beauty'
@@ -927,7 +944,10 @@ export default function AgentProductPage() {
               All
             </button>
             {availablePartnerNames.map(partner => {
-              const displayName = products.find(p => p.partner_name === partner)?.partner_short ?? partner
+              const selectedCatName = categories.find(c => c.id === selectedCategoryId)?.name ?? ''
+              const displayName = selectedCatName === 'K-Wellness'
+                ? partner
+                : (products.find(p => p.partner_name === partner)?.partner_short ?? partner)
               return (
                 <button key={partner} onClick={() => setSelectedPartnerName(partner)}
                   className={`shrink-0 px-2.5 py-1 text-[11px] rounded-full border transition-colors ${selectedPartnerName === partner ? 'bg-[#0f4c35] border-[#0f4c35] text-white' : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'}`}>

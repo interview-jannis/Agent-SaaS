@@ -29,8 +29,13 @@ import * as XLSX from 'xlsx'
 
 type Row = {
   product_number?: string
+  // v22 Excel uses primary_category/secondary_category/tertiary_category;
+  // legacy format used category/subcategory. Both are normalised below.
   category?: string
+  primary_category?: string
   subcategory?: string
+  secondary_category?: string
+  tertiary_category?: string
   partner_name?: string
   partner_short?: string
   name?: string
@@ -171,6 +176,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: `Could not parse xlsx: ${(e as Error).message}` }, { status: 400 })
   }
 
+  // Normalise v22 Excel column name aliases → internal field names
+  for (const r of rows) {
+    if (!r.category && r.primary_category) r.category = r.primary_category
+    if (!r.subcategory && r.secondary_category) r.subcategory = r.secondary_category
+  }
+
   // Health Screening: gender is product identity, not a variant selector.
   // Flatten "VIP Premium / Male" → product name "VIP Premium Male" with no variant label,
   // so each gender gets its own product row (and its own description).
@@ -281,6 +292,7 @@ export async function POST(req: Request) {
       location_address: normStr(first.location_address) ?? null,
       location: normStr(first.location) ?? null,
       full_address: normStr(first.full_address) ?? null,
+      tertiary_category: normStr(first.tertiary_category) ?? null,
       contact_channels: buildContactChannels(first),
       is_active: normBool(first.is_active) ?? true,
     }
@@ -317,6 +329,9 @@ export async function POST(req: Request) {
         ['contact_channels',
           JSON.stringify((existing as ProductRecord & { contact_channels?: unknown }).contact_channels ?? null),
           JSON.stringify(desired.contact_channels ?? null)],
+        ['tertiary_category',
+          (existing as ProductRecord & { tertiary_category?: string | null }).tertiary_category ?? null,
+          desired.tertiary_category],
         ['is_active', existing.is_active, desired.is_active],
       ]
       const productChanges: Change[] = []

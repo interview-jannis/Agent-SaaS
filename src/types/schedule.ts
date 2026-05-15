@@ -3,7 +3,7 @@
 // One row per schedule item (a single line in the rendered itinerary).
 // Grouped at render time by (day, block, time, sortOrder).
 
-export type ScheduleItemBlock = 'morning' | 'afternoon' | 'evening'
+export type ScheduleItemBlock = 'night' | 'morning' | 'afternoon' | 'evening'
 
 export type ScheduleItemType = 'appointment' | 'transfer' | 'meal' | 'hotel' | 'free'  // hotel/free kept for backward-compat read; new items use appointment/transfer/meal only
 
@@ -17,12 +17,23 @@ export const SCHEDULE_ITEM_TYPE_LABEL: Record<ScheduleItemType, string> = {
   free:        'Free time', // legacy
 }
 
-export const SCHEDULE_BLOCKS: ScheduleItemBlock[] = ['morning', 'afternoon', 'evening']
+export const SCHEDULE_BLOCKS: ScheduleItemBlock[] = ['night', 'morning', 'afternoon', 'evening']
 
 export const SCHEDULE_BLOCK_LABEL: Record<ScheduleItemBlock, string> = {
+  night: 'Night',
   morning: 'Morning',
   afternoon: 'Afternoon',
   evening: 'Evening',
+}
+
+// Infer block from a "HH:MM" time string.
+// 00:00–05:59 → night, 06:00–11:59 → morning, 12:00–17:59 → afternoon, 18:00–23:59 → evening
+export function blockFromTime(time: string): ScheduleItemBlock {
+  const h = parseInt(time.split(':')[0], 10)
+  if (h < 6) return 'night'
+  if (h < 12) return 'morning'
+  if (h < 18) return 'afternoon'
+  return 'evening'
 }
 
 export type ScheduleItem = {

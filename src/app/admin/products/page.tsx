@@ -32,6 +32,7 @@ type Product = {
   base_price: number
   price_currency: 'KRW' | 'USD' | null
   is_active: boolean
+  tertiary_category: string | null
   category_id: string
   subcategory_id: string | null
   product_categories: { name: string } | null
@@ -96,7 +97,7 @@ export default function AdminProductsPage() {
       supabase.from('product_subcategories').select('id, category_id, name, sort_order').order('sort_order').order('name'),
       supabase
         .from('products')
-        .select('id, product_number, name, description, partner_name, partner_short, base_price, price_currency, is_active, category_id, subcategory_id, product_categories(name), product_subcategories!products_subcategory_id_fkey(name), product_subcategory_tags(product_subcategories!product_subcategory_tags_subcategory_id_fkey(name)), product_images(image_url, is_primary), product_variants(id, variant_label, base_price, price_currency, sort_order, is_active)')
+        .select('id, product_number, name, description, partner_name, partner_short, base_price, price_currency, is_active, tertiary_category, category_id, subcategory_id, product_categories(name), product_subcategories!products_subcategory_id_fkey(name), product_subcategory_tags(product_subcategories!product_subcategory_tags_subcategory_id_fkey(name)), product_images(image_url, is_primary), product_variants(id, variant_label, base_price, price_currency, sort_order, is_active)')
         .order('product_number', { ascending: true }),
       supabase.from('system_settings').select('value').eq('key', 'markup_rates').maybeSingle(),
       supabase.from('system_settings').select('value').eq('key', 'product_price_rate').single(),
@@ -155,8 +156,7 @@ export default function AdminProductsPage() {
       .map(s => s.name)
   })()
 
-  // Partners available in the current category+subcategory scope —
-  // only computed for PARTNER_GROUPED_SUBCATEGORIES or K-Beauty with a subcategory selected
+  // Row 3 pills: partner names (K-Medical/K-Beauty) or tertiary_category values (K-Wellness)
   const availablePartners = (() => {
     if (categoryFilter === '') return [] as string[]
     const selectedCatName = categories.find(c => c.id === categoryFilter)?.name ?? ''
@@ -165,6 +165,14 @@ export default function AdminProductsPage() {
       if (subcategoryFilter && !productTagNames(p).includes(subcategoryFilter)) return false
       return true
     })
+
+    // K-Wellness: use tertiary_category values when a subcategory is selected
+    if (selectedCatName === 'K-Wellness' && subcategoryFilter !== '') {
+      const values = new Set<string>()
+      for (const p of relevant) { if (p.tertiary_category) values.add(p.tertiary_category) }
+      return values.size > 1 ? Array.from(values).sort() : []
+    }
+
     const allPartnerGrouped =
       relevant.length > 0 &&
       relevant.every((p) => productTagNames(p).some(n => PARTNER_GROUPED_SUBCATEGORIES.has(n)))
@@ -180,7 +188,9 @@ export default function AdminProductsPage() {
       p.product_number.toLowerCase().includes(search.toLowerCase())
     const matchCategory = categoryFilter === '' || p.category_id === categoryFilter
     const matchSubcategory = subcategoryFilter === '' || productTagNames(p).includes(subcategoryFilter)
-    const matchPartner = partnerFilter === '' || p.partner_name === partnerFilter
+    const catName = categories.find(c => c.id === p.category_id)?.name ?? ''
+    const matchPartner = partnerFilter === ''
+      || (catName === 'K-Wellness' ? p.tertiary_category === partnerFilter : p.partner_name === partnerFilter)
     const matchActive =
       activeFilter === '' ||
       (activeFilter === 'active' && p.is_active) ||
@@ -930,13 +940,16 @@ export default function AdminProductsPage() {
             </div>
           )}
 
-          {/* Row 4: partner pills — when multiple partners available */}
+          {/* Row 4: partner/tertiary pills — when multiple options available */}
           {availablePartners.length > 1 && (
             <div className="flex items-center gap-1.5 flex-wrap">
               {['', ...availablePartners].map((partnerName) => {
+                const selectedCatName = categories.find(c => c.id === categoryFilter)?.name ?? ''
                 const displayName = partnerName
-                  ? (products.find(p => p.partner_name === partnerName)?.partner_short ?? partnerName)
-                  : 'All Partners'
+                  ? (selectedCatName === 'K-Wellness'
+                    ? partnerName
+                    : (products.find(p => p.partner_name === partnerName)?.partner_short ?? partnerName))
+                  : 'All'
                 return (
                   <button key={partnerName || 'all'}
                     onClick={() => setPartnerFilter(partnerName)}

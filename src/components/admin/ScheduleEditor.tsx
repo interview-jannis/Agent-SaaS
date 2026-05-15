@@ -25,6 +25,7 @@ import {
   SCHEDULE_ITEM_TYPES,
   SCHEDULE_ITEM_TYPE_LABEL,
   compareScheduleItems,
+  blockFromTime,
   dateForDay,
   formatDayHeader,
   generateScheduleItemId,
@@ -439,7 +440,7 @@ export default function ScheduleEditor({
     setCollapsedDays(prev => { const n = new Set(prev); n.delete(day); return n })
   }
 
-  function addFreeTime(day: number, kind: 'morning' | 'afternoon' | 'evening' | 'full') {
+  function addFreeTime(day: number, kind: 'night' | 'morning' | 'afternoon' | 'evening' | 'full') {
     const baseSort = nextSortOrderForDay(day)
     if (kind === 'full') {
       const blocks: Array<'morning' | 'afternoon' | 'evening'> = ['morning', 'afternoon', 'evening']
@@ -674,7 +675,8 @@ export default function ScheduleEditor({
   const availableLocations = useMemo<string[]>(() => {
     const set = new Set<string>()
     for (const cp of caseProducts) {
-      const loc = cp.location?.trim()
+      if (cp.isTripService && !cp.isHotel) continue
+      const loc = (cp.location ?? cp.partnerName)?.trim()
       if (loc) set.add(loc)
     }
     return [...set].sort((a, b) => a.localeCompare(b))
@@ -801,31 +803,50 @@ export default function ScheduleEditor({
                       const entry = entryByVariant.get(cp.variantId)
                       const checked = !!entry
                       const baseLabel = `${cp.partnerName ? `${cp.partnerName} · ` : ''}${cp.productName}${cp.variantLabel ? ` · ${cp.variantLabel}` : ''}`
-                      const hoursUnit = (cp.durationUnit ?? '').toLowerCase().startsWith('h')
+                      const hours = entry?.hours ?? 0
                       return (
-                        <span key={cp.variantId} className="inline-flex items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => toggleDayVariant(day, cp.variantId)}
-                            className={`text-[11px] font-medium px-2 py-0.5 rounded-full border transition-colors ${
-                              checked
-                                ? 'bg-[#0f4c35] text-white border-[#0f4c35]'
-                                : 'bg-white text-gray-600 border-gray-200 hover:border-[#0f4c35]'
-                            }`}
-                          >
-                            {checked ? '✓ ' : '+ '}{baseLabel}
-                          </button>
-                          {checked && hoursUnit && (
-                            <span className="inline-flex items-center gap-0.5 text-[10px] text-gray-600 bg-white border border-gray-200 rounded-full px-1.5 py-0.5">
+                        <span key={cp.variantId}>
+                          {!checked ? (
+                            <button
+                              type="button"
+                              onClick={() => toggleDayVariant(day, cp.variantId)}
+                              className="text-[11px] font-medium px-2 py-0.5 rounded-full border bg-white text-gray-600 border-gray-200 hover:border-[#0f4c35] transition-colors"
+                            >
+                              + {baseLabel}
+                            </button>
+                          ) : (
+                            <span className="inline-flex items-center gap-0.5 bg-[#0f4c35] text-white rounded-full border border-[#0f4c35] pl-2 pr-1.5 py-0.5 text-[11px] font-medium">
+                              <button
+                                type="button"
+                                onClick={() => toggleDayVariant(day, cp.variantId)}
+                                className="hover:opacity-70 transition-opacity"
+                              >
+                                ✓ {baseLabel}
+                              </button>
+                              <span className="opacity-30 mx-1">·</span>
+                              <button
+                                type="button"
+                                onClick={() => setDayVariantHours(day, cp.variantId, Math.max(0, hours - 1))}
+                                className="hover:opacity-70 transition-opacity px-0.5 leading-none"
+                              >
+                                −
+                              </button>
                               <input
                                 type="number"
                                 min={0}
-                                step={0.5}
-                                value={entry?.hours ?? 0}
-                                onChange={(e) => setDayVariantHours(day, cp.variantId, Number(e.target.value) || 0)}
-                                className="w-9 text-[10px] text-gray-900 bg-transparent focus:outline-none text-right"
+                                step={1}
+                                value={hours}
+                                onChange={(e) => setDayVariantHours(day, cp.variantId, Math.max(0, Number(e.target.value) || 0))}
+                                className="w-5 text-[11px] text-white bg-transparent focus:outline-none text-center [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                               />
-                              <span className="text-gray-400">h</span>
+                              <span className="opacity-60 text-[10px] -ml-0.5">h</span>
+                              <button
+                                type="button"
+                                onClick={() => setDayVariantHours(day, cp.variantId, hours + 1)}
+                                className="hover:opacity-70 transition-opacity px-0.5 leading-none"
+                              >
+                                +
+                              </button>
                             </span>
                           )}
                         </span>
@@ -1244,7 +1265,7 @@ export default function ScheduleEditor({
 function FreeTimeMenu({
   onPick, dropUp,
 }: {
-  onPick: (kind: 'morning' | 'afternoon' | 'evening' | 'full') => void
+  onPick: (kind: 'night' | 'morning' | 'afternoon' | 'evening' | 'full') => void
   dropUp?: boolean
 }) {
   const [open, setOpen] = useState(false)
@@ -1261,6 +1282,7 @@ function FreeTimeMenu({
       {open && (
         <div className={`absolute right-0 z-50 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[150px] divide-y divide-gray-100 ${dropUp ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
           {[
+            { k: 'night' as const, label: 'Night free' },
             { k: 'morning' as const, label: 'Morning free' },
             { k: 'afternoon' as const, label: 'Afternoon free' },
             { k: 'evening' as const, label: 'Evening free' },
@@ -1349,10 +1371,10 @@ function LocationCombobox({
       {!disabled && options.length > 0 && (
         <button type="button"
           onClick={() => setOpen(o => !o)}
-          className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 text-xs px-1"
+          className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
           tabIndex={-1}
         >
-          ▾
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
         </button>
       )}
       {open && (
@@ -1655,7 +1677,7 @@ const inScope = itemGroupIds === null
               ))}
             </select>
             <span className="text-gray-200">|</span>
-            <Time24Input value={item.time ?? null} onChange={(v) => onUpdate({ time: v })} />
+            <Time24Input value={item.time ?? null} onChange={(v) => onUpdate({ time: v, ...(v ? { block: blockFromTime(v) } : {}) })} />
             <span className="text-xs text-gray-400">→</span>
             <Time24Input value={item.endTime ?? null} onChange={(v) => onUpdate({ endTime: v })} />
           </div>
