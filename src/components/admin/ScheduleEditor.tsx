@@ -1628,58 +1628,63 @@ const inScope = itemGroupIds === null
       {/* Row 1: committed = compact text labels; pending = full selects */}
       <div className="flex items-center gap-2">
         {isPending ? (
-          /* Pending: full select inputs */
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <select
-              value={item.itemType ?? 'appointment'}
-              onChange={(e) => {
-                const t = e.target.value as ScheduleItemType
-                const updates: Partial<ScheduleItem> = { itemType: t }
-                if (t === 'free' && !item.title.trim()) updates.title = 'Free time'
-                if (t === 'hotel') {
-                  if (item.hotelCheckType && !item.title.trim())
-                    updates.title = item.hotelCheckType === 'checkin' ? 'Hotel Check-in' : item.hotelCheckType === 'checkout' ? 'Hotel Check-out' : 'Hotel Stay'
-                  const hotelProduct = caseProducts.find(cp => cp.isHotel)
-                  if (hotelProduct && !item.variantId) updates.variantId = hotelProduct.variantId
-                }
-                onUpdate(updates)
-              }}
-              className="text-xs font-medium border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-900 focus:outline-none focus:border-[#0f4c35]"
-              title="Item type"
-            >
-              {SCHEDULE_ITEM_TYPES.map(t => (
-                <option key={t} value={t}>{SCHEDULE_ITEM_TYPE_LABEL[t]}</option>
-              ))}
-            </select>
-            <span className="text-gray-200">|</span>
-            <select
-              value={item.block}
-              onChange={(e) => onUpdate({ block: e.target.value as ScheduleItemBlock })}
-              className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-900 focus:outline-none focus:border-[#0f4c35]"
-            >
-              {SCHEDULE_BLOCKS.map(b => (
-                <option key={b} value={b}>{SCHEDULE_BLOCK_LABEL[b]}</option>
-              ))}
-            </select>
-            <span className="text-xs text-gray-400">→</span>
-            <select
-              value={item.endBlock ?? ''}
-              onChange={(e) => {
-                const v = e.target.value as ScheduleItemBlock | ''
-                onUpdate({ endBlock: v ? (v as ScheduleItemBlock) : null })
-              }}
-              className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-900 focus:outline-none focus:border-[#0f4c35]"
-              title="End block"
-            >
-              <option value="">Same</option>
-              {SCHEDULE_BLOCKS.map(b => (
-                <option key={b} value={b}>{SCHEDULE_BLOCK_LABEL[b]}</option>
-              ))}
-            </select>
-            <span className="text-gray-200">|</span>
-            <Time24Input value={item.time ?? null} onChange={(v) => onUpdate({ time: v, ...(v ? { block: blockFromTime(v) } : {}) })} />
-            <span className="text-xs text-gray-400">→</span>
-            <Time24Input value={item.endTime ?? null} onChange={(v) => onUpdate({ endTime: v, ...(!item.time && v ? { block: blockFromTime(v) } : {}) })} />
+          /* Pending: full select inputs — two rows */
+          <div className="flex flex-col gap-1.5">
+            {/* Row 1: type | block → endBlock */}
+            <div className="flex items-center gap-1.5">
+              <select
+                value={item.itemType ?? 'appointment'}
+                onChange={(e) => {
+                  const t = e.target.value as ScheduleItemType
+                  const updates: Partial<ScheduleItem> = { itemType: t }
+                  if (t === 'free' && !item.title.trim()) updates.title = 'Free time'
+                  if (t === 'hotel') {
+                    if (item.hotelCheckType && !item.title.trim())
+                      updates.title = item.hotelCheckType === 'checkin' ? 'Hotel Check-in' : item.hotelCheckType === 'checkout' ? 'Hotel Check-out' : 'Hotel Stay'
+                    const hotelProduct = caseProducts.find(cp => cp.isHotel)
+                    if (hotelProduct && !item.variantId) updates.variantId = hotelProduct.variantId
+                  }
+                  onUpdate(updates)
+                }}
+                className="text-xs font-medium border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-900 focus:outline-none focus:border-[#0f4c35]"
+                title="Item type"
+              >
+                {SCHEDULE_ITEM_TYPES.map(t => (
+                  <option key={t} value={t}>{SCHEDULE_ITEM_TYPE_LABEL[t]}</option>
+                ))}
+              </select>
+              <span className="text-gray-200">|</span>
+              <select
+                value={item.block}
+                onChange={(e) => onUpdate({ block: e.target.value as ScheduleItemBlock })}
+                className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-900 focus:outline-none focus:border-[#0f4c35]"
+              >
+                {SCHEDULE_BLOCKS.map(b => (
+                  <option key={b} value={b}>{SCHEDULE_BLOCK_LABEL[b]}</option>
+                ))}
+              </select>
+              <span className="text-xs text-gray-400">→</span>
+              <select
+                value={item.endBlock ?? ''}
+                onChange={(e) => {
+                  const v = e.target.value as ScheduleItemBlock | ''
+                  onUpdate({ endBlock: v ? (v as ScheduleItemBlock) : null })
+                }}
+                className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-900 focus:outline-none focus:border-[#0f4c35]"
+                title="End block"
+              >
+                <option value="">Same</option>
+                {SCHEDULE_BLOCKS.map(b => (
+                  <option key={b} value={b}>{SCHEDULE_BLOCK_LABEL[b]}</option>
+                ))}
+              </select>
+            </div>
+            {/* Row 2: start time → end time */}
+            <div className="flex items-center gap-1.5">
+              <Time24Input value={item.time ?? null} onChange={(v) => onUpdate({ time: v, ...(v ? { block: blockFromTime(v) } : {}) })} />
+              <span className="text-xs text-gray-400">→</span>
+              <Time24Input value={item.endTime ?? null} onChange={(v) => onUpdate({ endTime: v, ...(!item.time && v ? { block: blockFromTime(v) } : {}) })} />
+            </div>
           </div>
         ) : (
           /* Committed: compact read-only text */
