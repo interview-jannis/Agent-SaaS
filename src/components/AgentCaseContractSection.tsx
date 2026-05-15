@@ -7,6 +7,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import CaseContractViewer from './CaseContractViewer'
+import ConfirmModal from './ConfirmModal'
 import {
   createCaseContract,
   getCaseContract,
@@ -43,6 +44,7 @@ export default function AgentCaseContractSection({
   const [copied, setCopied] = useState(false)
   const [emailSending, setEmailSending] = useState(false)
   const [emailSent, setEmailSent] = useState(false)
+  const [pendingContractEmail, setPendingContractEmail] = useState(false)
   // Offline signing — when client is physically present and the agent collects
   // the signature on this device instead of sending the link.
   const [clientSignMode, setClientSignMode] = useState(false)
@@ -179,6 +181,17 @@ export default function AgentCaseContractSection({
   const isExpanded = expanded ?? !fullySigned
 
   return (
+    <>
+      {pendingContractEmail && clientEmail && (
+        <ConfirmModal
+          title="Send Contract email?"
+          description={clientEmail}
+          confirmLabel="Send Contract"
+          loading={emailSending}
+          onCancel={() => setPendingContractEmail(false)}
+          onConfirm={() => { setPendingContractEmail(false); sendContractEmail() }}
+        />
+      )}
     <section id="case-contract" className={`scroll-mt-20 rounded-2xl overflow-hidden ${caseStatus === 'awaiting_contract' ? 'bg-white border-2 border-[#0f4c35]' : 'bg-gray-50 border border-gray-200'}`}>
       <div className={`flex flex-col sm:flex-row sm:items-center gap-2 px-5 py-2.5 border-b ${caseStatus === 'awaiting_contract' ? 'bg-green-50 border-green-200' : 'bg-gray-100 border-gray-200'}`}>
         <div className="flex-1 min-w-0">
@@ -193,14 +206,14 @@ export default function AgentCaseContractSection({
           )}
           {contract && contract.client_token && !contract.client_signed_at && (
             <>
-              <button onClick={copyClientLink}
-                className="flex-1 sm:flex-none text-xs font-medium bg-gray-700 text-white hover:bg-gray-600 px-3 py-1.5 rounded-lg">
-                {copied ? '✓ Copied!' : 'Copy Link'}
-              </button>
               {clientEmail && (
-                <button onClick={sendContractEmail} disabled={emailSending}
-                  className="flex-1 sm:flex-none text-xs font-medium px-3 py-1.5 rounded-lg bg-[#0f4c35] text-white hover:bg-[#0a3828] disabled:opacity-40">
-                  {emailSent ? '✓ Sent!' : emailSending ? 'Sending…' : 'Send Contract'}
+                <button onClick={() => setPendingContractEmail(true)} disabled={emailSending}
+                  className="flex-1 sm:flex-none flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-[#0f4c35] text-white hover:bg-[#0a3828] disabled:opacity-40">
+                  {emailSent ? (
+                    <><svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>Sent!</>
+                  ) : emailSending ? 'Sending…' : (
+                    <><svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" /></svg>Send Contract</>
+                  )}
                 </button>
               )}
               <button onClick={() => { setClientSignMode(v => !v); setError('') }}
@@ -262,5 +275,6 @@ export default function AgentCaseContractSection({
       )}
       </div>{/* /p-5 content wrapper */}
     </section>
+    </>
   )
 }

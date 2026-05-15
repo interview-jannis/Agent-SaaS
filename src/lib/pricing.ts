@@ -45,7 +45,7 @@ export function getMarkupRate(
   if (category === 'K-Education') return c['K-Education'] ?? 0
   if (category === 'K-Starcation') return c['K-Starcation'] ?? 0
   if (category === 'K-Wellness') {
-    if (subcategory === 'Spa') return c['K-Wellness-Spa'] ?? 0
+    if (subcategory === 'SPA & Aesthetic') return c['K-Wellness-Spa'] ?? 0
     if (subcategory === 'Henna') return c['K-Wellness-Henna'] ?? 0
     return c['K-Wellness-Other'] ?? 0
   }

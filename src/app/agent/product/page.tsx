@@ -81,6 +81,10 @@ type ClientForm = {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
+function fmtUSD(n: number) {
+  return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
 const CART_VERSION = 4  // bump to invalidate old localStorage carts
 
 // Subcategories where products are grouped by partner_name in the catalog grid
@@ -181,6 +185,7 @@ export default function AgentProductPage() {
   const [expandedVariantGroup, setExpandedVariantGroup] = useState<Record<string, boolean>>({})
   const [modalImageIndex, setModalImageIndex] = useState(0)
   const [cartRestoredBanner, setCartRestoredBanner] = useState(false)
+  const [showCartDrawer, setShowCartDrawer] = useState(false)
 
   function openDetail(product: Product) {
     setModalImageIndex(imageIndexes[product.id] ?? 0)
@@ -500,6 +505,15 @@ export default function AgentProductPage() {
     )
   }
 
+  // Remove a specific item from a specific group (used by cart drawer, which targets any group).
+  function removeFromGroup(groupId: string, productId: string, variantId: string) {
+    setGroups(prev =>
+      prev.map(g => g.id !== groupId ? g : {
+        ...g, items: g.items.filter(it => !(it.productId === productId && it.variantId === variantId))
+      })
+    )
+  }
+
   // ── Cart handlers — trip services ──────────────────────────────────────────
 
   function toggleServiceItem(productId: string, variantId: string) {
@@ -507,12 +521,17 @@ export default function AgentProductPage() {
       const idx = prev.findIndex(it => it.productId === productId && it.variantId === variantId)
       if (idx >= 0) return prev.filter((_, i) => i !== idx)
       const p = products.find(x => x.id === productId)
-      const defaultDays = isHotelItem(p?.product_categories?.name, p?.product_subcategories?.name)
-        ? Math.max(nights, 1)
-        : p?.quantity_type === 'per_day'
-        ? Math.max(daysBetween(dateStart, dateEnd), 1)
-        : 1
-      return [...prev, { productId, variantId, days: defaultDays }]
+      const isHotel = isHotelItem(p?.product_categories?.name, p?.product_subcategories?.name)
+      if (isHotel) {
+        // Remaining nights after existing hotels
+        const usedNights = prev.reduce((sum, s) => {
+          const sp = products.find(x => x.id === s.productId)
+          return isHotelItem(sp?.product_categories?.name, sp?.product_subcategories?.name) ? sum + s.days : sum
+        }, 0)
+        const remaining = Math.max(1, nights - usedNights)
+        return [...prev, { productId, variantId, days: remaining }]
+      }
+      return [...prev, { productId, variantId, days: Math.max(daysBetween(dateStart, dateEnd), 1) }]
     })
   }
 
@@ -645,6 +664,14 @@ export default function AgentProductPage() {
   function renderProductCard(product: Product, compact = false) {
     const isSubpkg = isSubpackageProduct(product)
     const inServices = isSubpkg && tripServices.some(it => it.productId === product.id)
+    const isHotelProduct = isHotelItem(product.product_categories?.name, product.product_subcategories?.name)
+    const totalHotelNightsUsed = isHotelProduct
+      ? tripServices.reduce((sum, s) => {
+          const sp = products.find(x => x.id === s.productId)
+          return isHotelItem(sp?.product_categories?.name, sp?.product_subcategories?.name) ? sum + s.days : sum
+        }, 0)
+      : 0
+    const hotelNightsFull = isHotelProduct && !inServices && totalHotelNightsUsed >= nights
     const activeGroup = groups[activeGroupIndex]
     const inActiveGroup = !isSubpkg && (activeGroup?.items.some(it => it.productId === product.id) ?? false)
     const otherGroupsWithProduct = isSubpkg ? [] : groups.filter(
@@ -744,18 +771,22 @@ export default function AgentProductPage() {
           {isSubpkg ? (
             // Subpackage → Trip Services
             variantCount > 1 ? (
-              <button onClick={() => openDetail(product)}
+              <button onClick={() => !hotelNightsFull && openDetail(product)}
+                disabled={hotelNightsFull}
                 className={`mt-1 w-full py-1 rounded-lg text-[11px] font-medium transition-all ${
-                  inServices ? 'bg-[#0f4c35] hover:bg-[#0a3526] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  hotelNightsFull ? 'bg-gray-100 text-gray-300 cursor-not-allowed'
+                  : inServices ? 'bg-[#0f4c35] hover:bg-[#0a3526] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 }`}>
-                {inServices ? '✓ In Services · pick more' : `Choose · ${variantCount} options`}
+                {hotelNightsFull ? `Nights full (${nights}n)` : inServices ? '✓ In Services · pick more' : `Choose · ${variantCount} options`}
               </button>
             ) : (
-              <button onClick={() => toggleProduct(product.id)}
+              <button onClick={() => !hotelNightsFull && toggleProduct(product.id)}
+                disabled={hotelNightsFull}
                 className={`mt-1 w-full py-1 rounded-lg text-[11px] font-medium transition-all ${
-                  inServices ? 'bg-[#0f4c35] hover:bg-[#0a3526] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  hotelNightsFull ? 'bg-gray-100 text-gray-300 cursor-not-allowed'
+                  : inServices ? 'bg-[#0f4c35] hover:bg-[#0a3526] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 }`}>
-                {inServices ? '✓ In Services' : '+ Add to Services'}
+                {hotelNightsFull ? `Nights full (${nights}n)` : inServices ? '✓ In Services' : '+ Add to Services'}
               </button>
             )
           ) : (
@@ -1072,35 +1103,39 @@ export default function AgentProductPage() {
           {tripServices.length === 0 ? (
             <span className="text-xs text-gray-400">Select from Subpackage category above</span>
           ) : (
-            tripServices.map(it => {
+            (() => {
+              // Hotel items share a pool of `nights` total — sum across all hotels can't exceed it.
+              const totalHotelDaysUsed = tripServices.reduce((sum, s) => {
+                const sp = products.find(x => x.id === s.productId)
+                return isHotelItem(sp?.product_categories?.name, sp?.product_subcategories?.name) ? sum + s.days : sum
+              }, 0)
+              return tripServices.map(it => {
               const p = products.find(x => x.id === it.productId)
               const v = p?.product_variants?.find(x => x.id === it.variantId)
               if (!p || !v) return null
               const isHotel = isHotelItem(p.product_categories?.name, p.product_subcategories?.name)
-              const isPerDay = p.quantity_type === 'per_day'
-              const displayDays = isHotel ? nights : isPerDay ? daysLive : it.days
               const label = v.variant_label ? `${p.name} · ${v.variant_label}` : p.name
+              const unit = isHotel ? 'n' : 'd'
+              const maxDays = isHotel
+                ? Math.max(1, nights - (totalHotelDaysUsed - it.days))
+                : Math.max(daysLive, 1)
               return (
                 <div key={`${it.productId}:${it.variantId}`}
                   className="flex items-center gap-1 px-2.5 py-1 bg-[#0f4c35]/5 border border-[#0f4c35]/20 rounded-lg text-xs text-[#0f4c35] whitespace-nowrap shrink-0">
                   <span className="truncate max-w-[120px]">{label}</span>
                   <span className="mx-0.5 opacity-40">·</span>
-                  {isHotel || isPerDay ? (
-                    <span className="opacity-70">{displayDays}{isHotel ? 'n' : 'd'} <span className="opacity-50">(auto)</span></span>
-                  ) : (
-                    <>
-                      <button onClick={() => setServiceDays(it.productId, it.variantId, it.days - 1)}
-                        className="opacity-60 hover:opacity-100 font-bold px-0.5">−</button>
-                      <span className="min-w-[20px] text-center">{it.days}d</span>
-                      <button onClick={() => setServiceDays(it.productId, it.variantId, it.days + 1)}
-                        className="opacity-60 hover:opacity-100 font-bold px-0.5">+</button>
-                    </>
-                  )}
+                  <button onClick={() => setServiceDays(it.productId, it.variantId, it.days - 1)}
+                    disabled={it.days <= 1}
+                    className="opacity-60 hover:opacity-100 disabled:opacity-20 font-bold px-0.5">−</button>
+                  <span className="min-w-[20px] text-center">{it.days}{unit}</span>
+                  <button onClick={() => setServiceDays(it.productId, it.variantId, it.days + 1)}
+                    disabled={it.days >= maxDays}
+                    className="opacity-60 hover:opacity-100 disabled:opacity-20 font-bold px-0.5">+</button>
                   <button onClick={() => toggleServiceItem(it.productId, it.variantId)}
                     className="ml-1 opacity-50 hover:opacity-100 text-base leading-none">×</button>
                 </div>
               )
-            })
+            })})()
           )}
         </div>
       )}
@@ -1176,9 +1211,23 @@ export default function AgentProductPage() {
           const hint = !hasProducts ? 'Add at least one product to continue'
             : missingDates ? 'Select travel dates to continue'
             : ''
+          const totalItemCount = groups.reduce((n, g) => n + g.items.length, 0) + tripServices.length
           return (
             <div className="flex items-center gap-3 md:gap-4 shrink-0">
               {hint && <p className="hidden md:block text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1">{hint}</p>}
+              {/* Cart summary button */}
+              <button
+                onClick={() => setShowCartDrawer(true)}
+                disabled={!hasProducts}
+                className="relative flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-gray-200 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 00-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 00-16.536-1.84M7.5 14.25L5.106 5.272M6 20.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0zm12.75 0a.75.75 0 11-1.5 0 .75.75 0 011.5 0z" />
+                </svg>
+                <span>Cart</span>
+                {totalItemCount > 0 && (
+                  <span className="bg-[#0f4c35] text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">{totalItemCount}</span>
+                )}
+              </button>
               <div className="text-left md:text-right flex-1 md:flex-none">
                 <p className="text-[10px] text-gray-400">Total</p>
                 <p className="text-sm font-bold text-gray-900">${totalUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
@@ -1191,6 +1240,118 @@ export default function AgentProductPage() {
           )
         })()}
       </div>
+
+      {/* ── Cart Drawer ── */}
+      {showCartDrawer && (
+        <div className="fixed inset-0 z-50 flex justify-end" onClick={() => setShowCartDrawer(false)}>
+          <div className="w-full max-w-sm bg-white h-full shadow-2xl flex flex-col" onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 shrink-0">
+              <h2 className="text-sm font-semibold text-gray-900">Cart</h2>
+              <button onClick={() => setShowCartDrawer(false)} className="text-gray-400 hover:text-gray-700 text-xl leading-none p-1 -m-1">×</button>
+            </div>
+
+            {/* Body */}
+            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
+              {/* Group items */}
+              {groups.map(group => {
+                if (group.items.length === 0) return null
+                const palette = GROUP_PALETTE[groups.indexOf(group)]
+                const memberCount = group.id === 'shared' ? sharedMemberCount : group.memberCount
+                return (
+                  <div key={group.id}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${palette.tab}`}>{group.name}</span>
+                      <span className="text-[10px] text-gray-400">{memberCount} pax</span>
+                    </div>
+                    <div className="space-y-1">
+                      {group.items.map(item => {
+                        const p = products.find(x => x.id === item.productId)
+                        const v = p?.product_variants?.find(x => x.id === item.variantId)
+                        if (!p || !v) return null
+                        const cat = p.product_categories?.name
+                        const sub = p.product_subcategories?.name
+                        const usd = variantPriceUsd({
+                          basePrice: v.base_price, priceCurrency: v.price_currency, exchangeRate,
+                          markupRate: getMarkupRate(cat, sub, markupRatesConfig),
+                        })
+                        return (
+                          <div key={`${item.productId}-${item.variantId}`} className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs text-gray-800 truncate font-medium">{p.name}</p>
+                              <p className="text-[10px] text-gray-400 truncate">
+                                {v.variant_label ? `${v.variant_label} · ` : ''}{fmtUSD(usd)} × {memberCount}
+                              </p>
+                            </div>
+                            <p className="text-xs font-semibold text-gray-700 shrink-0">{fmtUSD(usd * memberCount)}</p>
+                            <button
+                              onClick={() => removeFromGroup(group.id, item.productId, item.variantId)}
+                              className="text-gray-300 hover:text-red-400 shrink-0 text-base leading-none ml-1">×</button>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })}
+
+              {/* Trip Services */}
+              {tripServices.length > 0 && (
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700">Trip Services</span>
+                  </div>
+                  <div className="space-y-1">
+                    {tripServices.map(it => {
+                      const p = products.find(x => x.id === it.productId)
+                      const v = p?.product_variants?.find(x => x.id === it.variantId)
+                      if (!p || !v) return null
+                      const cat = p.product_categories?.name
+                      const sub = p.product_subcategories?.name
+                      const isHotel = isHotelItem(cat, sub)
+                      const unit = isHotel ? 'n' : 'd'
+                      const qty = isHotel ? nights : (p.quantity_type === 'per_day' ? daysLive : it.days)
+                      const usd = variantPriceUsd({
+                        basePrice: v.base_price, priceCurrency: v.price_currency, exchangeRate,
+                        markupRate: getMarkupRate(cat, sub, markupRatesConfig),
+                      })
+                      const isSubpkgFree = cat === 'Subpackage' && getMarkupRate(cat, sub, markupRatesConfig) === 0
+                      return (
+                        <div key={`${it.productId}-${it.variantId}`} className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs text-gray-800 truncate font-medium">{p.name}</p>
+                            <p className="text-[10px] text-gray-400 truncate">
+                              {v.variant_label ? `${v.variant_label} · ` : ''}{qty}{unit}
+                            </p>
+                          </div>
+                          <p className="text-xs font-semibold text-gray-700 shrink-0">
+                            {isSubpkgFree ? 'Free' : fmtUSD(usd * qty)}
+                          </p>
+                          <button
+                            onClick={() => toggleServiceItem(it.productId, it.variantId)}
+                            className="text-gray-300 hover:text-red-400 shrink-0 text-base leading-none ml-1">×</button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {groups.every(g => g.items.length === 0) && tripServices.length === 0 && (
+                <p className="text-sm text-gray-400 text-center py-8">No items yet.</p>
+              )}
+            </div>
+
+            {/* Footer total */}
+            <div className="shrink-0 border-t border-gray-100 px-5 py-4 bg-gray-50">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-semibold text-gray-700">Total</span>
+                <span className="text-base font-bold text-[#0f4c35]">{fmtUSD(totalUSD)}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Product Detail Modal ── */}
       {detailProduct && (

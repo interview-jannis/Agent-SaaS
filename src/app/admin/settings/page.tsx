@@ -23,7 +23,7 @@ const DEFAULT_BANK: BankDetails = {
 const MARKUP_RATE_ROWS: { key: keyof MarkupRatesConfig; label: string }[] = [
   { key: 'K-Medical', label: 'K-Medical' },
   { key: 'K-Beauty', label: 'K-Beauty' },
-  { key: 'K-Wellness-Spa', label: 'K-Wellness · Spa' },
+  { key: 'K-Wellness-Spa', label: 'K-Wellness · SPA & Aesthetic' },
   { key: 'K-Wellness-Henna', label: 'K-Wellness · Henna' },
   { key: 'K-Wellness-Other', label: 'K-Wellness · Other' },
   { key: 'K-Starcation', label: 'K-Starcation' },

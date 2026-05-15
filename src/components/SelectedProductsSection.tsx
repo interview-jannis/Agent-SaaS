@@ -18,11 +18,14 @@ type ProductSnapshot = {
   has_prayer_room?: boolean | null
   dietary_type?: string | null
   location_address?: string | null
+  product_categories?: { name: string } | null
+  product_subcategories?: { name: string } | null
 } | null
 
 type Item = {
   id: string
   final_price: number
+  quantity?: number | null
   products?: ProductSnapshot
   product_name_snapshot?: string | null
   variant_label_snapshot?: string | null
@@ -157,6 +160,11 @@ export default function SelectedProductsSection({
                       const metaBits: string[] = []
                       if (item.products?.duration_value) {
                         metaBits.push(`${item.products.duration_value} ${item.products.duration_unit ?? ''}`.trim())
+                      }
+                      // Trip Services: show days/nights from quantity
+                      if (group.name === 'Trip Services' && item.quantity != null) {
+                        const isHotel = item.products?.product_subcategories?.name === 'Hotel'
+                        metaBits.push(`${item.quantity}${isHotel ? 'n' : 'd'}`)
                       }
                       metaBits.push(`${fmtUSD(unitUSD)} × ${qty}`)
 

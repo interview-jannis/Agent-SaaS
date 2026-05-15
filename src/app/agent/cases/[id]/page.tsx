@@ -21,6 +21,7 @@ import AgentSurveySection from '@/components/AgentSurveySection'
 import type { DocumentRow } from '@/lib/documents'
 import SelectedProductsSection from '@/components/SelectedProductsSection'
 import { AgentCaseHero } from '@/components/CaseHeroAction'
+import ConfirmModal from '@/components/ConfirmModal'
 import { useCaseRealtime } from '@/hooks/useCaseRealtime'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -213,10 +214,9 @@ export default function CaseDetailPage() {
   const [editMembers, setEditMembers] = useState(false)
 
   // Invoice
-  const [copied, setCopied] = useState(false)
-  const [scheduleCopied, setScheduleCopied] = useState(false)
   const [emailSendingFor, setEmailSendingFor] = useState<string | null>(null)
   const [emailSentFor, setEmailSentFor] = useState<string | null>(null)
+  const [pendingEmail, setPendingEmail] = useState<{ key: string; url: string; type: 'quotation' | 'invoice' | 'schedule' | 'contract'; label: string } | null>(null)
 
   // Schedule review actions
   const [confirmingSchedule, setConfirmingSchedule] = useState(false)
@@ -425,34 +425,7 @@ export default function CaseDetailPage() {
   // Send Invoice — route picks Quotation vs Invoice based on finalize state.
   // Pre-finalize: quotation slug. Post-finalize: final_invoice's own slug
   // (different doc, different slug — invoice_first_opened_at tracked per-doc).
-  function sendInvoice() {
-    if (!quote?.slug) return
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || (typeof window !== 'undefined' ? window.location.origin : '')
-    let url: string
-    if (quote.finalized_at) {
-      const finalInvoice = caseData?.documents?.find(d => d.type === 'final_invoice')
-      if (!finalInvoice?.slug) return
-      url = `${baseUrl}/invoice/${finalInvoice.slug}`
-    } else {
-      url = `${baseUrl}/quote/${quote.slug}`
-    }
-    navigator.clipboard.writeText(url).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    })
-  }
-
-  // Send Schedule
-  function sendSchedule() {
-    if (!schedule?.slug) return
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || (typeof window !== 'undefined' ? window.location.origin : '')
-    navigator.clipboard.writeText(`${baseUrl}/schedule/${schedule.slug}`).then(() => {
-      setScheduleCopied(true)
-      setTimeout(() => setScheduleCopied(false), 2000)
-    })
-  }
-
-  async function sendViaEmail(url: string, key: string, type: 'quotation' | 'invoice' | 'schedule') {
+  async function sendViaEmail(url: string, key: string, type: 'quotation' | 'invoice' | 'schedule' | 'contract') {
     if (!caseData) return
     const lead = caseData.case_members.find(m => m.is_lead)
     const leadEmail = lead?.clients?.email
@@ -1070,6 +1043,16 @@ export default function CaseDetailPage() {
 
           {/* Hero: status-aware next action — sticky so it stays visible while scrolling */}
           <div className="sticky top-0 z-10 bg-white pb-2 -mx-1 px-1">
+          {pendingEmail && (
+            <ConfirmModal
+              title={`Send ${pendingEmail.label} email?`}
+              description={lead?.clients?.email ?? ''}
+              confirmLabel={`Send ${pendingEmail.label}`}
+              loading={emailSendingFor === pendingEmail.key}
+              onCancel={() => setPendingEmail(null)}
+              onConfirm={() => { const p = pendingEmail; setPendingEmail(null); sendViaEmail(p.url, p.key, p.type) }}
+            />
+          )}
           <AgentCaseHero
             status={caseData.status}
             caseInfoComplete={caseInfoComplete}
@@ -1088,24 +1071,36 @@ export default function CaseDetailPage() {
             onScrollToMembers={() => document.getElementById('members')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
             onScrollToSchedule={() => document.getElementById('schedule')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
             onScrollToFinancials={() => document.getElementById('financials')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+            onScrollToContract={() => document.getElementById('case-contract')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
             onScrollToDocuments={() => document.getElementById('documents')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-            onSendQuotation={sendInvoice}
-            onSendInvoice={sendInvoice}
+            onSendQuotation={quote?.slug ? () => {
+              const baseUrl = process.env.NEXT_PUBLIC_APP_URL || window.location.origin
+              setPendingEmail({ key: 'quotation', url: `${baseUrl}/quote/${quote.slug}`, type: 'quotation', label: 'Quotation' })
+            } : undefined}
+            onSendInvoice={(() => {
+              const finalInvoice = caseData?.documents?.find((d: { type: string; slug?: string | null }) => d.type === 'final_invoice')
+              const slug = finalInvoice?.slug ?? quote?.slug
+              if (!slug) return undefined
+              const baseUrl = process.env.NEXT_PUBLIC_APP_URL || window.location.origin
+              const url = finalInvoice?.slug ? `${baseUrl}/invoice/${finalInvoice.slug}` : `${baseUrl}/quote/${slug}`
+              return () => setPendingEmail({ key: 'invoice', url, type: 'invoice', label: 'Invoice' })
+            })()}
             onSendContract={contractToken && contractAgentSigned ? () => {
               const url = `${process.env.NEXT_PUBLIC_APP_URL || window.location.origin}/case-contract/${contractToken}`
-              navigator.clipboard.writeText(url).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000) })
+              setPendingEmail({ key: 'contract', url, type: 'contract', label: 'Contract' })
             } : undefined}
             onConfirmSchedule={confirmSchedule}
             onRequestRevision={() => { setShowRevisionModal(true); setRevisionNote(''); setScheduleError('') }}
             onMarkTravelComplete={markTravelComplete}
-            copied={copied}
+            sentKey={emailSentFor ?? undefined}
             busy={confirmingSchedule || markingTravelComplete || submittingRevision}
+            clientEmail={lead?.clients?.email ?? undefined}
           />
           </div>
 
           {/* ─── FINANCIALS — always second, right after Hero ─── */}
           {quote && (() => {
-            const financialStages = ['awaiting_deposit', 'awaiting_pricing', 'awaiting_payment', 'awaiting_travel', 'awaiting_review', 'awaiting_settlement', 'completed']
+            const financialStages = ['awaiting_contract', 'awaiting_deposit', 'awaiting_pricing', 'awaiting_payment', 'awaiting_travel', 'awaiting_review', 'awaiting_settlement', 'completed']
             const isFinancialActive = financialStages.includes(caseData.status)
             const sectionClass = isFinancialActive
               ? 'scroll-mt-20 bg-white border-2 border-[#0f4c35] rounded-2xl overflow-hidden'
@@ -1121,12 +1116,6 @@ export default function CaseDetailPage() {
               <div className={headerClass}>
                 <div className="flex items-center gap-2">
                   <h3 className={labelClass}>Financials</h3>
-                  {isTerminal && (
-                    <button onClick={() => setFinancialsCollapsed(!financialsCollapsed)}
-                      className="text-xs font-medium bg-gray-700 text-white hover:bg-gray-600 px-2.5 py-1.5 rounded-lg transition-colors">
-                      {financialsCollapsed ? '▼ Expand' : '▲ Collapse'}
-                    </button>
-                  )}
                   {!quote.finalized_at && (
                     <span className="text-[10px] font-semibold text-gray-500 bg-gray-100 border border-gray-200 rounded-full px-2 py-0.5 uppercase tracking-wide">
                       Estimated
@@ -1163,38 +1152,14 @@ export default function CaseDetailPage() {
                         : `${baseUrl}/quote/${quote.slug}`
                       return (
                         <div className="flex items-center gap-1.5">
-                          <button onClick={sendInvoice}
-                            className="flex items-center gap-1.5 text-xs font-medium bg-gray-700 text-white hover:bg-gray-600 px-2.5 py-1.5 rounded-lg transition-colors">
-                            {copied ? (
-                              <>
-                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                                </svg>
-                                Copied!
-                              </>
-                            ) : (
-                              <>
-                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                                </svg>
-                                Copy Link
-                              </>
-                            )}
-                          </button>
                           <button
-                            onClick={() => sendViaEmail(emailUrl, emailKey, isInvoiceStage ? 'invoice' : 'quotation')}
+                            onClick={() => setPendingEmail({ key: emailKey, url: emailUrl, type: isInvoiceStage ? 'invoice' : 'quotation', label: isInvoiceStage ? 'Invoice' : 'Quotation' })}
                             disabled={emailSendingFor === emailKey}
                             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-[#0f4c35] text-white hover:bg-[#0a3828] transition-colors disabled:opacity-40">
                             {emailSentFor === emailKey ? (
-                              <>
-                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
-                                Sent!
-                              </>
+                              <><svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>Sent!</>
                             ) : (
-                              <>
-                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" /></svg>
-                                {sendLabel}
-                              </>
+                              <><svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" /></svg>{sendLabel}</>
                             )}
                           </button>
                         </div>
@@ -1207,11 +1172,7 @@ export default function CaseDetailPage() {
               {/* /financials header */}
               <div className="p-5 space-y-4">
 
-              {financialsCollapsed ? (
-                <p className="text-xs text-gray-400">
-                  {quote.finalized_at ? `Total ${quote.total_price ? `$${Number(quote.total_price).toLocaleString()}` : '—'}` : 'Estimated pricing'}
-                </p>
-              ) : <>
+              {<>
 
               {/* Awaiting final invoice — schedule is confirmed, admin is finalizing pricing */}
               {caseData.status === 'awaiting_pricing' && (
@@ -1976,43 +1937,19 @@ export default function CaseDetailPage() {
                     </svg>
                     Preview
                   </a>
-                  {/* Send — copy schedule URL or send via email */}
+                  {/* Send schedule via email */}
                   <div className="flex items-center gap-1.5">
-                    <button onClick={sendSchedule}
-                      className="flex items-center gap-1.5 text-xs font-medium bg-gray-700 text-white hover:bg-gray-600 px-2.5 py-1.5 rounded-lg transition-colors">
-                      {scheduleCopied ? (
-                        <>
-                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                          </svg>
-                          Copied!
-                        </>
-                      ) : (
-                        <>
-                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                          </svg>
-                          Copy Link
-                        </>
-                      )}
-                    </button>
                     <button
                       onClick={() => {
                         const baseUrl = process.env.NEXT_PUBLIC_APP_URL || (typeof window !== 'undefined' ? window.location.origin : '')
-                        sendViaEmail(`${baseUrl}/schedule/${schedule.slug}`, 'schedule', 'schedule')
+                        setPendingEmail({ key: 'schedule', url: `${baseUrl}/schedule/${schedule.slug}`, type: 'schedule', label: 'Schedule' })
                       }}
                       disabled={emailSendingFor === 'schedule'}
                       className="flex items-center gap-1.5 text-xs font-medium bg-[#0f4c35] text-white hover:bg-[#0a3828] transition-colors px-3 py-1.5 rounded-lg disabled:opacity-40">
                       {emailSentFor === 'schedule' ? (
-                        <>
-                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
-                          Sent!
-                        </>
+                        <><svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>Sent!</>
                       ) : (
-                        <>
-                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" /></svg>
-                          Send Schedule
-                        </>
+                        <><svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" /></svg>Send Schedule</>
                       )}
                     </button>
                   </div>

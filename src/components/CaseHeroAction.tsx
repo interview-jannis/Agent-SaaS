@@ -1,6 +1,8 @@
 'use client'
 
+import { useState } from 'react'
 import { type CaseStatus } from '@/lib/caseStatus'
+import ConfirmModal from './ConfirmModal'
 
 // ── Shared bits ──────────────────────────────────────────────────────────────
 
@@ -13,10 +15,10 @@ const TONE: Record<Tone, { wrap: string; eyebrow: string; primaryBtn: string; gh
   gray:  { wrap: 'border-2 border-[#0f4c35] bg-white',   eyebrow: 'text-gray-500',   primaryBtn: 'bg-gray-700 hover:bg-gray-800 text-white',    ghostBtn: 'text-gray-600 hover:bg-gray-100',   icon: 'text-gray-400' },
 }
 
-function CopyIcon() {
+function EmailIcon() {
   return (
-    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0 0a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186zm0-12.814a2.25 2.25 0 103.933-2.185 2.25 2.25 0 00-3.933 2.185z" />
+    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
     </svg>
   )
 }
@@ -27,6 +29,7 @@ function CheckIcon() {
     </svg>
   )
 }
+
 
 function HeroShell({
   tone, eyebrow, headline, subline, children,
@@ -46,7 +49,7 @@ function HeroShell({
           <p className="text-sm font-semibold text-gray-900 mt-1">{headline}</p>
           {subline && <div className="text-xs text-gray-600 mt-1">{subline}</div>}
         </div>
-        {children && <div className="flex items-center gap-2 shrink-0">{children}</div>}
+        {children && <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">{children}</div>}
       </div>
     </section>
   )
@@ -80,15 +83,17 @@ export type AgentHeroProps = {
   onScrollToFinancials: () => void
   onSendQuotation?: () => void
   onSendInvoice?: () => void
-  onSendContract?: () => void   // copies /case-contract/[token] URL when agent has signed
+  onSendContract?: () => void
   onConfirmSchedule?: () => void
   onRequestRevision?: () => void
   onMarkTravelComplete?: () => void
   onMarkReviewSubmitted?: () => void   // temp until 3차 surveys
   onScrollToDocuments?: () => void
-  // ui state
-  copied?: boolean
+  onScrollToContract?: () => void
+  // ui state — sentKey matches the last successfully sent action key
+  sentKey?: string
   busy?: boolean
+  clientEmail?: string
 }
 
 function daysUntil(iso: string): number {
@@ -96,23 +101,47 @@ function daysUntil(iso: string): number {
 }
 
 export function AgentCaseHero(p: AgentHeroProps) {
+  const [pendingAction, setPendingAction] = useState<'quotation' | 'contract' | 'invoice' | null>(null)
+
   switch (p.status) {
     case 'canceled':
       return null
 
     case 'awaiting_contract':
       return (
-        <HeroShell
-          tone="green"
-          eyebrow="Action needed"
-          headline="Send 3-party contract for signing"
-          subline={<span>Once client + you + admin all sign the contract, the deposit invoice can be issued.</span>}
-        >
-          <button onClick={p.onSendContract ?? (() => document.getElementById('case-contract')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))}
-            className={`text-xs font-medium px-3 py-2 rounded-lg flex items-center gap-1.5 ${TONE.green.primaryBtn}`}>
-            {p.copied ? <><CheckIcon /> Copied!</> : p.onSendContract ? <><CopyIcon /> Send Contract</> : <>Send Contract</>}
-          </button>
-        </HeroShell>
+        <>
+          {pendingAction && p.clientEmail && (
+            <ConfirmModal
+              title={`Send ${pendingAction === 'quotation' ? 'Quotation' : 'Contract'} email?`}
+              description={p.clientEmail}
+              confirmLabel={pendingAction === 'quotation' ? 'Send Quotation' : 'Send Contract'}
+              onCancel={() => setPendingAction(null)}
+              onConfirm={() => {
+                setPendingAction(null)
+                if (pendingAction === 'quotation') p.onSendQuotation?.()
+                else p.onSendContract?.()
+              }}
+            />
+          )}
+          <HeroShell
+            tone="green"
+            eyebrow="Action needed"
+            headline="Send quotation & contract to client"
+            subline={<span>Once client + you + admin all sign the contract, the deposit invoice can be issued.</span>}
+          >
+            {p.onSendQuotation && (
+              <button onClick={() => p.clientEmail ? setPendingAction('quotation') : p.onSendQuotation?.()}
+                disabled={p.busy}
+                className="text-xs font-medium px-3 py-2 rounded-lg flex items-center gap-1.5 bg-gray-700 text-white hover:bg-gray-600 disabled:opacity-40">
+                {p.sentKey === 'quotation' ? <><CheckIcon /> Sent!</> : <><EmailIcon /> Send Quotation</>}
+              </button>
+            )}
+            <button onClick={() => p.clientEmail ? setPendingAction('contract') : (p.onSendContract ?? (() => document.getElementById('case-contract')?.scrollIntoView({ behavior: 'smooth', block: 'start' })))()}
+              className={`text-xs font-medium px-3 py-2 rounded-lg flex items-center gap-1.5 ${TONE.green.primaryBtn}`}>
+              {p.sentKey === 'contract' ? <><CheckIcon /> Sent!</> : <><EmailIcon /> Send Contract</>}
+            </button>
+          </HeroShell>
+        </>
       )
 
     case 'awaiting_deposit': {
@@ -221,15 +250,27 @@ export function AgentCaseHero(p: AgentHeroProps) {
         : <span>Send the invoice link to your client.</span>
       const onSend = p.hasInvoice ? p.onSendInvoice : p.onSendQuotation
       const label = p.hasInvoice ? 'Send Invoice' : 'Send Quotation'
+      const tone: Tone = overdue ? 'amber' : 'green'
       return (
-        <HeroShell tone={overdue ? 'amber' : 'green'} eyebrow="Action needed" headline="Send invoice link to client" subline={sub}>
-          {onSend && (
-            <button onClick={onSend}
-              className={`text-xs font-medium px-3 py-2 rounded-lg flex items-center gap-1.5 ${overdue ? TONE.amber.primaryBtn : TONE.green.primaryBtn}`}>
-              {p.copied ? <><CheckIcon /> Copied!</> : <><CopyIcon /> {label}</>}
-            </button>
+        <>
+          {pendingAction === 'invoice' && p.clientEmail && (
+            <ConfirmModal
+              title={`Send ${label} email?`}
+              description={p.clientEmail}
+              confirmLabel={label}
+              onCancel={() => setPendingAction(null)}
+              onConfirm={() => { setPendingAction(null); onSend?.() }}
+            />
           )}
-        </HeroShell>
+          <HeroShell tone={tone} eyebrow="Action needed" headline="Send invoice link to client" subline={sub}>
+            {onSend && (
+              <button onClick={() => p.clientEmail ? setPendingAction('invoice') : onSend()}
+                className={`text-xs font-medium px-3 py-2 rounded-lg flex items-center gap-1.5 ${TONE[tone].primaryBtn}`}>
+                {p.sentKey === 'invoice' || p.sentKey === 'quotation' ? <><CheckIcon /> Sent!</> : <><EmailIcon /> {label}</>}
+              </button>
+            )}
+          </HeroShell>
+        </>
       )
     }
 
@@ -314,6 +355,7 @@ export type AdminHeroProps = {
   onScrollToTripSetup?: () => void
   onScrollToReviews?: () => void
   onMarkContractSigned?: () => void   // temp until 2차 case_contracts feature
+  onScrollToFinancials?: () => void
   busy?: boolean
 }
 
@@ -330,10 +372,16 @@ export function AdminCaseHero(p: AdminHeroProps) {
           headline="3-party contract pending signature"
           subline={<span>Counter-sign once agent + client both sign. Status advances to deposit phase automatically.</span>}
         >
-          <button onClick={() => document.getElementById('case-contract')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-            className={`text-xs font-medium px-3 py-2 rounded-lg ${TONE.green.primaryBtn}`}>
-            Go to Contract
-          </button>
+          <div className="grid grid-cols-2 gap-2">
+            <button onClick={() => document.getElementById('case-contract')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              className={`text-xs font-medium px-3 py-2 rounded-lg ${TONE.green.primaryBtn}`}>
+              Go to Contract
+            </button>
+            <button onClick={p.onScrollToFinancials ?? (() => document.getElementById('financials')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))}
+              className="text-xs font-medium px-3 py-2 rounded-lg bg-gray-700 text-white hover:bg-gray-600">
+              Go to Financials
+            </button>
+          </div>
         </HeroShell>
       )
 

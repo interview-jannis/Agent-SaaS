@@ -11,11 +11,11 @@ import { useCaseRealtime } from '@/hooks/useCaseRealtime'
 import CaseDocumentsSection from '@/components/CaseDocumentsSection'
 import AdminCaseContractSection from '@/components/AdminCaseContractSection'
 import SelectedProductsSection from '@/components/SelectedProductsSection'
-import ScheduleEditor from '@/components/admin/ScheduleEditor'
+import ScheduleEditor, { type DaySubpackageEntry } from '@/components/admin/ScheduleEditor'
 import { SCHEDULE_BLOCK_LABEL, compareScheduleItems } from '@/types/schedule'
 import type { DocumentRow } from '@/lib/documents'
 import type { ScheduleItem } from '@/types/schedule'
-import { nightsBetween, daysBetween } from '@/lib/pricing'
+import { nightsBetween, daysBetween, isHotelItem } from '@/lib/pricing'
 import type { SurveyRow } from '@/lib/surveys'
 
 import type { ClientInfo, FlightInfo } from '@/lib/clientCompleteness'
@@ -54,6 +54,7 @@ type QuoteItem = {
   origin?: 'original' | 'admin_added'
   removed_at?: string | null
   quantity: number
+  overtime_hours?: number | null
   products: { id: string; name: string; description: string | null; partner_name: string | null; duration_value?: number | null; duration_unit?: string | null; has_female_doctor?: boolean | null; has_prayer_room?: boolean | null; dietary_type?: string | null; location_address?: string | null; location?: string | null; full_address?: string | null; contact_channels?: { type: string; value: string }[] | null; product_categories?: { name: string } | null; product_subcategories?: { name: string } | null } | null
 }
 
@@ -250,6 +251,8 @@ export default function AdminCaseDetailPage() {
   const [stagedAdds, setStagedAdds] = useState<StagedAdd[]>([])
   const [stagedRemoves, setStagedRemoves] = useState<Set<string>>(new Set())
   const [savingItems, setSavingItems] = useState(false)
+  const [updatingQtyId, setUpdatingQtyId] = useState<string | null>(null)
+  const [updatingOTId, setUpdatingOTId] = useState<string | null>(null)
   const [editingProducts, setEditingProducts] = useState(false)
   const editPickerRef = useRef<HTMLDivElement>(null)
   const [clientModalMember, setClientModalMember] = useState<CaseMember | null>(null)
@@ -301,7 +304,7 @@ export default function AdminCaseDetailPage() {
         ),
         documents(
           id, type, document_number, slug, total_price, payment_due_date, payment_received_at, agent_margin_rate, company_margin_rate, finalized_at, from_party, to_party, created_at,
-          document_groups(id, name, order, member_count, document_items(id, base_price, final_price, quantity, variant_id, variant_label_snapshot, origin, removed_at, products(id, name, description, partner_name, duration_value, duration_unit, has_female_doctor, has_prayer_room, dietary_type, location_address, location, full_address, contact_channels, product_categories(name), product_subcategories!products_subcategory_id_fkey(name))), document_group_members(id, case_member_id))
+          document_groups(id, name, order, member_count, document_items(id, base_price, final_price, quantity, overtime_hours, variant_id, variant_label_snapshot, origin, removed_at, products(id, name, description, partner_name, duration_value, duration_unit, has_female_doctor, has_prayer_room, dietary_type, location_address, location, full_address, contact_channels, product_categories(name), product_subcategories!products_subcategory_id_fkey(name))), document_group_members(id, case_member_id))
         ),
         schedules(id, slug, pdf_url, items, status, version, file_name, revision_note, admin_note, confirmed_at, created_at, first_opened_at, concierge_name, concierge_phone, day_subpackages)
       `)
@@ -453,6 +456,44 @@ export default function AdminCaseDetailPage() {
       setProducts(out)
     })()
     return () => { cancelled = true }
+  }, [])
+
+  // Calculate and store overtime_hours per service item from day_subpackages.
+  // Called after saving day_subpackages so document_items.overtime_hours stays in sync.
+  // Logic: contracted_hours = item.quantity × duration_value (if hours unit)
+  //        actual_hours     = sum of day_subpackages entries for that variantId
+  //        overtime_hours   = max(0, actual − contracted)
+  const calcAndStoreOvertimeHours = useCallback(async (
+    daySubpackages: Record<number, DaySubpackageEntry[]>,
+    documentGroups: QuoteGroup[],
+  ) => {
+    // Build variantId → total actual hours map
+    const hoursByVariant: Record<string, number> = {}
+    for (const entries of Object.values(daySubpackages)) {
+      for (const e of entries) {
+        hoursByVariant[e.variantId] = (hoursByVariant[e.variantId] ?? 0) + e.hours
+      }
+    }
+    if (Object.keys(hoursByVariant).length === 0) return
+
+    const updates: { id: string; overtime_hours: number }[] = []
+    for (const g of documentGroups) {
+      for (const item of g.document_items) {
+        if (!item.variant_id || item.removed_at) continue
+        if (!(item.variant_id in hoursByVariant)) continue
+        const actualHours = hoursByVariant[item.variant_id]
+        const durationUnit = (item.products?.duration_unit ?? '').toLowerCase()
+        const isHoursBased = durationUnit.startsWith('h')
+        const contractedHours = isHoursBased
+          ? (item.quantity ?? 1) * (item.products?.duration_value ?? 0)
+          : 0
+        const overtime_hours = Math.max(0, actualHours - contractedHours)
+        updates.push({ id: item.id, overtime_hours })
+      }
+    }
+    await Promise.all(updates.map(u =>
+      supabase.from('document_items').update({ overtime_hours: u.overtime_hours }).eq('id', u.id)
+    ))
   }, [])
 
   // Terminal states (completed/awaiting_settlement) — auto-collapse heavy sections.
@@ -771,6 +812,7 @@ export default function AdminCaseDetailPage() {
                 onScrollToConfirmPayment={() => document.getElementById('financials')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
                 onScrollToTripSetup={() => document.getElementById('trip-setup')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
                 onScrollToReviews={() => document.getElementById('reviews')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                onScrollToFinancials={() => document.getElementById('financials')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
               />
             </div>
           </div>
@@ -1163,6 +1205,50 @@ export default function AdminCaseDetailPage() {
               } finally { setSavingItems(false) }
             }
 
+            // Trip nights / days for quantity caps in Trip Services
+            const tripNights = Math.max(nightsBetween(caseData.travel_start_date, caseData.travel_end_date), 1)
+            const tripDays = Math.max(daysBetween(caseData.travel_start_date, caseData.travel_end_date), 1)
+
+            const updateItemQuantity = async (itemId: string, currentQty: number, currentFinalPrice: number, newQty: number) => {
+              if (!finalInvoice || newQty < 1 || updatingQtyId) return
+              setUpdatingQtyId(itemId)
+              try {
+                const perUnit = currentQty > 0 ? currentFinalPrice / currentQty : currentFinalPrice
+                const newFinalPrice = Math.round(perUnit * newQty)
+                await supabase.from('document_items').update({ quantity: newQty, final_price: newFinalPrice }).eq('id', itemId)
+                await recalcDocumentTotal(finalInvoice.id)
+                await fetchCase()
+              } finally {
+                setUpdatingQtyId(null)
+              }
+            }
+
+            // variantId → overtime_rate_krw lookup from the picker products list
+            const otRateByVariant = new Map<string, number>()
+            for (const p of products) {
+              for (const v of p.variants ?? []) {
+                if (v.overtime_rate_krw != null) otRateByVariant.set(v.id, v.overtime_rate_krw)
+              }
+            }
+
+            const updateItemOvertimeHours = async (item: QuoteItem & { groupName: string; groupId: string }, newOT: number) => {
+              if (updatingOTId) return
+              const ot = Math.max(0, newOT)
+              setUpdatingOTId(item.id)
+              try {
+                // Recalculate final_price = days_cost + overtime_cost
+                const qty = item.quantity ?? 1
+                const daysCost = item.base_price * qty   // base_price = per-unit KRW cost
+                const otRate = otRateByVariant.get(item.variant_id ?? '') ?? 0
+                const newFinalPrice = Math.round(daysCost + ot * otRate)
+                await supabase.from('document_items').update({ overtime_hours: ot, final_price: newFinalPrice }).eq('id', item.id)
+                if (finalInvoice) await recalcDocumentTotal(finalInvoice.id)
+                await fetchCase()
+              } finally {
+                setUpdatingOTId(null)
+              }
+            }
+
             const scheduleStatus = caseData.status === 'awaiting_schedule' || caseData.status === 'reviewing_schedule'
             return (
               <section className={`border-2 bg-white rounded-2xl p-4 space-y-3 ${scheduleStatus ? 'border-[#0f4c35]' : 'border-gray-300'}`}>
@@ -1260,6 +1346,58 @@ export default function AdminCaseDetailPage() {
                                       </p>
                                     )}
                                   </div>
+                                  {/* Trip Services quantity (nights/days) display + inline edit */}
+                                  {g.name === 'Trip Services' && (() => {
+                                    const isHotel = isHotelItem(item.products?.product_categories?.name, item.products?.product_subcategories?.name)
+                                    const unit = isHotel ? 'n' : 'd'
+                                    const maxQty = isHotel ? tripNights : tripDays
+                                    const qty = item.quantity ?? 1
+                                    const busy = updatingQtyId === item.id
+                                    return (
+                                      <div className="flex items-center gap-1 shrink-0">
+                                        <button type="button"
+                                          disabled={busy || qty <= 1}
+                                          onClick={() => void updateItemQuantity(item.id, qty, item.final_price, qty - 1)}
+                                          className="w-5 h-5 flex items-center justify-center rounded border border-gray-200 text-gray-500 hover:bg-gray-100 text-xs disabled:opacity-30">−</button>
+                                        <span className="text-xs tabular-nums w-8 text-center text-gray-800 font-medium">
+                                          {busy ? '…' : `${qty}${unit}`}
+                                        </span>
+                                        <button type="button"
+                                          disabled={busy || qty >= maxQty}
+                                          onClick={() => void updateItemQuantity(item.id, qty, item.final_price, qty + 1)}
+                                          className="w-5 h-5 flex items-center justify-center rounded border border-gray-200 text-gray-500 hover:bg-gray-100 text-xs disabled:opacity-30">+</button>
+                                      </div>
+                                    )
+                                  })()}
+                                  {/* Overtime hours: non-hotel Trip Services only */}
+                                  {g.name === 'Trip Services' && (() => {
+                                    const isHotel = isHotelItem(item.products?.product_categories?.name, item.products?.product_subcategories?.name)
+                                    if (isHotel) return null
+                                    const ot = item.overtime_hours ?? 0
+                                    const otRate = otRateByVariant.get(item.variant_id ?? '') ?? 0
+                                    const otCostKRW = Math.round(ot * otRate)
+                                    const busyOT = updatingOTId === item.id
+                                    return (
+                                      <div className="flex items-center gap-1 shrink-0">
+                                        <button type="button"
+                                          disabled={busyOT || ot <= 0}
+                                          onClick={() => void updateItemOvertimeHours(item as QuoteItem & { groupName: string; groupId: string }, ot - 1)}
+                                          className="w-5 h-5 flex items-center justify-center rounded border border-amber-200 text-amber-600 hover:bg-amber-50 text-xs disabled:opacity-30">−</button>
+                                        <div className="text-center min-w-[2.5rem]">
+                                          <p className={`text-xs tabular-nums font-medium ${ot > 0 ? 'text-amber-700' : 'text-gray-400'}`}>
+                                            {busyOT ? '…' : `+${ot}h`}
+                                          </p>
+                                          {ot > 0 && otRate > 0 && (
+                                            <p className="text-[9px] text-amber-500 tabular-nums leading-none">{fmtKRW(otCostKRW)}</p>
+                                          )}
+                                        </div>
+                                        <button type="button"
+                                          disabled={busyOT}
+                                          onClick={() => void updateItemOvertimeHours(item as QuoteItem & { groupName: string; groupId: string }, ot + 1)}
+                                          className="w-5 h-5 flex items-center justify-center rounded border border-amber-200 text-amber-600 hover:bg-amber-50 text-xs disabled:opacity-30">+</button>
+                                      </div>
+                                    )
+                                  })()}
                                   <div className={`text-right shrink-0 ${strike ? 'line-through' : ''}`}>
                                     <p className={`text-xs tabular-nums ${muted ? 'text-gray-300' : 'text-gray-700'}`}>{fmtKRW(item.final_price)}</p>
                                     <p className={`text-[10px] tabular-nums ${muted ? 'text-gray-300' : 'text-gray-400'}`}>{fmtUSD(item.final_price / exchangeRate)}</p>
@@ -1991,8 +2129,18 @@ export default function AdminCaseDetailPage() {
                       .sort((a, b) => a.order - b.order)
                       .map(g => ({ id: g.id, name: g.name }))}
                     onSaved={() => fetchCase()}
-                    onSaveDraft={async (items) => {
+                    onSaveDraft={async (items, daySubpackages) => {
                       await supabase.from('cases').update({ schedule_draft_items: items }).eq('id', caseData.id)
+                      // Persist per-day hours to the latest schedule row so they survive page refresh.
+                      if (latestSchedule?.id) {
+                        await supabase.from('schedules').update({ day_subpackages: daySubpackages }).eq('id', latestSchedule.id)
+                      }
+                      // Auto-calculate overtime_hours from day_subpackages and persist to document_items.
+                      const targetDoc = finalInvoice ?? latestQuote
+                      if (targetDoc) {
+                        await calcAndStoreOvertimeHours(daySubpackages, targetDoc.document_groups ?? [])
+                        await fetchCase()
+                      }
                     }}
                     slug={latestSchedule?.slug ?? null}
                     nextVersion={nextVersion}
@@ -2269,7 +2417,7 @@ export default function AdminCaseDetailPage() {
           {/* Quote / Financials — floats to top when case is completed */}
           <div className={caseData.status === 'completed' ? 'order-[-1]' : ''}>
           {latestQuote && (() => {
-            const financialStages = ['awaiting_deposit', 'awaiting_payment', 'awaiting_travel', 'awaiting_review', 'awaiting_settlement', 'completed']
+            const financialStages = ['awaiting_contract', 'awaiting_deposit', 'awaiting_payment', 'awaiting_travel', 'awaiting_review', 'awaiting_settlement', 'completed']
             const isFinancialActive = financialStages.includes(caseData.status)
             const sectionClass = isFinancialActive
               ? 'bg-white border-2 border-[#0f4c35] rounded-2xl overflow-hidden'

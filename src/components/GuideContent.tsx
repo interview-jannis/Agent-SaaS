@@ -123,7 +123,7 @@ const ADMIN_SECTIONS_BASE = [
       '6대 카테고리: K-Medical(진료), K-Beauty(클리닉 시술), K-Wellness(스파·힐링), K-Education(교육), K-Starcation(엔터테인먼트), Subpackage(호텔 등 패키지)',
       '서브카테고리: K-Beauty는 클리닉명(예: DIAR, Dr.Tune\'s), K-Medical은 진료과로 구분',
       '상품 옵션(Variant) — 동일 상품의 회차·사이즈·등급별 가격을 한 상품 카드 아래 묶어 관리',
-      '마진 적용 규칙: K-Wellness 중 Spa·Henna만 마진 자동 적용, 나머지 Wellness와 Subpackage는 원가 그대로 청구(별도 설정 가능)',
+      '마진 적용 규칙: K-Wellness 중 SPA & Aesthetic·Henna만 마진 자동 적용, 나머지 Wellness와 Subpackage는 원가 그대로 청구(별도 설정 가능)',
       '무슬림 친화 필터: has_female_doctor(여의사 가능), has_prayer_room(기도실 보유), dietary_type(할랄 등급) 플래그 설정',
       '이미지 관리 — 상품별 대표 이미지 및 추가 이미지 등록',
       '비활성화(is_active OFF) — 에이전트 카탈로그에서 숨김 처리, 기존 견적 데이터는 유지',
