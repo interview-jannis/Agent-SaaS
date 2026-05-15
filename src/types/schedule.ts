@@ -85,18 +85,20 @@ export function resolveGroupIds(item: Pick<ScheduleItem, 'groupId' | 'groupIds'>
 }
 
 // Compare two items for stable ordering within a day.
-// Block order: morning → afternoon → evening.
-// Within block: explicit time first (sorted), then null-time items by sortOrder.
+// Block order: night → morning → afternoon → evening.
+// Within block: sort by effective time (time ?? endTime), untimed last.
 export function compareScheduleItems(a: ScheduleItem, b: ScheduleItem): number {
   if (a.day !== b.day) return a.day - b.day
   const blockA = SCHEDULE_BLOCKS.indexOf(a.block)
   const blockB = SCHEDULE_BLOCKS.indexOf(b.block)
   if (blockA !== blockB) return blockA - blockB
-  // Items with explicit time sort before items without
-  if (a.time && !b.time) return -1
-  if (!a.time && b.time) return 1
-  if (a.time && b.time) {
-    const cmp = a.time.localeCompare(b.time)
+  // Use endTime as fallback when start time is absent (e.g. checkout "→ 08:00")
+  const aTime = a.time ?? a.endTime ?? null
+  const bTime = b.time ?? b.endTime ?? null
+  if (aTime && !bTime) return -1
+  if (!aTime && bTime) return 1
+  if (aTime && bTime) {
+    const cmp = aTime.localeCompare(bTime)
     if (cmp !== 0) return cmp
   }
   return a.sortOrder - b.sortOrder
