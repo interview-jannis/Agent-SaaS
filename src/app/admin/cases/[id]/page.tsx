@@ -1980,8 +1980,6 @@ export default function AdminCaseDetailPage() {
                     initialConciergeName={latestSchedule?.concierge_name ?? lastConciergeInfo?.name ?? null}
                     initialConciergePhone={latestSchedule?.concierge_phone ?? lastConciergeInfo?.phone ?? null}
                     initialDaySubpackages={(latestSchedule as { day_subpackages?: Record<number, Array<string | { variantId: string; hours: number }>> } | null)?.day_subpackages ?? undefined}
-                    arrivalAirport={caseData.outbound_flight?.arrival_airport ?? null}
-                    departureAirport={caseData.inbound_flight?.departure_airport ?? null}
                     prevItems={latestSchedule?.items ?? undefined}
                     readOnly={!canEdit}
                     stickyTop={140}

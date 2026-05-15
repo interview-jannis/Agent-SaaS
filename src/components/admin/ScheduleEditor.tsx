@@ -95,11 +95,6 @@ type Props = {
   // (informational; not counted).
   // Legacy shape `string[]` is read-tolerated and migrated to objects on load.
   initialDaySubpackages?: Record<number, Array<string | DaySubpackageEntry>>
-  // Airports from cases.outbound_flight / inbound_flight — added to the
-  // transfer From/To dropdown so admin can select airport without it being
-  // a separate product.
-  arrivalAirport?: string | null
-  departureAirport?: string | null
   // Pixel offset from viewport top for sticky day headers (accounts for any fixed/sticky parent).
   stickyTop?: number
 }
@@ -114,8 +109,6 @@ export default function ScheduleEditor({
   readOnly = false,
   prevItems,
   initialDaySubpackages,
-  arrivalAirport = null,
-  departureAirport = null,
   stickyTop = 0,
 }: Props) {
   const [items, setItems] = useState<ScheduleItem[]>(initialItems)
@@ -672,20 +665,18 @@ export default function ScheduleEditor({
       .flatMap(i => (i.groupIds ?? (i.groupId ? [i.groupId] : [])))
   )
 
-  // Available locations for transfer From/To dropdowns. Sourced from case
-  // products' `location` field + arrival/departure airports (which are not
-  // products). Admin selects from this list — no free-text input — so the
-  // assumption is product data is properly maintained.
+  // Available locations for transfer From/To datalist suggestions. Only case
+  // product locations — airports stay as free-text (admin types directly) since
+  // airports aren't products. Hybrid: input stays as <input> so admin can type
+  // any value; datalist provides product-location autocomplete.
   const availableLocations = useMemo<string[]>(() => {
     const set = new Set<string>()
     for (const cp of caseProducts) {
       const loc = cp.location?.trim()
       if (loc) set.add(loc)
     }
-    const arr = arrivalAirport?.trim(); if (arr) set.add(arr)
-    const dep = departureAirport?.trim(); if (dep) set.add(dep)
     return [...set].sort((a, b) => a.localeCompare(b))
-  }, [caseProducts, arrivalAirport, departureAirport])
+  }, [caseProducts])
 
   return (
     <div className="space-y-4">
@@ -1836,34 +1827,24 @@ const inScope = itemGroupIds === null
       {/* Type-specific fields */}
       {itemType === 'transfer' && (
         <>
-          {/* From / To — dropdown sourced from case product locations + flight airports */}
+          {/* From / To — free text input + datalist autocomplete from case product locations.
+              Airports and ad-hoc locations stay as free-text since they aren't products. */}
           <div className="grid grid-cols-2 gap-2">
-            <select value={item.fromLocation ?? ''}
+            <input type="text" list={`loc-suggestions-${item.id}`}
+              value={item.fromLocation ?? ''}
               onChange={(e) => onUpdate({ fromLocation: e.target.value || null })}
-              disabled={!isPending}
-              className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
-            >
-              <option value="">— From —</option>
-              {availableLocations.map(loc => (
-                <option key={loc} value={loc}>{loc}</option>
-              ))}
-              {item.fromLocation && !availableLocations.includes(item.fromLocation) && (
-                <option value={item.fromLocation}>{item.fromLocation} (legacy)</option>
-              )}
-            </select>
-            <select value={item.toLocation ?? ''}
+              disabled={!isPending} placeholder="From (type or pick)"
+              className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
+            />
+            <input type="text" list={`loc-suggestions-${item.id}`}
+              value={item.toLocation ?? ''}
               onChange={(e) => onUpdate({ toLocation: e.target.value || null })}
-              disabled={!isPending}
-              className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
-            >
-              <option value="">— To —</option>
-              {availableLocations.map(loc => (
-                <option key={loc} value={loc}>{loc}</option>
-              ))}
-              {item.toLocation && !availableLocations.includes(item.toLocation) && (
-                <option value={item.toLocation}>{item.toLocation} (legacy)</option>
-              )}
-            </select>
+              disabled={!isPending} placeholder="To (type or pick)"
+              className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
+            />
+            <datalist id={`loc-suggestions-${item.id}`}>
+              {availableLocations.map(loc => <option key={loc} value={loc} />)}
+            </datalist>
           </div>
           {/* Transport mode + vehicle (or label override) — in Details for committed rows */}
           {(isPending || detailsOpen) && (
