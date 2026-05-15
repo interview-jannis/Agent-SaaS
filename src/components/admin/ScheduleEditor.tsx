@@ -78,7 +78,7 @@ type Props = {
   // Triggered after a successful save so parent can refetch.
   onSaved: () => void
   // Persists current items as a draft without sending to agent.
-  onSaveDraft: (items: ScheduleItem[]) => Promise<void>
+  onSaveDraft: (items: ScheduleItem[], daySubpackages: Record<number, DaySubpackageEntry[]>) => Promise<void>
   // When true, save/draft actions are hidden ??view only.
   readOnly?: boolean
   // Slug for "Preview" link.
@@ -119,6 +119,8 @@ export default function ScheduleEditor({
   // value, not the one captured in their closure at render time.
   const itemsRef = useRef(items)
   itemsRef.current = items
+  // Same pattern for daySubpackages — commitPendingItem needs latest hours.
+  const daySubpackagesRef = useRef<Record<number, DaySubpackageEntry[]>>({})
 
   // Next sortOrder for a day. Uses max(sortOrder)+1 over surviving items so new rows
   // always land after existing ones — robust to gaps and to marked-for-removal items
@@ -178,6 +180,9 @@ export default function ScheduleEditor({
     }
     return out
   })
+  // Keep ref in sync with state so saveDraft closures always see latest hours.
+  daySubpackagesRef.current = daySubpackages
+
   // Default hours for a service variant (from product.durationValue when unit is hours).
   function defaultHoursForVariant(variantId: string): number {
     const cp = caseProducts.find(p => p.variantId === variantId)
@@ -272,11 +277,11 @@ export default function ScheduleEditor({
     if (caseGroups.length > 1) setUnsetGroupItemIds(prev => { const n = new Set(prev); n.add(id); return n })
   }
 
-  async function saveDraft(currentItems: ScheduleItem[]) {
+  async function saveDraft(currentItems: ScheduleItem[], currentDaySubpackages: Record<number, DaySubpackageEntry[]>) {
     setSavingDraft(true)
     setDraftSaved(false)
     try {
-      await onSaveDraft(currentItems)
+      await onSaveDraft(currentItems, currentDaySubpackages)
       setDraftSaved(true)
       setTimeout(() => setDraftSaved(false), 2500)
     } finally {
@@ -288,9 +293,9 @@ export default function ScheduleEditor({
     setPendingItemIds(prev => { const n = new Set(prev); n.delete(id); return n })
     setEditSnapshots(prev => { const n = new Map(prev); n.delete(id); return n })
     setUnsetGroupItemIds(prev => { const n = new Set(prev); n.delete(id); return n })
-    // Use the ref so the saved draft includes the freshest edit (closure `items` can be
-    // one tick behind if the user's last keystroke fired in the same handler chain).
-    void saveDraft(itemsRef.current)
+    // Use refs so the saved draft includes the freshest items AND hours — closures
+    // can be one tick behind if the user's last keystroke fired in the same handler chain.
+    void saveDraft(itemsRef.current, daySubpackagesRef.current)
   }
   function editItem(id: string) {
     const snapshot = items.find(i => i.id === id)
@@ -350,11 +355,17 @@ export default function ScheduleEditor({
   }
 
   function fillTransfers(day: number) {
-    // Include pending items so they (a) anchor new transfers and (b) prevent duplicates
-    // when a pending transfer already sits between two activities. Exclude only items
-    // marked for removal — those will disappear on save.
+    // Pending transfers are ephemeral — clear them first so re-running Fill Transfers
+    // always produces a clean, correct set without being blocked by stale transfers.
+    // Committed (non-pending) transfers remain and anchor the scan as intended.
+    const existingPendingTransferIds = new Set(
+      items
+        .filter(i => i.day === day && pendingItemIds.has(i.id) && (i.itemType ?? 'appointment') === 'transfer')
+        .map(i => i.id)
+    )
+
     const baseItems = items
-      .filter(i => i.day === day && !markedForRemoval.has(i.id))
+      .filter(i => i.day === day && !markedForRemoval.has(i.id) && !existingPendingTransferIds.has(i.id))
       .sort(compareScheduleItems)
 
     // Pick a human-readable label for from/to and title fallback.
@@ -457,10 +468,15 @@ export default function ScheduleEditor({
     const newTransfers = insertions.map(x => x.transfer)
 
     setItems(prev => {
-      const kept = prev.filter(i => !baseIds.has(i.id))
+      const kept = prev.filter(i => !baseIds.has(i.id) && !existingPendingTransferIds.has(i.id))
       return [...kept, ...renumbered]
     })
-    setPendingItemIds(prev => { const n = new Set(prev); newTransfers.forEach(t => n.add(t.id)); return n })
+    setPendingItemIds(prev => {
+      const n = new Set(prev)
+      existingPendingTransferIds.forEach(id => n.delete(id))
+      newTransfers.forEach(t => n.add(t.id))
+      return n
+    })
     setCollapsedDays(prev => { const n = new Set(prev); n.delete(day); return n })
   }
 
@@ -672,7 +688,7 @@ export default function ScheduleEditor({
       )
 
       // Clear draft now that it's been officially published
-      await onSaveDraft([])
+      await onSaveDraft([], {})
 
       onSaved()
     } catch (e: unknown) {
@@ -1287,7 +1303,7 @@ export default function ScheduleEditor({
             ) : (
             <div className="flex items-center justify-end gap-2">
               <button
-                onClick={() => void saveDraft(items)}
+                onClick={() => void saveDraft(items, daySubpackages)}
                 disabled={savingDraft || saving || items.length === 0}
                 className="text-sm font-medium bg-gray-700 text-white hover:bg-gray-600 px-4 py-2 rounded-xl disabled:opacity-40 disabled:cursor-not-allowed"
               >

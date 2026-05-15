@@ -614,10 +614,20 @@ export default function CaseDetailPage() {
       flightDiff('Outbound', caseData.outbound_flight, out, items)
       flightDiff('Inbound', caseData.inbound_flight, inb, items)
 
+      // Sync travel dates from flight dates (outbound arrival → start, inbound departure → end)
+      const newTravelStart = out?.arrival_datetime
+        ? out.arrival_datetime.split('T')[0]
+        : (caseData.travel_start_date ?? null)
+      const newTravelEnd = inb?.departure_datetime
+        ? inb.departure_datetime.split('T')[0]
+        : (caseData.travel_end_date ?? null)
+
       const { error } = await supabase.from('cases').update({
         concept: newConcept,
         outbound_flight: out,
         inbound_flight: inb,
+        travel_start_date: newTravelStart,
+        travel_end_date: newTravelEnd,
       }).eq('id', caseData.id)
       if (error) throw error
       await notifyCaseInfoChanged(caseData.id, items.length > 0 ? { header: 'Trip info updated', items } : undefined)
@@ -907,13 +917,18 @@ export default function CaseDetailPage() {
 
   function openTripEditor() {
     if (!caseData) return
+    // If flight dates not yet set, pre-populate date from trip dates
+    const outArrivalInit = caseData.outbound_flight?.arrival_datetime
+      || (caseData.travel_start_date ?? '')
+    const inDepartureInit = caseData.inbound_flight?.departure_datetime
+      || (caseData.travel_end_date ?? '')
     setTripForm({
       concept: caseData.concept ?? '',
       out_departure_datetime: caseData.outbound_flight?.departure_datetime ?? '',
       out_departure_airport: caseData.outbound_flight?.departure_airport ?? '',
-      out_arrival_datetime: caseData.outbound_flight?.arrival_datetime ?? '',
+      out_arrival_datetime: outArrivalInit,
       out_arrival_airport: caseData.outbound_flight?.arrival_airport ?? '',
-      in_departure_datetime: caseData.inbound_flight?.departure_datetime ?? '',
+      in_departure_datetime: inDepartureInit,
       in_departure_airport: caseData.inbound_flight?.departure_airport ?? '',
       in_arrival_datetime: caseData.inbound_flight?.arrival_datetime ?? '',
       in_arrival_airport: caseData.inbound_flight?.arrival_airport ?? '',
@@ -1459,7 +1474,10 @@ export default function CaseDetailPage() {
                     <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">{label} Flight *</p>
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <label className="block text-[10px] text-gray-500 mb-0.5">Departure Date & Time</label>
+                        <label className="block text-[10px] text-gray-500 mb-0.5">
+                          Departure Date & Time
+                          {prefix === 'in' && <span className="ml-1 text-[#0f4c35] font-semibold">= Travel End</span>}
+                        </label>
                         <DateTime24Picker value={tripForm[`${prefix}_departure_datetime`]}
                           minDate={minD} maxDate={maxD}
                           onChange={v => setTripForm(p => ({ ...p, [`${prefix}_departure_datetime`]: v }))} />
@@ -1472,7 +1490,10 @@ export default function CaseDetailPage() {
                           className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
                       </div>
                       <div>
-                        <label className="block text-[10px] text-gray-500 mb-0.5">Arrival Date & Time</label>
+                        <label className="block text-[10px] text-gray-500 mb-0.5">
+                          Arrival Date & Time
+                          {prefix === 'out' && <span className="ml-1 text-[#0f4c35] font-semibold">= Travel Start</span>}
+                        </label>
                         <DateTime24Picker value={tripForm[`${prefix}_arrival_datetime`]}
                           minDate={minD} maxDate={maxD}
                           onChange={v => setTripForm(p => ({ ...p, [`${prefix}_arrival_datetime`]: v }))} />
