@@ -3,11 +3,12 @@ import { createClient } from '@supabase/supabase-js'
 import { sendInviteEmailToAgent } from '@/lib/email'
 
 export async function POST(req: Request) {
-  const { invite_url, recipient_email, expires_at, agent_id } = await req.json() as {
+  const { invite_url, recipient_email, expires_at, agent_id, personal_message } = await req.json() as {
     invite_url?: string
     recipient_email?: string
     expires_at?: string
     agent_id?: string
+    personal_message?: string
   }
 
   if (!invite_url || !recipient_email?.trim()) {
@@ -17,7 +18,7 @@ export async function POST(req: Request) {
   const expiresAt = expires_at ?? new Date(Date.now() + 7 * 86400000).toISOString()
 
   try {
-    await sendInviteEmailToAgent(recipient_email.trim(), invite_url, expiresAt)
+    await sendInviteEmailToAgent(recipient_email.trim(), invite_url, expiresAt, personal_message)
   } catch (e: unknown) {
     return NextResponse.json({ error: (e as { message?: string })?.message ?? 'Failed to send email.' }, { status: 500 })
   }

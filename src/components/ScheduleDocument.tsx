@@ -92,7 +92,8 @@ function formatFlightDateTime(dt: string | null | undefined): { date: string; ti
 }
 
 function formatTimeRange(time: string | null, endTime: string | null | undefined): string | null {
-  if (!time) return null
+  if (!time && !endTime) return null
+  if (!time) return `→ ${endTime}`
   if (endTime) return `${time} – ${endTime}`
   return time
 }

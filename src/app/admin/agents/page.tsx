@@ -57,6 +57,7 @@ export default function AdminAgentsPage() {
   const [createdInvite, setCreatedInvite] = useState<{ agent_id: string | null; agent_number: string; invite_url: string; expires_at: string } | null>(null)
   const [copiedInvite, setCopiedInvite] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteMessage, setInviteMessage] = useState('')
   const [sendingEmail, setSendingEmail] = useState(false)
   const [emailSent, setEmailSent] = useState(false)
   const [emailError, setEmailError] = useState('')
@@ -112,6 +113,7 @@ export default function AdminAgentsPage() {
         body: JSON.stringify({
           inviting_auth_user_id: session?.user?.id ?? null,
           recipient_email: inviteEmail.trim() || null,
+          personal_message: inviteMessage.trim() || null,
         }),
       })
       const data = await res.json()
@@ -139,7 +141,7 @@ export default function AdminAgentsPage() {
       const res = await fetch('/api/admin/send-invite-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ invite_url: createdInvite.invite_url, recipient_email: inviteEmail.trim(), expires_at: createdInvite.expires_at, agent_id: createdInvite.agent_id ?? undefined }),
+        body: JSON.stringify({ invite_url: createdInvite.invite_url, recipient_email: inviteEmail.trim(), expires_at: createdInvite.expires_at, agent_id: createdInvite.agent_id ?? undefined, personal_message: inviteMessage.trim() || null }),
       })
       if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? 'Failed') }
       setEmailSent(true)
@@ -370,6 +372,17 @@ export default function AdminAgentsPage() {
                     onChange={e => setInviteEmail(e.target.value)}
                     placeholder="agent@example.com"
                     className="w-full text-sm text-gray-900 border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#0f4c35]/30"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs text-gray-500">Personal Message <span className="text-gray-400">(optional — shown at the top of the email)</span></label>
+                  <textarea
+                    value={inviteMessage}
+                    onChange={e => setInviteMessage(e.target.value)}
+                    placeholder="e.g. Hi Sarah, great meeting you at the conference. Looking forward to working together!"
+                    rows={3}
+                    className="w-full text-sm text-gray-900 border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#0f4c35]/30 resize-none"
                   />
                 </div>
 

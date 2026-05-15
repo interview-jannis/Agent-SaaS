@@ -164,9 +164,14 @@ export async function sendApprovalEmailToAgent(recipientEmail: string, setupUrl:
   }
 }
 
-export async function sendInviteEmailToAgent(recipientEmail: string, inviteUrl: string, expiresAt: string) {
+export async function sendInviteEmailToAgent(recipientEmail: string, inviteUrl: string, expiresAt: string, personalMessage?: string) {
   if (!process.env.RESEND_API_KEY) return
   const expiresFormatted = new Date(expiresAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+  const personalBlock = personalMessage?.trim()
+    ? `<div style="margin:0 0 24px;padding:16px 20px;background:#f0f9f4;border-left:3px solid #0f4c35;border-radius:4px">
+        <p style="margin:0;font-size:14px;color:#374151;white-space:pre-line">${personalMessage.trim()}</p>
+       </div>`
+    : ''
   const html = `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
@@ -178,6 +183,7 @@ export async function sendInviteEmailToAgent(recipientEmail: string, inviteUrl: 
           <span style="color:#fff;font-size:22px;font-weight:700;letter-spacing:-0.5px">TikkTakk</span>
         </td></tr>
         <tr><td style="padding:32px;font-size:15px;line-height:1.7">
+          ${personalBlock}
           <p style="margin:0 0 16px;color:#374151">You have been invited to join TikkTakk as a partner agent.</p>
           <p style="margin:0 0 8px;color:#374151">Here&apos;s what to expect when you click the link:</p>
           <ul style="margin:8px 0 24px;padding-left:20px;color:#374151">

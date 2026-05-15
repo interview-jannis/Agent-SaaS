@@ -1629,7 +1629,7 @@ const inScope = itemGroupIds === null
       <div className="flex items-center gap-2">
         {isPending ? (
           /* Pending: full select inputs */
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 flex-wrap">
             <select
               value={item.itemType ?? 'appointment'}
               onChange={(e) => {
@@ -1679,7 +1679,7 @@ const inScope = itemGroupIds === null
             <span className="text-gray-200">|</span>
             <Time24Input value={item.time ?? null} onChange={(v) => onUpdate({ time: v, ...(v ? { block: blockFromTime(v) } : {}) })} />
             <span className="text-xs text-gray-400">→</span>
-            <Time24Input value={item.endTime ?? null} onChange={(v) => onUpdate({ endTime: v })} />
+            <Time24Input value={item.endTime ?? null} onChange={(v) => onUpdate({ endTime: v, ...(!item.time && v ? { block: blockFromTime(v) } : {}) })} />
           </div>
         ) : (
           /* Committed: compact read-only text */
@@ -1692,11 +1692,11 @@ const inScope = itemGroupIds === null
               {SCHEDULE_BLOCK_LABEL[item.block]}
               {item.endBlock && item.endBlock !== item.block && ` → ${SCHEDULE_BLOCK_LABEL[item.endBlock]}`}
             </span>
-            {item.time && (
+            {(item.time || item.endTime) && (
               <>
                 <span className="text-gray-300">·</span>
                 <span className="tabular-nums text-gray-400">
-                  {item.time}{item.endTime ? ` → ${item.endTime}` : ''}
+                  {item.time ? `${item.time}${item.endTime ? ` → ${item.endTime}` : ''}` : `→ ${item.endTime}`}
                 </span>
               </>
             )}

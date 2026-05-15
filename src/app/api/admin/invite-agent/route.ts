@@ -14,7 +14,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Service role key not configured on server.' }, { status: 500 })
   }
 
-  const body = await req.json().catch(() => ({})) as { inviting_auth_user_id?: string | null; recipient_email?: string | null }
+  const body = await req.json().catch(() => ({})) as { inviting_auth_user_id?: string | null; recipient_email?: string | null; personal_message?: string | null }
 
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -87,7 +87,7 @@ export async function POST(req: Request) {
 
   if (recipientEmail) {
     try {
-      await sendInviteEmailToAgent(recipientEmail, inviteUrl, expiresAt.toISOString())
+      await sendInviteEmailToAgent(recipientEmail, inviteUrl, expiresAt.toISOString(), body.personal_message ?? undefined)
     } catch {
       // non-fatal — link is still returned
     }
