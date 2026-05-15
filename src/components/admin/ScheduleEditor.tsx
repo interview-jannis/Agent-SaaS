@@ -31,6 +31,7 @@ import {
   generateScheduleItemId,
   resolveGroupIds,
 } from '@/types/schedule'
+import { calcOvertimeCostKrw } from '@/lib/pricing'
 
 // Per-day per-service assignment with hours. Hours default to the product's
 // durationValue and admin can override per day. Total contracted = quantity ×
@@ -52,6 +53,7 @@ type CaseProduct = {
   quantity: number
   durationValue: number | null
   durationUnit: string | null
+  overtimeRateKrw: number | null
   isHealthCheckup: boolean
   location: string | null
   fullAddress: string | null
@@ -368,55 +370,78 @@ export default function ScheduleEditor({
       return null
     }
 
-    type Insertion = { afterIdx: number; transfer: ScheduleItem }
-    const insertions: Insertion[] = []
-
-    for (let i = 0; i < baseItems.length - 1; i++) {
-      const a = baseItems[i]
-      const b = baseItems[i + 1]
-      const aType = a.itemType ?? 'appointment'
-      const bType = b.itemType ?? 'appointment'
-      if (aType === 'transfer' || bType === 'transfer') continue
-      if (aType === 'free' || bType === 'free') continue
-      if (a.isPrayer || b.isPrayer) continue
-      const aGroups = resolveGroupIds(a)
-      const bGroups = resolveGroupIds(b)
-      let transferGroups: string[] | null = null
-      if (aGroups === null && bGroups === null) {
-        transferGroups = null
-      } else if (aGroups === null) {
-        transferGroups = bGroups
-      } else if (bGroups === null) {
-        transferGroups = aGroups
-      } else {
-        const intersection = aGroups.filter(g => bGroups!.includes(g))
-        if (intersection.length === 0) continue
-        transferGroups = intersection
-      }
-
-      const toLabel = labelOf(b)
-      const transfer: ScheduleItem = {
-        id: generateScheduleItemId(),
-        day,
-        block: a.block,
-        endBlock: a.block !== b.block ? b.block : undefined,
-        // Inherit a's end/start time as the transfer start, and b's start time as
-        // the transfer arrival. transfer는 정확히 a 끝 ~ b 시작 사이에 끼는 이동.
-        time: a.endTime ?? a.time ?? null,
-        endTime: b.time ?? null,
-        title: toLabel ? `Transfer to ${toLabel}` : 'Transfer',
-        itemType: 'transfer',
-        fromLocation: locOf(a),
-        toLocation: locOf(b),
-        transportMode: 'car',
-        location: null,
-        notes: null,
-        variantId: null,
-        groupIds: transferGroups,
-        sortOrder: 0, // re-numbered below
-      }
-      insertions.push({ afterIdx: i, transfer })
+    // Build per-group views so the scan respects each group's own timeline.
+    // A Shared item appears in every group's view; group-specific items appear only
+    // in their own group's view. For a purely-shared day (no groups), run one scan.
+    const distinctGroupIds = new Set<string>()
+    for (const item of baseItems) {
+      const g = resolveGroupIds(item)
+      if (g !== null) g.forEach(id => distinctGroupIds.add(id))
     }
+    const groupScans: Array<{ groupId: string | null; groupItems: ScheduleItem[] }> =
+      distinctGroupIds.size === 0
+        ? [{ groupId: null, groupItems: baseItems }]
+        : [...distinctGroupIds].map(groupId => ({
+            groupId,
+            groupItems: baseItems.filter(item => {
+              const g = resolveGroupIds(item)
+              return g === null || g.includes(groupId)
+            }),
+          }))
+
+    // Deduplication key = a.id + ':' + b.id + ':' + groupKey so that Shared→Shared
+    // pairs produce the same key across all group scans (only one transfer created).
+    type Insertion = { afterIdx: number; transfer: ScheduleItem }
+    const insertionMap = new Map<string, Insertion>()
+
+    for (const { groupId, groupItems } of groupScans) {
+      for (let i = 0; i < groupItems.length - 1; i++) {
+        const a = groupItems[i]
+        const b = groupItems[i + 1]
+        const aType = a.itemType ?? 'appointment'
+        const bType = b.itemType ?? 'appointment'
+        if (aType === 'transfer' || bType === 'transfer') continue
+        if (aType === 'free' || bType === 'free') continue
+        if (a.isPrayer || b.isPrayer) continue
+        // No gap between items → no travel time (e.g. in-place prayer at hotel)
+        const aEnd = a.endTime ?? a.time
+        if (aEnd && b.time && aEnd === b.time) continue
+
+        const aGroups = resolveGroupIds(a)
+        const bGroups = resolveGroupIds(b)
+        // Shared→Shared: one shared transfer; otherwise assign to this group.
+        const transferGroupIds: string[] | null =
+          aGroups === null && bGroups === null ? null
+          : groupId !== null ? [groupId] : null
+
+        const groupKey = transferGroupIds ? [...transferGroupIds].sort().join(',') : 'shared'
+        const key = `${a.id}:${b.id}:${groupKey}`
+        if (insertionMap.has(key)) continue
+
+        const afterIdx = baseItems.indexOf(a)
+        const toLabel = labelOf(b)
+        insertionMap.set(key, { afterIdx, transfer: {
+          id: generateScheduleItemId(),
+          day,
+          block: a.block,
+          endBlock: a.block !== b.block ? b.block : undefined,
+          time: a.endTime ?? a.time ?? null,
+          endTime: b.time ?? null,
+          title: toLabel ? `Transfer to ${toLabel}` : 'Transfer',
+          itemType: 'transfer',
+          fromLocation: locOf(a),
+          toLocation: locOf(b),
+          transportMode: 'car',
+          location: null,
+          notes: null,
+          variantId: null,
+          groupIds: transferGroupIds,
+          sortOrder: 0,
+        }})
+      }
+    }
+
+    const insertions = [...insertionMap.values()]
 
     if (insertions.length === 0) return
 
@@ -425,8 +450,7 @@ export default function ScheduleEditor({
     const merged: ScheduleItem[] = []
     for (let i = 0; i < baseItems.length; i++) {
       merged.push(baseItems[i])
-      const ins = insertions.find(x => x.afterIdx === i)
-      if (ins) merged.push(ins.transfer)
+      insertions.filter(x => x.afterIdx === i).forEach(ins => merged.push(ins.transfer))
     }
     const renumbered = merged.map((it, idx) => ({ ...it, sortOrder: idx }))
     const baseIds = new Set(baseItems.map(it => it.id))
@@ -533,8 +557,8 @@ export default function ScheduleEditor({
       // Handle both legacy format (title included variant) and new format (title = productName only)
       const autoTitleNew = prev?.productName ?? null
       const autoTitleOld = prev ? [prev.productName, prev.variantLabel].filter(Boolean).join(' · ') : null
-      // Hotel sub-dropdown can auto-fill these titles regardless of product name.
-      const HOTEL_AUTO_TITLES = ['Hotel Check-in', 'Hotel Check-out', 'Hotel Stay']
+      // Accommodation sub-dropdown can auto-fill these titles regardless of product name.
+      const HOTEL_AUTO_TITLES = ['Hotel Check-in', 'Hotel Check-out', 'Hotel Stay', 'Hospital Stay']
       const titleWasHotelAuto = !!current?.title && HOTEL_AUTO_TITLES.includes(current.title)
       const titleWasAuto = (autoTitleNew && current?.title === autoTitleNew) || (autoTitleOld && current?.title === autoTitleOld) || titleWasHotelAuto
       const partnerWasAuto = prev?.partnerName && current?.partner === prev.partnerName
@@ -546,8 +570,9 @@ export default function ScheduleEditor({
       updateItem(itemId, {
         variantId: null,
         variantTag: null,
-        // Hotel check-type only makes sense while a hotel product is linked.
+        // Accommodation fields clear when product deselected
         hotelCheckType: null,
+        accommodationType: null,
         ...(titleWasAuto ? { title: '' } : {}),
         ...(partnerWasAuto ? { partner: null } : {}),
         ...(locationWasAuto ? { location: null } : {}),
@@ -569,8 +594,12 @@ export default function ScheduleEditor({
       location: cp.location ?? cp.partnerName ?? null,
       ...(cp.fullAddress ? { address: cp.fullAddress } : {}),
       ...(cp.contactPhone ? { partnerContact: [cp.partnerName, cp.contactPhone].filter(Boolean).join(' · ') } : {}),
-      // Switching to a non-hotel product? Drop any stale hotel check-type.
-      ...(cp.isHotel ? {} : { hotelCheckType: null }),
+      // Auto-detect accommodation type from linked product
+      ...(cp.isHotel
+        ? { accommodationType: 'hotel' as const }
+        : cp.isHealthCheckup
+        ? { accommodationType: 'hospital' as const, hotelCheckType: 'stay' as const }
+        : { hotelCheckType: null, accommodationType: null }),
     })
   }
 
@@ -693,14 +722,14 @@ export default function ScheduleEditor({
         // Collapse unless there are pending (unsaved) items in this day
         const isCollapsed = collapsedDays.has(day) && !hasPending
         return (
-          <div key={day} className={`bg-white border border-gray-100 shadow-sm ${isCollapsed ? 'rounded-2xl' : 'rounded-2xl'}`}>
+          <div id={`schedule-day-${day}`} key={day} className={`shadow-sm rounded-2xl ${hasPending ? 'bg-amber-50 border border-amber-300' : 'bg-white border border-gray-100'}`}>
             {/* Day header */}
-            <div className="flex items-center justify-between px-4 py-3">
+            <div className={`flex items-center justify-between px-4 py-3 ${hasPending ? 'border-b border-amber-200' : ''}`}>
               <button
                 onClick={() => toggleDayCollapse(day)}
                 className="flex items-baseline gap-2 flex-1 text-left min-w-0"
               >
-                <p className="text-sm font-semibold text-gray-900 shrink-0">Day {day}</p>
+                <p className={`text-sm font-semibold shrink-0 ${hasPending ? 'text-amber-800' : 'text-gray-900'}`}>Day {day}</p>
                 {dateObj && <p className="text-xs text-gray-400 truncate">{formatDayHeader(dateObj)}</p>}
                 {isCollapsed && dayItems.length > 0 && (
                   <span className="text-xs text-gray-400 shrink-0">· {dayItems.length} item{dayItems.length !== 1 ? 's' : ''}</span>
@@ -784,11 +813,11 @@ export default function ScheduleEditor({
                 if (batch.length > 0) segments.push({ type: 'group', items: batch })
               }
 
-              // Day-level concierge subpackages: trip services (excluding hotel & vehicle)
-              // that apply to this day by default. Drives the Trip Services coverage count.
+              // Day-level concierge subpackages: trip services (excluding hotel) per day.
+              // Vehicle included — hours = vehicle service hours for that day.
               const dayConciergeOptions = [...new Map(
                 caseProducts
-                  .filter(cp => cp.isTripService && !cp.isHotel && !cp.isVehicle)
+                  .filter(cp => cp.isTripService && !cp.isHotel)
                   .map(cp => [cp.variantId, cp])
               ).values()]
               const entriesForDay = daySubpackages[day] ?? []
@@ -1093,6 +1122,8 @@ export default function ScheduleEditor({
         const scheduledDaysByVariant = new Map<string, Set<number>>()
         // Hours actually scheduled (sum across days) — used for Trip Services summary.
         const scheduledHoursByVariant = new Map<string, number>()
+        // Per-day hours array per variant — used for overtime calculation.
+        const hoursByDayPerVariant = new Map<string, number[]>()
         // Day-level subpackage selections (the source of truth for non-hotel count)
         for (const [dayStr, entries] of Object.entries(daySubpackages)) {
           const day = Number(dayStr)
@@ -1100,6 +1131,8 @@ export default function ScheduleEditor({
             if (!scheduledDaysByVariant.has(e.variantId)) scheduledDaysByVariant.set(e.variantId, new Set())
             scheduledDaysByVariant.get(e.variantId)!.add(day)
             scheduledHoursByVariant.set(e.variantId, (scheduledHoursByVariant.get(e.variantId) ?? 0) + (e.hours ?? 0))
+            if (!hoursByDayPerVariant.has(e.variantId)) hoursByDayPerVariant.set(e.variantId, [])
+            hoursByDayPerVariant.get(e.variantId)!.push(e.hours ?? 0)
           }
         }
         // Item-direct variantId coverage (so hotel-day span & vehicle-linked transfers still count)
@@ -1123,6 +1156,7 @@ export default function ScheduleEditor({
           contractedHours: number
           hasHours: boolean
           overage: number  // positive = overage; 0 = matches; negative = under (not used)
+          overtimeCostKrw: number
         }
         const missingTripServices: TripMissing[] = []
         const tripSummary: TripSummary[] = []
@@ -1132,7 +1166,17 @@ export default function ScheduleEditor({
           if (daySet && daySet.size > 0) {
             if (cp.isHotel) {
               const days = [...daySet]
-              scheduledDays = Math.max(...days) - Math.min(...days) + 1
+              const minDay = Math.min(...days)
+              const maxDay = Math.max(...days)
+              // If the max day has ONLY checkout items (no checkin/stay), that day
+              // is a departure morning — subtract 1 so it doesn't count as an extra night.
+              // If the max day has ANY checkout item, treat it as departure morning
+              // (checkout takes precedence even if a stay item is also on that day)
+              const maxDayHasCheckout = committedItems.some(
+                it => it.variantId === vid && it.day === maxDay && it.hotelCheckType === 'checkout'
+              )
+              const maxNightDay = maxDayHasCheckout ? maxDay - 1 : maxDay
+              scheduledDays = Math.max(0, maxNightDay - minDay + 1)
             } else {
               scheduledDays = daySet.size
             }
@@ -1142,6 +1186,11 @@ export default function ScheduleEditor({
           const baseHours = hasHours ? (cp.durationValue ?? 0) : 0
           const contractedHours = baseHours * cp.quantity
           const scheduledHours = scheduledHoursByVariant.get(vid) ?? 0
+          const { overtimeCostKrw } = calcOvertimeCostKrw({
+            assignedHoursByDay: hoursByDayPerVariant.get(vid) ?? [],
+            durationValue: hasHours ? (cp.durationValue ?? null) : null,
+            overtimeRateKrw: cp.overtimeRateKrw,
+          })
           tripSummary.push({
             cp,
             scheduledDays,
@@ -1150,11 +1199,15 @@ export default function ScheduleEditor({
             contractedHours,
             hasHours,
             overage: Math.max(0, scheduledHours - contractedHours),
+            overtimeCostKrw,
           })
         }
         tripSummary.sort((a, b) => (a.cp.partnerName ?? a.cp.productName).localeCompare(b.cp.partnerName ?? b.cp.productName))
 
         const hasPending = pendingItemIds.size > 0
+        const pendingDays = hasPending
+          ? [...new Set(items.filter(it => pendingItemIds.has(it.id)).map(it => it.day))].sort((a, b) => a - b)
+          : []
         const hasUnsetGroup = unsetGroupItemIds.size > 0
         const allCovered = missingRegular.length === 0 && missingTripServices.length === 0
         const canSave = !saving && allCovered && !hasPending && !hasUnsetGroup && items.length > 0
@@ -1177,39 +1230,27 @@ export default function ScheduleEditor({
                 </ul>
               </div>
             )}
-            {missingTripServices.length > 0 && (
-              <div className="text-xs bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 space-y-1">
-                <p className="font-semibold text-amber-700">Trip services not fully scheduled</p>
-                <ul className="text-amber-900 space-y-0.5 pl-3 list-disc">
-                  {missingTripServices.map(({ cp, required, scheduled }) => (
-                    <li key={cp.variantId}>
-                      {cp.partnerName && <span className="text-amber-700">{cp.partnerName} · </span>}
-                      {cp.productName}{cp.variantLabel ? ` · ${cp.variantLabel}` : ''}
-                      <span className="ml-1 text-amber-600">({scheduled}/{required} days)</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
             {tripSummary.length > 0 && (
-              <div className="text-xs bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 space-y-1">
-                <p className="font-semibold text-gray-700">Trip Services Summary</p>
-                <ul className="text-gray-700 space-y-0.5 pl-3 list-disc">
+              <div className={`text-xs rounded-lg px-3 py-2 space-y-1 ${missingTripServices.length > 0 ? 'bg-amber-50 border border-amber-200' : 'bg-gray-50 border border-gray-200'}`}>
+                <p className={`font-semibold ${missingTripServices.length > 0 ? 'text-amber-700' : 'text-gray-700'}`}>Trip Services Summary</p>
+                <ul className="space-y-0.5 pl-3 list-disc">
                   {tripSummary.map(s => {
                     const dayOK = s.scheduledDays >= s.requiredDays
-                    const hourOK = !s.hasHours || s.scheduledHours <= s.contractedHours
                     return (
-                      <li key={s.cp.variantId}>
-                        {s.cp.partnerName && <span className="text-gray-500">{s.cp.partnerName} · </span>}
-                        <span className="text-gray-900">{s.cp.productName}</span>{s.cp.variantLabel ? <span className="text-gray-500"> · {s.cp.variantLabel}</span> : null}
-                        <span className={`ml-1 ${dayOK ? 'text-gray-500' : 'text-amber-700'}`}>
+                      <li key={s.cp.variantId} className={dayOK ? 'text-gray-700' : 'text-amber-900'}>
+                        {s.cp.partnerName && <span className={dayOK ? 'text-gray-500' : 'text-amber-700'}>{s.cp.partnerName} · </span>}
+                        <span className="font-medium">{s.cp.productName}</span>{s.cp.variantLabel ? <span className={dayOK ? 'text-gray-500' : 'text-amber-700'}> · {s.cp.variantLabel}</span> : null}
+                        <span className={`ml-1 ${dayOK ? 'text-gray-500' : 'text-amber-700 font-semibold'}`}>
                           · {s.scheduledDays}/{s.requiredDays} days
                         </span>
-                        {s.hasHours && (
-                          <span className={`ml-1 ${hourOK ? 'text-gray-500' : 'text-amber-700 font-semibold'}`}>
-                            · {s.scheduledHours}h / {s.contractedHours}h
-                            {s.overage > 0 && <span className="ml-1">(+{s.overage}h overage)</span>}
-                          </span>
+                        {!s.cp.isHotel && s.scheduledHours > 0 && (
+                          <span className={`ml-1 ${dayOK ? 'text-gray-500' : 'text-amber-700'}`}>· {s.scheduledHours}h scheduled</span>
+                        )}
+                        {s.overage > 0 && s.overtimeCostKrw > 0 && (
+                          <span className="ml-1 font-semibold text-rose-600">· +{s.overage}h OT · +₩{s.overtimeCostKrw.toLocaleString('ko-KR')}</span>
+                        )}
+                        {s.overage > 0 && s.overtimeCostKrw === 0 && s.cp.overtimeRateKrw === null && (
+                          <span className="ml-1 text-amber-700">· +{s.overage}h over (no OT rate set)</span>
                         )}
                       </li>
                     )
@@ -1218,9 +1259,21 @@ export default function ScheduleEditor({
               </div>
             )}
             {hasPending && (
-              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                {pendingItemIds.size} item{pendingItemIds.size !== 1 ? 's' : ''} still in draft — Save or Cancel each before sending.
-              </p>
+              <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 flex flex-wrap items-center gap-x-1 gap-y-0.5">
+                <span>{pendingItemIds.size} item{pendingItemIds.size !== 1 ? 's' : ''} still in draft —</span>
+                {pendingDays.map((d, idx) => (
+                  <span key={d}>
+                    <button
+                      className="font-semibold underline underline-offset-2 hover:text-amber-900"
+                      onClick={() => {
+                        setCollapsedDays(prev => { const n = new Set(prev); n.delete(d); return n })
+                        setTimeout(() => document.getElementById(`schedule-day-${d}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+                      }}
+                    >Day {d}</button>{idx < pendingDays.length - 1 ? ',' : ''}
+                  </span>
+                ))}
+                <span>— Save or Cancel each before sending.</span>
+              </div>
             )}
             {hasUnsetGroup && (
               <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
@@ -1638,11 +1691,14 @@ const inScope = itemGroupIds === null
                   const t = e.target.value as ScheduleItemType
                   const updates: Partial<ScheduleItem> = { itemType: t }
                   if (t === 'free' && !item.title.trim()) updates.title = 'Free time'
+                  if (t === 'transfer') {
+                    updates.transportMode = 'car'
+                    const vehicle = vehicleProducts[0]
+                    if (vehicle) updates.variantId = vehicle.variantId
+                  }
                   if (t === 'hotel') {
-                    if (item.hotelCheckType && !item.title.trim())
-                      updates.title = item.hotelCheckType === 'checkin' ? 'Hotel Check-in' : item.hotelCheckType === 'checkout' ? 'Hotel Check-out' : 'Hotel Stay'
-                    const hotelProduct = caseProducts.find(cp => cp.isHotel)
-                    if (hotelProduct && !item.variantId) updates.variantId = hotelProduct.variantId
+                    // Clear title so admin picks accommodation type + product first
+                    if (!item.title.trim()) updates.title = ''
                   }
                   onUpdate(updates)
                 }}
@@ -1790,14 +1846,20 @@ const inScope = itemGroupIds === null
             </span>
           )}
           {(itemType === 'appointment' || itemType === 'hotel') && !item.isPrayer && (() => {
-            // Regular products + hotels. Other trip services (vehicle = transfer picker,
-            // concierge/interpreter/security = Day concierge selector) stay out of this dropdown.
-            const regularProducts = pickerProducts.filter(cp => !cp.isTripService || cp.isHotel)
-            // Subpackage selector lists concierge-type trip services (interpreter, concierge, security, etc.)
-            // Hotel & vehicle are excluded — hotel is its own appointment type with hotelCheckType,
-            // vehicle is selected on transfer items separately.
+            const accType = item.accommodationType ?? null
+            const isHospital = accType === 'hospital'
+
+            // Product filtering per item type:
+            // accommodation → hotel or hospital products only (no regular products)
+            // appointment   → regular products only (no trip services, no hotel)
+            const regularProducts = itemType === 'hotel'
+              ? (accType === 'hotel'
+                  ? pickerProducts.filter(cp => cp.isHotel)
+                  : accType === 'hospital'
+                  ? pickerProducts.filter(cp => cp.isHealthCheckup && !cp.isTripService)
+                  : pickerProducts.filter(cp => cp.isHotel || (cp.isHealthCheckup && !cp.isTripService)))
+              : pickerProducts.filter(cp => !cp.isTripService)
             const allTripServices = caseProducts.filter(cp => cp.isTripService && !cp.isVehicle && !cp.isHotel)
-            // Detect if selected product is a hotel product
             const selectedHotelProduct = item.variantId
               ? caseProducts.find(cp => cp.variantId === item.variantId && cp.isHotel) ?? null
               : null
@@ -1810,6 +1872,26 @@ const inScope = itemGroupIds === null
             }
             return (
               <>
+                {/* Accommodation sub-type picker (hotel vs hospital) */}
+                {itemType === 'hotel' && (
+                  <select
+                    value={accType ?? ''}
+                    onChange={(e) => {
+                      const v = (e.target.value || null) as 'hotel' | 'hospital' | null
+                      const allAutoTitles = ['Hotel Check-in', 'Hotel Check-out', 'Hotel Stay', 'Hospital Stay']
+                      const updates: Partial<ScheduleItem> = { accommodationType: v, variantId: null, hotelCheckType: null }
+                      if (v === 'hospital') { updates.hotelCheckType = 'stay'; if (!item.title.trim() || allAutoTitles.includes(item.title)) updates.title = 'Hospital Stay' }
+                      else if (!item.title.trim() || allAutoTitles.includes(item.title)) { updates.title = '' }
+                      onUpdate(updates)
+                    }}
+                    disabled={!isPending}
+                    className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
+                  >
+                    <option value="">— Acc. type —</option>
+                    <option value="hotel">Hotel</option>
+                    <option value="hospital">Hospital</option>
+                  </select>
+                )}
                 <select
                   value={item.variantId ?? (item.title === 'Results Consultation' ? '__results_consultation__' : '')}
                   onChange={(e) => {
@@ -1824,11 +1906,12 @@ const inScope = itemGroupIds === null
                 >
                   <option value="">— Link a product (optional) —</option>
                   {regularProducts.map(renderOption)}
-                  {showResultsSuggestion && (
+                  {showResultsSuggestion && itemType !== 'hotel' && (
                     <option value="__results_consultation__">Results Consultation</option>
                   )}
                 </select>
-                {selectedHotelProduct && (
+                {/* Hotel check type — only for hotel sub-type (hospital is always "stay", no picker needed) */}
+                {selectedHotelProduct && !isHospital && (
                   <select
                     value={item.hotelCheckType ?? ''}
                     onChange={(e) => {
@@ -1836,7 +1919,8 @@ const inScope = itemGroupIds === null
                       const autoTitles: Record<string, string> = { checkin: 'Hotel Check-in', checkout: 'Hotel Check-out', stay: 'Hotel Stay' }
                       const updates: Partial<ScheduleItem> = { hotelCheckType: v }
                       const currentTitle = item.title.trim()
-                      if (!currentTitle || Object.values(autoTitles).includes(currentTitle))
+                      const allAutoTitles = ['Hotel Check-in', 'Hotel Check-out', 'Hotel Stay', 'Hospital Stay']
+                      if (!currentTitle || allAutoTitles.includes(currentTitle))
                         updates.title = v ? (autoTitles[v] ?? '') : ''
                       onUpdate(updates)
                     }}
@@ -1924,23 +2008,28 @@ const inScope = itemGroupIds === null
       {/* Type-specific fields */}
       {itemType === 'transfer' && (
         <>
-          {/* From / To — free text input + visible ▾ dropdown pick from case product locations.
-              Airports and ad-hoc locations stay as free-text since they aren't products. */}
+          {/* From / To */}
           <div className="grid grid-cols-2 gap-2">
-            <LocationCombobox
-              value={item.fromLocation ?? ''}
-              onChange={(v) => onUpdate({ fromLocation: v || null })}
-              options={availableLocations}
-              disabled={!isPending}
-              placeholder="From (type or pick)"
-            />
-            <LocationCombobox
-              value={item.toLocation ?? ''}
-              onChange={(v) => onUpdate({ toLocation: v || null })}
-              options={availableLocations}
-              disabled={!isPending}
-              placeholder="To (type or pick)"
-            />
+            <div>
+              <p className="text-[9px] font-semibold tracking-widest text-gray-400 uppercase mb-0.5">From</p>
+              <LocationCombobox
+                value={item.fromLocation ?? ''}
+                onChange={(v) => onUpdate({ fromLocation: v || null })}
+                options={availableLocations}
+                disabled={!isPending}
+                placeholder="From (type or pick)"
+              />
+            </div>
+            <div>
+              <p className="text-[9px] font-semibold tracking-widest text-gray-400 uppercase mb-0.5">To</p>
+              <LocationCombobox
+                value={item.toLocation ?? ''}
+                onChange={(v) => onUpdate({ toLocation: v || null })}
+                options={availableLocations}
+                disabled={!isPending}
+                placeholder="To (type or pick)"
+              />
+            </div>
           </div>
           {/* Transport mode + vehicle (or label override) — in Details for committed rows */}
           {(isPending || detailsOpen) && (

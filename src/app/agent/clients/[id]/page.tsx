@@ -648,10 +648,14 @@ export default function ClientDetailPage() {
                           const file = e.target.files?.[0]
                           if (!file || !client) return
                           setPassportUploading(true)
-                          const ext = file.name.split('.').pop() ?? 'jpg'
+                          setSaveError('')
+                          const rawExt = file.name.includes('.') ? file.name.split('.').pop()!.toLowerCase() : 'jpg'
+                          const ext = rawExt === 'heic' ? 'jpg' : rawExt
                           const path = `${client.id}/passport.${ext}`
                           const { error } = await supabase.storage.from('client-passports').upload(path, file, { upsert: true })
-                          if (!error) {
+                          if (error) {
+                            setSaveError(`Passport upload failed: ${error.message}`)
+                          } else {
                             const { data: { publicUrl } } = supabase.storage.from('client-passports').getPublicUrl(path)
                             setEditForm(p => p && ({ ...p, passport_image_url: publicUrl }))
                           }

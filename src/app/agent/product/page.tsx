@@ -15,6 +15,7 @@ type Variant = {
   price_currency: 'KRW' | 'USD'
   sort_order: number
   is_active: boolean
+  overtime_rate_krw: number | null
 }
 
 type Product = {
@@ -244,7 +245,7 @@ export default function AgentProductPage() {
         supabase.from('system_settings').select('value').eq('key', 'markup_rates').maybeSingle(),
         supabase
           .from('products')
-          .select('id, name, description, base_price, price_currency, duration_value, duration_unit, quantity_type, partner_name, partner_short, has_female_doctor, has_prayer_room, dietary_type, tertiary_category, category_id, subcategory_id, product_categories(name), product_subcategories!products_subcategory_id_fkey(name), product_subcategory_tags(product_subcategories!product_subcategory_tags_subcategory_id_fkey(name)), product_images(image_url, is_primary), product_variants(id, variant_label, base_price, price_currency, sort_order, is_active)')
+          .select('id, name, description, base_price, price_currency, duration_value, duration_unit, quantity_type, partner_name, partner_short, has_female_doctor, has_prayer_room, dietary_type, tertiary_category, category_id, subcategory_id, product_categories(name), product_subcategories!products_subcategory_id_fkey(name), product_subcategory_tags(product_subcategories!product_subcategory_tags_subcategory_id_fkey(name)), product_images(image_url, is_primary), product_variants(id, variant_label, base_price, price_currency, sort_order, is_active, overtime_rate_krw)')
           .eq('is_active', true),
         supabase.from('product_categories').select('id, name').order('sort_order').order('name'),
         supabase.from('product_subcategories').select('id, category_id, name, sort_order').order('sort_order').order('name'),
@@ -625,6 +626,7 @@ export default function AgentProductPage() {
     const cat = p.product_categories?.name
     const sub = p.product_subcategories?.name
     const markupRate = getMarkupRate(cat, sub, markupRatesConfig)
+    if (cat === 'Subpackage' && markupRate === 0) return 'Free'
     const prices = variants.map(v => variantPriceUsd({
       basePrice: v.base_price, priceCurrency: v.price_currency, exchangeRate,
       markupRate,
@@ -1237,10 +1239,10 @@ export default function AgentProductPage() {
                 const detailCat = detailProduct.product_categories?.name
                 const detailSub = detailProduct.product_subcategories?.name
                 const detailIsSubpkg = isSubpkg
-                const variantUsd = (v: Variant) => variantPriceUsd({
-                  basePrice: v.base_price, priceCurrency: v.price_currency, exchangeRate,
-                  markupRate: getMarkupRate(detailCat, detailSub, markupRatesConfig),
-                })
+                const detailMarkupRate = getMarkupRate(detailCat, detailSub, markupRatesConfig)
+                const variantUsd = (v: Variant) =>
+                  detailIsSubpkg && detailMarkupRate === 0 ? 0
+                  : variantPriceUsd({ basePrice: v.base_price, priceCurrency: v.price_currency, exchangeRate, markupRate: detailMarkupRate })
                 const variants = (detailProduct.product_variants ?? [])
                   .filter(v => v.is_active)
                   .sort((a, b) => variantUsd(b) - variantUsd(a) || a.sort_order - b.sort_order)
@@ -1296,6 +1298,9 @@ export default function AgentProductPage() {
                             ? <p className="text-sm font-bold text-amber-600">Price on request</p>
                             : <p className={`text-sm font-bold ${inCart ? 'text-[#0f4c35]' : 'text-gray-900'}`}>${usd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                         }
+                        {v.overtime_rate_krw && detailIsSubpkg && (
+                          <p className="text-[10px] text-gray-400">+₩{v.overtime_rate_krw.toLocaleString('ko-KR')}/h OT</p>
+                        )}
                         <p className="text-[10px] text-gray-400">{inCart ? '✓ in cart' : 'tap to add'}</p>
                       </div>
                     </button>

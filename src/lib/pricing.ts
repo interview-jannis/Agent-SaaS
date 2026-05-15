@@ -102,3 +102,20 @@ export function variantPriceKrw({
   const baseKrw = priceCurrency === 'USD' ? basePrice * exchangeRate : basePrice
   return Math.round(baseKrw * (1 + markupRate))
 }
+
+// Calculate overtime cost for a trip service variant.
+// assignedHoursByDay: array of hours assigned per day (one entry per day the service is scheduled).
+// Returns total overtime hours and the KRW cost of those hours.
+export function calcOvertimeCostKrw({
+  assignedHoursByDay,
+  durationValue,
+  overtimeRateKrw,
+}: {
+  assignedHoursByDay: number[]
+  durationValue: number | null
+  overtimeRateKrw: number | null
+}): { overtimeHours: number; overtimeCostKrw: number } {
+  if (!overtimeRateKrw || !durationValue) return { overtimeHours: 0, overtimeCostKrw: 0 }
+  const overtimeHours = assignedHoursByDay.reduce((sum, h) => sum + Math.max(0, h - durationValue), 0)
+  return { overtimeHours, overtimeCostKrw: Math.round(overtimeHours * overtimeRateKrw) }
+}

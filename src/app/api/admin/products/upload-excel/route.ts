@@ -55,6 +55,7 @@ type Row = {
   contact_phone?: string
   contact_email?: string
   is_active?: boolean | string
+  overtime_rate_krw?: number | string
 }
 
 type ProductRecord = {
@@ -84,6 +85,7 @@ type VariantRecord = {
   price_currency: string
   sort_order: number
   is_active: boolean
+  overtime_rate_krw: number | null
 }
 
 function normBool(v: unknown): boolean | undefined {
@@ -437,6 +439,7 @@ export async function POST(req: Request) {
         price_currency: normStr(vrow.price_currency) ?? 'KRW',
         sort_order: i,
         is_active: normBool(vrow.is_active) ?? true,
+        overtime_rate_krw: normNum(vrow.overtime_rate_krw) ?? null,
       }
       const existVar = existingByLabel.get(label ?? '')
       if (existVar) {
@@ -445,6 +448,7 @@ export async function POST(req: Request) {
           ['price_currency', existVar.price_currency, desiredVar.price_currency],
           ['sort_order', existVar.sort_order, desiredVar.sort_order],
           ['is_active', existVar.is_active, desiredVar.is_active],
+          ['overtime_rate_krw', existVar.overtime_rate_krw ?? null, desiredVar.overtime_rate_krw],
         ]
         const variantChanges: Change[] = []
         for (const [field, before, after] of variantChecks) {

@@ -319,10 +319,14 @@ function ClientForm({ token, client, onSaved }: {
                 const file = e.target.files?.[0]
                 if (!file) return
                 setPassportUploading(true)
-                const ext = file.name.split('.').pop() ?? 'jpg'
+                setError('')
+                const rawExt = file.name.includes('.') ? file.name.split('.').pop()!.toLowerCase() : 'jpg'
+                const ext = rawExt === 'heic' ? 'jpg' : rawExt
                 const path = `${client.id}/passport.${ext}`
                 const { error: uploadError } = await supabase.storage.from('client-passports').upload(path, file, { upsert: true })
-                if (!uploadError) {
+                if (uploadError) {
+                  setError(`Upload failed: ${uploadError.message}`)
+                } else {
                   const { data: { publicUrl } } = supabase.storage.from('client-passports').getPublicUrl(path)
                   set('passport_image_url', publicUrl)
                 }
@@ -419,6 +423,9 @@ function ClientForm({ token, client, onSaved }: {
         <TA label="Special Requests" value={form.special_requests} onChange={v => set('special_requests', v)} rows={3} />
       </Section>
 
+      {error && (
+        <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</p>
+      )}
       <div className="flex justify-end pb-2">
         <button onClick={handleSave} disabled={saving}
           className="px-6 py-2.5 text-sm font-medium bg-[#0f4c35] text-white rounded-xl hover:bg-[#0a3828] disabled:opacity-40 transition-colors">

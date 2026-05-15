@@ -204,7 +204,7 @@ export default function AdminCaseDetailPage() {
   // and Finalize Pricing section (awaiting_pricing). The structural picker only
   // operates during awaiting_schedule via direct-write helpers (no staging).
   type ItemCurrency = 'KRW' | 'USD'
-  type ProductVariant = { id: string; variant_label: string | null; base_price: number; price_currency: ItemCurrency; is_active: boolean; sort_order: number }
+  type ProductVariant = { id: string; variant_label: string | null; base_price: number; price_currency: ItemCurrency; is_active: boolean; sort_order: number; overtime_rate_krw: number | null }
   type ProductRow = {
     id: string; name: string; partner_name: string | null;
     base_price: number; price_currency: ItemCurrency | null;
@@ -402,7 +402,7 @@ export default function AdminCaseDetailPage() {
     let cancelled = false
     ;(async () => {
       const { data, error } = await supabase.from('products')
-        .select('id, name, partner_name, base_price, price_currency, is_active, quantity_type, product_categories(name, sort_order), product_subcategories!products_subcategory_id_fkey(name), product_variants(id, variant_label, base_price, price_currency, is_active, sort_order)')
+        .select('id, name, partner_name, base_price, price_currency, is_active, quantity_type, product_categories(name, sort_order), product_subcategories!products_subcategory_id_fkey(name), product_variants(id, variant_label, base_price, price_currency, is_active, sort_order, overtime_rate_krw)')
         .order('name', { ascending: true })
       if (error) { console.error('[case] products fetch error:', error); return }
       if (cancelled) return
@@ -414,7 +414,7 @@ export default function AdminCaseDetailPage() {
         quantity_type: string | null;
         product_categories: CategoryRel;
         product_subcategories: SubRel;
-        product_variants: Array<{ id: string; variant_label: string | null; base_price: number; price_currency: 'KRW' | 'USD' | null; is_active: boolean | null; sort_order: number | null }>
+        product_variants: Array<{ id: string; variant_label: string | null; base_price: number; price_currency: 'KRW' | 'USD' | null; is_active: boolean | null; sort_order: number | null; overtime_rate_krw: number | null }>
       }
       const rows = (data ?? []) as unknown as Raw[]
       const pickName = <T extends { name: string | null }>(rel: T | T[] | null): string | null => {
@@ -446,6 +446,7 @@ export default function AdminCaseDetailPage() {
             price_currency: (v.price_currency === 'USD' ? 'USD' : 'KRW') as ItemCurrency,
             is_active: v.is_active !== false,
             sort_order: v.sort_order ?? 0,
+            overtime_rate_krw: v.overtime_rate_krw ?? null,
           }))
           .sort((a, b) => b.base_price - a.base_price || a.sort_order - b.sort_order),
       }))
@@ -768,6 +769,8 @@ export default function AdminCaseDetailPage() {
                 onScrollToScheduleUpload={() => document.getElementById('schedule-upload')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
                 onScrollToPricing={() => document.getElementById('pricing')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
                 onScrollToConfirmPayment={() => document.getElementById('financials')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                onScrollToTripSetup={() => document.getElementById('trip-setup')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                onScrollToReviews={() => document.getElementById('reviews')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
               />
             </div>
           </div>
@@ -810,7 +813,7 @@ export default function AdminCaseDetailPage() {
           {(() => {
             const tripSetupActionNeeded = flagMissingInfo && !scheduleReady
             return (
-          <section className={`rounded-2xl border-2 overflow-hidden ${tripSetupActionNeeded ? 'bg-white border-[#0f4c35]' : 'bg-gray-50 border-gray-300'}`}>
+          <section id="trip-setup" className={`scroll-mt-20 rounded-2xl border-2 overflow-hidden ${tripSetupActionNeeded ? 'bg-white border-[#0f4c35]' : 'bg-gray-50 border-gray-300'}`}>
             <div className={`flex items-center justify-between flex-wrap gap-2 px-4 py-2.5 border-b ${tripSetupActionNeeded ? 'bg-green-50 border-green-200' : 'bg-gray-100 border-gray-200'}`}>
               <div className="flex items-center gap-2">
                 <h3 className={`text-xs font-semibold uppercase tracking-wide ${tripSetupActionNeeded ? 'text-[#0f4c35]' : 'text-gray-700'}`}>Trip Setup</h3>
@@ -1035,16 +1038,28 @@ export default function AdminCaseDetailPage() {
               && caseData.status === 'awaiting_schedule'
               && !!latestQuote && !finalInvoice?.finalized_at
               && sortedGroups.length > 0
-            const docList = (caseData.documents ?? [])
-              .filter(d => d.type === 'quotation' || d.type === 'additional_invoice')
-              .map(d => ({
+            // When finalInvoice exists, use its groups (which reflect removed_at + admin_added).
+            // Quotation is immutable — finalInvoice is the live truth after Edit Selected Products.
+            const mainDocForList = finalInvoice ?? latestQuote
+            const additionalDocs = (caseData.documents ?? []).filter(d => d.type === 'additional_invoice')
+            const docList = [
+              ...(mainDocForList ? [{
+                id: mainDocForList.id,
+                type: 'quotation' as const,
+                document_number: mainDocForList.document_number ?? null,
+                total_price: mainDocForList.total_price ?? null,
+                finalized_at: mainDocForList.finalized_at ?? null,
+                document_groups: mainDocForList.document_groups,
+              }] : []),
+              ...additionalDocs.map(d => ({
                 id: d.id,
-                type: d.type as 'quotation' | 'additional_invoice',
+                type: 'additional_invoice' as const,
                 document_number: d.document_number ?? null,
                 total_price: d.total_price ?? null,
                 finalized_at: d.finalized_at ?? null,
                 document_groups: d.document_groups,
-              }))
+              })),
+            ]
             if (!editingProducts || !canEditProducts) {
               return (
                 <SelectedProductsSection
@@ -1880,10 +1895,13 @@ export default function AdminCaseDetailPage() {
               isSharedGroup: boolean; isTripService: boolean; isHotel: boolean; isVehicle: boolean
               quantity: number
               durationValue: number | null; durationUnit: string | null
+              overtimeRateKrw: number | null
               isHealthCheckup: boolean
               location: string | null; fullAddress: string | null; contactPhone: string | null
             }[] = []
-            for (const grp of sortedGroups) {
+            // Use finalInvoice groups for product list (reflects removes/adds). Fall back to quotation.
+            const productSourceGroups = editGroups.length > 0 ? editGroups : sortedGroups
+            for (const grp of productSourceGroups) {
               for (const it of (grp.document_items ?? []).filter(x => !x.removed_at)) {
                 if (!it.variant_id) continue
                 const key = `${grp.id}:${it.variant_id}`
@@ -1909,6 +1927,7 @@ export default function AdminCaseDetailPage() {
                   quantity: it.quantity ?? 1,
                   durationValue: it.products?.duration_value ?? null,
                   durationUnit: it.products?.duration_unit ?? null,
+                  overtimeRateKrw: products.find(p => p.id === it.products?.id)?.variants.find(v => v.id === it.variant_id)?.overtime_rate_krw ?? null,
                   isHealthCheckup: catName === 'K-Medical',
                   location: it.products?.location ?? null,
                   fullAddress: it.products?.full_address ?? null,
@@ -2456,7 +2475,7 @@ export default function AdminCaseDetailPage() {
           {(caseSurvey || ['awaiting_review', 'awaiting_settlement', 'completed'].includes(caseData.status)) && (() => {
             const reviewsActive = ['awaiting_review', 'awaiting_settlement'].includes(caseData.status)
             return (
-            <section className={`rounded-2xl border-2 overflow-hidden ${reviewsActive ? 'bg-white border-[#0f4c35]' : 'bg-white border-gray-200'}`}>
+            <section id="reviews" className={`scroll-mt-20 rounded-2xl border-2 overflow-hidden ${reviewsActive ? 'bg-white border-[#0f4c35]' : 'bg-white border-gray-200'}`}>
               <div className={`px-5 py-2.5 border-b ${reviewsActive ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'}`}>
                 <h3 className={`text-xs font-semibold uppercase tracking-wide ${reviewsActive ? 'text-[#0f4c35]' : 'text-gray-700'}`}>Reviews</h3>
               </div>

@@ -12,6 +12,7 @@ import {
   type ScheduleItemBlock,
   SCHEDULE_BLOCKS,
   SCHEDULE_BLOCK_LABEL,
+  blockFromTime,
   compareScheduleItems,
   dateForDay,
   formatDayHeader,
@@ -108,6 +109,21 @@ export default function ScheduleDocument({
 }: Props) {
   // null = "All groups" tab
   const [activeGroupId, setActiveGroupId] = useState<string | null>(initialGroupId ?? null)
+  const [isMobile, setIsMobile] = useState(false)
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth <= 600)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
+
+  // On mobile, "All" column view isn't usable — auto-select first group
+  useEffect(() => {
+    if (isMobile && activeGroupId === null && groups.length > 0) {
+      setActiveGroupId(groups[0].id)
+    }
+  }, [isMobile]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sync URL ?group= param when tab changes (without full navigation)
   useEffect(() => {
@@ -122,6 +138,7 @@ export default function ScheduleDocument({
 
   const isMultiGroup = groups.length > 1
   const showTabs = isMultiGroup
+  const isAllView = activeGroupId === null && isMultiGroup
 
   // Filter items by active tab: null = all, group id = that group + shared items
   const filtered = activeGroupId
@@ -174,6 +191,9 @@ export default function ScheduleDocument({
           .sch-no-print { display: none !important; }
         }
         @media (max-width: 600px) {
+          .sch-all-tab      { display: none !important; }
+          .sch-col-grid     { display: block !important; }
+          .sch-col-grid > * { margin-bottom: 24px; }
           .sch-outer        { padding: 0 !important; }
           .sch-page         { margin-bottom: 10px !important; }
           .sch-tabs         { padding: 14px 16px 0 !important; gap: 6px !important; }
@@ -185,7 +205,6 @@ export default function ScheduleDocument({
           .sch-day-num      { font-size: 42px !important; min-width: 50px !important; }
           .sch-day-date     { font-size: 18px !important; }
           .sch-item-title   { font-size: 15px !important; }
-          .sch-row          { grid-template-columns: 64px 1fr !important; gap: 0 10px !important; }
           .sch-flights-grid { gap: 14px !important; }
           .sch-flight-detail { line-height: 1.5 !important; }
         }
@@ -200,6 +219,7 @@ export default function ScheduleDocument({
           display: 'flex', gap: '8px', flexWrap: 'wrap',
         }}>
           <button
+            className="sch-all-tab"
             onClick={() => setActiveGroupId(null)}
             style={{
               fontFamily: 'Inter, sans-serif',
@@ -235,7 +255,7 @@ export default function ScheduleDocument({
         </div>
       )}
 
-      <div className="sch-outer" style={{ maxWidth: '720px', margin: '0 auto', padding: showTabs ? '16px 24px 48px' : '32px 24px 48px' }}>
+      <div className="sch-outer" style={{ maxWidth: isAllView ? '1200px' : '720px', margin: '0 auto', padding: showTabs ? '16px 24px 48px' : '32px 24px 48px' }}>
 
         {/* ── Cover page ── */}
         <div className="sch-page" style={{ background: '#fff', marginBottom: '28px' }}>
@@ -352,8 +372,9 @@ export default function ScheduleDocument({
           </div>
         ) : (
           allDays.map((day, dayIdx) => {
-            const dayItems = sorted.filter(i => i.day === day)
-            const dateObj  = dateForDay(travelStartDate, day)
+            const dayItemsRaw = sorted.filter(i => i.day === day)
+            const dayItems    = splitAroundPrayers(dayItemsRaw)
+            const dateObj     = dateForDay(travelStartDate, day)
 
             return (
               <div key={day} className="sch-page" style={{ background: '#fff', marginBottom: dayIdx === allDays.length - 1 ? 0 : '28px' }}>
@@ -369,8 +390,72 @@ export default function ScheduleDocument({
                     </span>
                   </div>
 
-                  {/* Empty day */}
-                  {dayItems.length === 0 ? (
+                  {/* All-view: shared items full-width, group-specific in columns */}
+                  {isAllView ? (() => {
+                    const sharedRaw = sorted.filter(i => i.day === day && resolveGroupIds(i) === null)
+                    const sharedItems = splitAroundPrayers(sharedRaw)
+                    return (
+                      <>
+                        {sharedItems.length > 0 && (
+                          <div style={{ marginBottom: '20px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
+                              <div style={{ flex: 1, height: '1px', background: '#e8e2da' }} />
+                              <span className="sch-sans" style={{ fontSize: '9px', fontWeight: 700, letterSpacing: '0.22em', textTransform: 'uppercase', color: '#c0b8ae' }}>All Groups</span>
+                              <div style={{ flex: 1, height: '1px', background: '#e8e2da' }} />
+                            </div>
+                            <DayBlocks
+                              dayItems={sharedItems}
+                              showInternalNotes={showInternalNotes}
+                              isMultiGroup={false}
+                              groupColorById={groupColorById}
+                              groupNameById={groupNameById}
+                            />
+                          </div>
+                        )}
+                        <div className="sch-col-grid" style={{
+                          display: 'grid',
+                          gridTemplateColumns: `repeat(${groups.length}, minmax(0, 1fr))`,
+                          gap: '24px',
+                          alignItems: 'start',
+                        }}>
+                          {groups.map((g, gi) => {
+                            const col = GROUP_COLORS[gi % GROUP_COLORS.length]
+                            const colItemsRaw = sorted.filter(i => {
+                              if (i.day !== day) return false
+                              const gids = resolveGroupIds(i)
+                              return gids !== null && gids.includes(g.id)
+                            })
+                            const colItems = splitAroundPrayers(colItemsRaw)
+                            return (
+                              <div key={g.id} style={{ minWidth: 0 }}>
+                                <div style={{ borderBottom: `2px solid ${col.accent}`, paddingBottom: '8px', marginBottom: '16px' }}>
+                                  <span className="sch-sans" style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.22em', textTransform: 'uppercase', color: col.text }}>
+                                    {g.name}
+                                  </span>
+                                  {g.members.length > 0 && (
+                                    <span className="sch-sans" style={{ fontSize: '10px', color: '#9a9088', marginLeft: '8px' }}>
+                                      {g.members.join(' · ')}
+                                    </span>
+                                  )}
+                                </div>
+                                {colItems.length === 0 ? (
+                                  <p className="sch-sans" style={{ fontSize: '12px', color: '#bbb', fontStyle: 'italic' }}>—</p>
+                                ) : (
+                                  <DayBlocks
+                                    dayItems={colItems}
+                                    showInternalNotes={showInternalNotes}
+                                    isMultiGroup={false}
+                                    groupColorById={groupColorById}
+                                    groupNameById={groupNameById}
+                                  />
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </>
+                    )
+                  })() : dayItems.length === 0 ? (
                     <p className="sch-sans" style={{ fontSize: '13px', color: '#bbb', fontStyle: 'italic' }}>At leisure</p>
                   ) : (
                     <DayBlocks
@@ -390,6 +475,65 @@ export default function ScheduleDocument({
       </div>
     </div>
   )
+}
+
+// ── Split long appointments around prayer times (render-time only) ───────────
+// Non-prayer items with both time+endTime are virtually split into segments
+// whenever a prayer item's start time falls strictly between them.
+// Each segment inherits the parent item's data with adjusted time/endTime/block.
+
+function splitAroundPrayers(dayItems: ScheduleItem[]): ScheduleItem[] {
+  const prayerItems = dayItems.filter(it => it.isPrayer && it.time)
+  if (prayerItems.length === 0) return dayItems
+
+  const result: ScheduleItem[] = []
+
+  for (const item of dayItems) {
+    if (item.isPrayer || !item.time || !item.endTime) {
+      result.push(item)
+      continue
+    }
+
+    const intersecting = prayerItems
+      .filter(p => p.time! > item.time! && p.time! < item.endTime!)
+      .sort((a, b) => a.time!.localeCompare(b.time!))
+
+    if (intersecting.length === 0) {
+      result.push(item)
+      continue
+    }
+
+    let segStart = item.time
+    let segIdx = 0
+
+    for (const prayer of intersecting) {
+      if (segStart < prayer.time!) {
+        result.push({
+          ...item,
+          id: `${item.id}-seg-${segIdx}`,
+          time: segStart,
+          endTime: prayer.time,
+          block: blockFromTime(segStart),
+          endBlock: null,
+        })
+        segIdx++
+      }
+      segStart = prayer.endTime ?? prayer.time!
+    }
+
+    if (segStart < item.endTime!) {
+      result.push({
+        ...item,
+        id: `${item.id}-seg-${segIdx}`,
+        time: segStart,
+        endTime: item.endTime,
+        block: blockFromTime(segStart),
+        endBlock: null,
+      })
+    }
+  }
+
+  return result.sort(compareScheduleItems)
 }
 
 // ── Block sections for one day ────────────────────────────────────────────────
@@ -507,15 +651,17 @@ function ScheduleRow({
     ? `${item.fromLocation || '—'} → ${item.toLocation || '—'}`
     : null
   const transportLabel = item.transportMode ? TRANSPORT_MODE_LABEL[item.transportMode] : null
+  const isHospitalStay = itemType === 'hotel' && item.accommodationType === 'hospital'
   const eyebrow =
     itemType === 'transfer' ? null
     : itemType === 'meal'   ? (item.restaurantName ?? item.partner ?? null)
+    : isHospitalStay        ? (item.partner ?? 'Hospital')
     : itemType === 'hotel'  ? null
     : itemType === 'free'   ? null
     : (item.partner ?? null)
   const hotelPrefix =
-    itemType === 'hotel' && item.hotelCheckType === 'checkin'  ? 'Check-in'
-    : itemType === 'hotel' && item.hotelCheckType === 'checkout' ? 'Check-out'
+    itemType === 'hotel' && !isHospitalStay && item.hotelCheckType === 'checkin'  ? 'Check-in'
+    : itemType === 'hotel' && !isHospitalStay && item.hotelCheckType === 'checkout' ? 'Check-out'
     : null
 
   return (
@@ -543,26 +689,26 @@ function ScheduleRow({
         </div>
       )}
 
-      {/* Main grid: time | content */}
-      <div className="sch-row" style={{ flex: 1, display: 'grid', gridTemplateColumns: '118px 1fr', gap: '0 20px', alignItems: 'start' }}>
-      {/* Time column */}
+      {/* Main block: time line above, content indented below */}
+      <div className="sch-row" style={{ flex: 1 }}>
+      {/* Time line */}
       <div className="sch-sans" style={{
         fontVariantNumeric: 'tabular-nums',
         letterSpacing: '0.02em',
-        paddingTop: '4px',
+        marginBottom: '3px',
         whiteSpace: 'nowrap',
       }}>
         <span style={{
-          fontSize: itemType === 'transfer' ? '11px' : '11.5px',
-          fontWeight: itemType === 'transfer' ? 400 : 600,
-          color: isPrayer ? '#c07830' : itemType === 'transfer' ? '#ccc' : (timeStr ? '#444' : '#ddd'),
+          fontSize: '10.5px',
+          fontWeight: isPrayer ? 400 : (itemType === 'transfer' ? 400 : 500),
+          color: isPrayer ? '#c07830' : itemType === 'transfer' ? '#ccc' : (timeStr ? '#888' : '#ddd'),
         }}>
           {timeStr ?? '—'}
         </span>
       </div>
 
-      {/* Content column */}
-      <div style={{ paddingTop: '1px' }}>
+      {/* Content — indented */}
+      <div style={{ paddingLeft: '14px', paddingTop: '0' }}>
         {/* Eyebrow — partner for appointments, restaurant for meals */}
         {eyebrow && (
           <div style={{ marginBottom: '3px' }}>

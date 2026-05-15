@@ -5,15 +5,15 @@
 
 export type ScheduleItemBlock = 'night' | 'morning' | 'afternoon' | 'evening'
 
-export type ScheduleItemType = 'appointment' | 'transfer' | 'meal' | 'hotel' | 'free'  // hotel/free kept for backward-compat read; new items use appointment/transfer/meal only
+export type ScheduleItemType = 'appointment' | 'transfer' | 'meal' | 'hotel' | 'free'
 
-export const SCHEDULE_ITEM_TYPES: ScheduleItemType[] = ['appointment', 'transfer', 'meal']
+export const SCHEDULE_ITEM_TYPES: ScheduleItemType[] = ['appointment', 'transfer', 'meal', 'hotel']
 
 export const SCHEDULE_ITEM_TYPE_LABEL: Record<ScheduleItemType, string> = {
   appointment: 'Appointment',
   transfer:    'Transfer',
   meal:        'Meal',
-  hotel:       'Hotel',   // legacy
+  hotel:       'Accommodation',
   free:        'Free time', // legacy
 }
 
@@ -27,12 +27,14 @@ export const SCHEDULE_BLOCK_LABEL: Record<ScheduleItemBlock, string> = {
 }
 
 // Infer block from a "HH:MM" time string.
-// 00:00–05:59 → night, 06:00–11:59 → morning, 12:00–17:59 → afternoon, 18:00–23:59 → evening
+// <06:00 → night, 06:00–12:00 → morning, 12:01–18:00 → afternoon, 18:01+ → evening
+// Boundary times (06:00, 12:00, 18:00) belong to the earlier block.
 export function blockFromTime(time: string): ScheduleItemBlock {
-  const h = parseInt(time.split(':')[0], 10)
-  if (h < 6) return 'night'
-  if (h < 12) return 'morning'
-  if (h < 18) return 'afternoon'
+  const [h, m] = time.split(':').map(Number)
+  const mins = h * 60 + m
+  if (mins < 360) return 'night'
+  if (mins <= 720) return 'morning'
+  if (mins <= 1080) return 'afternoon'
   return 'evening'
 }
 
@@ -65,7 +67,10 @@ export type ScheduleItem = {
   // meal-specific
   restaurantName?: string | null
   cuisine?: string | null
-  // hotel-specific — 3-enum (legacy 'depart'/'return' are read-tolerated and normalized to 'stay' on edit)
+  // hotel/accommodation-specific
+  accommodationType?: 'hotel' | 'hospital' | null  // 'hospital' = overnight stay at clinic/hospital
+  // hotel check type — 3-enum (legacy 'depart'/'return' are read-tolerated and normalized to 'stay' on edit)
+  // hospital accommodation always uses 'stay' (auto-set; dropdown hidden)
   hotelCheckType?: 'checkin' | 'checkout' | 'stay' | null
   variantId: string | null         // optional ref to product_variants for context
   tripServiceVariantIds?: string[] | null  // trip services (interpreter/concierge/security) assigned to this appointment

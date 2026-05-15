@@ -20,6 +20,7 @@ type Variant = {
   price_currency: 'KRW' | 'USD' | null
   sort_order: number
   is_active: boolean
+  overtime_rate_krw: number | null
 }
 
 type Product = {
@@ -97,7 +98,7 @@ export default function AdminProductsPage() {
       supabase.from('product_subcategories').select('id, category_id, name, sort_order').order('sort_order').order('name'),
       supabase
         .from('products')
-        .select('id, product_number, name, description, partner_name, partner_short, base_price, price_currency, is_active, tertiary_category, category_id, subcategory_id, product_categories(name), product_subcategories!products_subcategory_id_fkey(name), product_subcategory_tags(product_subcategories!product_subcategory_tags_subcategory_id_fkey(name)), product_images(image_url, is_primary), product_variants(id, variant_label, base_price, price_currency, sort_order, is_active)')
+        .select('id, product_number, name, description, partner_name, partner_short, base_price, price_currency, is_active, tertiary_category, category_id, subcategory_id, product_categories(name), product_subcategories!products_subcategory_id_fkey(name), product_subcategory_tags(product_subcategories!product_subcategory_tags_subcategory_id_fkey(name)), product_images(image_url, is_primary), product_variants(id, variant_label, base_price, price_currency, sort_order, is_active, overtime_rate_krw)')
         .order('product_number', { ascending: true }),
       supabase.from('system_settings').select('value').eq('key', 'markup_rates').maybeSingle(),
       supabase.from('system_settings').select('value').eq('key', 'product_price_rate').single(),
@@ -1321,6 +1322,9 @@ export default function AdminProductsPage() {
                                       <div className="text-right tabular-nums shrink-0">
                                         <div className="text-[12px] font-semibold text-gray-900">{fmtUSD(usd)}</div>
                                         <div className="text-[10px] text-gray-400">₩{krw.toLocaleString('ko-KR')}</div>
+                                        {v.overtime_rate_krw && (
+                                          <div className="text-[10px] text-amber-600">+₩{v.overtime_rate_krw.toLocaleString('ko-KR')}/h OT</div>
+                                        )}
                                       </div>
                                     </div>
                                   )

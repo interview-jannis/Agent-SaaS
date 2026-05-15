@@ -27,6 +27,7 @@ export type VariantItem = {
   base_price: string  // raw numeric string for input control
   price_currency: 'KRW' | 'USD'
   is_active: boolean
+  overtime_rate_krw?: string  // KRW per hour; optional, Subpackage-Other only
 }
 
 export type FormState = {
@@ -198,7 +199,7 @@ export default function ProductForm({ productId, productNumber, categories, init
   function addVariant() {
     setVariants((prev) => [
       ...prev,
-      { variant_label: '', base_price: '', price_currency: 'KRW', is_active: true },
+      { variant_label: '', base_price: '', price_currency: 'KRW', is_active: true, overtime_rate_krw: '' },
     ])
   }
 
@@ -365,6 +366,7 @@ export default function ProductForm({ productId, productNumber, categories, init
           price_currency: v.price_currency,
           sort_order: i,
           is_active: v.is_active,
+          overtime_rate_krw: v.overtime_rate_krw ? Number(v.overtime_rate_krw) : null,
         }
         if (v.id) {
           const { error: vErr } = await supabase
@@ -693,6 +695,26 @@ export default function ProductForm({ productId, productNumber, categories, init
                     )}
                   </div>
                 </div>
+
+                {categories.find(c => c.id === form.category_id)?.name === 'Subpackage' && (
+                  <div>
+                    <label className="block text-[11px] font-medium text-gray-500 mb-1">
+                      Overtime rate (₩/h) <span className="text-gray-400 font-normal">— optional</span>
+                    </label>
+                    <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden focus-within:border-[#0f4c35] focus-within:ring-2 focus-within:ring-[#0f4c35]/10 w-40">
+                      <span className="px-2.5 py-2 text-sm text-gray-400 bg-gray-50 border-r border-gray-200">₩</span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={v.overtime_rate_krw ?? ''}
+                        onChange={(e) => updateVariant(idx, { overtime_rate_krw: e.target.value.replace(/[^0-9]/g, '') })}
+                        placeholder="0"
+                        className="flex-1 px-2.5 py-2 text-sm focus:outline-none bg-white"
+                      />
+                    </div>
+                    <p className="text-[10px] text-gray-400 mt-0.5">Charged per hour beyond the base duration.</p>
+                  </div>
+                )}
 
                 {(() => {
                   if (!v.base_price) return null

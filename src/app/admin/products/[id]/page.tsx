@@ -12,7 +12,7 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
     supabase.from('products').select('*').eq('id', id).single(),
     supabase.from('product_categories').select('id, name').order('sort_order').order('name'),
     supabase.from('product_images').select('*').eq('product_id', id).order('order'),
-    supabase.from('product_variants').select('*').eq('product_id', id).order('sort_order'),
+    supabase.from('product_variants').select('id, variant_label, base_price, price_currency, sort_order, is_active, overtime_rate_krw').eq('product_id', id).order('sort_order'),
   ])
 
   if (!product) notFound()
@@ -50,6 +50,7 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
     base_price: String(v.base_price ?? ''),
     price_currency: (v.price_currency as 'KRW' | 'USD') ?? 'KRW',
     is_active: v.is_active ?? true,
+    overtime_rate_krw: v.overtime_rate_krw ? String(v.overtime_rate_krw) : '',
   }))
 
   return (

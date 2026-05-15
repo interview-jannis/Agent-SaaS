@@ -311,6 +311,8 @@ export type AdminHeroProps = {
   onScrollToScheduleUpload: () => void
   onScrollToPricing: () => void
   onScrollToConfirmPayment: () => void
+  onScrollToTripSetup?: () => void
+  onScrollToReviews?: () => void
   onMarkContractSigned?: () => void   // temp until 2차 case_contracts feature
   busy?: boolean
 }
@@ -369,7 +371,14 @@ export function AdminCaseHero(p: AdminHeroProps) {
               {' '}— schedule work starts when all are checked.
             </span>
           }
-        />
+        >
+          {p.onScrollToTripSetup && (
+            <button onClick={p.onScrollToTripSetup}
+              className={`text-xs font-medium px-3 py-2 rounded-lg ${TONE.gray.primaryBtn}`}>
+              Go to Trip Setup
+            </button>
+          )}
+        </HeroShell>
       )
 
     case 'awaiting_schedule':
@@ -464,7 +473,14 @@ export function AdminCaseHero(p: AdminHeroProps) {
           eyebrow="Waiting on agent"
           headline="Travel done · agent submitting client review"
           subline={<span>Settlement is queued and partner payouts are unlocked. Commission claim becomes available once review is submitted.</span>}
-        />
+        >
+          {p.onScrollToReviews && (
+            <button onClick={p.onScrollToReviews}
+              className={`text-xs font-medium px-3 py-2 rounded-lg ${TONE.gray.primaryBtn}`}>
+              Go to Reviews
+            </button>
+          )}
+        </HeroShell>
       )
 
     case 'completed':
