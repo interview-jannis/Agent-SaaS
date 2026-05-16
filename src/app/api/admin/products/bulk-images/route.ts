@@ -73,9 +73,12 @@ export async function POST(req: Request) {
   const unmatched: string[] = []
 
   for (const file of files) {
-    const parsed = parseFilename(file.name)
+    // Defensive: strip any directory prefix in case the client sent a path
+    // (some browsers/clients put webkitRelativePath in the multipart filename).
+    const basename = (file.name.split(/[\\/]/).pop() ?? file.name)
+    const parsed = parseFilename(basename)
     if (!parsed) {
-      unmatched.push(file.name)
+      unmatched.push(basename)
       continue
     }
     for (const key of parsed.nums) {

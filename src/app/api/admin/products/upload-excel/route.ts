@@ -37,7 +37,6 @@ type Row = {
   secondary_category?: string
   tertiary_category?: string
   partner_name?: string
-  partner_short?: string
   name?: string
   variant_label?: string
   base_price?: number | string
@@ -49,7 +48,6 @@ type Row = {
   has_female_doctor?: boolean | string
   has_prayer_room?: boolean | string
   dietary_type?: string
-  location_address?: string
   location?: string
   full_address?: string
   contact_phone?: string
@@ -65,15 +63,15 @@ type ProductRecord = {
   name: string
   description: string | null
   partner_name: string | null
-  partner_short: string | null
   duration_value: number | null
   duration_unit: string | null
   has_female_doctor: boolean | null
   has_prayer_room: boolean | null
   dietary_type: string | null
-  location_address: string | null
   location: string | null
   full_address: string | null
+  contact_phone: string | null
+  contact_email: string | null
   is_active: boolean
 }
 
@@ -114,18 +112,6 @@ function normDietary(v: unknown): string {
   const s = normStr(v)
   const valid = new Set(['halal_certified', 'halal_friendly', 'muslim_friendly', 'pork_free', 'none'])
   return s && valid.has(s) ? s : 'none'
-}
-
-// Build contact_channels JSONB from flat Excel columns.
-// Only overwrites Phone/Email entries — preserves other channel types from existing rows.
-function buildContactChannels(row: Row): { type: string; value: string }[] | null {
-  const phone = normStr(row.contact_phone)
-  const email = normStr(row.contact_email)
-  if (!phone && !email) return null
-  const channels: { type: string; value: string }[] = []
-  if (phone) channels.push({ type: 'Phone', value: phone })
-  if (email) channels.push({ type: 'Email', value: email })
-  return channels
 }
 
 export async function POST(req: Request) {
@@ -283,7 +269,6 @@ export async function POST(req: Request) {
       subcategory_id: subId,
       name: grp.name,
       partner_name: grp.partner,
-      partner_short: normStr(first.partner_short) ?? null,
       description: normStr(first.description) ?? '',
       highlights: normStr(first.highlights) ?? null,
       duration_value: normNum(first.duration_value) ?? null,
@@ -291,11 +276,11 @@ export async function POST(req: Request) {
       has_female_doctor: normBool(first.has_female_doctor) ?? null,
       has_prayer_room: normBool(first.has_prayer_room) ?? null,
       dietary_type: normDietary(first.dietary_type),
-      location_address: normStr(first.location_address) ?? null,
       location: normStr(first.location) ?? null,
       full_address: normStr(first.full_address) ?? null,
+      contact_phone: normStr(first.contact_phone) ?? null,
+      contact_email: normStr(first.contact_email) ?? null,
       tertiary_category: normStr(first.tertiary_category) ?? null,
-      contact_channels: buildContactChannels(first),
       is_active: normBool(first.is_active) ?? true,
     }
 
@@ -317,7 +302,6 @@ export async function POST(req: Request) {
       const checks: Array<[string, unknown, unknown]> = [
         ['product_number', existingNum, grp.productNumber ?? existingNum],
         ['subcategory_id', existing.subcategory_id, desired.subcategory_id],
-        ['partner_short', existing.partner_short ?? null, desired.partner_short],
         ['description', existing.description ?? '', desired.description],
         ['highlights', (existing as ProductRecord & { highlights?: string | null }).highlights ?? null, desired.highlights],
         ['duration_value', existing.duration_value, desired.duration_value],
@@ -325,12 +309,10 @@ export async function POST(req: Request) {
         ['has_female_doctor', existing.has_female_doctor, desired.has_female_doctor],
         ['has_prayer_room', existing.has_prayer_room, desired.has_prayer_room],
         ['dietary_type', existing.dietary_type ?? 'none', desired.dietary_type],
-        ['location_address', existing.location_address ?? null, desired.location_address],
         ['location', existing.location ?? null, desired.location],
         ['full_address', existing.full_address ?? null, desired.full_address],
-        ['contact_channels',
-          JSON.stringify((existing as ProductRecord & { contact_channels?: unknown }).contact_channels ?? null),
-          JSON.stringify(desired.contact_channels ?? null)],
+        ['contact_phone', existing.contact_phone ?? null, desired.contact_phone],
+        ['contact_email', existing.contact_email ?? null, desired.contact_email],
         ['tertiary_category',
           (existing as ProductRecord & { tertiary_category?: string | null }).tertiary_category ?? null,
           desired.tertiary_category],

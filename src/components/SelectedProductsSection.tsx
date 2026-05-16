@@ -17,7 +17,8 @@ type ProductSnapshot = {
   has_female_doctor?: boolean | null
   has_prayer_room?: boolean | null
   dietary_type?: string | null
-  location_address?: string | null
+  location?: string | null
+  full_address?: string | null
   product_categories?: { name: string } | null
   product_subcategories?: { name: string } | null
 } | null
@@ -300,10 +301,10 @@ function ProductDetailModal({
               <p className="text-gray-800">{p.duration_value} {p.duration_unit}</p>
             </div>
           )}
-          {p?.location_address && (
+          {(p?.location || p?.full_address) && (
             <div className="col-span-2">
               <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">Location</p>
-              <p className="text-gray-800">{p.location_address}</p>
+              <p className="text-gray-800">{p.full_address ?? p.location}</p>
             </div>
           )}
           <div>

@@ -25,10 +25,9 @@ type Product = {
   base_price: number
   price_currency: 'KRW' | 'USD'
   duration_value: number
-  duration_unit: 'hours' | 'days' | 'nights'
+  duration_unit: 'minutes' | 'hours' | 'days' | 'nights'
   quantity_type: 'per_person' | 'per_night' | 'per_day' | 'flat' | null
   partner_name: string | null
-  partner_short: string | null
   has_female_doctor: boolean
   has_prayer_room: boolean
   dietary_type: string
@@ -90,25 +89,6 @@ const CART_VERSION = 4  // bump to invalidate old localStorage carts
 // Subcategories where products are grouped by partner_name in the catalog grid
 const PARTNER_GROUPED_SUBCATEGORIES = new Set(['Health Screening'])
 
-// Row 3 pills come from tertiary_category (region/clinic-vertical) instead of partner_name
-// for these (category, subcategory) pairs. Otherwise pills are partner-based.
-function isTertiaryRow3(catName: string, subName: string): boolean {
-  if (catName === 'K-Wellness' && subName) return true
-  if (catName === 'Subpackage' && subName === 'Hotel') return true
-  return false
-}
-
-// Custom sort for K-Medical Row 3 partner pills: group by clinic vertical keyword.
-function sortKMedicalPartners(names: string[]): string[] {
-  const rank = (n: string) => {
-    if (/Health Screening Center/i.test(n)) return 0
-    if (/Stem Cell Clinic/i.test(n)) return 1
-    if (/Dermatology Clinic/i.test(n)) return 2
-    return 3
-  }
-  return [...names].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b))
-}
-
 // Custom sort for K-Wellness Row 2 subcategory pills: SPA first, then alpha.
 function sortKWellnessSubs(names: string[]): string[] {
   return [...names].sort((a, b) => {
@@ -116,6 +96,33 @@ function sortKWellnessSubs(names: string[]): string[] {
     const bSpa = /^SPA/i.test(b) ? 0 : 1
     return aSpa - bSpa || a.localeCompare(b)
   })
+}
+
+// Custom sort for K-Medical Row 2 subcategory pills:
+// Health Screening → Stem Cell Clinic → Dermatology Clinic → alpha.
+function sortKMedicalSubs(names: string[]): string[] {
+  const rank = (n: string) => {
+    if (/^Health Screening$/i.test(n)) return 0
+    if (/^Stem Cell Clinic$/i.test(n)) return 1
+    if (/^Dermatology Clinic$/i.test(n)) return 2
+    return 3
+  }
+  return [...names].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b))
+}
+
+// Custom sort for Row 3 (tertiary) pills, per (category, subcategory).
+function sortTertiaries(catName: string, subName: string, values: string[]): string[] {
+  if (catName === 'K-Wellness' && subName === 'Tour') {
+    const rank = (n: string) => {
+      if (/^Seoul$/i.test(n)) return 0
+      if (/^Near Seoul$/i.test(n)) return 1
+      if (/^Regional$/i.test(n)) return 2
+      if (/^Jeju$/i.test(n)) return 3
+      return 4
+    }
+    return [...values].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b))
+  }
+  return [...values].sort()
 }
 
 const GROUP_PALETTE = Array(8).fill({
@@ -278,7 +285,7 @@ export default function AgentProductPage() {
         supabase.from('system_settings').select('value').eq('key', 'markup_rates').maybeSingle(),
         supabase
           .from('products')
-          .select('id, name, description, base_price, price_currency, duration_value, duration_unit, quantity_type, partner_name, partner_short, has_female_doctor, has_prayer_room, dietary_type, tertiary_category, category_id, subcategory_id, product_categories(name), product_subcategories!products_subcategory_id_fkey(name), product_subcategory_tags(product_subcategories!product_subcategory_tags_subcategory_id_fkey(name)), product_images(image_url, is_primary), product_variants(id, variant_label, base_price, price_currency, sort_order, is_active, overtime_rate_krw)')
+          .select('id, name, description, base_price, price_currency, duration_value, duration_unit, quantity_type, partner_name, has_female_doctor, has_prayer_room, dietary_type, tertiary_category, category_id, subcategory_id, product_categories(name), product_subcategories!products_subcategory_id_fkey(name), product_subcategory_tags(product_subcategories!product_subcategory_tags_subcategory_id_fkey(name)), product_images(image_url, is_primary), product_variants(id, variant_label, base_price, price_currency, sort_order, is_active, overtime_rate_krw)')
           .eq('is_active', true),
         supabase.from('product_categories').select('id, name').order('sort_order').order('name'),
         supabase.from('product_subcategories').select('id, category_id, name, sort_order').order('sort_order').order('name'),
@@ -349,12 +356,7 @@ export default function AgentProductPage() {
       if (selectedCategoryId && p.category_id !== selectedCategoryId) return false
       if (selectedSubcategoryName && !productTagNames(p).includes(selectedSubcategoryName)) return false
       if (selectedPartnerName) {
-        const catName = categories.find(c => c.id === p.category_id)?.name ?? ''
-        if (isTertiaryRow3(catName, selectedSubcategoryName)) {
-          if (p.tertiary_category !== selectedPartnerName) return false
-        } else {
-          if (p.partner_name !== selectedPartnerName) return false
-        }
+        if (p.tertiary_category !== selectedPartnerName) return false
       }
       return passesCrossFilters(p)
     })
@@ -390,6 +392,7 @@ export default function AgentProductPage() {
     }
     const selectedCatName = categories.find(c => c.id === selectedCategoryId)?.name ?? ''
     if (selectedCatName === 'K-Wellness') return sortKWellnessSubs(out)
+    if (selectedCatName === 'K-Medical') return sortKMedicalSubs(out)
     return out
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [products, subcategories, selectedCategoryId])
@@ -416,33 +419,21 @@ export default function AgentProductPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [products, selectedCategoryId, availableSubcategories, search, filterPrayerRoom, filterDietary, filterFemaleMedical, exchangeRate, markupRatesConfig])
 
+  // Row 3 pills = tertiary_category values for the selected (category, subcategory).
+  // Only shown once a subcategory is picked. If no products in scope have tertiary_category,
+  // Row 3 stays hidden — we do NOT fall back to partner_name.
   const availablePartnerNames = useMemo(() => {
     if (!selectedCategoryId) return [] as string[]
-    const selectedCatName = categories.find(c => c.id === selectedCategoryId)?.name ?? ''
+    if (selectedSubcategoryName === '') return [] as string[]
     const relevant = products.filter(p => {
       if (p.category_id !== selectedCategoryId) return false
-      if (selectedSubcategoryName && !productTagNames(p).includes(selectedSubcategoryName)) return false
+      if (!productTagNames(p).includes(selectedSubcategoryName)) return false
       return true
     })
-
-    // Row 3 pills from tertiary_category — K-Wellness (any sub) + Subpackage > Hotel
-    if (isTertiaryRow3(selectedCatName, selectedSubcategoryName)) {
-      const values = new Set<string>()
-      for (const p of relevant) { if (p.tertiary_category) values.add(p.tertiary_category) }
-      return values.size > 1 ? Array.from(values).sort() : []
-    }
-
-    // K-Medical / K-Beauty: Row 3 pills come from partner_name — only show when a subcategory is selected
-    if (selectedSubcategoryName === '') return [] as string[]
-    const allPartnerGrouped = relevant.length > 0 &&
-      relevant.every(p => productTagNames(p).some(n => PARTNER_GROUPED_SUBCATEGORIES.has(n)))
-    const isKBeauty = selectedCatName === 'K-Beauty'
-    if (!PARTNER_GROUPED_SUBCATEGORIES.has(selectedSubcategoryName) && !isKBeauty && !allPartnerGrouped) return [] as string[]
-    const names = new Set<string>()
-    for (const p of relevant) { if (p.partner_name) names.add(p.partner_name) }
-    const list = Array.from(names)
-    if (selectedCatName === 'K-Medical') return sortKMedicalPartners(list)
-    return list.sort()
+    const values = new Set<string>()
+    for (const p of relevant) { if (p.tertiary_category) values.add(p.tertiary_category) }
+    const catName = categories.find(c => c.id === selectedCategoryId)?.name ?? ''
+    return sortTertiaries(catName, selectedSubcategoryName, Array.from(values))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [products, categories, selectedCategoryId, selectedSubcategoryName])
 
@@ -798,7 +789,7 @@ export default function AgentProductPage() {
             <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide truncate">{product.product_subcategories.name}</p>
           )}
           {product.partner_name && (
-            <p className="text-[10px] text-gray-500 truncate">{product.partner_short ?? product.partner_name}</p>
+            <p className="text-[10px] text-gray-500 truncate">{product.partner_name}</p>
           )}
           <button onClick={() => openDetail(product)}
             className="text-sm font-semibold text-gray-900 leading-tight text-left hover:text-[#0f4c35] transition-colors line-clamp-1">
@@ -1028,18 +1019,12 @@ export default function AgentProductPage() {
               className={`shrink-0 px-2.5 py-1 text-[11px] rounded-full border transition-colors ${selectedPartnerName === '' ? 'bg-[#0f4c35] border-[#0f4c35] text-white' : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'}`}>
               All
             </button>
-            {availablePartnerNames.map(partner => {
-              const selectedCatName = categories.find(c => c.id === selectedCategoryId)?.name ?? ''
-              const displayName = isTertiaryRow3(selectedCatName, selectedSubcategoryName)
-                ? partner
-                : (products.find(p => p.partner_name === partner)?.partner_short ?? partner)
-              return (
-                <button key={partner} onClick={() => setSelectedPartnerName(partner)}
-                  className={`shrink-0 px-2.5 py-1 text-[11px] rounded-full border transition-colors ${selectedPartnerName === partner ? 'bg-[#0f4c35] border-[#0f4c35] text-white' : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'}`}>
-                  {displayName}
-                </button>
-              )
-            })}
+            {availablePartnerNames.map(tertiary => (
+              <button key={tertiary} onClick={() => setSelectedPartnerName(tertiary)}
+                className={`shrink-0 px-2.5 py-1 text-[11px] rounded-full border transition-colors ${selectedPartnerName === tertiary ? 'bg-[#0f4c35] border-[#0f4c35] text-white' : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'}`}>
+                {tertiary}
+              </button>
+            ))}
           </div>
         )}
 

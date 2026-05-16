@@ -8,28 +8,36 @@ import { getMarkupRate, isHotelItem, type MarkupRatesConfig, DEFAULT_MARKUP_RATE
 // Subcategories where products are grouped by partner_name (3rd tier)
 const PARTNER_GROUPED_SUBCATEGORIES = new Set(['Health Screening'])
 
-function isTertiaryRow3(catName: string, subName: string): boolean {
-  if (catName === 'K-Wellness' && subName) return true
-  if (catName === 'Subpackage' && subName === 'Hotel') return true
-  return false
-}
-
-function sortKMedicalPartners(names: string[]): string[] {
-  const rank = (n: string) => {
-    if (/Health Screening Center/i.test(n)) return 0
-    if (/Stem Cell Clinic/i.test(n)) return 1
-    if (/Dermatology Clinic/i.test(n)) return 2
-    return 3
-  }
-  return [...names].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b))
-}
-
 function sortKWellnessSubs(names: string[]): string[] {
   return [...names].sort((a, b) => {
     const aSpa = /^SPA/i.test(a) ? 0 : 1
     const bSpa = /^SPA/i.test(b) ? 0 : 1
     return aSpa - bSpa || a.localeCompare(b)
   })
+}
+
+function sortKMedicalSubs(names: string[]): string[] {
+  const rank = (n: string) => {
+    if (/^Health Screening$/i.test(n)) return 0
+    if (/^Stem Cell Clinic$/i.test(n)) return 1
+    if (/^Dermatology Clinic$/i.test(n)) return 2
+    return 3
+  }
+  return [...names].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b))
+}
+
+function sortTertiaries(catName: string, subName: string, values: string[]): string[] {
+  if (catName === 'K-Wellness' && subName === 'Tour') {
+    const rank = (n: string) => {
+      if (/^Seoul$/i.test(n)) return 0
+      if (/^Near Seoul$/i.test(n)) return 1
+      if (/^Regional$/i.test(n)) return 2
+      if (/^Jeju$/i.test(n)) return 3
+      return 4
+    }
+    return [...values].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b))
+  }
+  return [...values].sort()
 }
 
 type Category = {
@@ -53,7 +61,6 @@ type Product = {
   name: string
   description: string | null
   partner_name: string | null
-  partner_short: string | null
   base_price: number
   price_currency: 'KRW' | 'USD' | null
   is_active: boolean
@@ -122,7 +129,7 @@ export default function AdminProductsPage() {
       supabase.from('product_subcategories').select('id, category_id, name, sort_order').order('sort_order').order('name'),
       supabase
         .from('products')
-        .select('id, product_number, name, description, partner_name, partner_short, base_price, price_currency, is_active, tertiary_category, category_id, subcategory_id, product_categories(name), product_subcategories!products_subcategory_id_fkey(name), product_subcategory_tags(product_subcategories!product_subcategory_tags_subcategory_id_fkey(name)), product_images(image_url, is_primary), product_variants(id, variant_label, base_price, price_currency, sort_order, is_active, overtime_rate_krw)')
+        .select('id, product_number, name, description, partner_name, base_price, price_currency, is_active, tertiary_category, category_id, subcategory_id, product_categories(name), product_subcategories!products_subcategory_id_fkey(name), product_subcategory_tags(product_subcategories!product_subcategory_tags_subcategory_id_fkey(name)), product_images(image_url, is_primary), product_variants(id, variant_label, base_price, price_currency, sort_order, is_active, overtime_rate_krw)')
         .order('product_number', { ascending: true }),
       supabase.from('system_settings').select('value').eq('key', 'markup_rates').maybeSingle(),
       supabase.from('system_settings').select('value').eq('key', 'product_price_rate').single(),
@@ -187,36 +194,23 @@ export default function AdminProductsPage() {
     }
     const selectedCatName = categories.find(c => c.id === categoryFilter)?.name ?? ''
     if (selectedCatName === 'K-Wellness') return sortKWellnessSubs(out)
+    if (selectedCatName === 'K-Medical') return sortKMedicalSubs(out)
     return out
   })()
 
-  // Row 3 pills: partner names (K-Medical/K-Beauty) or tertiary_category values (K-Wellness)
+  // Row 3 pills = tertiary_category values. Only shown after a subcategory is selected,
+  // and only when at least one product in scope has a tertiary_category.
   const availablePartners = (() => {
-    if (categoryFilter === '') return [] as string[]
-    const selectedCatName = categories.find(c => c.id === categoryFilter)?.name ?? ''
+    if (categoryFilter === '' || subcategoryFilter === '') return [] as string[]
     const relevant = products.filter((p) => {
       if (p.category_id !== categoryFilter) return false
-      if (subcategoryFilter && !productTagNames(p).includes(subcategoryFilter)) return false
+      if (!productTagNames(p).includes(subcategoryFilter)) return false
       return true
     })
-
-    // Row 3 pills from tertiary_category — K-Wellness (any sub) + Subpackage > Hotel
-    if (isTertiaryRow3(selectedCatName, subcategoryFilter)) {
-      const values = new Set<string>()
-      for (const p of relevant) { if (p.tertiary_category) values.add(p.tertiary_category) }
-      return values.size > 1 ? Array.from(values).sort() : []
-    }
-
-    // Row 3 pills only when a subcategory is selected (unified behavior)
-    if (subcategoryFilter === '') return [] as string[]
-    const allPartnerGrouped =
-      relevant.length > 0 &&
-      relevant.every((p) => productTagNames(p).some(n => PARTNER_GROUPED_SUBCATEGORIES.has(n)))
-    const isKBeauty = selectedCatName === 'K-Beauty'
-    if (!PARTNER_GROUPED_SUBCATEGORIES.has(subcategoryFilter) && !isKBeauty && !allPartnerGrouped) return [] as string[]
-    const names = Array.from(new Set(relevant.map((p) => p.partner_name).filter((n): n is string => !!n)))
-    if (selectedCatName === 'K-Medical') return sortKMedicalPartners(names)
-    return names.sort()
+    const values = new Set<string>()
+    for (const p of relevant) { if (p.tertiary_category) values.add(p.tertiary_category) }
+    const selectedCatName = categories.find(c => c.id === categoryFilter)?.name ?? ''
+    return sortTertiaries(selectedCatName, subcategoryFilter, Array.from(values))
   })()
 
   const filtered = products.filter((p) => {
@@ -226,9 +220,7 @@ export default function AdminProductsPage() {
       p.product_number.toLowerCase().includes(search.toLowerCase())
     const matchCategory = categoryFilter === '' || p.category_id === categoryFilter
     const matchSubcategory = subcategoryFilter === '' || productTagNames(p).includes(subcategoryFilter)
-    const catName = categories.find(c => c.id === p.category_id)?.name ?? ''
-    const matchPartner = partnerFilter === ''
-      || (isTertiaryRow3(catName, subcategoryFilter) ? p.tertiary_category === partnerFilter : p.partner_name === partnerFilter)
+    const matchPartner = partnerFilter === '' || p.tertiary_category === partnerFilter
     const matchActive =
       activeFilter === '' ||
       (activeFilter === 'active' && p.is_active) ||
@@ -363,7 +355,14 @@ export default function AdminProductsPage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session?.access_token) throw new Error('Not signed in.')
       const fd = new FormData()
-      for (const f of imgFiles) fd.append('images', f)
+      for (const f of imgFiles) {
+        // For folder-picked files, browsers send the relative path as the
+        // multipart filename (not basename). Force basename explicitly so the
+        // server's filename regex matches.
+        const rel = (f as File & { webkitRelativePath?: string }).webkitRelativePath
+        const basename = (rel?.split('/').pop()) || f.name
+        fd.append('images', f, basename)
+      }
       const res = await fetch('/api/admin/products/bulk-images', {
         method: 'POST',
         headers: { Authorization: `Bearer ${session.access_token}` },
@@ -628,43 +627,69 @@ export default function AdminProductsPage() {
 
               {/* File drop zone */}
               {!imgResult && (
-                <label className={`block border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-colors ${
-                  imgFiles.length > 0
-                    ? 'border-[#0f4c35]/40 bg-[#0f4c35]/5'
-                    : 'border-gray-200 hover:border-[#0f4c35]/40 hover:bg-gray-50'
-                }`}>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    className="hidden"
-                    disabled={imgUploading}
-                    onChange={(e) => {
-                      const picked = Array.from(e.target.files ?? [])
-                      e.target.value = ''
-                      setImgFiles(picked)
-                    }}
-                  />
-                  {imgFiles.length > 0 ? (
-                    <div className="space-y-1">
-                      <p className="text-sm font-medium text-[#0f4c35]">{imgFiles.length} file{imgFiles.length > 1 ? 's' : ''} selected</p>
-                      <p className="text-xs text-gray-500">Click to change selection</p>
-                      <div className="mt-2 max-h-32 overflow-y-auto text-left space-y-0.5">
-                        {imgFiles.map((f, i) => (
-                          <p key={i} className="text-[11px] text-gray-600 truncate">{f.name}</p>
-                        ))}
+                <div className="space-y-2">
+                  <div className={`border-2 border-dashed rounded-xl p-6 text-center transition-colors ${
+                    imgFiles.length > 0
+                      ? 'border-[#0f4c35]/40 bg-[#0f4c35]/5'
+                      : 'border-gray-200'
+                  }`}>
+                    {imgFiles.length > 0 ? (
+                      <div className="space-y-1">
+                        <p className="text-sm font-medium text-[#0f4c35]">{imgFiles.length} image{imgFiles.length > 1 ? 's' : ''} selected</p>
+                        <div className="mt-2 max-h-32 overflow-y-auto text-left space-y-0.5">
+                          {imgFiles.map((f, i) => (
+                            <p key={i} className="text-[11px] text-gray-600 truncate">
+                              {(f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name}
+                            </p>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-1">
-                      <svg className="w-8 h-8 text-gray-300 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5z" />
-                      </svg>
-                      <p className="text-sm text-gray-500">Click to select images</p>
-                      <p className="text-xs text-gray-400">P-001.jpg · P-001-2.jpg · P-002.jpg …</p>
-                    </div>
-                  )}
-                </label>
+                    ) : (
+                      <div className="space-y-1">
+                        <svg className="w-8 h-8 text-gray-300 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5z" />
+                        </svg>
+                        <p className="text-sm text-gray-500">Select images or a folder</p>
+                        <p className="text-xs text-gray-400">P-001.jpg · P-001-2.jpg · P-002.jpg …</p>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="flex-1 px-3 py-2 text-xs font-medium text-center text-gray-700 bg-white border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        className="hidden"
+                        disabled={imgUploading}
+                        onChange={(e) => {
+                          const picked = Array.from(e.target.files ?? [])
+                          e.target.value = ''
+                          setImgFiles(picked.filter(f => f.type.startsWith('image/')))
+                        }}
+                      />
+                      Choose files
+                    </label>
+                    <label className="flex-1 px-3 py-2 text-xs font-medium text-center text-gray-700 bg-white border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                      <input
+                        type="file"
+                        // @ts-expect-error — webkitdirectory is non-standard but widely supported
+                        webkitdirectory=""
+                        directory=""
+                        multiple
+                        className="hidden"
+                        disabled={imgUploading}
+                        onChange={(e) => {
+                          const picked = Array.from(e.target.files ?? [])
+                          e.target.value = ''
+                          // Folder pick returns every file — keep images only
+                          setImgFiles(picked.filter(f => f.type.startsWith('image/')))
+                        }}
+                      />
+                      Choose folder (incl. subfolders)
+                    </label>
+                  </div>
+                </div>
               )}
 
               {/* Result */}
@@ -981,21 +1006,13 @@ export default function AdminProductsPage() {
           {/* Row 4: partner/tertiary pills — when multiple options available */}
           {availablePartners.length > 1 && (
             <div className="flex items-center gap-1.5 flex-wrap">
-              {['', ...availablePartners].map((partnerName) => {
-                const selectedCatName = categories.find(c => c.id === categoryFilter)?.name ?? ''
-                const displayName = partnerName
-                  ? (selectedCatName === 'K-Wellness'
-                    ? partnerName
-                    : (products.find(p => p.partner_name === partnerName)?.partner_short ?? partnerName))
-                  : 'All'
-                return (
-                  <button key={partnerName || 'all'}
-                    onClick={() => setPartnerFilter(partnerName)}
-                    className={`px-2.5 py-1 text-[11px] rounded-full border transition-colors ${partnerFilter === partnerName ? 'bg-[#0f4c35] border-[#0f4c35] text-white' : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'}`}>
-                    {displayName}
-                  </button>
-                )
-              })}
+              {['', ...availablePartners].map((tertiary) => (
+                <button key={tertiary || 'all'}
+                  onClick={() => setPartnerFilter(tertiary)}
+                  className={`px-2.5 py-1 text-[11px] rounded-full border transition-colors ${partnerFilter === tertiary ? 'bg-[#0f4c35] border-[#0f4c35] text-white' : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'}`}>
+                  {tertiary || 'All'}
+                </button>
+              ))}
             </div>
           )}
         </div>
@@ -1236,7 +1253,7 @@ export default function AdminProductsPage() {
                       })()}
                     </td>
                     <td className="px-3 xl:px-6 py-4 text-xs xl:text-sm text-gray-500 whitespace-nowrap">
-                      <p className="truncate max-w-[160px]">{p.partner_short ?? p.partner_name ?? '—'}</p>
+                      <p className="truncate max-w-[160px]">{p.partner_name ?? '—'}</p>
                     </td>
                     <td className="px-3 xl:px-6 py-4 text-xs xl:text-sm font-medium text-gray-900 min-w-[200px] max-w-[380px]">
                       <p className="line-clamp-2 break-words">

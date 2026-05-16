@@ -253,7 +253,7 @@ export default function CaseDetailPage() {
           id, type, document_number, slug, total_price, payment_due_date, payment_received_at, agent_margin_rate, company_margin_rate, finalized_at, from_party, to_party, created_at,
           document_groups(
             id, name, order, member_count,
-            document_items(id, final_price, variant_label_snapshot, removed_at, origin, products(id, name, description, partner_name, base_price, price_currency, duration_value, duration_unit, has_female_doctor, has_prayer_room, dietary_type, location_address)),
+            document_items(id, final_price, variant_label_snapshot, removed_at, origin, products(id, name, description, partner_name, base_price, price_currency, duration_value, duration_unit, has_female_doctor, has_prayer_room, dietary_type, location, full_address)),
             document_group_members(id, case_member_id)
           )
         ),
