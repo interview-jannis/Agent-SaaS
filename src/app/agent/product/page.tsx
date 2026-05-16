@@ -90,6 +90,34 @@ const CART_VERSION = 4  // bump to invalidate old localStorage carts
 // Subcategories where products are grouped by partner_name in the catalog grid
 const PARTNER_GROUPED_SUBCATEGORIES = new Set(['Health Screening'])
 
+// Row 3 pills come from tertiary_category (region/clinic-vertical) instead of partner_name
+// for these (category, subcategory) pairs. Otherwise pills are partner-based.
+function isTertiaryRow3(catName: string, subName: string): boolean {
+  if (catName === 'K-Wellness' && subName) return true
+  if (catName === 'Subpackage' && subName === 'Hotel') return true
+  return false
+}
+
+// Custom sort for K-Medical Row 3 partner pills: group by clinic vertical keyword.
+function sortKMedicalPartners(names: string[]): string[] {
+  const rank = (n: string) => {
+    if (/Health Screening Center/i.test(n)) return 0
+    if (/Stem Cell Clinic/i.test(n)) return 1
+    if (/Dermatology Clinic/i.test(n)) return 2
+    return 3
+  }
+  return [...names].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b))
+}
+
+// Custom sort for K-Wellness Row 2 subcategory pills: SPA first, then alpha.
+function sortKWellnessSubs(names: string[]): string[] {
+  return [...names].sort((a, b) => {
+    const aSpa = /^SPA/i.test(a) ? 0 : 1
+    const bSpa = /^SPA/i.test(b) ? 0 : 1
+    return aSpa - bSpa || a.localeCompare(b)
+  })
+}
+
 const GROUP_PALETTE = Array(8).fill({
   border: 'border-gray-200',
   tab: 'bg-[#0f4c35] text-white',
@@ -322,7 +350,7 @@ export default function AgentProductPage() {
       if (selectedSubcategoryName && !productTagNames(p).includes(selectedSubcategoryName)) return false
       if (selectedPartnerName) {
         const catName = categories.find(c => c.id === p.category_id)?.name ?? ''
-        if (catName === 'K-Wellness') {
+        if (isTertiaryRow3(catName, selectedSubcategoryName)) {
           if (p.tertiary_category !== selectedPartnerName) return false
         } else {
           if (p.partner_name !== selectedPartnerName) return false
@@ -360,6 +388,8 @@ export default function AgentProductPage() {
       seenName.add(s.name)
       out.push(s.name)
     }
+    const selectedCatName = categories.find(c => c.id === selectedCategoryId)?.name ?? ''
+    if (selectedCatName === 'K-Wellness') return sortKWellnessSubs(out)
     return out
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [products, subcategories, selectedCategoryId])
@@ -395,21 +425,24 @@ export default function AgentProductPage() {
       return true
     })
 
-    // K-Wellness: Row 3 pills come from tertiary_category (only when a subcategory is selected)
-    if (selectedCatName === 'K-Wellness' && selectedSubcategoryName !== '') {
+    // Row 3 pills from tertiary_category — K-Wellness (any sub) + Subpackage > Hotel
+    if (isTertiaryRow3(selectedCatName, selectedSubcategoryName)) {
       const values = new Set<string>()
       for (const p of relevant) { if (p.tertiary_category) values.add(p.tertiary_category) }
       return values.size > 1 ? Array.from(values).sort() : []
     }
 
-    // K-Medical / K-Beauty: Row 3 pills come from partner_name
+    // K-Medical / K-Beauty: Row 3 pills come from partner_name — only show when a subcategory is selected
+    if (selectedSubcategoryName === '') return [] as string[]
     const allPartnerGrouped = relevant.length > 0 &&
       relevant.every(p => productTagNames(p).some(n => PARTNER_GROUPED_SUBCATEGORIES.has(n)))
     const isKBeauty = selectedCatName === 'K-Beauty'
     if (!PARTNER_GROUPED_SUBCATEGORIES.has(selectedSubcategoryName) && !isKBeauty && !allPartnerGrouped) return [] as string[]
     const names = new Set<string>()
     for (const p of relevant) { if (p.partner_name) names.add(p.partner_name) }
-    return Array.from(names).sort()
+    const list = Array.from(names)
+    if (selectedCatName === 'K-Medical') return sortKMedicalPartners(list)
+    return list.sort()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [products, categories, selectedCategoryId, selectedSubcategoryName])
 
@@ -997,7 +1030,7 @@ export default function AgentProductPage() {
             </button>
             {availablePartnerNames.map(partner => {
               const selectedCatName = categories.find(c => c.id === selectedCategoryId)?.name ?? ''
-              const displayName = selectedCatName === 'K-Wellness'
+              const displayName = isTertiaryRow3(selectedCatName, selectedSubcategoryName)
                 ? partner
                 : (products.find(p => p.partner_name === partner)?.partner_short ?? partner)
               return (

@@ -8,6 +8,30 @@ import { getMarkupRate, isHotelItem, type MarkupRatesConfig, DEFAULT_MARKUP_RATE
 // Subcategories where products are grouped by partner_name (3rd tier)
 const PARTNER_GROUPED_SUBCATEGORIES = new Set(['Health Screening'])
 
+function isTertiaryRow3(catName: string, subName: string): boolean {
+  if (catName === 'K-Wellness' && subName) return true
+  if (catName === 'Subpackage' && subName === 'Hotel') return true
+  return false
+}
+
+function sortKMedicalPartners(names: string[]): string[] {
+  const rank = (n: string) => {
+    if (/Health Screening Center/i.test(n)) return 0
+    if (/Stem Cell Clinic/i.test(n)) return 1
+    if (/Dermatology Clinic/i.test(n)) return 2
+    return 3
+  }
+  return [...names].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b))
+}
+
+function sortKWellnessSubs(names: string[]): string[] {
+  return [...names].sort((a, b) => {
+    const aSpa = /^SPA/i.test(a) ? 0 : 1
+    const bSpa = /^SPA/i.test(b) ? 0 : 1
+    return aSpa - bSpa || a.localeCompare(b)
+  })
+}
+
 type Category = {
   id: string
   name: string
@@ -161,6 +185,8 @@ export default function AdminProductsPage() {
       seenName.add(s.name)
       out.push(s.name)
     }
+    const selectedCatName = categories.find(c => c.id === categoryFilter)?.name ?? ''
+    if (selectedCatName === 'K-Wellness') return sortKWellnessSubs(out)
     return out
   })()
 
@@ -174,19 +200,23 @@ export default function AdminProductsPage() {
       return true
     })
 
-    // K-Wellness: use tertiary_category values when a subcategory is selected
-    if (selectedCatName === 'K-Wellness' && subcategoryFilter !== '') {
+    // Row 3 pills from tertiary_category — K-Wellness (any sub) + Subpackage > Hotel
+    if (isTertiaryRow3(selectedCatName, subcategoryFilter)) {
       const values = new Set<string>()
       for (const p of relevant) { if (p.tertiary_category) values.add(p.tertiary_category) }
       return values.size > 1 ? Array.from(values).sort() : []
     }
 
+    // Row 3 pills only when a subcategory is selected (unified behavior)
+    if (subcategoryFilter === '') return [] as string[]
     const allPartnerGrouped =
       relevant.length > 0 &&
       relevant.every((p) => productTagNames(p).some(n => PARTNER_GROUPED_SUBCATEGORIES.has(n)))
     const isKBeauty = selectedCatName === 'K-Beauty'
     if (!PARTNER_GROUPED_SUBCATEGORIES.has(subcategoryFilter) && !isKBeauty && !allPartnerGrouped) return [] as string[]
-    return Array.from(new Set(relevant.map((p) => p.partner_name).filter((n): n is string => !!n))).sort()
+    const names = Array.from(new Set(relevant.map((p) => p.partner_name).filter((n): n is string => !!n)))
+    if (selectedCatName === 'K-Medical') return sortKMedicalPartners(names)
+    return names.sort()
   })()
 
   const filtered = products.filter((p) => {
@@ -198,7 +228,7 @@ export default function AdminProductsPage() {
     const matchSubcategory = subcategoryFilter === '' || productTagNames(p).includes(subcategoryFilter)
     const catName = categories.find(c => c.id === p.category_id)?.name ?? ''
     const matchPartner = partnerFilter === ''
-      || (catName === 'K-Wellness' ? p.tertiary_category === partnerFilter : p.partner_name === partnerFilter)
+      || (isTertiaryRow3(catName, subcategoryFilter) ? p.tertiary_category === partnerFilter : p.partner_name === partnerFilter)
     const matchActive =
       activeFilter === '' ||
       (activeFilter === 'active' && p.is_active) ||
