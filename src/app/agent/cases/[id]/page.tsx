@@ -677,11 +677,10 @@ export default function CaseDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [caseData])
 
-  function stageAddExisting(clientId: string) {
+  function stageAddExisting(clientId: string, groupId?: string | null) {
     if (!clientId) return
     const existing = agentClients.find(c => c.id === clientId)
     if (!existing) return
-    // Avoid duplicate (already in case)
     if (pendingMembers.some(p => p.clientId === clientId && !p.isRemoved)) {
       setMembersError('Client already in this case.')
       return
@@ -692,7 +691,7 @@ export default function CaseDetailPage() {
       id: tempId, isNew: true, isRemoved: false,
       clientId, clientNumber: '',
       clientName: existing.name, nationality: existing.nationality ?? null,
-      needsMuslim: false, isLead: false, groupId: null,
+      needsMuslim: false, isLead: false, groupId: groupId ?? null,
     }])
   }
 
@@ -1569,20 +1568,6 @@ export default function CaseDetailPage() {
               </div>
             )}
 
-            {/* Add existing client dropdown (edit mode only) */}
-            {editMembers && (() => {
-              const pendingClientIds = new Set(pendingMembers.filter(p => !p.isRemoved).map(p => p.clientId))
-              const addable = agentClients.filter(c => !pendingClientIds.has(c.id))
-              return addable.length > 0 && (
-                <div className="flex items-center gap-2">
-                  <select value="" onChange={e => { if (e.target.value) stageAddExisting(e.target.value) }}
-                    className="flex-1 text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:border-[#0f4c35] bg-white">
-                    <option value="">+ Add existing client...</option>
-                    {addable.map(c => <option key={c.id} value={c.id}>{c.name}{c.nationality ? ` (${c.nationality})` : ''}</option>)}
-                  </select>
-                </div>
-              )
-            })()}
 
             {showNewClient && (
               <div className="border border-gray-200 rounded-xl p-4 space-y-3 bg-white">
@@ -1768,9 +1753,13 @@ export default function CaseDetailPage() {
                   const unassigned = pendingMembers.filter(p => !p.groupId)
                     .sort((a, b) => Number(b.isLead) - Number(a.isLead))
 
+                  const pendingClientIds = new Set(pendingMembers.filter(p => !p.isRemoved).map(p => p.clientId))
+                  const addableClients = agentClients.filter(c => !pendingClientIds.has(c.id))
                   return (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      {groupedMembers.map(({ group, members }) => (
+                      {groupedMembers.map(({ group, members }) => {
+                        const groupFull = members.filter(m => !m.isRemoved).length >= group.member_count
+                        return (
                         <div key={group.id} className="space-y-2">
                           <input
                             value={pendingGroupNames[group.id] ?? group.name}
@@ -1782,8 +1771,16 @@ export default function CaseDetailPage() {
                           ) : (
                             members.map(renderMemberCard)
                           )}
+                          {!groupFull && addableClients.length > 0 && (
+                            <select value="" onChange={e => { if (e.target.value) stageAddExisting(e.target.value, group.id) }}
+                              className="w-full text-xs border border-dashed border-gray-300 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-[#0f4c35] bg-white text-gray-500">
+                              <option value="">+ Add client to {pendingGroupNames[group.id] ?? group.name}...</option>
+                              {addableClients.map(c => <option key={c.id} value={c.id}>{c.name}{c.nationality ? ` · ${c.nationality}` : ''}</option>)}
+                            </select>
+                          )}
                         </div>
-                      ))}
+                      )})}
+
                       {unassigned.length > 0 && (
                         <div className="space-y-2 sm:col-span-2">
                           <p className="text-[10px] font-semibold text-amber-600 uppercase tracking-wide">Unassigned</p>

@@ -7,6 +7,7 @@ type Props = {
   value: string
   onChange: (v: string) => void
   className?: string
+  highlight?: boolean
   minDate?: string
   maxDate?: string
 }
@@ -23,7 +24,7 @@ function compose(date: string, time: string): string {
   return `${date}T${time}`
 }
 
-export default function DateTime24Picker({ value, onChange, className = '', minDate, maxDate }: Props) {
+export default function DateTime24Picker({ value, onChange, className = '', highlight = false, minDate, maxDate }: Props) {
   const parsed = parse(value)
   const [date, setDate] = useState(parsed.date)
   const [time, setTime] = useState(parsed.time)
@@ -39,7 +40,8 @@ export default function DateTime24Picker({ value, onChange, className = '', minD
     onChange(compose(nd, nt))
   }
 
-  const base = 'border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-[#0f4c35] bg-white text-gray-900'
+  const borderClass = highlight ? 'border-red-200' : 'border-gray-200'
+  const base = `border ${borderClass} rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-[#0f4c35] bg-white text-gray-900`
 
   return (
     <div className={`flex items-center gap-1 ${className}`}>
@@ -54,6 +56,7 @@ export default function DateTime24Picker({ value, onChange, className = '', minD
       <Time24Input
         value={time || null}
         onChange={(v) => update(date, v ?? '')}
+        highlight={highlight}
       />
     </div>
   )

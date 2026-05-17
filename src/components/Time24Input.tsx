@@ -17,6 +17,7 @@ type Props = {
   onChange: (v: string | null) => void
   className?: string
   disabled?: boolean
+  highlight?: boolean
 }
 
 function pad2(n: number): string {
@@ -24,7 +25,7 @@ function pad2(n: number): string {
 }
 
 export default function Time24Input({
-  value, onChange, className = '', disabled = false,
+  value, onChange, className = '', disabled = false, highlight = false,
 }: Props) {
   const initial = (value ?? '').split(':')
   const [hRaw, setHRaw] = useState<string>(initial[0] ?? '')
@@ -73,7 +74,8 @@ export default function Time24Input({
     }
   }
 
-  const base = 'border border-gray-200 rounded-lg text-xs bg-white text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 tabular-nums text-center'
+  const borderClass = highlight ? 'border-red-200' : 'border-gray-200'
+  const base = `border ${borderClass} rounded-lg text-xs bg-white text-gray-900 focus:outline-none focus:border-[#0f4c35] disabled:bg-gray-50 tabular-nums text-center`
 
   return (
     <span className={`inline-flex items-center gap-0.5 ${className}`}>
