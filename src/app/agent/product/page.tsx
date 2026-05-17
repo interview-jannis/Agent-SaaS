@@ -380,6 +380,14 @@ export default function AgentProductPage() {
     load()
   }, [])
 
+  // Auto-save cart to localStorage whenever relevant state changes
+  useEffect(() => {
+    if (!agentId) return
+    const cart = { version: CART_VERSION, clientId: selectedClientId, dateStart, dateEnd, tripName, groups, tripServices }
+    localStorage.setItem(`agent-cart-${agentId}`, JSON.stringify(cart))
+  }, [agentId, selectedClientId, dateStart, dateEnd, tripName, groups, tripServices])
+
+
   // ── Derived ────────────────────────────────────────────────────────────────
 
   function passesCrossFilters(p: Product): boolean {
