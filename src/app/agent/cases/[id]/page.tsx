@@ -333,11 +333,18 @@ export default function CaseDetailPage() {
 
   // Terminal states (completed/awaiting_settlement) — auto-collapse heavy sections.
   const isTerminal = caseData?.status === 'completed' || caseData?.status === 'awaiting_settlement'
+  // Contract not yet signed — financials collapsed by default to hide agent margin
+  const contractSigned = caseData ? !['awaiting_info', 'awaiting_contract'].includes(caseData.status) : false
+  const [financialsCollapseInitialized, setFinancialsCollapseInitialized] = useState(false)
   useEffect(() => {
     if (!caseData) return
     if (isTerminal) {
       setScheduleCollapsed(true)
       setFinancialsCollapsed(true)
+    }
+    if (!financialsCollapseInitialized) {
+      setFinancialsCollapsed(!contractSigned)
+      setFinancialsCollapseInitialized(true)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [caseData?.status])
@@ -1123,6 +1130,16 @@ export default function CaseDetailPage() {
                       Estimated
                     </span>
                   )}
+                  {!contractSigned && (
+                    <button
+                      onClick={() => setFinancialsCollapsed(v => !v)}
+                      className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-gray-600 transition-colors">
+                      <svg className={`w-3.5 h-3.5 transition-transform ${financialsCollapsed ? '-rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                      </svg>
+                      {financialsCollapsed ? 'Show' : 'Hide'}
+                    </button>
+                  )}
                 </div>
                 {quote.slug && (() => {
                   const finalInvoice = caseData?.documents?.find(d => d.type === 'final_invoice')
@@ -1172,7 +1189,7 @@ export default function CaseDetailPage() {
                 })()}
               </div>
               {/* /financials header */}
-              <div className="p-5 space-y-4">
+              {!financialsCollapsed && <div className="p-5 space-y-4">
 
               {<>
 
@@ -1247,7 +1264,7 @@ export default function CaseDetailPage() {
                 />
               </div>
               </>}
-              </div>{/* /p-5 content wrapper */}
+              </div>}{/* /p-5 content wrapper */}
             </section>
             )
           })()}
