@@ -2192,16 +2192,6 @@ export default function AdminCaseDetailPage() {
                       .sort((a, b) => a.order - b.order)
                       .map(g => ({ id: g.id, name: g.name }))}
                     onSaved={() => fetchCase()}
-                    onDaySubpackagesChange={async (daySubpackages) => {
-                      if (latestSchedule?.id) {
-                        await supabase.from('schedules').update({ day_subpackages: daySubpackages }).eq('id', latestSchedule.id)
-                      }
-                      const targetDoc = finalInvoice ?? latestQuote
-                      if (targetDoc) {
-                        await calcAndStoreOvertimeHours(daySubpackages, targetDoc.document_groups ?? [], targetDoc.id)
-                        await fetchCase()
-                      }
-                    }}
                     onSaveDraft={async (items, daySubpackages) => {
                       await supabase.from('cases').update({ schedule_draft_items: items }).eq('id', caseData.id)
                       // Persist per-day hours to the latest schedule row so they survive page refresh.
