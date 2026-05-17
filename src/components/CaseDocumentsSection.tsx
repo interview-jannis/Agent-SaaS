@@ -139,6 +139,9 @@ export default function CaseDocumentsSection({
   const [paidAtEditingId, setPaidAtEditingId] = useState<string | null>(null)
   const [paidAtValue, setPaidAtValue] = useState('')
 
+  // Mark Paid confirmation modal
+  const [markPaidConfirmDocId, setMarkPaidConfirmDocId] = useState<string | null>(null)
+
   // Load products once
   useEffect(() => {
     supabase.from('products')
@@ -326,17 +329,20 @@ export default function CaseDocumentsSection({
     } finally { setBusy(null) }
   }
 
-  async function doMarkPaid(docId: string) {
-    if (!paidAtValue) return
+  function markPaidConfirmMsg(docId: string) {
     const doc = documents.find(d => d.id === docId)
-    const confirmMsg = doc?.type === 'commission_invoice'
+    return doc?.type === 'commission_invoice'
       ? 'Have you confirmed the commission has been transferred to the agent?'
       : doc?.type === 'deposit_invoice'
       ? 'Have you confirmed the deposit payment was received?'
       : doc?.type === 'final_invoice'
       ? 'Have you confirmed the balance payment was received?'
       : 'Have you confirmed this payment?'
-    if (!window.confirm(confirmMsg)) return
+  }
+
+  async function doMarkPaid(docId: string) {
+    if (!paidAtValue) return
+    setMarkPaidConfirmDocId(null)
     setBusy(docId); setError('')
     try {
       await markPaymentReceived(docId, new Date(paidAtValue).toISOString(), exchangeRate)
@@ -829,7 +835,7 @@ export default function CaseDocumentsSection({
                         className="border border-gray-200 rounded-lg px-2 py-1 text-[11px] text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
                       <button onClick={() => { setPaidAtEditingId(null); setPaidAtValue('') }}
                         className="text-[11px] font-medium text-gray-600 hover:text-gray-900 px-2 py-1 rounded-lg border border-gray-200 hover:bg-white">Cancel</button>
-                      <button onClick={() => doMarkPaid(doc.id)} disabled={!canMarkThisDoc || busy === doc.id || !paidAtValue}
+                      <button onClick={() => setMarkPaidConfirmDocId(doc.id)} disabled={!canMarkThisDoc || busy === doc.id || !paidAtValue}
                         className="text-[11px] font-medium bg-[#0f4c35] text-white hover:bg-[#0a3828] rounded-lg px-2.5 py-1 disabled:opacity-40">
                         {busy === doc.id ? 'Saving…' : 'Save'}
                       </button>
@@ -847,6 +853,28 @@ export default function CaseDocumentsSection({
           </div>
         )
       })}
+
+      {/* Mark Paid confirmation modal */}
+      {markPaidConfirmDocId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm mx-4 space-y-4">
+            <h3 className="text-sm font-semibold text-gray-900">Confirm Payment</h3>
+            <p className="text-sm text-gray-600">{markPaidConfirmMsg(markPaidConfirmDocId)}</p>
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                onClick={() => setMarkPaidConfirmDocId(null)}
+                className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">
+                Cancel
+              </button>
+              <button
+                onClick={() => doMarkPaid(markPaidConfirmDocId)}
+                className="px-4 py-2 text-sm font-medium bg-[#0f4c35] text-white hover:bg-[#0a3828] rounded-lg transition-colors">
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   )
 }
