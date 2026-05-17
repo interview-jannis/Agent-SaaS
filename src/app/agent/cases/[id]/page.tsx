@@ -1005,6 +1005,13 @@ export default function CaseDetailPage() {
   const agentMarginRate = quote?.agent_margin_rate ?? 0
   const earningsKrw = agentMarginRate > 0 ? Math.round(totalKrw * agentMarginRate) : 0
   const toUsd = (krw: number) => krw / exchangeRate
+  // Reverse-engineer commission breakdown from stored composite rate
+  const totalUSD = toUsd(totalKrw)
+  const commissionHighValue = totalUSD >= 50000
+  const rateWithoutHighValue = Math.round((agentMarginRate - (commissionHighValue ? 0.05 : 0)) * 100) / 100
+  const commissionRetention = ![0.15, 0.20, 0.25].includes(rateWithoutHighValue)
+  const commissionBase = Math.round((rateWithoutHighValue - (commissionRetention ? 0.03 : 0)) * 100) / 100
+  const commissionBasePatientsLabel = commissionBase >= 0.25 ? '30+ patients' : commissionBase >= 0.20 ? '11–30 patients' : '0–10 patients'
   const fmtUsd = (usd: number) => `$${usd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
   const durationDays = caseData.travel_start_date && caseData.travel_end_date
@@ -1234,13 +1241,12 @@ export default function CaseDetailPage() {
                     <p className="text-[10px] text-[#0f4c35]/70 mb-1">Your Estimated Earnings</p>
                     <p className="text-base font-bold text-[#0f4c35]">{fmtUsd(toUsd(earningsKrw))}</p>
                   </div>
-                  <div className="text-right">
-                    <p className="text-[10px] text-gray-400 mb-1">Commission Rate</p>
+                  <div className="text-right space-y-0.5">
+                    <p className="text-[10px] text-gray-400">Commission Rate</p>
                     <p className="text-sm font-semibold text-gray-700">{(agentMarginRate * 100).toFixed(0)}%</p>
-                    <p className="text-[10px] text-gray-400 mt-0.5">
-                      Base {agentMarginRate >= 0.25 ? '25% (30+ patients)' : agentMarginRate >= 0.20 ? '20% (11–30 patients)' : '15% (0–10 patients)'}
-                      {' · +5% if ≥ $50k · +3% returning client'}
-                    </p>
+                    <p className="text-[10px] text-gray-400">Base {(commissionBase * 100).toFixed(0)}% · {commissionBasePatientsLabel}</p>
+                    {commissionHighValue && <p className="text-[10px] text-[#0f4c35]">+5% High-Value (≥ $50k)</p>}
+                    {commissionRetention && <p className="text-[10px] text-[#0f4c35]">+3% Returning Client</p>}
                   </div>
                 </div>
               )}
