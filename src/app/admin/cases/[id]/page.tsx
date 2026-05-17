@@ -15,7 +15,7 @@ import ScheduleEditor, { type DaySubpackageEntry } from '@/components/admin/Sche
 import { SCHEDULE_BLOCK_LABEL, compareScheduleItems } from '@/types/schedule'
 import type { DocumentRow } from '@/lib/documents'
 import type { ScheduleItem } from '@/types/schedule'
-import { nightsBetween, daysBetween, isHotelItem } from '@/lib/pricing'
+import { nightsBetween, daysBetween, isHotelItem, calcOvertimeCostKrw } from '@/lib/pricing'
 import type { SurveyRow } from '@/lib/surveys'
 
 import type { ClientInfo, FlightInfo } from '@/lib/clientCompleteness'
@@ -474,11 +474,12 @@ export default function AdminCaseDetailPage() {
     documentGroups: QuoteGroup[],
     documentId: string,
   ) => {
-    // Build variantId → total actual hours
-    const hoursByVariant: Record<string, number> = {}
+    // Build variantId → per-day hours array (for per-day OT calc, matching calcOvertimeCostKrw)
+    const hoursByDayPerVariant: Record<string, number[]> = {}
     for (const entries of Object.values(daySubpackages)) {
       for (const e of entries) {
-        hoursByVariant[e.variantId] = (hoursByVariant[e.variantId] ?? 0) + e.hours
+        if (!hoursByDayPerVariant[e.variantId]) hoursByDayPerVariant[e.variantId] = []
+        hoursByDayPerVariant[e.variantId].push(e.hours)
       }
     }
 
@@ -507,22 +508,25 @@ export default function AdminCaseDetailPage() {
     for (const g of documentGroups) {
       for (const item of g.document_items) {
         if (!item.variant_id || item.removed_at || item.is_overtime_item) continue
-        if (!(item.variant_id in hoursByVariant)) continue
-        const actualHours = hoursByVariant[item.variant_id]
+        if (!(item.variant_id in hoursByDayPerVariant)) continue
         const durationUnit = (item.products?.duration_unit ?? '').toLowerCase()
         const isHoursBased = durationUnit.startsWith('h')
-        const contractedHours = isHoursBased ? (item.quantity ?? 1) * (item.products?.duration_value ?? 0) : 0
-        const overtime_hours = Math.max(0, actualHours - contractedHours)
-        baseItemOTUpdates.push({ id: item.id, overtime_hours })
-        if (overtime_hours > 0) {
-          const otRate = otRateByVariant.get(item.variant_id) ?? 0
+        const durationValue = isHoursBased ? (item.products?.duration_value ?? null) : null
+        const otRate = otRateByVariant.get(item.variant_id) ?? null
+        const { overtimeHours } = calcOvertimeCostKrw({
+          assignedHoursByDay: hoursByDayPerVariant[item.variant_id],
+          durationValue,
+          overtimeRateKrw: otRate,
+        })
+        baseItemOTUpdates.push({ id: item.id, overtime_hours: overtimeHours })
+        if (overtimeHours > 0 && otRate) {
           otInserts.push({
             groupId: g.id,
             variantId: item.variant_id,
             productId: item.products?.id ?? null,
             productName: item.product_name_snapshot ?? item.products?.name ?? '',
             partnerName: item.product_partner_snapshot ?? item.products?.partner_name ?? null,
-            overtimeHours: overtime_hours,
+            overtimeHours,
             otRate,
             sortOrder: (item.sort_order ?? 0) + 1,
           })
