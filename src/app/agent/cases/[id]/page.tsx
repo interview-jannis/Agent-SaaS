@@ -1455,8 +1455,14 @@ export default function CaseDetailPage() {
                   return ([
                     ['Outbound', 'out', outboundMin, outboundMax],
                     ['Inbound', 'in', inboundMin, inboundMax],
-                  ] as const).map(([label, prefix, minD, maxD]) => (
-                  <div key={prefix} className="col-span-2 bg-white border border-gray-200 rounded-xl p-3 space-y-2">
+                  ] as const).map(([label, prefix, minD, maxD]) => {
+                  const depDt = tripForm[`${prefix}_departure_datetime`]
+                  const depAp = tripForm[`${prefix}_departure_airport`]
+                  const arrDt = tripForm[`${prefix}_arrival_datetime`]
+                  const arrAp = tripForm[`${prefix}_arrival_airport`]
+                  const flightIncomplete = !depDt || !depAp || !arrDt || !arrAp
+                  return (
+                  <div key={prefix} className={`col-span-2 bg-white border rounded-xl p-3 space-y-2 ${flightIncomplete ? 'border-red-200' : 'border-gray-200'}`}>
                     <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">{label} Flight *</p>
                     <div className="grid grid-cols-2 gap-2">
                       <div>
@@ -1464,36 +1470,38 @@ export default function CaseDetailPage() {
                           Departure Date & Time
                           {prefix === 'in' && <span className="ml-1 text-[#0f4c35] font-semibold">= Travel End</span>}
                         </label>
-                        <DateTime24Picker value={tripForm[`${prefix}_departure_datetime`]}
+                        <DateTime24Picker value={depDt}
                           minDate={minD} maxDate={maxD}
+                          className={!depDt ? 'ring-1 ring-red-200 rounded-lg' : ''}
                           onChange={v => setTripForm(p => ({ ...p, [`${prefix}_departure_datetime`]: v }))} />
                       </div>
                       <div>
                         <label className="block text-[10px] text-gray-500 mb-0.5">Departure Airport</label>
-                        <input type="text" value={tripForm[`${prefix}_departure_airport`]}
+                        <input type="text" value={depAp}
                           onChange={e => setTripForm(p => ({ ...p, [`${prefix}_departure_airport`]: e.target.value }))}
                           placeholder="e.g. Dubai (DXB)"
-                          className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
+                          className={`w-full border rounded-lg px-2.5 py-1.5 text-xs text-gray-900 focus:outline-none focus:border-[#0f4c35] ${!depAp ? 'border-red-200' : 'border-gray-200'}`} />
                       </div>
                       <div>
                         <label className="block text-[10px] text-gray-500 mb-0.5">
                           Arrival Date & Time
                           {prefix === 'out' && <span className="ml-1 text-[#0f4c35] font-semibold">= Travel Start</span>}
                         </label>
-                        <DateTime24Picker value={tripForm[`${prefix}_arrival_datetime`]}
+                        <DateTime24Picker value={arrDt}
                           minDate={minD} maxDate={maxD}
+                          className={!arrDt ? 'ring-1 ring-red-200 rounded-lg' : ''}
                           onChange={v => setTripForm(p => ({ ...p, [`${prefix}_arrival_datetime`]: v }))} />
                       </div>
                       <div>
                         <label className="block text-[10px] text-gray-500 mb-0.5">Arrival Airport</label>
-                        <input type="text" value={tripForm[`${prefix}_arrival_airport`]}
+                        <input type="text" value={arrAp}
                           onChange={e => setTripForm(p => ({ ...p, [`${prefix}_arrival_airport`]: e.target.value }))}
                           placeholder="e.g. Incheon (ICN)"
-                          className="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
+                          className={`w-full border rounded-lg px-2.5 py-1.5 text-xs text-gray-900 focus:outline-none focus:border-[#0f4c35] ${!arrAp ? 'border-red-200' : 'border-gray-200'}`} />
                       </div>
                     </div>
                   </div>
-                  ))
+                  )})
                 })()}
                 {tripError && <p className="col-span-2 text-xs text-red-500">{tripError}</p>}
               </div>
