@@ -221,7 +221,7 @@ function TextInput({ label, value, onChange, type = 'text', placeholder, mono }:
       <label className="block text-xs text-gray-500 mb-1">{label}</label>
       <input type={type} value={value} onChange={e => onChange(e.target.value)}
         placeholder={placeholder ?? 'N/A if none'}
-        className={`w-full border rounded-lg px-3 py-1.5 text-sm focus:outline-none ${mono ? 'font-mono' : ''} ${needsHighlight ? 'border-amber-300 bg-amber-50 focus:border-amber-400' : 'border-gray-200 focus:border-[#0f4c35]'}`} />
+        className={`w-full border rounded-lg px-3 py-1.5 text-sm text-gray-900 focus:outline-none ${mono ? 'font-mono' : ''} ${needsHighlight ? 'border-red-300 focus:border-red-400' : 'border-gray-200 focus:border-[#0f4c35]'}`} />
     </div>
   )
 }
