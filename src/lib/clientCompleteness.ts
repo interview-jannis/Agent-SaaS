@@ -127,7 +127,6 @@ function isFlightComplete(f: FlightInfo): boolean {
 
 export function getMissingCaseFields(c: CaseRequiredFields): string[] {
   const missing: string[] = []
-  if (!isFilledText(c.concept)) missing.push('Concept')
   if (!isFlightComplete(c.outbound_flight)) missing.push('Outbound Flight')
   if (!isFlightComplete(c.inbound_flight)) missing.push('Inbound Flight')
   return missing

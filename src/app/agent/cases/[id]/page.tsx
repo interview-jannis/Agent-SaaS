@@ -1412,7 +1412,7 @@ export default function CaseDetailPage() {
             {!editTrip ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
                 <div className="col-span-2">
-                  <p className="text-[10px] text-gray-400 mb-0.5">Concept *</p>
+                  <p className="text-[10px] text-gray-400 mb-0.5">Concept</p>
                   <p className="text-gray-800">{caseData.concept || <span className="text-gray-300">—</span>}</p>
                 </div>
                 <div className="col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 pt-2 border-t border-gray-200">
@@ -1433,7 +1433,7 @@ export default function CaseDetailPage() {
             ) : (
               <div className="grid grid-cols-2 gap-3">
                 <div className="col-span-2">
-                  <label className="block text-xs text-gray-500 mb-1">Concept *</label>
+                  <label className="block text-xs text-gray-500 mb-1">Concept</label>
                   <input type="text" value={tripForm.concept}
                     onChange={e => setTripForm(p => ({ ...p, concept: e.target.value }))}
                     className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35] bg-white" />
