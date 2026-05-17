@@ -408,7 +408,7 @@ export default function CaseDetailPage() {
           needs_muslim_friendly: f.needs_muslim_friendly,
           dietary_restriction: f.dietary_restriction,
         })
-        .select('id, name, nationality, needs_muslim_friendly').single()
+        .select('id, name, gender, nationality, needs_muslim_friendly').single()
       if (ce) throw ce
 
       setAgentClients(p => [...p, { id: nc.id, name: nc.name, gender: nc.gender ?? null, nationality: nc.nationality }])
