@@ -1,11 +1,13 @@
 # Project Progress
 
 ## 현재 상태
-- **Phase**: 시뮬 D+4(5/15). Hero CTA 개편 + 이메일 확인 모달 + Subpackage 차액 가격 로직.
-- **마지막 작업**: 2026-05-15 (2차) — Hero awaiting_contract/deposit CTA 재설계, ConfirmModal 전역 적용, Subpackage Free = 최저 variant 무료 + 차액만 청구 로직.
-- **마지막 업데이트**: 2026-05-15 (시뮬레이션 5/11~15, 런칭 5/18)
+- **Phase**: 시뮬 D+6(5/17). 런칭 전 클라이언트 UX 잔손질 + 계약서 DB 업데이트 + 정렬 완료.
+- **마지막 작업**: 2026-05-17 — Client 상세 여권번호 입력/재확인 필드, phone/email 선택 항목화, 빈 필수 필드 amber 하이라이트, HeroShell 모바일 버튼 너비 통일, 계약서 SQL 작성.
+- **마지막 업데이트**: 2026-05-17 (런칭 5/18)
 - **SaaS 브랜드명**: **TikkTakk** (전역 치환 완료)
 
+> 2026-05-17 상세: Client 등록 phone/email 선택 항목화 (`agent/clients/page.tsx`). Client 상세 빈 필수 필드 amber 하이라이트 — ViewField/TextInput B안 (label `*` 포함 + 값 없으면 amber 테두리/배경, `agent/clients/[id]/page.tsx`). Passport 번호 입력 + 재입력 확인 필드 추가 (`clientCompleteness.ts` + client detail page). HeroShell 모바일 버튼 너비 통일 (`[&>button]:flex-1 [&>button]:sm:flex-none`, `CaseHeroAction.tsx`). 계약서 3종(NDA/Partnership/Three-Party) DB 업데이트 SQL 작성 (`sql/update_contract_templates_260517.sql` — 토큰만 추가, 본문 무변경).
+> 2026-05-16 상세: `notes/26.05.16.md` (Subpackage Free 카드 `Free – $X` range + 모달 asc 분기. K-Wellness subcategory dedupe (React key warning fix). 상품 description 159개 정리본 `data/product_descriptions.txt` + reformat 스크립트 + 오탈자 일괄 fix + 인라인 bullet/paren-aware 분할. Hotel 큐레이션 가이드 37→31, Sheraton 송도 컷, Gyeongwonjae 송도로 정정. Subpackage Hotel `tertiary_category` region 도입 + UI Row 3 pills 분기 코드 (agent+admin). Row 3 노출 통일: subcategory 클릭 시에만. 정렬: K-Medical partner = HS Center→Stem Cell→Dermatology→알파벳 / K-Wellness sub = SPA 가장 앞→알파벳. v25 사용자 편집: K-Beauty primary_category 8셀 fix + K-Wellness +2 워터파크 + Hotel region 채움 + INSPIRE/SOFITEL 정리).
 > 2026-05-15 (2차): `notes/26.05.15.md` §9–10 (이메일 ConfirmModal 전역 적용. Hero awaiting_contract Agent 2버튼/Admin 2×1그리드, awaiting_deposit Agent/Admin 글귀 재설계. Financials awaiting_contract green border + 항상 펼침. Admin Financials Preview 버튼 eye+gray-700. 3-party 계약 금액 $포맷. Subpackage markup=0 견적 버그 수정 + 최저 variant Free + 차액 로직).
 > 2026-05-14 상세: `notes/26.05.14.md` (낮: ScheduleEditor 세그먼트 컬럼 + full-width 레이아웃 + hotel sub-dropdown + Fill Transfers + admin-side bug sweep. 새벽: 케이스 페이지 강조 일관성 sweep, Hero 글로벌 sticky, 그룹 강제 선택, row checkbox 제거, hotel 3-enum(check-in/stay/check-out), hotel 박수 day-span 카운트, day-level concierge subpackage 도입. 후반: GroupMultiSelect radio 픽스, em-dash 정리, ItemRow padding 복구, day-level concierge에 per-service hours + Trip Services Summary 박스).
 > 2026-05-13: `notes/26.05.13.md` §1–7 (카테고리별 마진율 재설계. Agent 초대 이메일. 상품 멀티 서브카테고리 junction table. PGRST201 FK 모호성 버그. K-Beauty 3단계 카탈로그. K-Medical Male/Female 별도 유지 결정. Bulk 이미지 다중 상품 적용).
@@ -44,9 +46,9 @@
 
 #### 개발 (남은 것)
 - [ ] **Female/Male 상품 같은 그룹 내 복수 선택 방지** — 한 그룹 = 1인 기준, 성별 충돌 시 경고/차단
-- [ ] **통역/컨시어지/차량 overage 단가 + invoice 자동 연동** — (5/15 설계 완료, 미구현) `product_variants.overage_hourly_rate NUMERIC` 컬럼 + Excel upload `overage_hourly_rate` 컬럼 + ProductForm UI + ScheduleEditor에서 contracted hours 초과 시 인라인 prompt → quotation `document_items` `origin='admin_added'` row 자동 생성. fallback 단가 = `base_price / (durationValue × quantity)`. 자세한 설계는 `notes/26.05.14.md` 후속 섹션 참조.
+- [ ] **통역/컨시어지/차량 overage 단가 + invoice 자동 연동** — ScheduleEditor에 overtime 시간 계산 + KRW 표시까지는 구현됨(5/15). 미구현: 초과 시 인라인 prompt → `document_items` `origin='admin_added'` row 자동 생성. 자세한 설계는 `notes/26.05.14.md` 후속 섹션 참조.
 - [ ] **Agent Home 사진 추가** — 9단계 절차 소개 화면에 이미지 삽입. 상품 사진 등록 완료 후 작업.
-- [ ] **Admin Approve & Activate → Agent 알림** — 카운터사인 후 승인 시 agent에게 notifyAgent 호출 미구현. `src/app/api/admin/sign-contract/route.ts` 수정 필요.
+- [x] **Admin Approve & Activate → Agent 알림** — `admin/agents/[id]/page.tsx`에서 Approve & Activate 후 notifyAgent 호출 확인 완료.
 
 #### 개발 (완료 확인됨)
 - [x] **견적서 불변성 모델 + Finalize Pricing 리팩터** — Quotation = 영구 snapshot, Final Invoice = 편집 draft. Edit Selected Products가 `final_invoice` 타겟으로 전환, `createDraftFinalInvoice` lazy 생성. `issueInvoice`/`syncFinalInvoiceFromQuotation` 제거, `finalizeDocument(finalInvoice.id)` 직접 호출. (5/10-11)
@@ -78,20 +80,20 @@
 - [x] **잘못 매핑된 variants 정리 (K-Beauty 일부)** — Ruby Clinic 4개 패키지 + SELENA Clinic Hongdae 3개 티어: 보톡스 브랜드명(Xeomin/Allergan/Domestic)이 variant_label로 오염 → v21에서 공백 처리 완료 (data/scripts/generate_v21.js). Rarelee 등 나머지 클리닉별 잔여 이슈는 별도 검토 필요.
 - [x] **Agent home "Free" vs "Price on request" 구분** — Subpackage margin disabled(무상) → "Free"(gray), 진짜 가격 미설정 → "Price on request"(amber). priceLabel() + renderVariantRow + 2-level group range 3곳 모두 적용.
 - [ ] 설문 질문 실제 내용 확정 (이사님 검토 후 admin/contracts에서 갱신 — placeholder 12문항 seed됨)
-- [ ] 계약서 4종 본문 법무 검토 후 admin/contracts에서 갱신
-- [ ] Stamp 정식 이미지 업로드 (현재 Stamp 폴더의 회사 도장 PNG)
+- [x] **계약서 4종 본문 법무 검토 + 업데이트 완료** — NDA/Partnership/Three-Party SQL 적용 완료 (5/17)
+- [x] **Stamp 정식 이미지 업로드 완료** — system_settings.company_stamp에 반영됨
 - [ ] WHY 컬럼 채우기 — v11 125 rows 비즈니스 카피
 - [ ] 대표 원장 프로파일 컬럼 채우기 (영문 오픈 정보)
 - [ ] has_female_doctor / has_prayer_room 채우기 (Muslim VIP 핵심)
-- [ ] 안과/치과 데이터 추가 (다음주 도착)
-- [ ] 상품 사진 (파트너 홍보 자료)
+- [x] **안과/치과 데이터 업로드 완료** — 카탈로그 반영됨 (5/18)
+- [x] **상품 사진 업로드 완료** — product-images 버킷 반영됨 (5/18)
 - [ ] P-029, 030, 032, 033 (Nest Clinic 4개) name 시술명
 
 #### Wellness 마진 정책
 - [x] **Wellness 상품 (스파, 헤나 제외) 마진 X, 원가 그대로** — 5/4 완료. `src/lib/pricing.ts` `appliesMargin()`: K-Wellness는 Spa/Henna만 마진, 나머지 원가 통과.
 
 #### Agent 등록 정보 확장
-- [ ] 사업자 등록증 업로드 (개인/법인/기타)
+- [x] 사업자 등록증 업로드 (개인/법인/기타) — `onboarding/setup/page.tsx`에서 type/company_name/registration_number/doc_url 입력 + `agent-docs` 버킷 업로드 구현 확인
 - [ ] SNS 정보 (WhatsApp 등) — 알림 채널 메타
 
 #### 알림 채널 확장 (외부 API)
@@ -105,7 +107,7 @@
 - [x] **Agent case 상태 시각 보강** (5/5) — Schedule 섹션 action-tone에 awaiting_travel(emerald) 추가, Financials 섹션 action-tone에 awaiting_deposit(cyan) 추가. Hero/배너 11개 status 모두 cover 확인.
 - [x] **호텔 가격 × nights** (5/5) — `Subpackage > Hotel` variant는 `unitPrice × nights` (memberCount 무시, 객실당 비용). `lib/pricing.ts` 에 `isHotelItem` + `nightsBetween` 헬퍼 추가. Agent home cart 총액 + review page 표 + 견적 생성(`addDocumentItem`)에서 hotel 라인은 nights 곱해서 base/final 저장 + variant_label_snapshot에 ` · 3 nights` 베이크. QuoteDocument/SelectedProductsSection은 final_price + snapshot 그대로 읽어서 자동 반영. Admin pre-finalize Add line item picker는 variant/nights 미인지 (기존 한계 — 빈도 낮아 backlog)
 - [x] **Variant 모달 가격 desc 정렬** (5/5) — Agent home detail 모달에서 객실/사이즈 옵션이 sort_order(≈알파벳)였는데 USD 가격 내림차순으로. VIP 카탈로그 결: 비싼 옵션이 먼저 노출. tie-break은 sort_order
-- [ ] **Subpackage 라인 아이템 노트** — DB 컬럼(`document_items.notes`)은 존재하나 agent product review 페이지에 입력 UI 미구현. admin "Notes from Agent" 섹션 노출도 미구현.
+- [x] **Subpackage 라인 아이템 노트** — `document_items.agent_note` 컬럼(5/17 SQL). Agent 카탈로그 모달에 서비스 in-cart 시 textarea 노출 (`agent/product/page.tsx`). review page에서 `addDocumentItem({ agentNote })` 전달. admin/agent SelectedProductsSection에 amber 뱃지로 표시.
 - [x] **스케줄 Selected Products 커버리지 게이트 — Subpackage 예외** — ScheduleEditor에 이미 구현됨. Subpackage는 별도 키(`sub:{variantId}`)로 처리해 그룹별 매핑 검증에서 제외. (코드 확인 5/12)
 - [x] **Subpackage 서비스 일수 수량 컨트롤** — vehicle `per_day` 아이템을 호텔과 동일하게 `daysLive` auto 방식으로 구현 (−/+ UI 대신 날짜 기반 자동 계산). `pricing.ts daysBetween` early-return + `agent/product/page.tsx daysLive` useMemo. (5/12 §9)
 - [x] **Setup Wizard localStorage draft** — `src/app/onboarding/setup/page.tsx`에 `loadDraft/saveDraft/clearDraft` 구현됨. key: `tiktak_setup_draft`. 비밀번호 필드 제외. (코드 확인 5/12)
@@ -128,7 +130,16 @@
 - [x] **데이터 마스터 v18 → v20** (5/7) — 8개 소스 파일 전수 감사. K-Wellness 비-Spa 63행 재구축(Internal_Price 3-1~3-4 기준 56행, Shopping/K-Content/Tour/Leisure). K-Starcation 재구축(3행, 팬텀 행 제거 + K-Beauty 오염 해결). Concierge variant label 공백. Sofitel Presidential Suite ₩0+문의 안내. 총 351행 → `products_master_v20.xlsx`.
 - [x] **UI 색상 정리 (Agent + Admin)** (5/7) — GROUP_PALETTE (4색 → brand green 단일), STATUS_STYLES (10색 → 3색: 에이전트 차례=green, 대기=gray, 취소=rose), CaseHeroAction TONE (9→3), CaseDocumentsSection accent, agent/admin cases detail 전면: violet/emerald/blue/amber/yellow → brand green/gray 3톤 통일
 - [ ] Guide 페이지 화면 캡처 추가 (UI 정리 완료 후)
-- [ ] Stamp invoice 렌더 위치/크기 시뮬에서 실제 확인 (5/3 flex inline 수정 완료, 시각 확인만)
+- [x] Stamp invoice 렌더 위치/크기 — `QuoteDocument.tsx`에서 agent.stamp_url / system_settings.company_stamp 읽어 final_invoice 모드에서 렌더 코드 확인 완료
+
+### 5/17 완료 (런칭 전 UX 잔손질 + 계약서 SQL + #7)
+- [x] **Client 등록 phone/email 선택 항목화** — `handleCreate()` 필수 체크 제거, 라벨 `*` 제거 (`agent/clients/page.tsx`)
+- [x] **Client 상세 빈 필수 필드 amber 하이라이트 (B안)** — ViewField: label `*` 포함 + 값 없으면 amber 배경/테두리 래퍼 + amber 대시. TextInput: `border-amber-300 bg-amber-50`. 값 채우면 자동 해제 (`agent/clients/[id]/page.tsx`)
+- [x] **Passport 번호 입력 + 재입력 확인 필드** — `clientCompleteness.ts`에 `passport_number` 추가 (ClientInfo 타입 / getMissingClientFields / CLIENT_INFO_COLUMNS). Client 상세: 입력(mono font, amber 하이라이트) + Confirm(불일치 시 red 테두리 + 에러 문구). 저장 시 불일치 차단. View 모드에서 Passport No. * ViewField 노출.
+- [x] **HeroShell 모바일 버튼 너비 통일** — children 컨테이너 `shrink-0 → w-full sm:w-auto [&>button]:flex-1 [&>button]:sm:flex-none`. Send Quotation/Contract 등 버튼이 모바일에서 가로폭 균등 분할 (`CaseHeroAction.tsx`)
+- [x] **계약서 3종 DB 업데이트 SQL** — NDA / Partnership / Three-Party 본문 verbatim 유지, 서명란 빈칸만 토큰(`{{AGENT_NAME}}` 등)으로 대체 (`sql/update_contract_templates_260517.sql`)
+- [x] **#7 치과 per-tooth 가격** — `products.price_per_tooth` 컬럼. Agent 카탈로그 모달에서 아이템 선택 시 tooth count −/+ 입력 UI 표시. review page: `toothCount → quantity`, `price_per_tooth × toothCount`로 base 계산, 라벨에 `· N teeth` 베이크. (`agent/product/page.tsx`, `review/page.tsx`)
+- [x] **#7 Subpackage agent note** — `document_items.agent_note` 컬럼. Agent 카탈로그 모달에서 비호텔 Subpackage 서비스 in-cart 시 textarea 노출, note를 TripServiceItem/CartItem에 저장 후 `addDocumentItem({ agentNote })` 전달. SelectedProductsSection에 amber Note 뱃지로 admin/agent 양쪽 표시.
 
 ### 5/6 완료 (3자 계약 evidentiary + Realtime + 캐시베이시스 회계 + ScheduleEditor 대수술)
 - [x] **Cases 표 admin/agent 통일 + 빈 상태 표 유지** — agent 쪽 누락된 awaiting_contract/awaiting_deposit DisplayGroup 추가 (5/4 admin sweep mirror), 헤더 `Total (USD)`/JUMP `Balance` 통일. 케이스 0건이어도 11개 빈 status 섹션 헤더 노출 (흐름 시각화).

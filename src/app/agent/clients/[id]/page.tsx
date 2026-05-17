@@ -23,6 +23,7 @@ type Client = {
   date_of_birth: string | null
   phone: string | null
   email: string | null
+  passport_number: string | null
   passport_image_url: string | null
   needs_muslim_friendly: boolean
   dietary_restriction: DietaryType | null
@@ -60,6 +61,7 @@ type EditForm = {
   date_of_birth: string
   phone: string
   email: string
+  passport_number: string
   passport_image_url: string
   needs_muslim_friendly: boolean
   dietary_restriction: DietaryType
@@ -161,7 +163,8 @@ function toEditForm(c: Client): EditForm {
   return {
     nationality: c.nationality ?? '', gender: c.gender ?? 'male',
     date_of_birth: c.date_of_birth ?? '', phone: c.phone ?? '',
-    email: c.email ?? '', passport_image_url: c.passport_image_url ?? '',
+    email: c.email ?? '', passport_number: c.passport_number ?? '',
+    passport_image_url: c.passport_image_url ?? '',
     needs_muslim_friendly: c.needs_muslim_friendly,
     dietary_restriction: c.dietary_restriction ?? 'none',
     prayer_frequency: c.prayer_frequency,
@@ -194,25 +197,30 @@ function toEditForm(c: Client): EditForm {
 // ── Small UI helpers ──────────────────────────────────────────────────────────
 
 function ViewField({ label, value, mono }: { label: string; value: string | number | null; mono?: boolean }) {
+  const isEmpty = value == null || value === ''
+  const needsHighlight = isEmpty && label.includes('*')
   return (
-    <div>
+    <div className={needsHighlight ? 'rounded-lg px-2 py-1.5 -mx-2 bg-amber-50 border border-amber-200' : ''}>
       <p className="text-[10px] text-gray-400 mb-0.5">{label}</p>
-      <p className={`text-sm text-gray-800 ${mono ? 'font-mono' : ''} break-words`}>
-        {value != null && value !== '' ? String(value) : <span className="text-gray-300">—</span>}
+      <p className={`text-sm ${mono ? 'font-mono' : ''} break-words`}>
+        {!isEmpty
+          ? <span className="text-gray-800">{String(value)}</span>
+          : <span className={needsHighlight ? 'text-amber-400' : 'text-gray-300'}>—</span>}
       </p>
     </div>
   )
 }
 
-function TextInput({ label, value, onChange, type = 'text', placeholder }: {
-  label: string; value: string; onChange: (v: string) => void; type?: string; placeholder?: string
+function TextInput({ label, value, onChange, type = 'text', placeholder, mono }: {
+  label: string; value: string; onChange: (v: string) => void; type?: string; placeholder?: string; mono?: boolean
 }) {
+  const needsHighlight = label.includes('*') && (!value || !value.trim())
   return (
     <div>
       <label className="block text-xs text-gray-500 mb-1">{label}</label>
       <input type={type} value={value} onChange={e => onChange(e.target.value)}
         placeholder={placeholder ?? 'N/A if none'}
-        className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-[#0f4c35]" />
+        className={`w-full border rounded-lg px-3 py-1.5 text-sm focus:outline-none ${mono ? 'font-mono' : ''} ${needsHighlight ? 'border-amber-300 bg-amber-50 focus:border-amber-400' : 'border-gray-200 focus:border-[#0f4c35]'}`} />
     </div>
   )
 }
@@ -258,6 +266,7 @@ export default function ClientDetailPage() {
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
   const [passportUploading, setPassportUploading] = useState(false)
+  const [passportNumberConfirm, setPassportNumberConfirm] = useState('')
 
   const fetchData = useCallback(async () => {
     const [{ data: cl }, { data: cm }] = await Promise.all([
@@ -293,6 +302,8 @@ export default function ClientDetailPage() {
       const weight = editForm.weight_kg.trim() === '' ? null : Number(editForm.weight_kg)
       if (height != null && (Number.isNaN(height) || height <= 0)) throw new Error('Height must be a positive number')
       if (weight != null && (Number.isNaN(weight) || weight <= 0)) throw new Error('Weight must be a positive number')
+      if (editForm.passport_number.trim() && editForm.passport_number.trim() !== passportNumberConfirm.trim())
+        throw new Error('Passport number and confirmation do not match')
 
       // For male clients, auto-set pregnancy_status to not_applicable
       const pregnancy = editForm.gender === 'female' ? editForm.pregnancy_status : 'not_applicable' as PregnancyStatus
@@ -306,6 +317,7 @@ export default function ClientDetailPage() {
       const checkText = (label: string, oldV: string | null | undefined, newV: string) => {
         if (wasText(oldV) && !nowText(newV)) cleared.push(label)
       }
+      checkText('Passport Number', client.passport_number, editForm.passport_number)
       if (client.passport_image_url && !editForm.passport_image_url) cleared.push('Passport Copy')
       checkText('Emergency Contact Name', client.emergency_contact_name, editForm.emergency_contact_name)
       checkText('Emergency Contact Relation', client.emergency_contact_relation, editForm.emergency_contact_relation)
@@ -342,6 +354,7 @@ export default function ClientDetailPage() {
         date_of_birth: editForm.date_of_birth || null,
         phone: editForm.phone || null,
         email: editForm.email || null,
+        passport_number: editForm.passport_number || null,
         passport_image_url: editForm.passport_image_url || null,
         needs_muslim_friendly: editForm.needs_muslim_friendly,
         dietary_restriction: isMuslim ? editForm.dietary_restriction : 'none',
@@ -383,6 +396,7 @@ export default function ClientDetailPage() {
         diff('Date of birth', client.date_of_birth, editForm.date_of_birth),
         diff('Phone', client.phone, editForm.phone),
         diff('Email', client.email, editForm.email),
+        diff('Passport number', client.passport_number, editForm.passport_number),
         diff('Passport', client.passport_image_url, editForm.passport_image_url),
         (client.emergency_contact_name !== (editForm.emergency_contact_name || null)
           || client.emergency_contact_relation !== (editForm.emergency_contact_relation || null)
@@ -491,7 +505,7 @@ export default function ClientDetailPage() {
               <p className="text-xs text-gray-400 mt-0.5">Registered {client.created_at.slice(0, 10)}</p>
             </div>
             {!editing ? (
-              <button onClick={() => { setEditing(true); setEditForm(toEditForm(client)); setSaveError('') }}
+              <button onClick={() => { setEditing(true); setEditForm(toEditForm(client)); setSaveError(''); setPassportNumberConfirm(client.passport_number ?? '') }}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
@@ -527,6 +541,7 @@ export default function ClientDetailPage() {
                   <ViewField label="Nationality" value={client.nationality} />
                   <ViewField label="Gender" value={client.gender} />
                   <ViewField label="Date of Birth" value={client.date_of_birth} />
+                  <ViewField label="Passport No. *" value={client.passport_number} mono />
                   <div>
                     <p className="text-[10px] text-gray-400 mb-0.5">Passport Copy *</p>
                     {client.passport_image_url ? (
@@ -639,6 +654,20 @@ export default function ClientDetailPage() {
                   <div>
                     <label className="block text-xs text-gray-500 mb-1">Date of Birth</label>
                     <DOBPicker value={editForm.date_of_birth} onChange={v => setEditForm(p => p && ({ ...p, date_of_birth: v }))} />
+                  </div>
+                  <TextInput label="Passport No. *" value={editForm.passport_number} onChange={v => setEditForm(p => p && ({ ...p, passport_number: v }))} placeholder="e.g. M12345678" mono />
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Confirm Passport No.</label>
+                    <input
+                      type="text"
+                      value={passportNumberConfirm}
+                      onChange={e => setPassportNumberConfirm(e.target.value)}
+                      placeholder="Re-enter passport number"
+                      className={`w-full border rounded-lg px-3 py-1.5 text-sm font-mono focus:outline-none ${editForm.passport_number.trim() && passportNumberConfirm.trim() && editForm.passport_number.trim() !== passportNumberConfirm.trim() ? 'border-red-300 bg-red-50 focus:border-red-400' : 'border-gray-200 focus:border-[#0f4c35]'}`}
+                    />
+                    {editForm.passport_number.trim() && passportNumberConfirm.trim() && editForm.passport_number.trim() !== passportNumberConfirm.trim() && (
+                      <p className="text-[10px] text-red-500 mt-0.5">Numbers do not match</p>
+                    )}
                   </div>
                   <div>
                     <label className="block text-xs text-gray-500 mb-1">Passport Copy *</label>

@@ -16,6 +16,7 @@ export type ClientInfo = {
   gender: string | null
   needs_muslim_friendly: boolean
 
+  passport_number: string | null
   passport_image_url: string | null
 
   emergency_contact_name: string | null
@@ -54,6 +55,7 @@ export function getMissingClientFields(c: ClientInfo | null | undefined): string
   if (!c) return ['Client data']
   const missing: string[] = []
 
+  if (!isFilledText(c.passport_number)) missing.push('Passport Number')
   if (!isFilledText(c.passport_image_url)) missing.push('Passport Copy')
   if (!isFilledText(c.emergency_contact_name)) missing.push('Emergency Contact Name')
   if (!isFilledText(c.emergency_contact_relation)) missing.push('Emergency Contact Relation')
@@ -93,7 +95,7 @@ export function hasCompleteClientInfo(c: ClientInfo | null | undefined): boolean
 
 // Columns to include in Supabase SELECT when loading clients for completeness checks.
 export const CLIENT_INFO_COLUMNS =
-  'id, name, gender, needs_muslim_friendly, passport_image_url, ' +
+  'id, name, gender, needs_muslim_friendly, passport_number, passport_image_url, ' +
   'emergency_contact_name, emergency_contact_relation, emergency_contact_phone, ' +
   'blood_type, allergies, current_medications, health_conditions, medical_restrictions, ' +
   'height_cm, weight_kg, pregnancy_status, smoking_status, alcohol_status, ' +

@@ -513,13 +513,18 @@ export default async function QuoteDocument({
                       <p className="font-medium text-gray-800">{row.description}</p>
                       <p className="text-xs text-gray-400 mt-0.5">{row.group}</p>
                     </td>
-                    <td className="py-2 md:py-3 px-2 md:px-3 text-center text-gray-700 border border-gray-300 hidden md:table-cell">{row.qty}</td>
+                    <td className="py-2 md:py-3 px-2 md:px-3 text-center text-gray-700 border border-gray-300 hidden md:table-cell">{row.amtUSD === 0 ? '—' : row.qty}</td>
                     <td className="py-2 md:py-3 px-2 md:px-3 text-right text-gray-800 font-mono border border-gray-300 hidden md:table-cell">
-                      $ {fmtUSD(row.unitUSD)}
+                      {row.amtUSD === 0 ? '—' : `$ ${fmtUSD(row.unitUSD)}`}
                     </td>
                     <td className="py-2 md:py-3 px-2 md:px-3 text-right whitespace-nowrap border border-gray-300">
-                      <p className="font-semibold text-gray-900 font-mono">$ {fmtUSD(row.amtUSD)}</p>
-                      <p className="md:hidden text-[10px] text-gray-400 font-mono mt-0.5">{row.qty} × $ {fmtUSD(row.unitUSD)}</p>
+                      {row.amtUSD === 0
+                        ? <p className="font-semibold text-gray-500 italic">Complimentary</p>
+                        : <>
+                            <p className="font-semibold text-gray-900 font-mono">$ {fmtUSD(row.amtUSD)}</p>
+                            <p className="md:hidden text-[10px] text-gray-400 font-mono mt-0.5">{row.qty} × $ {fmtUSD(row.unitUSD)}</p>
+                          </>
+                      }
                     </td>
                     <td className="py-2 md:py-3 px-2 md:px-3 border border-gray-300 hidden md:table-cell" />
                   </tr>

@@ -17,7 +17,8 @@ type ProductSnapshot = {
   has_female_doctor?: boolean | null
   has_prayer_room?: boolean | null
   dietary_type?: string | null
-  location_address?: string | null
+  location?: string | null
+  full_address?: string | null
   product_categories?: { name: string } | null
   product_subcategories?: { name: string } | null
 } | null
@@ -31,6 +32,7 @@ type Item = {
   variant_label_snapshot?: string | null
   removed_at?: string | null
   origin?: string | null
+  agent_note?: string | null
 }
 
 type Group = {
@@ -199,6 +201,9 @@ export default function SelectedProductsSection({
                               )}
                             </p>
                             <p className={`text-[10px] truncate ${isRemoved ? 'text-gray-300' : 'text-gray-400'}`}>{metaBits.join(' · ')}</p>
+                            {item.agent_note && !isRemoved && (
+                              <p className="text-[10px] text-amber-700 bg-amber-50 rounded px-1.5 py-0.5 mt-0.5 truncate">Note: {item.agent_note}</p>
+                            )}
                           </div>
                           <div className={`text-right shrink-0 ${isRemoved ? 'line-through' : ''}`}>
                             <p className={`text-sm font-semibold leading-tight ${isRemoved ? 'text-gray-300' : 'text-gray-800'}`}>{fmtUSD(amtUSD)}</p>
@@ -300,10 +305,10 @@ function ProductDetailModal({
               <p className="text-gray-800">{p.duration_value} {p.duration_unit}</p>
             </div>
           )}
-          {p?.location_address && (
+          {(p?.location || p?.full_address) && (
             <div className="col-span-2">
               <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">Location</p>
-              <p className="text-gray-800">{p.location_address}</p>
+              <p className="text-gray-800">{p.full_address ?? p.location}</p>
             </div>
           )}
           <div>

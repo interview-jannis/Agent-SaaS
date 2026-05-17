@@ -140,8 +140,6 @@ export default function AgentClientsPage() {
     if (!form.nationality.trim()) missing.push('Nationality')
     if (!form.gender) missing.push('Gender')
     if (!form.date_of_birth) missing.push('Date of Birth')
-    if (!form.phone.trim()) missing.push('Phone')
-    if (!form.email.trim()) missing.push('Email')
     if (missing.length > 0) { setFormError(`Required: ${missing.join(', ')}`); return }
     if (!agentId) { setFormError('Agent profile not loaded.'); return }
     setSaving(true)
@@ -335,12 +333,12 @@ export default function AgentClientsPage() {
                   <DOBPicker value={form.date_of_birth} onChange={v => setForm(p => ({ ...p, date_of_birth: v }))} />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">Phone *</label>
+                  <label className="block text-xs text-gray-500 mb-1">Phone</label>
                   <input value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))}
                     className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
                 </div>
                 <div className="sm:col-span-2">
-                  <label className="block text-xs text-gray-500 mb-1">Email *</label>
+                  <label className="block text-xs text-gray-500 mb-1">Email</label>
                   <input type="email" value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))}
                     className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
                 </div>

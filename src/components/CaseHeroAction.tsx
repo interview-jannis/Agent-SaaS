@@ -49,7 +49,7 @@ function HeroShell({
           <p className="text-sm font-semibold text-gray-900 mt-1">{headline}</p>
           {subline && <div className="text-xs text-gray-600 mt-1">{subline}</div>}
         </div>
-        {children && <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">{children}</div>}
+        {children && <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto [&>button]:flex-1 [&>button]:sm:flex-none">{children}</div>}
       </div>
     </section>
   )

@@ -16,9 +16,9 @@ import { getMarkupRate, isHotelItem, nightsBetween, daysBetween, variantPriceUsd
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type CartItem = { productId: string; variantId: string; quantity?: number }
+type CartItem = { productId: string; variantId: string; quantity?: number; toothCount?: number; agentNote?: string }
 type CartGroup = { id: string; name: string; memberCount: number; items: CartItem[] }
-type TripServiceItem = { productId: string; variantId: string; days: number }
+type TripServiceItem = { productId: string; variantId: string; days: number; agentNote?: string }
 type CartDraft = { clientId: string; dateStart: string; dateEnd: string; tripName?: string; groups: CartGroup[]; tripServices?: TripServiceItem[] }
 
 type Client = {
@@ -43,6 +43,7 @@ type Product = {
   id: string
   name: string
   quantity_type: 'per_person' | 'per_night' | 'per_day' | 'flat' | null
+  price_per_tooth: number | null
   product_categories: { name: string } | null
   product_subcategories: { name: string } | null
   product_variants: Variant[]
@@ -142,7 +143,7 @@ export default function QuoteReviewPage() {
       const [leadRes, productsRes, rateRes, markupRatesRes, agentRes] = await Promise.all([
         supabase.from('clients').select('id, client_number, name, nationality, gender, needs_muslim_friendly, dietary_restriction').eq('id', draft.clientId).single(),
         allProductIds.length
-          ? supabase.from('products').select('id, name, quantity_type, product_categories(name), product_subcategories!products_subcategory_id_fkey(name), product_variants(id, variant_label, base_price, price_currency, sort_order)').in('id', allProductIds)
+          ? supabase.from('products').select('id, name, quantity_type, price_per_tooth, product_categories(name), product_subcategories!products_subcategory_id_fkey(name), product_variants(id, variant_label, base_price, price_currency, sort_order)').in('id', allProductIds)
           : Promise.resolve({ data: [] }),
         supabase.from('system_settings').select('value').eq('key', 'product_price_rate').single(),
         supabase.from('system_settings').select('value').eq('key', 'markup_rates').maybeSingle(),
@@ -479,21 +480,29 @@ export default function QuoteReviewPage() {
           const cat = found.product.product_categories?.name
           const sub = found.product.product_subcategories?.name
           const isHotelLine = isHotelItem(cat, sub)
-          const multiplier = isHotelLine ? nights : (it.quantity ?? groupMemberCount)
-          const baseUnitKrw = found.variant.price_currency === 'USD'
-            ? Math.round(found.variant.base_price * exchangeRate)
-            : found.variant.base_price
+          const isDental = !!found.product.price_per_tooth && !!it.toothCount
+          const multiplier = isDental ? it.toothCount!
+            : isHotelLine ? nights : (it.quantity ?? groupMemberCount)
+          const baseUnitKrw = isDental
+            ? found.product.price_per_tooth!
+            : found.variant.price_currency === 'USD'
+              ? Math.round(found.variant.base_price * exchangeRate)
+              : found.variant.base_price
           const itemMarkupRate = getMarkupRate(cat, sub, liveMarkupRates)
-          const finalUnitKrw = cat === 'Subpackage' && itemMarkupRate === 0
-            ? liveSubpkgUpgradeKrw(found)
-            : variantPriceKrw({ basePrice: found.variant.base_price, priceCurrency: found.variant.price_currency, exchangeRate, markupRate: itemMarkupRate })
+          const finalUnitKrw = isDental
+            ? Math.round(found.product.price_per_tooth! * (1 + itemMarkupRate))
+            : cat === 'Subpackage' && itemMarkupRate === 0
+              ? liveSubpkgUpgradeKrw(found)
+              : variantPriceKrw({ basePrice: found.variant.base_price, priceCurrency: found.variant.price_currency, exchangeRate, markupRate: itemMarkupRate })
           // Bake "· N nights" into the snapshot label so customer-facing
           // QuoteDocument and admin SelectedProductsSection render the
           // multiplier without having to re-derive nights from the case.
           const labelBase = found.variant.variant_label ?? null
           const labelWithNights = isHotelLine
             ? (labelBase ? `${labelBase} · ${nights} ${nights === 1 ? 'night' : 'nights'}` : `${nights} ${nights === 1 ? 'night' : 'nights'}`)
-            : labelBase
+            : isDental
+              ? (labelBase ? `${labelBase} · ${it.toothCount} teeth` : `${it.toothCount} teeth`)
+              : labelBase
           await addDocumentItem({
             documentId: quotation.id,
             groupId: dg.id,
@@ -504,6 +513,7 @@ export default function QuoteReviewPage() {
             quantity: multiplier,
             variantId: it.variantId,
             variantLabelSnapshot: labelWithNights,
+            agentNote: it.agentNote ?? null,
           })
         }
 
@@ -550,6 +560,7 @@ export default function QuoteReviewPage() {
             quantity: svc.days,
             variantId: svc.variantId,
             variantLabelSnapshot: labelWithDays,
+            agentNote: svc.agentNote ?? null,
           })
         }
       }

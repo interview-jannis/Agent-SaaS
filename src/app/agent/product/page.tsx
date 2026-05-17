@@ -25,10 +25,10 @@ type Product = {
   base_price: number
   price_currency: 'KRW' | 'USD'
   duration_value: number
-  duration_unit: 'hours' | 'days' | 'nights'
+  duration_unit: 'minutes' | 'hours' | 'days' | 'nights'
   quantity_type: 'per_person' | 'per_night' | 'per_day' | 'flat' | null
+  price_per_tooth: number | null
   partner_name: string | null
-  partner_short: string | null
   has_female_doctor: boolean
   has_prayer_room: boolean
   dietary_type: string
@@ -52,11 +52,11 @@ type Client = {
 }
 
 // Non-Subpackage products go into a Group (or Shared).
-type CartItem = { productId: string; variantId: string }
+type CartItem = { productId: string; variantId: string; toothCount?: number; agentNote?: string }
 
 // Subpackage products (interpreter, car, hotel, concierge…) go into Trip Services.
 // days: user-set number of days/nights. Hotel auto-syncs to nightsBetween on render.
-type TripServiceItem = { productId: string; variantId: string; days: number }
+type TripServiceItem = { productId: string; variantId: string; days: number; agentNote?: string }
 
 type Group = {
   id: string
@@ -89,6 +89,88 @@ const CART_VERSION = 4  // bump to invalidate old localStorage carts
 
 // Subcategories where products are grouped by partner_name in the catalog grid
 const PARTNER_GROUPED_SUBCATEGORIES = new Set(['Health Screening'])
+
+// Custom sort for K-Wellness Row 2 subcategory pills: SPA first, then alpha.
+function sortKWellnessSubs(names: string[]): string[] {
+  return [...names].sort((a, b) => {
+    const aSpa = /^SPA/i.test(a) ? 0 : 1
+    const bSpa = /^SPA/i.test(b) ? 0 : 1
+    return aSpa - bSpa || a.localeCompare(b)
+  })
+}
+
+// Custom sort for K-Medical Row 2 subcategory pills:
+// Health Screening → Stem Cell Clinic → Dermatology Clinic → alpha.
+function sortKMedicalSubs(names: string[]): string[] {
+  const rank = (n: string) => {
+    if (/^Health Screening$/i.test(n)) return 0
+    if (/^Stem Cell Clinic$/i.test(n)) return 1
+    if (/^Dermatology Clinic$/i.test(n)) return 2
+    return 3
+  }
+  return [...names].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b))
+}
+
+// Custom sort for Row 3 (tertiary) pills, per (category, subcategory).
+function sortTertiaries(catName: string, subName: string, values: string[]): string[] {
+  if (catName === 'K-Wellness' && subName === 'Tour') {
+    const rank = (n: string) => {
+      if (/^Seoul$/i.test(n)) return 0
+      if (/^Near Seoul$/i.test(n)) return 1
+      if (/^Regional$/i.test(n)) return 2
+      if (/^Jeju$/i.test(n)) return 3
+      return 4
+    }
+    return [...values].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b))
+  }
+  if (catName === 'Subpackage' && subName === 'Hotel') {
+    const rank = (n: string) => {
+      if (n === 'Seoul · Jamsil') return 0
+      if (n === 'Seoul · Downtown') return 1
+      if (n === 'Seoul · Gangnam') return 2
+      if (n === 'Incheon · Songdo') return 3
+      if (n === 'Incheon · Yeongjong') return 4
+      if (n === 'Andong · Hanok') return 5
+      return 6
+    }
+    return [...values].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b))
+  }
+  return [...values].sort()
+}
+
+const HOTEL_REGION_RANK: Record<string, number> = {
+  'Seoul · Jamsil': 0,
+  'Seoul · Downtown': 1,
+  'Seoul · Gangnam': 2,
+  'Incheon · Songdo': 3,
+  'Incheon · Yeongjong': 4,
+  'Andong · Hanok': 5,
+}
+
+function hotelPartnerRank(partner: string, region: string): number {
+  switch (region) {
+    case 'Seoul · Jamsil':
+      if (/SIGNIEL/i.test(partner)) return 0
+      return 99
+    case 'Seoul · Downtown':
+      if (/SHILLA/i.test(partner)) return 0
+      if (/FOUR SEASONS/i.test(partner)) return 1
+      return 99
+    case 'Seoul · Gangnam':
+      if (/InterContinental/i.test(partner)) return 0
+      if (/PARK HYATT/i.test(partner)) return 1
+      return 99
+    case 'Incheon · Songdo':
+      if (/PARK HYATT/i.test(partner)) return 0
+      return 99
+    case 'Incheon · Yeongjong':
+      if (/PARADISE/i.test(partner)) return 0
+      if (/INSPIRE/i.test(partner)) return 1
+      return 99
+    default:
+      return 99
+  }
+}
 
 const GROUP_PALETTE = Array(8).fill({
   border: 'border-gray-200',
@@ -250,7 +332,7 @@ export default function AgentProductPage() {
         supabase.from('system_settings').select('value').eq('key', 'markup_rates').maybeSingle(),
         supabase
           .from('products')
-          .select('id, name, description, base_price, price_currency, duration_value, duration_unit, quantity_type, partner_name, partner_short, has_female_doctor, has_prayer_room, dietary_type, tertiary_category, category_id, subcategory_id, product_categories(name), product_subcategories!products_subcategory_id_fkey(name), product_subcategory_tags(product_subcategories!product_subcategory_tags_subcategory_id_fkey(name)), product_images(image_url, is_primary), product_variants(id, variant_label, base_price, price_currency, sort_order, is_active, overtime_rate_krw)')
+          .select('id, name, description, base_price, price_currency, duration_value, duration_unit, quantity_type, price_per_tooth, partner_name, has_female_doctor, has_prayer_room, dietary_type, tertiary_category, category_id, subcategory_id, product_categories(name), product_subcategories!products_subcategory_id_fkey(name), product_subcategory_tags(product_subcategories!product_subcategory_tags_subcategory_id_fkey(name)), product_images(image_url, is_primary), product_variants(id, variant_label, base_price, price_currency, sort_order, is_active, overtime_rate_krw)')
           .eq('is_active', true),
         supabase.from('product_categories').select('id, name').order('sort_order').order('name'),
         supabase.from('product_subcategories').select('id, category_id, name, sort_order').order('sort_order').order('name'),
@@ -321,18 +403,48 @@ export default function AgentProductPage() {
       if (selectedCategoryId && p.category_id !== selectedCategoryId) return false
       if (selectedSubcategoryName && !productTagNames(p).includes(selectedSubcategoryName)) return false
       if (selectedPartnerName) {
-        const catName = categories.find(c => c.id === p.category_id)?.name ?? ''
-        if (catName === 'K-Wellness') {
-          if (p.tertiary_category !== selectedPartnerName) return false
-        } else {
-          if (p.partner_name !== selectedPartnerName) return false
-        }
+        if (p.tertiary_category !== selectedPartnerName) return false
       }
       return passesCrossFilters(p)
     })
+
+    const catName = categories.find(c => c.id === selectedCategoryId)?.name ?? ''
+
+    // Subpackage > Hotel: region → hotel → price desc
+    if (catName === 'Subpackage' && selectedSubcategoryName === 'Hotel') {
+      return list.sort((a, b) => {
+        const ra = HOTEL_REGION_RANK[a.tertiary_category ?? ''] ?? 99
+        const rb = HOTEL_REGION_RANK[b.tertiary_category ?? ''] ?? 99
+        if (ra !== rb) return ra - rb
+        const ha = hotelPartnerRank(a.partner_name ?? '', a.tertiary_category ?? '')
+        const hb = hotelPartnerRank(b.partner_name ?? '', b.tertiary_category ?? '')
+        if (ha !== hb) return ha - hb
+        return priceSortKey(b) - priceSortKey(a)
+      })
+    }
+
+    // Subcategory selected (no partner pill): group by partner (max price desc), then partner name alpha (tiebreaker to keep partners together), then price desc within partner
+    if (selectedSubcategoryName && !selectedPartnerName) {
+      const partnerMaxPrice = new Map<string, number>()
+      for (const p of list) {
+        const partner = p.partner_name ?? ''
+        const price = priceSortKey(p)
+        if (price > (partnerMaxPrice.get(partner) ?? -1)) partnerMaxPrice.set(partner, price)
+      }
+      return list.sort((a, b) => {
+        const pa = partnerMaxPrice.get(a.partner_name ?? '') ?? 0
+        const pb = partnerMaxPrice.get(b.partner_name ?? '') ?? 0
+        if (pa !== pb) return pb - pa
+        const nameA = a.partner_name ?? ''
+        const nameB = b.partner_name ?? ''
+        if (nameA !== nameB) return nameA.localeCompare(nameB)
+        return priceSortKey(b) - priceSortKey(a)
+      })
+    }
+
     return list.sort((a, b) => priceSortKey(b) - priceSortKey(a))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [products, search, selectedCategoryId, selectedSubcategoryName, selectedPartnerName, filterPrayerRoom, filterDietary, filterFemaleMedical, exchangeRate, markupRatesConfig])
+  }, [products, search, selectedCategoryId, selectedSubcategoryName, selectedPartnerName, filterPrayerRoom, filterDietary, filterFemaleMedical, exchangeRate, markupRatesConfig, categories])
 
   // Helper: get subcategory tag names for a product (falls back to primary subcategory)
   function productTagNames(p: Product): string[] {
@@ -351,9 +463,19 @@ export default function AgentProductPage() {
       if (p.category_id !== selectedCategoryId) continue
       for (const n of productTagNames(p)) names.add(n)
     }
-    return subcategories
-      .filter(s => s.category_id === selectedCategoryId && names.has(s.name))
-      .map(s => s.name)
+    const out: string[] = []
+    const seenName = new Set<string>()
+    for (const s of subcategories) {
+      if (s.category_id !== selectedCategoryId) continue
+      if (!names.has(s.name)) continue
+      if (seenName.has(s.name)) continue
+      seenName.add(s.name)
+      out.push(s.name)
+    }
+    const selectedCatName = categories.find(c => c.id === selectedCategoryId)?.name ?? ''
+    if (selectedCatName === 'K-Wellness') return sortKWellnessSubs(out)
+    if (selectedCatName === 'K-Medical') return sortKMedicalSubs(out)
+    return out
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [products, subcategories, selectedCategoryId])
 
@@ -373,36 +495,41 @@ export default function AgentProductPage() {
       }
     }
     for (const bucket of map.values()) {
-      bucket.sort((a, b) => priceSortKey(b) - priceSortKey(a))
+      const partnerMaxPrice = new Map<string, number>()
+      for (const p of bucket) {
+        const partner = p.partner_name ?? ''
+        const price = priceSortKey(p)
+        if (price > (partnerMaxPrice.get(partner) ?? -1)) partnerMaxPrice.set(partner, price)
+      }
+      bucket.sort((a, b) => {
+        const pa = partnerMaxPrice.get(a.partner_name ?? '') ?? 0
+        const pb = partnerMaxPrice.get(b.partner_name ?? '') ?? 0
+        if (pa !== pb) return pb - pa
+        const nameA = a.partner_name ?? ''
+        const nameB = b.partner_name ?? ''
+        if (nameA !== nameB) return nameA.localeCompare(nameB)
+        return priceSortKey(b) - priceSortKey(a)
+      })
     }
     return map
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [products, selectedCategoryId, availableSubcategories, search, filterPrayerRoom, filterDietary, filterFemaleMedical, exchangeRate, markupRatesConfig])
 
+  // Row 3 pills = tertiary_category values for the selected (category, subcategory).
+  // Only shown once a subcategory is picked. If no products in scope have tertiary_category,
+  // Row 3 stays hidden — we do NOT fall back to partner_name.
   const availablePartnerNames = useMemo(() => {
     if (!selectedCategoryId) return [] as string[]
-    const selectedCatName = categories.find(c => c.id === selectedCategoryId)?.name ?? ''
+    if (selectedSubcategoryName === '') return [] as string[]
     const relevant = products.filter(p => {
       if (p.category_id !== selectedCategoryId) return false
-      if (selectedSubcategoryName && !productTagNames(p).includes(selectedSubcategoryName)) return false
+      if (!productTagNames(p).includes(selectedSubcategoryName)) return false
       return true
     })
-
-    // K-Wellness: Row 3 pills come from tertiary_category (only when a subcategory is selected)
-    if (selectedCatName === 'K-Wellness' && selectedSubcategoryName !== '') {
-      const values = new Set<string>()
-      for (const p of relevant) { if (p.tertiary_category) values.add(p.tertiary_category) }
-      return values.size > 1 ? Array.from(values).sort() : []
-    }
-
-    // K-Medical / K-Beauty: Row 3 pills come from partner_name
-    const allPartnerGrouped = relevant.length > 0 &&
-      relevant.every(p => productTagNames(p).some(n => PARTNER_GROUPED_SUBCATEGORIES.has(n)))
-    const isKBeauty = selectedCatName === 'K-Beauty'
-    if (!PARTNER_GROUPED_SUBCATEGORIES.has(selectedSubcategoryName) && !isKBeauty && !allPartnerGrouped) return [] as string[]
-    const names = new Set<string>()
-    for (const p of relevant) { if (p.partner_name) names.add(p.partner_name) }
-    return Array.from(names).sort()
+    const values = new Set<string>()
+    for (const p of relevant) { if (p.tertiary_category) values.add(p.tertiary_category) }
+    const catName = categories.find(c => c.id === selectedCategoryId)?.name ?? ''
+    return sortTertiaries(catName, selectedSubcategoryName, Array.from(values))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [products, categories, selectedCategoryId, selectedSubcategoryName])
 
@@ -548,6 +675,21 @@ export default function AgentProductPage() {
     ))
   }
 
+  function updateServiceNote(productId: string, variantId: string, note: string) {
+    setTripServices(prev => prev.map(it =>
+      it.productId === productId && it.variantId === variantId ? { ...it, agentNote: note } : it
+    ))
+  }
+
+  function updateItemToothCount(productId: string, variantId: string, count: number) {
+    setGroups(prev => prev.map(g => ({
+      ...g,
+      items: g.items.map(it =>
+        it.productId === productId && it.variantId === variantId ? { ...it, toothCount: Math.max(1, count) } : it
+      ),
+    })))
+  }
+
   // ── Group management ───────────────────────────────────────────────────────
 
   function addGroup() {
@@ -652,14 +794,19 @@ export default function AgentProductPage() {
     const cat = p.product_categories?.name
     const sub = p.product_subcategories?.name
     const markupRate = getMarkupRate(cat, sub, markupRatesConfig)
-    if (cat === 'Subpackage' && markupRate === 0) return 'Free'
-    const prices = variants.map(v => variantPriceUsd({
-      basePrice: v.base_price, priceCurrency: v.price_currency, exchangeRate,
-      markupRate,
-    }))
+    const isSubpkgFree = cat === 'Subpackage' && markupRate === 0
+    const prices = isSubpkgFree
+      ? variants.map(v => subpkgUpgradeUsd(p, v))
+      : variants.map(v => variantPriceUsd({
+          basePrice: v.base_price, priceCurrency: v.price_currency, exchangeRate,
+          markupRate,
+        }))
     const min = Math.min(...prices), max = Math.max(...prices)
     if (min === 0 && max === 0) return cat === 'Subpackage' ? 'Free' : 'Price on request'
     const fmt = (n: number) => `$${n.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
+    if (isSubpkgFree) {
+      return max === 0 ? 'Free' : `Free – ${fmt(max)}`
+    }
     if (min === max) return `$${min.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
     return `${fmt(min)} – ${fmt(max)}`
   }
@@ -753,7 +900,7 @@ export default function AgentProductPage() {
             <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide truncate">{product.product_subcategories.name}</p>
           )}
           {product.partner_name && (
-            <p className="text-[10px] text-gray-500 truncate">{product.partner_short ?? product.partner_name}</p>
+            <p className="text-[10px] text-gray-500 truncate">{product.partner_name}</p>
           )}
           <button onClick={() => openDetail(product)}
             className="text-sm font-semibold text-gray-900 leading-tight text-left hover:text-[#0f4c35] transition-colors line-clamp-1">
@@ -983,18 +1130,12 @@ export default function AgentProductPage() {
               className={`shrink-0 px-2.5 py-1 text-[11px] rounded-full border transition-colors ${selectedPartnerName === '' ? 'bg-[#0f4c35] border-[#0f4c35] text-white' : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'}`}>
               All
             </button>
-            {availablePartnerNames.map(partner => {
-              const selectedCatName = categories.find(c => c.id === selectedCategoryId)?.name ?? ''
-              const displayName = selectedCatName === 'K-Wellness'
-                ? partner
-                : (products.find(p => p.partner_name === partner)?.partner_short ?? partner)
-              return (
-                <button key={partner} onClick={() => setSelectedPartnerName(partner)}
-                  className={`shrink-0 px-2.5 py-1 text-[11px] rounded-full border transition-colors ${selectedPartnerName === partner ? 'bg-[#0f4c35] border-[#0f4c35] text-white' : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'}`}>
-                  {displayName}
-                </button>
-              )
-            })}
+            {availablePartnerNames.map(tertiary => (
+              <button key={tertiary} onClick={() => setSelectedPartnerName(tertiary)}
+                className={`shrink-0 px-2.5 py-1 text-[11px] rounded-full border transition-colors ${selectedPartnerName === tertiary ? 'bg-[#0f4c35] border-[#0f4c35] text-white' : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'}`}>
+                {tertiary}
+              </button>
+            ))}
           </div>
         )}
 
@@ -1417,8 +1558,11 @@ export default function AgentProductPage() {
                     return Math.max(0, toKrwDetail(v) - minDetailKrw) / exchangeRate
                   return variantPriceUsd({ basePrice: v.base_price, priceCurrency: v.price_currency, exchangeRate, markupRate: detailMarkupRate })
                 }
+                const subpkgFreeSort = detailIsSubpkg && detailMarkupRate === 0
                 const variants = allDetailVariants
-                  .sort((a, b) => variantUsd(b) - variantUsd(a) || a.sort_order - b.sort_order)
+                  .sort((a, b) => (subpkgFreeSort
+                    ? variantUsd(a) - variantUsd(b)
+                    : variantUsd(b) - variantUsd(a)) || a.sort_order - b.sort_order)
 
                 if (variants.length <= 1) {
                   return (
@@ -1519,6 +1663,66 @@ export default function AgentProductPage() {
                         </div>
                       )
                     })}
+                  </div>
+                )
+              })()}
+
+              {/* Agent note — Subpackage (non-hotel) services in cart */}
+              {(() => {
+                if (!isSubpackageProduct(detailProduct)) return null
+                if (detailProduct.product_subcategories?.name === 'Hotel') return null
+                const inCartServices = tripServices.filter(it => it.productId === detailProduct.id)
+                if (inCartServices.length === 0) return null
+                return (
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 mb-2">Agent Note <span className="font-normal text-gray-400">(admin only)</span></p>
+                    <div className="space-y-2">
+                      {inCartServices.map(svc => {
+                        const v = (detailProduct.product_variants ?? []).find(x => x.id === svc.variantId)
+                        return (
+                          <div key={svc.variantId}>
+                            {inCartServices.length > 1 && v?.variant_label && (
+                              <p className="text-[11px] text-gray-400 mb-1">{v.variant_label}</p>
+                            )}
+                            <textarea
+                              value={svc.agentNote ?? ''}
+                              onChange={e => updateServiceNote(svc.productId, svc.variantId, e.target.value)}
+                              placeholder="e.g. Fluent in Arabic, client prefers female interpreter"
+                              rows={2}
+                              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 resize-none focus:outline-none focus:border-[#0f4c35]"
+                            />
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })()}
+
+              {/* Tooth count — dental products with per-tooth pricing */}
+              {(() => {
+                if (!detailProduct.price_per_tooth) return null
+                let inCartItem: CartItem | undefined
+                for (const g of groups) {
+                  inCartItem = g.items.find(it => it.productId === detailProduct.id)
+                  if (inCartItem) break
+                }
+                if (!inCartItem) return null
+                const ci = inCartItem
+                const count = ci.toothCount ?? 1
+                return (
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 mb-2">Number of Teeth</p>
+                    <div className="flex items-center gap-3">
+                      <button onClick={() => updateItemToothCount(detailProduct.id, ci.variantId, count - 1)}
+                        className="w-8 h-8 rounded-lg border border-gray-200 flex items-center justify-center text-gray-700 hover:bg-gray-50 font-bold text-base">−</button>
+                      <span className="text-base font-semibold text-gray-900 min-w-[2rem] text-center">{count}</span>
+                      <button onClick={() => updateItemToothCount(detailProduct.id, ci.variantId, count + 1)}
+                        className="w-8 h-8 rounded-lg border border-gray-200 flex items-center justify-center text-gray-700 hover:bg-gray-50 font-bold text-base">+</button>
+                      <span className="text-sm text-gray-500">
+                        = ₩{(count * detailProduct.price_per_tooth).toLocaleString('ko-KR')} base / person
+                      </span>
+                    </div>
                   </div>
                 )
               })()}

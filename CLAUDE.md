@@ -32,6 +32,8 @@
 - **카테고리별 독립 마진율** (`system_settings.markup_rates`, `MarkupRatesConfig`): K-Medical / K-Beauty / K-Wellness Spa / K-Wellness Other / K-Starcation / K-Education / Subpackage Hotel / Subpackage Other / Concierge 각각 설정. super admin 전용 편집.
 - `src/lib/pricing.ts` `getMarkupRate(category, subcategory, config)` — 단일 진실 소스.
 - **Subpackage markup=0 특칙 (5/15)**: 다른 카테고리와 달리 "무료 포함" 의미. 최저가 variant = ₩0 (Free), 상위 variant = `max(0, 선택가 − 최저가)` 차액만 고객 청구. 반면 K-Wellness-Other/Hotel 등 타 카테고리 markup=0은 원가 pass-through(변경 없음). `agent/product/page.tsx`의 `subpkgUpgradeUsd()`, `agent/product/review/page.tsx`의 `subpkgUpgradeKrw()`가 이 로직 담당.
+  - **카드 가격 라벨 (5/16)**: multi-variant Subpackage Free 상품 카드는 `priceLabel`이 `Free – $X` range로 표시 (이전엔 항상 `Free`만 노출돼 업그레이드 옵션 발견 불가).
+  - **모달 정렬 분기 (5/16)**: Subpackage Free 케이스만 asc(저가→고가), 그 외 카테고리는 desc 유지 (VIP 카탈로그 룰). Subpackage는 "기본 무료 + 업그레이드" 비대칭 choice라 다르게 처리.
 - 에이전트 커미션율 자동 적용 (당월 travel_completed 환자 수 기준, case_members 합산)
   - 0~10명: 15%
   - 11~30명: 20%
@@ -258,16 +260,23 @@ Agent 수동 개입:
 
 > 모든 버튼은 solid(테두리=채우기 동일). `text-[#0f4c35] border border-green-200` 등 outline/ghost 스타일 신규 사용 금지.
 
-### 에이전트 상품 카탈로그 3차 카테고리 (5/12~13)
+### 에이전트 상품 카탈로그 3차 카테고리 (5/12~13, 5/16 통일)
 - 경로: `src/app/agent/product/page.tsx` (동일 로직이 `src/app/admin/products/page.tsx`에도 적용)
-- 탭 구조: Category(1행) → Subcategory(2행) → Partner pills(3행, 조건부)
+- 탭 구조: Category(1행) → Subcategory(2행) → Row 3 pills(3행, 조건부)
 - **`PARTNER_GROUPED_SUBCATEGORIES = new Set(['Health Screening'])`** 상수로 파트너 필터가 필요한 subcategory 목록 관리.
-- **K-Beauty는 별도 로직**: `selectedCatName === 'K-Beauty'`이면 항상 partner pills 표시 (subcategory 선택 여부 무관). K-Medical처럼 Row2=시술타입, Row3=클리닉 구조.
+- **`isTertiaryRow3(catName, subName)` 헬퍼 (5/16)**: Row 3 pills의 데이터 소스가 `tertiary_category`인지 `partner_name`인지 결정.
+  - `K-Wellness` (any sub) **OR** `Subpackage` > `Hotel` → tertiary 기반 (region/clinic-vertical 분기)
+  - 그 외 → partner_name 기반
+- **Row 3 pills 노출 통일 (5/16)**: **subcategory 클릭 시에만 노출** — 모든 카테고리 (K-Beauty 포함, 이전 always-show 로직 제거)
+- **정렬 룰 (5/16)**:
+  - `sortKMedicalPartners()`: K-Medical Row 3 = `Health Screening Center` → `Stem Cell Clinic` → `Dermatology Clinic` → 나머지 알파벳
+  - `sortKWellnessSubs()`: K-Wellness Row 2 (subcategory) = `SPA & Aesthetic` 가장 앞 → 나머지 알파벳
 - partner pills 노출 조건: `availablePartnerNames.length > 1` — 파트너 1개면 pills 숨김(그룹 헤더도 생략).
 - K-Medical > All 상태에서도 visible product 전부 `PARTNER_GROUPED_SUBCATEGORIES`에 속하면 파트너 그룹핑 적용.
 - subcategory sections view(홈 All 패턴 재사용): `selectedSubcategoryName === '' && selectedPartnerName === '' && availableSubcategories.length > 1`일 때 subcategory별 섹션 카드(최대 6 preview + "See all (N) →" 링크)로 표시.
 - **멀티태그**: `productTagNames(p)` 헬퍼로 `product_subcategory_tags` 배열 읽고 없으면 primary `subcategory_id` fallback. 한 상품이 여러 subcategory 버킷에 동시 노출 가능.
 - **Admin Jump-to 카운트**: 필터 상태 무관, 전체 products 기준 (`products.filter(p => p.category_id === cat.id).length`).
+- **Subpackage Hotel 큐레이션 (5/16)**: 호텔당 cap 2~3 등급 (Entry/Premium/Top), ₩1M 미만 컷(SOFITEL은 무슬림 특화 예외), region tertiary 6개 (Seoul · Jamsil/Downtown/Gangnam, Incheon · Songdo/Yeongjong, Andong · Hanok).
 
 ### Bulk 이미지 업로드 파일명 규칙
 - `P-001.jpg` — P-001 primary 이미지

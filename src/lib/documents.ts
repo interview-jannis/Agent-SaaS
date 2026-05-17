@@ -99,6 +99,7 @@ export type DocumentItemRow = {
   sort_order: number
   origin?: 'original' | 'admin_added'
   removed_at?: string | null
+  agent_note?: string | null
 }
 
 export type GroupType = 'regular' | 'shared' | 'trip_services'
@@ -351,6 +352,7 @@ export type AddItemInput = {
   quantity?: number
   sortOrder?: number
   origin?: 'original' | 'admin_added'
+  agentNote?: string | null
 }
 
 export async function addDocumentItem(input: AddItemInput): Promise<DocumentItemRow> {
@@ -369,6 +371,7 @@ export async function addDocumentItem(input: AddItemInput): Promise<DocumentItem
       quantity: input.quantity ?? 1,
       sort_order: input.sortOrder ?? 0,
       origin: input.origin ?? 'original',
+      agent_note: input.agentNote ?? null,
     })
     .select('*')
     .single()

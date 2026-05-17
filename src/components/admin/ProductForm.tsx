@@ -38,11 +38,13 @@ export type FormState = {
   base_price: string        // stored in KRW
   price_currency: 'KRW' | 'USD'
   duration_value: string
-  duration_unit: 'hours' | 'days' | 'nights'
+  duration_unit: 'minutes' | 'hours' | 'days' | 'nights'
   quantity_type: 'per_person' | 'per_night' | 'per_day' | 'flat'
   partner_name: string
-  partner_short: string
-  location_address: string
+  location: string
+  full_address: string
+  contact_phone: string
+  contact_email: string
   contact_channels: ContactChannel[]
   has_prayer_room: boolean
   dietary_type: 'halal_certified' | 'halal_friendly' | 'muslim_friendly' | 'pork_free' | 'none'
@@ -76,6 +78,7 @@ const DIETARY_OPTIONS = [
 ]
 
 const DURATION_UNITS = [
+  { value: 'minutes', label: 'Minutes' },
   { value: 'hours', label: 'Hours' },
   { value: 'days', label: 'Days' },
   { value: 'nights', label: 'Nights' },
@@ -99,8 +102,10 @@ const DEFAULT_FORM: FormState = {
   duration_unit: 'hours',
   quantity_type: 'per_person',
   partner_name: '',
-  partner_short: '',
-  location_address: '',
+  location: '',
+  full_address: '',
+  contact_phone: '',
+  contact_email: '',
   contact_channels: [],
   has_prayer_room: false,
   dietary_type: 'none',
@@ -271,7 +276,6 @@ export default function ProductForm({ productId, productNumber, categories, init
     if (!form.description.trim()) return 'Description is required.'
     if (!form.duration_value) return 'Duration is required.'
     if (!form.partner_name.trim()) return 'Partner name is required.'
-    if (!form.location_address.trim()) return 'Address is required.'
     if (form.contact_channels.some((ch) => !ch.value.trim())) return 'Fill in or remove empty contact channel entries.'
     if (variants.length === 0) return 'At least one variant is required.'
     if (variants.some((v) => !v.base_price || Number(v.base_price) <= 0)) return 'Every variant needs a base price.'
@@ -309,8 +313,10 @@ export default function ProductForm({ productId, productNumber, categories, init
         duration_unit: form.duration_unit,
         quantity_type: form.quantity_type,
         partner_name: form.partner_name.trim(),
-        partner_short: form.partner_short.trim() || null,
-        location_address: form.location_address.trim(),
+        location: form.location.trim() || null,
+        full_address: form.full_address.trim() || null,
+        contact_phone: form.contact_phone.trim() || null,
+        contact_email: form.contact_email.trim() || null,
         contact_channels: form.contact_channels,
         has_prayer_room: form.has_prayer_room,
         dietary_type: form.dietary_type,
@@ -721,34 +727,32 @@ export default function ProductForm({ productId, productNumber, categories, init
                   const catName = categories.find(c => c.id === form.category_id)?.name
                   const subName = subcategories.find(s => s.id === form.subcategory_id)?.name
                   const markup = getMarkupRate(catName, subName, markupRatesConfig)
+                  const n = Number(v.base_price)
+                  const sellingPrice = n * (1 + markup)
+                  const sellingKrw = v.price_currency === 'USD'
+                    ? Math.round(sellingPrice * exchangeRate)
+                    : Math.round(sellingPrice)
+                  const sellingUsd = v.price_currency === 'USD'
+                    ? sellingPrice
+                    : sellingPrice / exchangeRate
                   return (
-                    <div className="grid grid-cols-3 gap-2 pt-1">
-                      {[0.15, 0.20, 0.25].map((tier) => {
-                        const n = Number(v.base_price)
-                        const sellingPrice = n * (1 + markup)
-                        const finalKrw = v.price_currency === 'USD'
-                          ? Math.round(sellingPrice * exchangeRate * (1 + tier))
-                          : Math.round(sellingPrice * (1 + tier))
-                        const finalUsd = v.price_currency === 'USD'
-                          ? sellingPrice * (1 + tier)
-                          : (sellingPrice * (1 + tier)) / exchangeRate
-                        return (
-                          <div key={tier} className="bg-gray-50 rounded-md px-2 py-1.5 border border-gray-100">
-                            <p className="text-[9px] text-gray-400 uppercase tracking-wide">Mkup{Math.round(markup * 100)}%+Ag{Math.round(tier * 100)}%</p>
-                            {v.price_currency === 'USD' ? (
-                              <>
-                                <p className="text-[11px] font-semibold text-gray-800 tabular-nums">${finalUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-                                <p className="text-[10px] text-gray-400 tabular-nums">₩{finalKrw.toLocaleString('ko-KR')}</p>
-                              </>
-                            ) : (
-                              <>
-                                <p className="text-[11px] font-semibold text-gray-800 tabular-nums">₩{finalKrw.toLocaleString('ko-KR')}</p>
-                                <p className="text-[10px] text-gray-400 tabular-nums">${finalUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-                              </>
-                            )}
-                          </div>
-                        )
-                      })}
+                    <div className="bg-gray-50 rounded-md px-3 py-2 border border-gray-100 flex items-center justify-between">
+                      <p className="text-[10px] text-gray-500">
+                        Agent selling price <span className="text-gray-400">· markup {Math.round(markup * 100)}%</span>
+                      </p>
+                      <div className="text-right">
+                        {v.price_currency === 'USD' ? (
+                          <>
+                            <p className="text-sm font-semibold text-gray-800 tabular-nums">${sellingUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                            <p className="text-[10px] text-gray-400 tabular-nums">₩{sellingKrw.toLocaleString('ko-KR')}</p>
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-sm font-semibold text-gray-800 tabular-nums">₩{sellingKrw.toLocaleString('ko-KR')}</p>
+                            <p className="text-[10px] text-gray-400 tabular-nums">${sellingUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                          </>
+                        )}
+                      </div>
                     </div>
                   )
                 })()}
@@ -847,35 +851,62 @@ export default function ProductForm({ productId, productNumber, categories, init
 
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1.5">
-              Partner Short Name
+              Location <span className="text-gray-400 font-normal">— optional</span>
             </label>
             <input
               type="text"
-              value={form.partner_short}
-              onChange={(e) => set('partner_short', e.target.value)}
-              placeholder="Short name for catalog filter pills (e.g. Dr's Tunes)"
+              value={form.location}
+              onChange={(e) => set('location', e.target.value)}
+              placeholder="e.g. Seoul Songpa-gu"
               className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-[#0f4c35] focus:ring-2 focus:ring-[#0f4c35]/10 transition-all"
             />
-            <p className="text-[11px] text-gray-400 mt-1">Shown in catalog filter pills. Defaults to Partner Name if left blank.</p>
+            <p className="text-[11px] text-gray-400 mt-1">Short label shown on catalog cards (city · district).</p>
           </div>
 
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1.5">
-              Address <span className="text-red-400">*</span>
+              Full Address <span className="text-gray-400 font-normal">— optional</span>
             </label>
             <input
               type="text"
-              value={form.location_address}
-              onChange={(e) => set('location_address', e.target.value)}
-              placeholder="Enter address"
+              value={form.full_address}
+              onChange={(e) => set('full_address', e.target.value)}
+              placeholder="Full street address"
               className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-[#0f4c35] focus:ring-2 focus:ring-[#0f4c35]/10 transition-all"
             />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1.5">
+                Phone <span className="text-gray-400 font-normal">— optional</span>
+              </label>
+              <input
+                type="text"
+                value={form.contact_phone}
+                onChange={(e) => set('contact_phone', e.target.value)}
+                placeholder="e.g. 02-1234-5678"
+                className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-[#0f4c35] focus:ring-2 focus:ring-[#0f4c35]/10 transition-all"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1.5">
+                Email <span className="text-gray-400 font-normal">— optional</span>
+              </label>
+              <input
+                type="email"
+                value={form.contact_email}
+                onChange={(e) => set('contact_email', e.target.value)}
+                placeholder="contact@example.com"
+                className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-[#0f4c35] focus:ring-2 focus:ring-[#0f4c35]/10 transition-all"
+              />
+            </div>
           </div>
 
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label className="block text-xs font-medium text-gray-500">
-                Contact Channels <span className="text-red-400">*</span>
+                Contact Channels <span className="text-gray-400 font-normal">— optional</span>
               </label>
               <button
                 type="button"
