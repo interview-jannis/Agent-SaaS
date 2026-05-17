@@ -79,6 +79,8 @@ type Props = {
   onSaved: () => void
   // Persists current items as a draft without sending to agent.
   onSaveDraft: (items: ScheduleItem[], daySubpackages: Record<number, DaySubpackageEntry[]>) => Promise<void>
+  // Called when per-day hours change (debounced). Triggers OT recalc without full draft save.
+  onDaySubpackagesChange?: (daySubpackages: Record<number, DaySubpackageEntry[]>) => Promise<void>
   // When true, save/draft actions are hidden ??view only.
   readOnly?: boolean
   // Slug for "Preview" link.
@@ -107,7 +109,7 @@ export default function ScheduleEditor({
   travelStartDate, travelEndDate,
   initialItems, defaultDayCount, caseProducts,
   caseGroups = [],
-  onSaved, onSaveDraft, slug, nextVersion,
+  onSaved, onSaveDraft, onDaySubpackagesChange, slug, nextVersion,
   initialConciergeName = null, initialConciergePhone = null,
   readOnly = false,
   prevItems,
@@ -121,6 +123,8 @@ export default function ScheduleEditor({
   itemsRef.current = items
   // Same pattern for daySubpackages — commitPendingItem needs latest hours.
   const daySubpackagesRef = useRef<Record<number, DaySubpackageEntry[]>>({})
+  const onDaySubpackagesChangeRef = useRef(onDaySubpackagesChange)
+  onDaySubpackagesChangeRef.current = onDaySubpackagesChange
 
   // Next sortOrder for a day. Uses max(sortOrder)+1 over surviving items so new rows
   // always land after existing ones — robust to gaps and to marked-for-removal items
@@ -211,6 +215,19 @@ export default function ScheduleEditor({
     const next = current.map(e => e.variantId === variantId ? { ...e, hours } : e)
     setDayEntries(day, next)
   }
+
+  // Debounced OT recalc whenever per-day hours change.
+  const dsChangeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    if (!onDaySubpackagesChangeRef.current) return
+    if (dsChangeTimerRef.current) clearTimeout(dsChangeTimerRef.current)
+    dsChangeTimerRef.current = setTimeout(() => {
+      void onDaySubpackagesChangeRef.current?.(daySubpackages)
+    }, 1200)
+    return () => { if (dsChangeTimerRef.current) clearTimeout(dsChangeTimerRef.current) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [daySubpackages])
+
   // Snapshot of items at the moment Edit was clicked, keyed by item id.
   // Used to restore original state if admin cancels an edit (vs new items which are removed entirely).
   const [editSnapshots, setEditSnapshots] = useState<Map<string, ScheduleItem>>(new Map())
