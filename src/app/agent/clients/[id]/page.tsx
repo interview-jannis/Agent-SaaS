@@ -750,9 +750,9 @@ export default function ClientDetailPage() {
               <section className="bg-gray-50 rounded-2xl p-5 space-y-3">
                 <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Emergency Contact</h3>
                 <div className="grid grid-cols-2 gap-3">
-                  <TextInput label="Name *" value={editForm.emergency_contact_name} onChange={v => setEditForm(p => p && ({ ...p, emergency_contact_name: v }))} />
+                  <TextInput label="Name *" value={editForm.emergency_contact_name} onChange={v => setEditForm(p => p && ({ ...p, emergency_contact_name: v }))} placeholder="Full name" />
                   <TextInput label="Relation *" value={editForm.emergency_contact_relation} onChange={v => setEditForm(p => p && ({ ...p, emergency_contact_relation: v }))} placeholder="e.g. Spouse" />
-                  <TextInput label="Phone *" value={editForm.emergency_contact_phone} onChange={v => setEditForm(p => p && ({ ...p, emergency_contact_phone: v }))} />
+                  <TextInput label="Phone *" value={editForm.emergency_contact_phone} onChange={v => setEditForm(p => p && ({ ...p, emergency_contact_phone: v }))} placeholder="Phone number" />
                 </div>
               </section>
 
