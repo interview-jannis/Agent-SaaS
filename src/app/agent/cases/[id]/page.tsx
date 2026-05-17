@@ -1189,7 +1189,7 @@ export default function CaseDetailPage() {
                 })()}
               </div>
               {/* /financials header */}
-              {!financialsCollapsed && <div className="p-5 space-y-4">
+              <div className="p-5 space-y-4">
 
               {<>
 
@@ -1232,7 +1232,7 @@ export default function CaseDetailPage() {
                   </div>
                 )}
               </div>
-              {earningsKrw > 0 && (
+              {earningsKrw > 0 && !financialsCollapsed && (
                 <div className="bg-[#0f4c35]/5 border border-[#0f4c35]/15 rounded-xl p-3 flex items-center justify-between">
                   <div>
                     <p className="text-[10px] text-[#0f4c35]/70 mb-1">Your Estimated Earnings</p>
@@ -1264,7 +1264,7 @@ export default function CaseDetailPage() {
                 />
               </div>
               </>}
-              </div>}{/* /p-5 content wrapper */}
+              </div>{/* /p-5 content wrapper */}
             </section>
             )
           })()}
