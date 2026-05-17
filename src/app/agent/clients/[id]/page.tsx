@@ -227,12 +227,13 @@ function TextInput({ label, value, onChange, type = 'text', placeholder, mono }:
 }
 
 function TextAreaInput({ label, value, onChange, rows = 2 }: { label: string; value: string; onChange: (v: string) => void; rows?: number }) {
+  const needsHighlight = label.includes('*') && (!value || !value.trim())
   return (
     <div className="col-span-2">
       <label className="block text-xs text-gray-500 mb-1">{label}</label>
       <textarea value={value} onChange={e => onChange(e.target.value)} rows={rows}
         placeholder="N/A if none"
-        className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-[#0f4c35] resize-none" />
+        className={`w-full border rounded-lg px-3 py-1.5 text-sm focus:outline-none resize-none ${needsHighlight ? 'border-red-300 focus:border-red-400' : 'border-gray-200 focus:border-[#0f4c35]'}`} />
     </div>
   )
 }
@@ -240,11 +241,12 @@ function TextAreaInput({ label, value, onChange, rows = 2 }: { label: string; va
 function SelectInput<T extends string>({ label, value, onChange, options, placeholder = '— Select —' }: {
   label: string; value: T | null; onChange: (v: T | null) => void; options: { value: T; label: string }[]; placeholder?: string
 }) {
+  const needsHighlight = label.includes('*') && !value
   return (
     <div>
       <label className="block text-xs text-gray-500 mb-1">{label}</label>
       <select value={value ?? ''} onChange={e => onChange((e.target.value || null) as T | null)}
-        className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-[#0f4c35] bg-white">
+        className={`w-full border rounded-lg px-3 py-1.5 text-sm focus:outline-none bg-white ${needsHighlight ? 'border-red-300 focus:border-red-400' : 'border-gray-200 focus:border-[#0f4c35]'}`}>
         <option value="">{placeholder}</option>
         {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
@@ -510,8 +512,14 @@ export default function ClientDetailPage() {
                 Edit
               </button>
             ) : (
-              <button onClick={() => { setEditing(false); setSaveError('') }}
-                className="px-3 py-1.5 text-xs font-medium text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50">Cancel</button>
+              <div className="flex items-center gap-2">
+                <button onClick={() => { setEditing(false); setSaveError('') }} disabled={saving}
+                  className="px-3 py-1.5 text-xs font-medium text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40">Cancel</button>
+                <button onClick={handleSave} disabled={saving}
+                  className="px-4 py-1.5 text-xs font-medium bg-[#0f4c35] text-white rounded-lg hover:bg-[#0a3828] disabled:opacity-40 transition-colors">
+                  {saving ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
             )}
           </div>
 
@@ -538,8 +546,8 @@ export default function ClientDetailPage() {
                   <ViewField label="Nationality" value={client.nationality} />
                   <ViewField label="Gender" value={client.gender} />
                   <ViewField label="Date of Birth" value={client.date_of_birth} />
-                  <ViewField label="Passport No." value={client.passport_number} mono />
-                  <div>
+                  <ViewField label="Passport No. *" value={client.passport_number} mono />
+                  <div className={!client.passport_image_url ? 'rounded-lg px-2 py-1.5 -mx-2 border border-red-200' : ''}>
                     <p className="text-[10px] text-gray-400 mb-0.5">Passport Copy *</p>
                     {client.passport_image_url ? (
                       <a href={client.passport_image_url} target="_blank" rel="noopener noreferrer"
@@ -569,11 +577,11 @@ export default function ClientDetailPage() {
 
               {/* Emergency Contact */}
               <section className="bg-gray-50 rounded-2xl p-5">
-                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-4">Emergency Contact *</h3>
+                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-4">Emergency Contact</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3">
-                  <ViewField label="Name" value={client.emergency_contact_name} />
-                  <ViewField label="Relation" value={client.emergency_contact_relation} />
-                  <ViewField label="Phone" value={client.emergency_contact_phone} />
+                  <ViewField label="Name *" value={client.emergency_contact_name} />
+                  <ViewField label="Relation *" value={client.emergency_contact_relation} />
+                  <ViewField label="Phone *" value={client.emergency_contact_phone} />
                 </div>
               </section>
 
@@ -598,10 +606,10 @@ export default function ClientDetailPage() {
               <section className="bg-gray-50 rounded-2xl p-5">
                 <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-4">Lifestyle</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3">
-                  <ViewField label="Smoking *" value={labelFor(SMOKING_OPTIONS, client.smoking_status)} />
-                  <ViewField label="Alcohol *" value={labelFor(ALCOHOL_OPTIONS, client.alcohol_status)} />
+                  <ViewField label="Smoking *" value={client.smoking_status ? labelFor(SMOKING_OPTIONS, client.smoking_status) : null} />
+                  <ViewField label="Alcohol *" value={client.alcohol_status ? labelFor(ALCOHOL_OPTIONS, client.alcohol_status) : null} />
                   {gender === 'female' && (
-                    <ViewField label="Pregnancy Status *" value={labelFor(PREGNANCY_OPTIONS, client.pregnancy_status)} />
+                    <ViewField label="Pregnancy Status *" value={client.pregnancy_status ? labelFor(PREGNANCY_OPTIONS, client.pregnancy_status) : null} />
                   )}
                 </div>
               </section>
@@ -659,10 +667,10 @@ export default function ClientDetailPage() {
                     <label className="block text-xs text-gray-500 mb-1">Date of Birth</label>
                     <DOBPicker value={editForm.date_of_birth} onChange={v => setEditForm(p => p && ({ ...p, date_of_birth: v }))} />
                   </div>
-                  <TextInput label="Passport No." value={editForm.passport_number} onChange={v => setEditForm(p => p && ({ ...p, passport_number: v }))} placeholder="e.g. M12345678" mono />
+                  <TextInput label="Passport No. *" value={editForm.passport_number} onChange={v => setEditForm(p => p && ({ ...p, passport_number: v }))} placeholder="e.g. M12345678" mono />
                   <div>
                     <label className="block text-xs text-gray-500 mb-1">Passport Copy *</label>
-                    <label className={`flex flex-col items-center justify-center gap-1.5 w-full rounded-lg border-2 border-dashed px-3 py-4 cursor-pointer transition-colors ${passportUploading ? 'opacity-50 pointer-events-none' : 'hover:border-[#0f4c35] hover:bg-green-50'} ${editForm.passport_image_url ? 'border-green-300 bg-green-50' : 'border-gray-200 bg-white'}`}>
+                    <label className={`flex flex-col items-center justify-center gap-1.5 w-full rounded-lg border-2 border-dashed px-3 py-4 cursor-pointer transition-colors ${passportUploading ? 'opacity-50 pointer-events-none' : 'hover:border-[#0f4c35] hover:bg-green-50'} ${editForm.passport_image_url ? 'border-green-300 bg-green-50' : 'border-red-300 bg-white'}`}>
                       <input type="file" accept="image/*,application/pdf" className="hidden"
                         onChange={async e => {
                           const file = e.target.files?.[0]
@@ -740,11 +748,11 @@ export default function ClientDetailPage() {
 
               {/* Emergency Contact */}
               <section className="bg-gray-50 rounded-2xl p-5 space-y-3">
-                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Emergency Contact *</h3>
+                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Emergency Contact</h3>
                 <div className="grid grid-cols-2 gap-3">
-                  <TextInput label="Name" value={editForm.emergency_contact_name} onChange={v => setEditForm(p => p && ({ ...p, emergency_contact_name: v }))} />
-                  <TextInput label="Relation" value={editForm.emergency_contact_relation} onChange={v => setEditForm(p => p && ({ ...p, emergency_contact_relation: v }))} placeholder="e.g. Spouse" />
-                  <TextInput label="Phone" value={editForm.emergency_contact_phone} onChange={v => setEditForm(p => p && ({ ...p, emergency_contact_phone: v }))} />
+                  <TextInput label="Name *" value={editForm.emergency_contact_name} onChange={v => setEditForm(p => p && ({ ...p, emergency_contact_name: v }))} />
+                  <TextInput label="Relation *" value={editForm.emergency_contact_relation} onChange={v => setEditForm(p => p && ({ ...p, emergency_contact_relation: v }))} placeholder="e.g. Spouse" />
+                  <TextInput label="Phone *" value={editForm.emergency_contact_phone} onChange={v => setEditForm(p => p && ({ ...p, emergency_contact_phone: v }))} />
                 </div>
               </section>
 
