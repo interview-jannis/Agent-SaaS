@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { logAsCurrentUser } from '@/lib/audit'
 import DOBPicker from '@/components/DOBPicker'
 import { type ClientInfo, getMissingClientFields, CLIENT_INFO_COLUMNS } from '@/lib/clientCompleteness'
+import { COUNTRIES } from '@/lib/countries'
 
 type DietaryType = 'halal_certified' | 'halal_friendly' | 'muslim_friendly' | 'pork_free' | 'none'
 
@@ -312,8 +313,11 @@ export default function AgentClientsPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">Nationality *</label>
-                  <input value={form.nationality} onChange={e => setForm(p => ({ ...p, nationality: e.target.value }))}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
+                  <select value={form.nationality} onChange={e => setForm(p => ({ ...p, nationality: e.target.value }))}
+                    className={`w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-[#0f4c35] bg-white ${!form.nationality ? 'text-gray-400' : 'text-gray-900'}`}>
+                    <option value="">Select country...</option>
+                    {COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
                 </div>
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">Gender *</label>
