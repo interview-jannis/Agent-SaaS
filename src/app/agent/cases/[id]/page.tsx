@@ -1391,7 +1391,7 @@ export default function CaseDetailPage() {
               </div>
               {!editTrip ? (
                 !tripMembersLocked && (
-                  <button onClick={openTripEditor} className="text-xs text-[#0f4c35] hover:underline font-medium">
+                  <button onClick={openTripEditor} className="text-xs font-semibold bg-green-700 text-white hover:bg-green-800 px-2.5 py-1 rounded-lg transition-colors">
                     {caseInfoComplete ? 'Edit' : 'Add info'}
                   </button>
                 )
