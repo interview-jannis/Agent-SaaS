@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import SignaturePad from './SignaturePad'
@@ -22,6 +22,7 @@ type Props = {
   step: { current: number; total: number; label: string }
   nextHref: string
   nextLabel: string
+  prevHref?: string
   isFinal?: boolean  // last contract — after this, move agent to awaiting_approval
   collectIdentity?: boolean  // first contract collects Name + Country and saves to agents
 }
@@ -76,6 +77,9 @@ function renderBody(body: string): Block[] {
     } else if (line.startsWith('- ')) {
       flushP()
       ulBuf.push(line.slice(2).trim())
+    } else if (/^\d+\)\s/.test(line)) {
+      flushP()
+      ulBuf.push(line)
     } else if (line === '') {
       flushP(); flushUl()
     } else {
@@ -89,11 +93,14 @@ function renderBody(body: string): Block[] {
 
 const TEMP_NAME_PREFIX = /^(temp\d+|Invited Agent)$/i
 
-export default function ContractStep({ type, step, nextHref, nextLabel, isFinal = false, collectIdentity = false }: Props) {
+export default function ContractStep({ type, step, nextHref, nextLabel, prevHref, isFinal = false, collectIdentity = false }: Props) {
   const router = useRouter()
   const [template, setTemplate] = useState<Template | null>(null)
+  const [alreadySigned, setAlreadySigned] = useState(false)
   const [agentName, setAgentName] = useState('')
   const [agentCountry, setAgentCountry] = useState('')
+  const [agentCompanyName, setAgentCompanyName] = useState('')
+  const countryBeforeFocusRef = useRef('')
   const [loading, setLoading] = useState(true)
   const [agree, setAgree] = useState(false)
   const [confirmIdentity, setConfirmIdentity] = useState(false)
@@ -118,10 +125,16 @@ export default function ContractStep({ type, step, nextHref, nextLabel, isFinal 
       setTemplate(tplRes.data as Template | null)
       const uid = sessRes.data.session?.user?.id
       if (uid) {
-        const { data: agent } = await supabase.from('agents').select('name, country').eq('auth_user_id', uid).maybeSingle()
-        const a = agent as { name: string | null; country: string | null } | null
+        const { data: agent } = await supabase.from('agents').select('id, name, country, business_info').eq('auth_user_id', uid).maybeSingle()
+        const a = agent as { id: string; name: string | null; country: string | null; business_info: { company_name?: string } | null } | null
         setAgentName(a?.name && !TEMP_NAME_PREFIX.test(a.name) ? a.name : '')
         setAgentCountry(a?.country ?? '')
+        setAgentCompanyName(a?.business_info?.company_name ?? '')
+        if (a?.id) {
+          const { data: existing } = await supabase.from('agent_contracts')
+            .select('id').eq('agent_id', a.id).eq('contract_type', type).maybeSingle()
+          if (existing) setAlreadySigned(true)
+        }
       }
       setLoading(false)
     }
@@ -164,8 +177,15 @@ export default function ContractStep({ type, step, nextHref, nextLabel, isFinal 
       // server-side sign call so the API can validate typed_name against
       // the just-saved name.
       if (collectIdentity) {
+        const companyTrimmed = agentCompanyName.trim()
+        const { data: agentCur } = await supabase.from('agents').select('business_info').eq('id', agentRow.id).single()
+        const existingBiz = (agentCur as { business_info: Record<string, unknown> | null } | null)?.business_info ?? {}
         const { error: uErr } = await supabase.from('agents')
-          .update({ name: agentName.trim(), country: agentCountry.trim() })
+          .update({
+            name: agentName.trim(),
+            country: agentCountry.trim(),
+            business_info: { ...existingBiz, company_name: companyTrimmed || null },
+          })
           .eq('id', agentRow.id)
         if (uErr) throw uErr
       }
@@ -235,14 +255,17 @@ export default function ContractStep({ type, step, nextHref, nextLabel, isFinal 
           <p className="text-sm text-amber-700">Agreement not available. Contact your TikkTakk admin.</p>
         ) : (
           <>
-            <h2 className="text-lg font-bold text-gray-900">{template.title}</h2>
             {!collectIdentity && agentName && (
               <p className="text-xs text-gray-500">Signing as <span className="font-medium text-gray-800">{agentName}</span>{agentCountry ? ` · ${agentCountry}` : ''}</p>
             )}
             <div className="max-h-[50vh] overflow-y-auto pr-2">
               {(() => {
                 // Substitute tokens for live preview so agent sees real name/country.
+                const sigBlock = agentCompanyName.trim()
+                  ? `Agent / Company Name: **${agentCompanyName.trim()}**\nRepresentative Name: **${agentName.trim() || '[Your name]'}**`
+                  : `Name: **${agentName.trim() || '[Your name]'}**`
                 const previewBody = template.body
+                  .replace(/\{\{AGENT_SIGNATURE_BLOCK\}\}/g, sigBlock)
                   .replace(/\*\*\{\{AGENT_NAME\}\}\*\*/g, agentName.trim() ? `**${agentName.trim()}**` : '[Your name]')
                   .replace(/\{\{AGENT_NAME\}\}/g, agentName.trim() ? `**${agentName.trim()}**` : '[Your name]')
                   .replace(/\{\{AGENT_COUNTRY\}\}/g, agentCountry.trim() || '[Your country]')
@@ -261,7 +284,7 @@ export default function ContractStep({ type, step, nextHref, nextLabel, isFinal 
         )}
       </section>
 
-      {template && collectIdentity && (
+      {template && collectIdentity && !alreadySigned && (
         <section className="bg-white rounded-2xl border border-gray-200 p-6 space-y-3">
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Your Information</p>
           <p className="text-[11px] text-gray-500">Used in the &quot;Parties&quot; section of this and the next agreement.</p>
@@ -275,19 +298,25 @@ export default function ContractStep({ type, step, nextHref, nextLabel, isFinal 
             </div>
             <div id="cfield-agentCountry">
               <label className="block text-xs font-medium text-gray-600 mb-1">Country of Residence *</label>
-              <input type="text" list={COUNTRY_DATALIST_ID} value={agentCountry} onChange={e => { setAgentCountry(e.target.value); setFieldErrors(p => { const n = {...p}; delete n.agentCountry; return n }) }}
-                placeholder="United Arab Emirates"
-                className={`w-full border rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none ${fieldErrors.agentCountry ? 'border-red-400 focus:border-red-500' : 'border-gray-200 focus:border-[#0f4c35]'}`} />
+              <select value={agentCountry}
+                onChange={e => { setAgentCountry(e.target.value); setFieldErrors(p => { const n = {...p}; delete n.agentCountry; return n }) }}
+                className={`w-full border rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none ${fieldErrors.agentCountry ? 'border-red-400 focus:border-red-500' : 'border-gray-200 focus:border-[#0f4c35]'} ${!agentCountry ? 'text-gray-400' : ''}`}>
+                <option value="">Select country...</option>
+                {COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
               {fieldErrors.agentCountry && <p className="text-xs text-red-500 mt-1">{fieldErrors.agentCountry}</p>}
-              <datalist id={COUNTRY_DATALIST_ID}>
-                {COUNTRIES.map(c => <option key={c} value={c} />)}
-              </datalist>
             </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Company / Agency Name <span className="text-gray-400 font-normal">(optional — leave blank if individual)</span></label>
+            <input type="text" value={agentCompanyName} onChange={e => setAgentCompanyName(e.target.value)}
+              placeholder="e.g. Al-Rashid Travel LLC"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
           </div>
         </section>
       )}
 
-      {template && (
+      {template && !alreadySigned && (
         <section className="bg-white rounded-2xl border border-gray-200 p-6 space-y-4">
           <div className="space-y-3">
             <div id="cfield-agree" className={fieldErrors.agree ? 'rounded-lg border border-red-300 bg-red-50 p-3' : ''}>
@@ -346,20 +375,45 @@ export default function ContractStep({ type, step, nextHref, nextLabel, isFinal 
         </section>
       )}
 
-      {error && <p className="text-xs text-red-500">{error}</p>}
+      {!alreadySigned && error && <p className="text-xs text-red-500">{error}</p>}
 
-      <div className="flex items-center gap-3">
-        <button onClick={() => router.back()} disabled={saving}
-          className="px-4 py-2.5 text-sm font-medium text-gray-500 hover:text-gray-800 disabled:opacity-40 transition-colors">
-          Back
-        </button>
-        <button
-          onClick={submit}
-          disabled={saving || !template}
-          className="ml-auto px-5 py-2.5 text-sm font-medium bg-[#0f4c35] text-white rounded-xl hover:bg-[#0a3828] disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
-          {saving ? 'Signing...' : nextLabel}
-        </button>
-      </div>
+      {alreadySigned ? (
+        <div className="flex items-center gap-3">
+          <div className="flex-1 rounded-xl bg-green-50 border border-green-200 px-4 py-2.5 text-sm text-green-800">
+            You have already signed this agreement.
+          </div>
+          <button
+            onClick={() => {
+              setAlreadySigned(false)
+              setAgree(false)
+              setConfirmIdentity(false)
+              setTypedName('')
+              setSignature(null)
+              setFieldErrors({})
+            }}
+            className="px-4 py-2.5 text-sm font-medium bg-gray-700 text-white rounded-xl hover:bg-gray-600 transition-colors">
+            Re-sign
+          </button>
+          <button
+            onClick={() => router.push(nextHref)}
+            className="px-5 py-2.5 text-sm font-medium bg-[#0f4c35] text-white rounded-xl hover:bg-[#0a3828] transition-colors">
+            Continue →
+          </button>
+        </div>
+      ) : (
+        <div className="flex items-center gap-3">
+          <button onClick={() => prevHref ? router.push(prevHref) : router.back()} disabled={saving}
+            className="px-4 py-2.5 text-sm font-medium text-gray-500 hover:text-gray-800 disabled:opacity-40 transition-colors">
+            Back
+          </button>
+          <button
+            onClick={submit}
+            disabled={saving || !template}
+            className="ml-auto px-5 py-2.5 text-sm font-medium bg-[#0f4c35] text-white rounded-xl hover:bg-[#0a3828] disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+            {saving ? 'Signing...' : nextLabel}
+          </button>
+        </div>
+      )}
     </div>
   )
 }

@@ -68,13 +68,13 @@ export async function POST(req: Request) {
   const uid = userData.user.id
 
   const { data: agent } = await supabase.from('agents')
-    .select('id, name, country, agent_number')
+    .select('id, name, country, agent_number, business_info')
     .eq('auth_user_id', uid)
     .maybeSingle()
   if (!agent) {
     return NextResponse.json({ error: 'Agent record not found.' }, { status: 404 })
   }
-  const a = agent as { id: string; name: string; country: string | null; agent_number: string | null }
+  const a = agent as { id: string; name: string; country: string | null; agent_number: string | null; business_info: { company_name?: string | null } | null }
 
   // Verify typed name matches the agent's stored name (case-insensitive, whitespace-trimmed).
   // This is the explicit-intent check: agent must type their own legal name.
@@ -97,7 +97,12 @@ export async function POST(req: Request) {
   // Substitute identity tokens server-side — body_snapshot reflects the
   // contract-as-signed and the agent can't tamper with it from the client.
   const finalCountry = a.country ?? ''
+  const companyName = a.business_info?.company_name
+  const sigBlock = companyName?.trim()
+    ? `Agent / Company Name: **${companyName.trim()}**\nRepresentative Name: **${a.name}**`
+    : `Name: **${a.name}**`
   const substitutedBody = t.body
+    .replace(/\{\{AGENT_SIGNATURE_BLOCK\}\}/g, sigBlock)
     .replace(/\*\*\{\{AGENT_NAME\}\}\*\*/g, `**${a.name}**`)
     .replace(/\{\{AGENT_NAME\}\}/g, `**${a.name}**`)
     .replace(/\{\{AGENT_COUNTRY\}\}/g, finalCountry)
@@ -110,6 +115,9 @@ export async function POST(req: Request) {
   const ip = clientIp(req)
   const ua = req.headers.get('user-agent')
   const nowIso = new Date().toISOString()
+
+  // Delete any prior record so re-signing replaces rather than duplicates.
+  await supabase.from('agent_contracts').delete().eq('agent_id', a.id).eq('contract_type', contract_type)
 
   const { error: insErr } = await supabase.from('agent_contracts').insert({
     agent_id: a.id,

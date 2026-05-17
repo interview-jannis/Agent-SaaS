@@ -97,8 +97,8 @@ export default function QuoteReviewPage() {
   const [agentClients, setAgentClients] = useState<Client[]>([])
   const [agentId, setAgentId] = useState('')
   const [exchangeRate, setExchangeRate] = useState(1350)
-  const [agentCommissionRate, setAgentCommissionRate] = useState(0.15)
   const [markupRatesConfig, setMarkupRatesConfig] = useState<MarkupRatesConfig>(DEFAULT_MARKUP_RATES)
+  const [monthlyPatients, setMonthlyPatients] = useState(0)
   const [tripServices, setTripServices] = useState<TripServiceItem[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -125,29 +125,32 @@ export default function QuoteReviewPage() {
   // ── Load ───────────────────────────────────────────────────────────────────
 
   useEffect(() => {
-    const raw = localStorage.getItem('agent-cart')
-    if (!raw) { router.replace('/agent/product'); return }
-    const draft: CartDraft = JSON.parse(raw)
-    setCart(draft)
-    setTripServices(draft.tripServices ?? [])
-
-    const groupProductIds = draft.groups.flatMap((g) => g.items.map(it => it.productId))
-    const serviceProductIds = (draft.tripServices ?? []).map(s => s.productId)
-    const allProductIds = [...new Set([...groupProductIds, ...serviceProductIds])]
-
     async function load() {
       const { data: { session } } = await supabase.auth.getSession()
       const userId = session?.user?.id
       if (!userId) return
 
-      const [leadRes, productsRes, rateRes, markupRatesRes, agentRes] = await Promise.all([
+      // Get agentId first so we can use the per-agent cart key.
+      const agentSnap = await supabase.from('agents').select('id, margin_rate').eq('auth_user_id', userId).single()
+      const aid = agentSnap.data?.id ?? ''
+
+      const raw = localStorage.getItem(`agent-cart-${aid}`)
+      if (!raw) { router.replace('/agent/product'); return }
+      const draft: CartDraft = JSON.parse(raw)
+      setCart(draft)
+      setTripServices(draft.tripServices ?? [])
+
+      const groupProductIds = draft.groups.flatMap((g) => g.items.map(it => it.productId))
+      const serviceProductIds = (draft.tripServices ?? []).map(s => s.productId)
+      const allProductIds = [...new Set([...groupProductIds, ...serviceProductIds])]
+
+      const [leadRes, productsRes, rateRes, markupRatesRes] = await Promise.all([
         supabase.from('clients').select('id, client_number, name, nationality, gender, needs_muslim_friendly, dietary_restriction').eq('id', draft.clientId).single(),
         allProductIds.length
           ? supabase.from('products').select('id, name, quantity_type, price_per_tooth, product_categories(name), product_subcategories!products_subcategory_id_fkey(name), product_variants(id, variant_label, base_price, price_currency, sort_order)').in('id', allProductIds)
           : Promise.resolve({ data: [] }),
         supabase.from('system_settings').select('value').eq('key', 'product_price_rate').single(),
         supabase.from('system_settings').select('value').eq('key', 'markup_rates').maybeSingle(),
-        supabase.from('agents').select('id, margin_rate').eq('auth_user_id', userId).single(),
       ])
 
       setLead(leadRes.data)
@@ -158,10 +161,6 @@ export default function QuoteReviewPage() {
       const mr = markupRatesRes.data?.value as MarkupRatesConfig | null
       if (mr) setMarkupRatesConfig({ ...DEFAULT_MARKUP_RATES, ...mr })
 
-      const am = (agentRes.data as { margin_rate?: number } | null)?.margin_rate
-      if (typeof am === 'number') setAgentCommissionRate(am)
-
-      const aid = agentRes.data?.id ?? ''
       setAgentId(aid)
 
       if (aid) {
@@ -178,6 +177,32 @@ export default function QuoteReviewPage() {
     }
     load()
   }, [router])
+
+  // Fetch monthly patient count for tier calculation
+  useEffect(() => {
+    if (!agentId) return
+    const monthKey = new Date().toISOString().slice(0, 7)
+    supabase
+      .from('cases')
+      .select('case_members(id)')
+      .eq('agent_id', agentId)
+      .not('travel_completed_at', 'is', null)
+      .ilike('travel_completed_at', `${monthKey}%`)
+      .then(({ data }) => {
+        const count = (data ?? []).reduce(
+          (s, c) => s + ((c.case_members as { id: string }[] | null)?.length ?? 0), 0
+        )
+        setMonthlyPatients(count)
+      })
+  }, [agentId])
+
+  // ── Commission helpers ─────────────────────────────────────────────────────
+
+  function calcBaseTier(patients: number): number {
+    if (patients > 30) return 0.25
+    if (patients > 10) return 0.20
+    return 0.15
+  }
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -264,6 +289,11 @@ export default function QuoteReviewPage() {
   const servicesTotalUSD = tripServices.reduce((sum, svc) => sum + serviceItemUsd(svc) * svc.days, 0)
 
   const totalUSD = (cart?.groups.reduce((s, g) => s + groupSubtotalUSD(g), 0) ?? 0) + servicesTotalUSD
+
+  // Preview commission breakdown (retention checked at submit)
+  const previewBaseTier = calcBaseTier(monthlyPatients)
+  const previewHighValue = totalUSD >= 50000
+  const previewRate = previewBaseTier + (previewHighValue ? 0.05 : 0)
 
   const allCaseMembers = lead ? [lead, ...companions] : companions
   const unassignedMembers = allCaseMembers.filter((c) =>
@@ -377,7 +407,37 @@ export default function QuoteReviewPage() {
         ? { ...DEFAULT_MARKUP_RATES, ...freshMr }
         : markupRatesConfig
 
-      const agentMargin = agentData.margin_rate ?? 0.15
+      // Calculate commission rate dynamically at submit time
+      const monthKey = new Date().toISOString().slice(0, 7)
+      const { data: monthlyCaseData } = await supabase
+        .from('cases')
+        .select('case_members(id)')
+        .eq('agent_id', agentData.id)
+        .not('travel_completed_at', 'is', null)
+        .ilike('travel_completed_at', `${monthKey}%`)
+      const freshMonthlyPatients = (monthlyCaseData ?? []).reduce(
+        (s, c) => s + ((c.case_members as { id: string }[] | null)?.length ?? 0), 0
+      )
+      const baseTier = calcBaseTier(freshMonthlyPatients)
+
+      // High-Value Incentive: total ≥ $50,000 → +5%
+      const highValueBonus = totalUSD >= 50000 ? 0.05 : 0
+
+      // Retention Bonus: any client in this case had a prior completed case → +3%
+      const allClientIds = [lead.id, ...companions.map(c => c.id)]
+      const { data: priorCaseMemberData } = await supabase
+        .from('cases')
+        .select('case_members(client_id)')
+        .eq('agent_id', agentData.id)
+        .not('travel_completed_at', 'is', null)
+      const priorClientIds = new Set(
+        (priorCaseMemberData ?? []).flatMap(c =>
+          (c.case_members as { client_id: string }[] | null)?.map(m => m.client_id) ?? []
+        )
+      )
+      const retentionBonus = allClientIds.some(id => priorClientIds.has(id)) ? 0.03 : 0
+
+      const agentMargin = baseTier + highValueBonus + retentionBonus
 
       // Create case — use MAX+1 to avoid collision after deletions (count+1 breaks on sparse gaps)
       const { data: maxCaseRow } = await supabase.from('cases').select('case_number').order('case_number', { ascending: false }).limit(1).maybeSingle()
@@ -565,7 +625,7 @@ export default function QuoteReviewPage() {
         }
       }
 
-      localStorage.removeItem('agent-cart')
+      localStorage.removeItem(`agent-cart-${agentId}`)
       await logAsCurrentUser('case.created', { type: 'case', id: caseData.id, label: caseData.case_number }, { total_krw: totalKRW })
 
       // Auto-generate the 3-party contract immediately. Case enters
@@ -941,6 +1001,39 @@ export default function QuoteReviewPage() {
             <span className="text-lg font-bold text-gray-900 tabular-nums">{fmtUSD(totalUSD)}</span>
           </div>
           <p className="text-xs text-gray-400">Payment due within 7 days of quote creation.</p>
+        </section>
+
+        {/* Commission Breakdown */}
+        <section className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-3">
+          <h2 className="text-sm font-semibold text-gray-900">Estimated Commission</h2>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-gray-500">Base rate <span className="text-gray-400">({monthlyPatients} patients this month)</span></span>
+              <span className="font-medium text-gray-800">{(previewBaseTier * 100).toFixed(0)}%</span>
+            </div>
+            {previewHighValue && (
+              <div className="flex items-center justify-between text-sm text-[#0f4c35]">
+                <span>High-Value Incentive <span className="text-xs">(≥ $50,000)</span></span>
+                <span className="font-medium">+5%</span>
+              </div>
+            )}
+            <div className="flex items-center justify-between text-sm text-gray-400">
+              <span>Retention Bonus <span className="text-xs">(returning client)</span></span>
+              <span>+3% if applicable</span>
+            </div>
+            <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+              <span className="text-sm font-semibold text-gray-900">Rate at this quote</span>
+              <span className="text-sm font-bold text-[#0f4c35]">
+                {(previewRate * 100).toFixed(0)}%{!previewHighValue && totalUSD > 0 && totalUSD < 50000
+                  ? ` · +5% if final total ≥ $50k`
+                  : ''}
+              </span>
+            </div>
+          </div>
+          <p className="text-[11px] text-gray-400 leading-relaxed">
+            Base rate and retention bonus are calculated at quote creation. The high-value incentive (+5%) is automatically
+            re-evaluated when you issue your commission invoice — based on the finalized invoice total, not this quotation.
+          </p>
         </section>
 
         {/* Notes for TikkTakk admin — anything that should shape the schedule but

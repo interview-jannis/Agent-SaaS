@@ -113,6 +113,9 @@
 - [x] **Setup Wizard localStorage draft** — `src/app/onboarding/setup/page.tsx`에 `loadDraft/saveDraft/clearDraft` 구현됨. key: `tiktak_setup_draft`. 비밀번호 필드 제외. (코드 확인 5/12)
 - [x] **Agent setup 완료 → Admin 알림+이메일** — `src/app/api/agent/setup/route.ts`에서 setup 완료 시 `notifyAssignedAdmin` + `sendEmailToAdmin()` 구현됨. (코드 확인 5/12)
 - [x] **상품 카탈로그 3번째 티어** — `product_subcategory_tags` junction table + 멀티태그 Excel 파싱 + K-Beauty/K-Medical partner pills 3단계 UI. PGRST201 FK 모호성 버그 수반 → explicit FK name으로 해결. (5/13)
+- [ ] **파트너십 계약서 서명란 agent 이름 중복 확인** — 현재 계약서 서명 섹션에 "Agent / Company Name: tikktakk_agent Representative Name: tikktakk_agent"처럼 이름이 두 번 노출됨. `{{AGENT_NAME}}` 토큰 구조 재검토 필요 (5/18 발견)
+- [ ] **Admin 역할 3단계 분배 (Phase 2)** — Super Admin이 일반 Admin에게 권한 레벨 부여: Lv1(케이스 관리 + 상품 등록 등 기본 기능), Lv2(Lv1 + 계약서/마진율 수정 등 중요 설정), Lv3(Lv2 + 계약서 사인 권한). 현재는 `is_super_admin` 불리언 하나로만 분기 중.
+- [ ] **Agent 국적별 판가/상품 가시성 분기 (Phase 2)** — 에이전트 국적(agents.country)에 따라 노출 상품 또는 카탈로그 가격이 달라지는 설정. Admin Settings에서 국적 그룹 정의 + 그룹별 마진율 override 또는 상품 가시성 태그 설정. 예: 인도네시아/말레이시아 에이전트는 K-Wellness 특가 적용, 중동 에이전트는 Muslim-friendly 상품 우선 노출 등.
 - [ ] **호텔 객실 정원 검증 (Phase 2)** — `product_variants`에 `min_occupancy/max_occupancy` 컬럼, ProductForm + Excel upload에 입력, v18 데이터 backfill, 카트에서 group memberCount > max_occupancy 시 경고. 견적 금액엔 영향 없음 (UX 안전장치). 시뮬에서 발견해도 늦지 않음
 - [x] **데이터 마스터 v17 → v18** (5/4 저녁: DIAR 159 rows → 11 base + 159 variants, Hotel 37 rows → 13 base + 37 variants. `[★5 Hotel]` strip + grade paren strip + Hanok inline. 사용자 검수 후 deleteMissing으로 옛 row 정리)
 - [x] **Agent 카탈로그 정렬 정책** — 가격 desc 적용 (5/4 저녁). 인기순(5건+)은 케이스 쌓이면 도입 (backlog)

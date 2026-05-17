@@ -679,18 +679,69 @@ export async function issueAdditionalInvoice(
 }
 
 // Commission invoice — Agent → Admin. Issued by agent after travel is
-// completed; admin pays agent the commission amount derived from the
-// quotation's agent_margin_rate.
+// completed. The agent_margin_rate is recalculated here (not just copied from
+// the quotation) so that: (a) the base tier reflects the actual travel month's
+// patient count, (b) the high-value bonus (+5%) is based on the final invoice
+// total rather than the original quotation, and (c) the retention bonus (+3%)
+// is re-confirmed against prior completed cases at settlement time.
 export async function issueCommissionInvoice(
   caseId: string,
   opts: { amountKrw?: number; dueDate?: string | null; signerSnapshot?: SignerSnapshot | null; notes?: string | null } = {},
 ): Promise<DocumentRow> {
-  const quotation = await getCaseQuotation(caseId)
+  const [quotation, caseRes] = await Promise.all([
+    getCaseQuotation(caseId),
+    supabase.from('cases').select('agent_id, travel_completed_at, case_members(client_id)').eq('id', caseId).single(),
+  ])
+
+  // Use finalized final_invoice total for high-value check; fall back to quotation
+  const { data: finalInvoice } = await supabase
+    .from('documents').select('total_price')
+    .eq('case_id', caseId).eq('type', 'final_invoice')
+    .not('finalized_at', 'is', null).maybeSingle()
+  const basisKrw = finalInvoice?.total_price ?? quotation?.total_price ?? 0
+  const basisUsd = basisKrw / 1500
+
+  const agentId = (caseRes.data as { agent_id: string } | null)?.agent_id ?? ''
+  const travelAt = (caseRes.data as { travel_completed_at: string | null } | null)?.travel_completed_at
+  const monthKey = travelAt?.slice(0, 7) ?? new Date().toISOString().slice(0, 7)
+
+  // Base tier: recalculate from travel month's patient count
+  let baseTier = quotation?.agent_margin_rate ?? 0.15
+  if (agentId) {
+    const { data: mc } = await supabase
+      .from('cases').select('case_members(id)')
+      .eq('agent_id', agentId).not('travel_completed_at', 'is', null)
+      .ilike('travel_completed_at', `${monthKey}%`)
+    const monthlyPatients = (mc ?? []).reduce(
+      (s, c) => s + ((c.case_members as { id: string }[] | null)?.length ?? 0), 0
+    )
+    baseTier = monthlyPatients > 30 ? 0.25 : monthlyPatients > 10 ? 0.20 : 0.15
+  }
+
+  // High-Value Incentive: based on final invoice total
+  const highValueBonus = basisUsd >= 50000 ? 0.05 : 0
+
+  // Retention Bonus: any client in this case had a prior completed case
+  const clientIds = ((caseRes.data as { case_members: { client_id: string }[] } | null)?.case_members ?? []).map(m => m.client_id)
+  let retentionBonus = 0
+  if (clientIds.length > 0 && agentId) {
+    const { data: priorCases } = await supabase
+      .from('cases').select('case_members(client_id)')
+      .eq('agent_id', agentId).not('travel_completed_at', 'is', null)
+      .neq('id', caseId)
+    const priorClientIds = new Set(
+      (priorCases ?? []).flatMap(c =>
+        (c.case_members as { client_id: string }[] | null)?.map(m => m.client_id) ?? []
+      )
+    )
+    if (clientIds.some(id => priorClientIds.has(id))) retentionBonus = 0.03
+  }
+
+  const agentMargin = baseTier + highValueBonus + retentionBonus
+
   const total = opts.amountKrw ?? (() => {
-    const tp = quotation?.total_price ?? 0
-    const am = quotation?.agent_margin_rate ?? 0
-    if (!am || am <= 0) return 0
-    return Math.round(tp * am / (1 + am))   // commission portion of gross
+    if (!agentMargin || agentMargin <= 0) return 0
+    return Math.round(basisKrw * agentMargin / (1 + agentMargin))
   })()
 
   const doc = await createDocument({
@@ -700,7 +751,7 @@ export async function issueCommissionInvoice(
     toParty: 'admin',
     totalPrice: total,
     companyMarginRate: quotation?.company_margin_rate ?? null,
-    agentMarginRate: quotation?.agent_margin_rate ?? null,
+    agentMarginRate: agentMargin,
     paymentDueDate: opts.dueDate ?? null,
     notes: opts.notes ?? null,
   })

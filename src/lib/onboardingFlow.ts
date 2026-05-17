@@ -35,7 +35,8 @@ export async function nextOnboardingPath(currentStep: 'entry' | 'nda' | 'partner
   }
 
   if (currentStep === 'nda') {
-    if (hasNda) return hasPartnership ? '/onboarding/waiting' : '/onboarding/partnership'
+    if (hasNda && hasPartnership) return '/onboarding/waiting'
+    // hasNda && !hasPartnership → let the page render in read-only review mode
     return null
   }
 

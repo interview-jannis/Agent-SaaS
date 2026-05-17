@@ -60,9 +60,9 @@ export default function SetupWizardPage() {
       // Pre-fill email: invite_email (admin-provided) → agents.email (agent saved on waiting page)
       const suggestedEmail = a.invite_email || (a.email && !a.email.includes('@tiktak.temp') ? a.email : '')
       if (suggestedEmail) setForm(p => ({ ...p, email: suggestedEmail }))
-      // Restore any previously saved draft — overrides the suggestion if agent already typed something
+      // Restore any previously saved draft — only if it belongs to this agent
       const draft = loadDraft()
-      if (draft) {
+      if (draft && draft.uid === session.user.id) {
         if (draft.form) setForm(p => ({ ...p, email: draft.form.email || suggestedEmail, phone: draft.form.phone ?? '' }))
         if (draft.bank) setBank(draft.bank)
         if (draft.business) setBusiness(draft.business)
@@ -75,7 +75,7 @@ export default function SetupWizardPage() {
   // Auto-save draft on every change (password excluded for security)
   useEffect(() => {
     if (!authUserId) return
-    saveDraft({ form: { email: form.email, phone: form.phone }, bank, business })
+    saveDraft({ uid: authUserId, form: { email: form.email, phone: form.phone }, bank, business })
   }, [form.email, form.phone, bank, business, authUserId])
 
   async function uploadBusinessDoc(file: File) {

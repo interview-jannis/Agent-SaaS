@@ -77,6 +77,7 @@ function renderBody(body: string): Block[] {
     const line = raw.trim()
     if (line.startsWith('## ')) { flushP(); flushUl(); blocks.push({ kind: 'h', text: line.slice(3).trim() }) }
     else if (line.startsWith('- ')) { flushP(); ulBuf.push(line.slice(2).trim()) }
+    else if (/^\d+\)\s/.test(line)) { flushP(); ulBuf.push(line) }
     else if (line === '') { flushP(); flushUl() }
     else { flushUl(); pBuf.push(line) }
   }

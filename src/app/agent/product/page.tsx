@@ -278,45 +278,7 @@ export default function AgentProductPage() {
     return p.product_categories?.name === 'Subpackage'
   }
 
-  // ── Cart restore ───────────────────────────────────────────────────────────
-
-  useEffect(() => {
-    sessionStorage.removeItem('agent-cart-restore')
-    try {
-      const raw = localStorage.getItem('agent-cart')
-      if (!raw) return
-      const cart = JSON.parse(raw) as {
-        version?: number
-        clientId?: string; dateStart?: string; dateEnd?: string; tripName?: string
-        groups?: Array<{id: string; name: string; memberCount: number; items?: CartItem[]}>
-        tripServices?: TripServiceItem[]
-      }
-      // Invalidate old cart formats
-      if (!cart.version || cart.version < CART_VERSION) {
-        localStorage.removeItem('agent-cart')
-        return
-      }
-      if (cart.clientId) setSelectedClientId(cart.clientId)
-      if (cart.dateStart) setDateStart(cart.dateStart)
-      if (cart.dateEnd) setDateEnd(cart.dateEnd)
-      if (cart.tripName) setTripName(cart.tripName)
-      if (cart.tripServices) setTripServices(cart.tripServices)
-      if (cart.groups && cart.groups.length > 0) {
-        const valid = cart.groups.every(g => Array.isArray(g.items))
-        if (!valid) { localStorage.removeItem('agent-cart'); return }
-        const restored: Group[] = cart.groups.map(g => ({
-          id: g.id, name: g.name, memberCount: g.memberCount, items: g.items as CartItem[],
-        }))
-        if (!restored.find(g => g.id === 'shared')) {
-          restored.unshift({ id: 'shared', name: 'Shared Activities', memberCount: 0, items: [] })
-        }
-        setGroups(restored)
-        setActiveGroupId(restored.find(g => g.id !== 'shared')?.id ?? restored[0].id)
-        const hasItems = restored.some(g => g.items.length > 0) || (cart.tripServices ?? []).length > 0
-        if (hasItems) setCartRestoredBanner(true)
-      }
-    } catch { /* ignore malformed cart */ }
-  }, [])
+  // Cart restore is done inside load() after agentId is known.
 
   // ── Load data ──────────────────────────────────────────────────────────────
 
@@ -350,6 +312,48 @@ export default function AgentProductPage() {
       setProducts((productsRes.data as unknown as Product[]) ?? [])
       setCategories(catsRes.data ?? [])
       setSubcategories((subcatsRes.data as unknown as { id: string; category_id: string; name: string; sort_order: number }[]) ?? [])
+
+      // Cart restore — keyed by agentId so carts don't bleed across accounts.
+      if (aid) {
+        try {
+          const cartKey = `agent-cart-${aid}`
+          const raw = localStorage.getItem(cartKey)
+          if (raw) {
+            const savedCart = JSON.parse(raw) as {
+              version?: number
+              clientId?: string; dateStart?: string; dateEnd?: string; tripName?: string
+              groups?: Array<{id: string; name: string; memberCount: number; items?: CartItem[]}>
+              tripServices?: TripServiceItem[]
+            }
+            if (!savedCart.version || savedCart.version < CART_VERSION) {
+              localStorage.removeItem(cartKey)
+            } else {
+              if (savedCart.clientId) setSelectedClientId(savedCart.clientId)
+              if (savedCart.dateStart) setDateStart(savedCart.dateStart)
+              if (savedCart.dateEnd) setDateEnd(savedCart.dateEnd)
+              if (savedCart.tripName) setTripName(savedCart.tripName)
+              if (savedCart.tripServices) setTripServices(savedCart.tripServices)
+              if (savedCart.groups && savedCart.groups.length > 0) {
+                const valid = savedCart.groups.every(g => Array.isArray(g.items))
+                if (!valid) {
+                  localStorage.removeItem(cartKey)
+                } else {
+                  const restored: Group[] = savedCart.groups.map(g => ({
+                    id: g.id, name: g.name, memberCount: g.memberCount, items: g.items as CartItem[],
+                  }))
+                  if (!restored.find(g => g.id === 'shared')) {
+                    restored.unshift({ id: 'shared', name: 'Shared Activities', memberCount: 0, items: [] })
+                  }
+                  setGroups(restored)
+                  setActiveGroupId(restored.find(g => g.id !== 'shared')?.id ?? restored[0].id)
+                  const hasItems = restored.some(g => g.items.length > 0) || (savedCart.tripServices ?? []).length > 0
+                  if (hasItems) setCartRestoredBanner(true)
+                }
+              }
+            }
+          }
+        } catch { /* ignore malformed cart */ }
+      }
 
       if (aid) {
         const { data: clientsData } = await supabase
@@ -737,7 +741,7 @@ export default function AgentProductPage() {
 
   function goToReview(clientId: string) {
     const cart = { version: CART_VERSION, clientId, dateStart, dateEnd, tripName, groups, tripServices }
-    localStorage.setItem('agent-cart', JSON.stringify(cart))
+    localStorage.setItem(`agent-cart-${agentId}`, JSON.stringify(cart))
     router.push('/agent/product/review')
   }
 
@@ -987,7 +991,7 @@ export default function AgentProductPage() {
           <p className="text-xs text-green-800">In-progress cart restored.</p>
           <button
             onClick={() => {
-              localStorage.removeItem('agent-cart')
+              localStorage.removeItem(`agent-cart-${agentId}`)
               setGroups([{ id: 'shared', name: 'Shared Activities', memberCount: 0, items: [] }, { id: 'g1', name: 'Group 1', memberCount: 1, items: [] }])
               setTripServices([])
               setActiveGroupId('g1')
@@ -1005,7 +1009,7 @@ export default function AgentProductPage() {
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-xs text-gray-400 whitespace-nowrap">Trip Name</span>
           <input type="text" value={tripName} onChange={e => setTripName(e.target.value)}
-            placeholder="e.g. Al-Rashid's Family"
+            placeholder="e.g. Interview's Family"
             className="flex-1 md:flex-none text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:border-[#0f4c35] text-gray-900 md:w-48" />
         </div>
         <div className="hidden md:block h-4 w-px bg-gray-200" />

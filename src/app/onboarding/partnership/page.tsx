@@ -7,6 +7,7 @@ export default function PartnershipPage() {
       step={{ current: 3, total: 3, label: 'Partnership Agreement' }}
       nextHref="/onboarding/waiting"
       nextLabel="Sign & Submit"
+      prevHref="/onboarding/nda"
       isFinal
     />
   )

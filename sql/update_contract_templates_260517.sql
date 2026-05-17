@@ -52,8 +52,7 @@ Company Name: Interview Co., Ltd.
 Representative Name: Sung-min Park
 
 **AGENT**
-Agent / Company Name: **{{AGENT_NAME}}**
-Representative Name: **{{AGENT_NAME}}**
+{{AGENT_SIGNATURE_BLOCK}}
 $BODY$,
   updated_at = now()
 WHERE contract_type = 'nda';
@@ -128,8 +127,7 @@ Company Name: Interview Co., Ltd.
 Representative Name: Sung-min Park
 
 **AGENT**
-Agent / Company Name: **{{AGENT_NAME}}**
-Representative Name: **{{AGENT_NAME}}**
+{{AGENT_SIGNATURE_BLOCK}}
 $BODY$,
   updated_at = now()
 WHERE contract_type = 'partnership';
