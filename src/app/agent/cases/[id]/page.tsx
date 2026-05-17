@@ -1237,6 +1237,11 @@ export default function CaseDetailPage() {
                   <div className="text-right">
                     <p className="text-[10px] text-gray-400 mb-1">Commission Rate</p>
                     <p className="text-sm font-semibold text-gray-700">{(agentMarginRate * 100).toFixed(0)}%</p>
+                    <p className="text-[10px] text-gray-400 mt-0.5">
+                      {agentMarginRate >= 0.25 ? '30+ patients this month'
+                        : agentMarginRate >= 0.20 ? '11–30 patients this month'
+                        : '0–10 patients this month'}
+                    </p>
                   </div>
                 </div>
               )}
