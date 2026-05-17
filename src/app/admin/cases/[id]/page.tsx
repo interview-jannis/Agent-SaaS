@@ -51,10 +51,14 @@ type QuoteItem = {
   final_price: number
   variant_id: string | null
   variant_label_snapshot: string | null
+  product_name_snapshot?: string | null
+  product_partner_snapshot?: string | null
+  sort_order?: number | null
   origin?: 'original' | 'admin_added'
   removed_at?: string | null
   quantity: number
   overtime_hours?: number | null
+  is_overtime_item?: boolean | null
   agent_note?: string | null
   products: { id: string; name: string; description: string | null; partner_name: string | null; duration_value?: number | null; duration_unit?: string | null; has_female_doctor?: boolean | null; has_prayer_room?: boolean | null; dietary_type?: string | null; location?: string | null; full_address?: string | null; contact_phone?: string | null; contact_email?: string | null; contact_channels?: { type: string; value: string }[] | null; product_categories?: { name: string } | null; product_subcategories?: { name: string } | null } | null
 }
@@ -305,7 +309,7 @@ export default function AdminCaseDetailPage() {
         ),
         documents(
           id, type, document_number, slug, total_price, payment_due_date, payment_received_at, agent_margin_rate, company_margin_rate, finalized_at, from_party, to_party, created_at,
-          document_groups(id, name, order, member_count, document_items(id, base_price, final_price, quantity, overtime_hours, variant_id, variant_label_snapshot, origin, removed_at, agent_note, products(id, name, description, partner_name, duration_value, duration_unit, has_female_doctor, has_prayer_room, dietary_type, location, full_address, contact_phone, contact_email, contact_channels, product_categories(name), product_subcategories!products_subcategory_id_fkey(name))), document_group_members(id, case_member_id))
+          document_groups(id, name, order, member_count, document_items(id, base_price, final_price, quantity, overtime_hours, is_overtime_item, variant_id, variant_label_snapshot, product_name_snapshot, product_partner_snapshot, sort_order, origin, removed_at, agent_note, products(id, name, description, partner_name, duration_value, duration_unit, has_female_doctor, has_prayer_room, dietary_type, location, full_address, contact_phone, contact_email, contact_channels, product_categories(name), product_subcategories!products_subcategory_id_fkey(name))), document_group_members(id, case_member_id))
         ),
         schedules(id, slug, pdf_url, items, status, version, file_name, revision_note, admin_note, confirmed_at, created_at, first_opened_at, concierge_name, concierge_phone, day_subpackages)
       `)
@@ -470,16 +474,15 @@ export default function AdminCaseDetailPage() {
     documentGroups: QuoteGroup[],
     documentId: string,
   ) => {
-    // Build variantId → total actual hours map
+    // Build variantId → total actual hours
     const hoursByVariant: Record<string, number> = {}
     for (const entries of Object.values(daySubpackages)) {
       for (const e of entries) {
         hoursByVariant[e.variantId] = (hoursByVariant[e.variantId] ?? 0) + e.hours
       }
     }
-    if (Object.keys(hoursByVariant).length === 0) return
 
-    // Build variantId → overtime_rate_krw from the loaded products list
+    // Build variantId → overtime_rate_krw
     const otRateByVariant = new Map<string, number>()
     for (const p of products) {
       for (const v of p.variants ?? []) {
@@ -487,28 +490,73 @@ export default function AdminCaseDetailPage() {
       }
     }
 
-    const updates: { id: string; overtime_hours: number; final_price: number }[] = []
+    // Collect base items (non-OT) that have scheduled hours
+    type OTInsert = {
+      groupId: string
+      variantId: string
+      productId: string | null
+      productName: string
+      partnerName: string | null
+      overtimeHours: number
+      otRate: number
+      sortOrder: number
+    }
+    const otInserts: OTInsert[] = []
+    const baseItemOTUpdates: { id: string; overtime_hours: number }[] = []
+
     for (const g of documentGroups) {
       for (const item of g.document_items) {
-        if (!item.variant_id || item.removed_at) continue
+        if (!item.variant_id || item.removed_at || item.is_overtime_item) continue
         if (!(item.variant_id in hoursByVariant)) continue
         const actualHours = hoursByVariant[item.variant_id]
         const durationUnit = (item.products?.duration_unit ?? '').toLowerCase()
         const isHoursBased = durationUnit.startsWith('h')
-        const contractedHours = isHoursBased
-          ? (item.quantity ?? 1) * (item.products?.duration_value ?? 0)
-          : 0
+        const contractedHours = isHoursBased ? (item.quantity ?? 1) * (item.products?.duration_value ?? 0) : 0
         const overtime_hours = Math.max(0, actualHours - contractedHours)
-        const qty = item.quantity ?? 1
-        const otRate = otRateByVariant.get(item.variant_id) ?? 0
-        const final_price = Math.round(item.base_price * qty + overtime_hours * otRate)
-        updates.push({ id: item.id, overtime_hours, final_price })
+        baseItemOTUpdates.push({ id: item.id, overtime_hours })
+        if (overtime_hours > 0) {
+          const otRate = otRateByVariant.get(item.variant_id) ?? 0
+          otInserts.push({
+            groupId: g.id,
+            variantId: item.variant_id,
+            productId: item.products?.id ?? null,
+            productName: item.product_name_snapshot ?? item.products?.name ?? '',
+            partnerName: item.product_partner_snapshot ?? item.products?.partner_name ?? null,
+            overtimeHours: overtime_hours,
+            otRate,
+            sortOrder: (item.sort_order ?? 0) + 1,
+          })
+        }
       }
     }
-    await Promise.all(updates.map(u =>
-      supabase.from('document_items').update({ overtime_hours: u.overtime_hours, final_price: u.final_price }).eq('id', u.id)
+
+    // Update overtime_hours on base items (for tracking; final_price stays as-is)
+    await Promise.all(baseItemOTUpdates.map(u =>
+      supabase.from('document_items').update({ overtime_hours: u.overtime_hours }).eq('id', u.id)
     ))
-    if (updates.length > 0) await recalcDocumentTotal(documentId)
+
+    // Delete all existing OT items for this document, then re-insert
+    await supabase.from('document_items').delete().eq('document_id', documentId).eq('is_overtime_item', true)
+
+    if (otInserts.length > 0) {
+      await supabase.from('document_items').insert(otInserts.map(ot => ({
+        document_id: documentId,
+        document_group_id: ot.groupId,
+        product_id: ot.productId,
+        variant_id: ot.variantId,
+        product_name_snapshot: `${ot.productName} – OT`,
+        product_partner_snapshot: ot.partnerName,
+        variant_label_snapshot: null,
+        base_price: ot.otRate,
+        final_price: Math.round(ot.overtimeHours * ot.otRate),
+        quantity: ot.overtimeHours,
+        sort_order: ot.sortOrder,
+        origin: 'admin_added' as const,
+        is_overtime_item: true,
+      })))
+    }
+
+    await recalcDocumentTotal(documentId)
   }, [products])
 
   // Terminal states (completed/awaiting_settlement) — auto-collapse heavy sections.
