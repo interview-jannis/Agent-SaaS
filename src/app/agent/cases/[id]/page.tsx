@@ -1471,7 +1471,7 @@ export default function CaseDetailPage() {
                         </label>
                         <DateTime24Picker value={depDt}
                           minDate={minD} maxDate={maxD}
-                          className={!depDt ? 'ring-1 ring-red-200 rounded-lg' : ''}
+                          highlight={!depDt}
                           onChange={v => setTripForm(p => ({ ...p, [`${prefix}_departure_datetime`]: v }))} />
                       </div>
                       <div>
@@ -1488,7 +1488,7 @@ export default function CaseDetailPage() {
                         </label>
                         <DateTime24Picker value={arrDt}
                           minDate={minD} maxDate={maxD}
-                          className={!arrDt ? 'ring-1 ring-red-200 rounded-lg' : ''}
+                          highlight={!arrDt}
                           onChange={v => setTripForm(p => ({ ...p, [`${prefix}_arrival_datetime`]: v }))} />
                       </div>
                       <div>
