@@ -837,13 +837,6 @@ export default function AgentProductPage() {
     const isSubpkg = isSubpackageProduct(product)
     const inServices = isSubpkg && tripServices.some(it => it.productId === product.id)
     const isHotelProduct = isHotelItem(product.product_categories?.name, product.product_subcategories?.name)
-    const totalHotelNightsUsed = isHotelProduct
-      ? tripServices.reduce((sum, s) => {
-          const sp = products.find(x => x.id === s.productId)
-          return isHotelItem(sp?.product_categories?.name, sp?.product_subcategories?.name) ? sum + s.days : sum
-        }, 0)
-      : 0
-    const hotelNightsFull = isHotelProduct && !inServices && totalHotelNightsUsed >= nights
     const activeGroup = groups[activeGroupIndex]
     const inActiveGroup = !isSubpkg && (activeGroup?.items.some(it => it.productId === product.id) ?? false)
     const otherGroupsWithProduct = isSubpkg ? [] : groups.filter(
@@ -943,22 +936,18 @@ export default function AgentProductPage() {
           {isSubpkg ? (
             // Subpackage → Trip Services
             variantCount > 1 ? (
-              <button onClick={() => !hotelNightsFull && openDetail(product)}
-                disabled={hotelNightsFull}
+              <button onClick={() => openDetail(product)}
                 className={`mt-1 w-full py-1 rounded-lg text-[11px] font-medium transition-all ${
-                  hotelNightsFull ? 'bg-gray-100 text-gray-300 cursor-not-allowed'
-                  : inServices ? 'bg-[#0f4c35] hover:bg-[#0a3526] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  inServices ? 'bg-[#0f4c35] hover:bg-[#0a3526] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 }`}>
-                {hotelNightsFull ? `Nights full (${nights}n)` : inServices ? '✓ In Services · pick more' : `Choose · ${variantCount} options`}
+                {inServices ? '✓ In Services · pick more' : `Choose · ${variantCount} options`}
               </button>
             ) : (
-              <button onClick={() => !hotelNightsFull && toggleProduct(product.id)}
-                disabled={hotelNightsFull}
+              <button onClick={() => toggleProduct(product.id)}
                 className={`mt-1 w-full py-1 rounded-lg text-[11px] font-medium transition-all ${
-                  hotelNightsFull ? 'bg-gray-100 text-gray-300 cursor-not-allowed'
-                  : inServices ? 'bg-[#0f4c35] hover:bg-[#0a3526] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  inServices ? 'bg-[#0f4c35] hover:bg-[#0a3526] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 }`}>
-                {hotelNightsFull ? `Nights full (${nights}n)` : inServices ? '✓ In Services' : '+ Add to Services'}
+                {inServices ? '✓ In Services' : '+ Add to Services'}
               </button>
             )
           ) : (
@@ -1270,11 +1259,6 @@ export default function AgentProductPage() {
             <span className="text-xs text-gray-400">Select from Subpackage category above</span>
           ) : (
             (() => {
-              // Hotel items share a pool of `nights` total — sum across all hotels can't exceed it.
-              const totalHotelDaysUsed = tripServices.reduce((sum, s) => {
-                const sp = products.find(x => x.id === s.productId)
-                return isHotelItem(sp?.product_categories?.name, sp?.product_subcategories?.name) ? sum + s.days : sum
-              }, 0)
               return tripServices.map(it => {
               const p = products.find(x => x.id === it.productId)
               const v = p?.product_variants?.find(x => x.id === it.variantId)
@@ -1282,9 +1266,7 @@ export default function AgentProductPage() {
               const isHotel = isHotelItem(p.product_categories?.name, p.product_subcategories?.name)
               const label = v.variant_label ? `${p.name} · ${v.variant_label}` : p.name
               const unit = isHotel ? 'n' : 'd'
-              const maxDays = isHotel
-                ? Math.max(1, nights - (totalHotelDaysUsed - it.days))
-                : Math.max(daysLive, 1)
+              const maxDays = isHotel ? Infinity : Math.max(daysLive, 1)
               return (
                 <div key={`${it.productId}:${it.variantId}`}
                   className="flex items-center gap-1 px-2.5 py-1 bg-[#0f4c35]/5 border border-[#0f4c35]/20 rounded-lg text-xs text-[#0f4c35] whitespace-nowrap shrink-0">
