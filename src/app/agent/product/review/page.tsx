@@ -1003,39 +1003,6 @@ export default function QuoteReviewPage() {
           <p className="text-xs text-gray-400">Payment due within 7 days of quote creation.</p>
         </section>
 
-        {/* Commission Breakdown */}
-        <section className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-3">
-          <h2 className="text-sm font-semibold text-gray-900">Estimated Commission</h2>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-gray-500">Base rate <span className="text-gray-400">({monthlyPatients} patients this month)</span></span>
-              <span className="font-medium text-gray-800">{(previewBaseTier * 100).toFixed(0)}%</span>
-            </div>
-            {previewHighValue && (
-              <div className="flex items-center justify-between text-sm text-[#0f4c35]">
-                <span>High-Value Incentive <span className="text-xs">(≥ $50,000)</span></span>
-                <span className="font-medium">+5%</span>
-              </div>
-            )}
-            <div className="flex items-center justify-between text-sm text-gray-400">
-              <span>Retention Bonus <span className="text-xs">(returning client)</span></span>
-              <span>+3% if applicable</span>
-            </div>
-            <div className="flex items-center justify-between pt-2 border-t border-gray-100">
-              <span className="text-sm font-semibold text-gray-900">Rate at this quote</span>
-              <span className="text-sm font-bold text-[#0f4c35]">
-                {(previewRate * 100).toFixed(0)}%{!previewHighValue && totalUSD > 0 && totalUSD < 50000
-                  ? ` · +5% if final total ≥ $50k`
-                  : ''}
-              </span>
-            </div>
-          </div>
-          <p className="text-[11px] text-gray-400 leading-relaxed">
-            Base rate and retention bonus are calculated at quote creation. The high-value incentive (+5%) is automatically
-            re-evaluated when you issue your commission invoice — based on the finalized invoice total, not this quotation.
-          </p>
-        </section>
-
         {/* Notes for TikkTakk admin — anything that should shape the schedule but
             isn't a line item: special requests, recovery preferences, blocked
             days, prayer routine quirks. Saved on the case; admin sees it
