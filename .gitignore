@@ -63,3 +63,4 @@ scripts/insert-product-images.mjs
 
 # node_modules in subdirectories (e.g. data/scripts)
 **/node_modules/
+guide/
