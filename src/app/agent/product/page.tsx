@@ -57,7 +57,7 @@ type CartItem = { productId: string; variantId: string; toothCount?: number; age
 
 // Subpackage products (interpreter, car, hotel, concierge…) go into Trip Services.
 // days: user-set number of days/nights. Hotel auto-syncs to nightsBetween on render.
-type TripServiceItem = { productId: string; variantId: string; days: number; agentNote?: string }
+type TripServiceItem = { instanceId: string; productId: string; variantId: string; days: number; agentNote?: string }
 
 type Group = {
   id: string
@@ -343,7 +343,9 @@ export default function AgentProductPage() {
               if (savedCart.dateStart) setDateStart(savedCart.dateStart)
               if (savedCart.dateEnd) setDateEnd(savedCart.dateEnd)
               if (savedCart.tripName) setTripName(savedCart.tripName)
-              if (savedCart.tripServices) setTripServices(savedCart.tripServices)
+              if (savedCart.tripServices) setTripServices(savedCart.tripServices.map(s => ({
+                ...s, instanceId: s.instanceId ?? crypto.randomUUID()
+              })))
               if (savedCart.groups && savedCart.groups.length > 0) {
                 const valid = savedCart.groups.every(g => Array.isArray(g.items))
                 if (!valid) {
@@ -675,27 +677,32 @@ export default function AgentProductPage() {
 
   function toggleServiceItem(productId: string, variantId: string, agentNote?: string) {
     setTripServices(prev => {
-      const idx = prev.findIndex(it => it.productId === productId && it.variantId === variantId)
-      if (idx >= 0) return prev.filter((_, i) => i !== idx)
       const p = products.find(x => x.id === productId)
       const isHotel = isHotelItem(p?.product_categories?.name, p?.product_subcategories?.name)
       const note = agentNote ? { agentNote } : {}
       if (isHotel) {
-        return [...prev, { productId, variantId, days: Math.max(nights, 1), ...note }]
+        // Hotels always add a new instance (same room type can be booked multiple times)
+        return [...prev, { instanceId: crypto.randomUUID(), productId, variantId, days: Math.max(nights, 1), ...note }]
       }
-      return [...prev, { productId, variantId, days: Math.max(daysBetween(dateStart, dateEnd), 1), ...note }]
+      const idx = prev.findIndex(it => it.productId === productId && it.variantId === variantId)
+      if (idx >= 0) return prev.filter((_, i) => i !== idx)
+      return [...prev, { instanceId: crypto.randomUUID(), productId, variantId, days: Math.max(daysBetween(dateStart, dateEnd), 1), ...note }]
     })
   }
 
-  function setServiceDays(productId: string, variantId: string, days: number) {
+  function removeServiceItem(instanceId: string) {
+    setTripServices(prev => prev.filter(it => it.instanceId !== instanceId))
+  }
+
+  function setServiceDays(instanceId: string, days: number) {
     setTripServices(prev => prev.map(it =>
-      it.productId === productId && it.variantId === variantId ? { ...it, days: Math.max(1, days) } : it
+      it.instanceId === instanceId ? { ...it, days: Math.max(1, days) } : it
     ))
   }
 
-  function updateServiceNote(productId: string, variantId: string, note: string) {
+  function updateServiceNote(instanceId: string, note: string) {
     setTripServices(prev => prev.map(it =>
-      it.productId === productId && it.variantId === variantId ? { ...it, agentNote: note } : it
+      it.instanceId === instanceId ? { ...it, agentNote: note } : it
     ))
   }
 
@@ -1268,18 +1275,18 @@ export default function AgentProductPage() {
               const unit = isHotel ? 'n' : 'd'
               const maxDays = isHotel ? Infinity : Math.max(daysLive, 1)
               return (
-                <div key={`${it.productId}:${it.variantId}`}
+                <div key={it.instanceId}
                   className="flex items-center gap-1 px-2.5 py-1 bg-[#0f4c35]/5 border border-[#0f4c35]/20 rounded-lg text-xs text-[#0f4c35] whitespace-nowrap shrink-0">
                   <span className="truncate max-w-[120px]">{label}</span>
                   <span className="mx-0.5 opacity-40">·</span>
-                  <button onClick={() => setServiceDays(it.productId, it.variantId, it.days - 1)}
+                  <button onClick={() => setServiceDays(it.instanceId, it.days - 1)}
                     disabled={it.days <= 1}
                     className="opacity-60 hover:opacity-100 disabled:opacity-20 font-bold px-0.5">−</button>
                   <span className="min-w-[20px] text-center">{it.days}{unit}</span>
-                  <button onClick={() => setServiceDays(it.productId, it.variantId, it.days + 1)}
+                  <button onClick={() => setServiceDays(it.instanceId, it.days + 1)}
                     disabled={it.days >= maxDays}
                     className="opacity-60 hover:opacity-100 disabled:opacity-20 font-bold px-0.5">+</button>
-                  <button onClick={() => toggleServiceItem(it.productId, it.variantId)}
+                  <button onClick={() => removeServiceItem(it.instanceId)}
                     className="ml-1 opacity-50 hover:opacity-100 text-base leading-none">×</button>
                 </div>
               )
@@ -1477,7 +1484,7 @@ export default function AgentProductPage() {
                         ? subpkgUpgradeUsd(p, v)
                         : variantPriceUsd({ basePrice: v.base_price, priceCurrency: v.price_currency, exchangeRate, markupRate: mr })
                       return (
-                        <div key={`${it.productId}-${it.variantId}`} className="px-3 py-2 bg-gray-50 rounded-lg space-y-1.5">
+                        <div key={it.instanceId} className="px-3 py-2 bg-gray-50 rounded-lg space-y-1.5">
                           <div className="flex items-center gap-2">
                             <div className="flex-1 min-w-0">
                               <p className="text-xs text-gray-800 truncate font-medium">{p.name}</p>
@@ -1489,12 +1496,12 @@ export default function AgentProductPage() {
                               {usd === 0 ? 'Free' : fmtUSD(usd * qty)}
                             </p>
                             <button
-                              onClick={() => toggleServiceItem(it.productId, it.variantId)}
+                              onClick={() => removeServiceItem(it.instanceId)}
                               className="text-gray-300 hover:text-red-400 shrink-0 text-base leading-none ml-1">×</button>
                           </div>
                           <textarea
                             value={it.agentNote ?? ''}
-                            onChange={e => updateServiceNote(it.productId, it.variantId, e.target.value)}
+                            onChange={e => updateServiceNote(it.instanceId, e.target.value)}
                             placeholder={isHotel ? 'e.g. 2 adults, non-smoking' : 'Agent note (admin only)'}
                             rows={1}
                             className="w-full border border-gray-200 rounded-md px-2 py-1 text-[11px] text-gray-700 resize-none focus:outline-none focus:border-[#0f4c35] placeholder:text-gray-300"
@@ -1700,13 +1707,13 @@ export default function AgentProductPage() {
                         {inCartServices.map(svc => {
                           const v = (detailProduct.product_variants ?? []).find(x => x.id === svc.variantId)
                           return (
-                            <div key={svc.variantId}>
+                            <div key={svc.instanceId}>
                               {inCartServices.length > 1 && v?.variant_label && (
                                 <p className="text-[11px] text-gray-400 mb-1">{v.variant_label}</p>
                               )}
                               <textarea
                                 value={svc.agentNote ?? ''}
-                                onChange={e => updateServiceNote(svc.productId, svc.variantId, e.target.value)}
+                                onChange={e => updateServiceNote(svc.instanceId, e.target.value)}
                                 placeholder="e.g. Fluent in Arabic, client prefers female interpreter"
                                 rows={2}
                                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 resize-none focus:outline-none focus:border-[#0f4c35]"

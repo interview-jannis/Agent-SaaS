@@ -18,7 +18,7 @@ import { getMarkupRate, isHotelItem, nightsBetween, daysBetween, variantPriceUsd
 
 type CartItem = { productId: string; variantId: string; quantity?: number; toothCount?: number; agentNote?: string }
 type CartGroup = { id: string; name: string; memberCount: number; items: CartItem[] }
-type TripServiceItem = { productId: string; variantId: string; days: number; agentNote?: string }
+type TripServiceItem = { instanceId: string; productId: string; variantId: string; days: number; agentNote?: string }
 type CartDraft = { clientId: string; dateStart: string; dateEnd: string; tripName?: string; groups: CartGroup[]; tripServices?: TripServiceItem[] }
 
 type Client = {
@@ -138,7 +138,9 @@ export default function QuoteReviewPage() {
       if (!raw) { router.replace('/agent/product'); return }
       const draft: CartDraft = JSON.parse(raw)
       setCart(draft)
-      setTripServices(draft.tripServices ?? [])
+      setTripServices((draft.tripServices ?? []).map(s => ({
+        ...s, instanceId: s.instanceId ?? crypto.randomUUID()
+      })))
 
       const groupProductIds = draft.groups.flatMap((g) => g.items.map(it => it.productId))
       const serviceProductIds = (draft.tripServices ?? []).map(s => s.productId)
@@ -973,7 +975,7 @@ export default function QuoteReviewPage() {
                   const unitUSD = serviceItemUsd(svc)
                   const totalItemUSD = unitUSD * svc.days
                   return (
-                    <div key={`svc:${svc.productId}:${svc.variantId}:${idx}`} className="grid grid-cols-[1fr_auto_auto_auto] gap-x-4 items-center py-2 px-3 bg-gray-50 rounded-xl">
+                    <div key={svc.instanceId} className="grid grid-cols-[1fr_auto_auto_auto] gap-x-4 items-center py-2 px-3 bg-gray-50 rounded-xl">
                       <div className="min-w-0">
                         <p className="text-sm text-gray-800 truncate">{found.product.name}</p>
                         {found.variant.variant_label && (
