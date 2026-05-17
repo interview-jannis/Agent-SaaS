@@ -1305,7 +1305,7 @@ export default function ScheduleEditor({
             <div className="flex items-center justify-end gap-2">
               <button
                 onClick={() => void saveDraft(items, daySubpackages)}
-                disabled={savingDraft || saving || items.length === 0}
+                disabled={savingDraft || saving || (items.length === 0 && Object.keys(daySubpackages).length === 0)}
                 className="text-sm font-medium bg-gray-700 text-white hover:bg-gray-600 px-4 py-2 rounded-xl disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {savingDraft ? 'Saving…' : draftSaved ? 'Draft saved' : 'Save Draft'}
