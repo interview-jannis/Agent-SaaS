@@ -269,9 +269,19 @@ export default function AgentProductPage() {
   const [modalImageIndex, setModalImageIndex] = useState(0)
   const [cartRestoredBanner, setCartRestoredBanner] = useState(false)
   const [showCartDrawer, setShowCartDrawer] = useState(false)
+  const [modalToothCount, setModalToothCount] = useState(1)
+  const [modalNote, setModalNote] = useState('')
 
   function openDetail(product: Product) {
     setModalImageIndex(imageIndexes[product.id] ?? 0)
+    let tc = 1
+    for (const g of groups) {
+      const it = g.items.find(x => x.productId === product.id)
+      if (it) { tc = it.toothCount ?? 1; break }
+    }
+    setModalToothCount(tc)
+    const svc = tripServices.find(it => it.productId === product.id)
+    setModalNote(svc?.agentNote ?? '')
     setDetailProduct(product)
   }
 
@@ -620,26 +630,26 @@ export default function AgentProductPage() {
     return [...active].sort((a, b) => a.sort_order - b.sort_order)[0]?.id ?? null
   }
 
-  function toggleProduct(productId: string) {
+  function toggleProduct(productId: string, note?: string, toothCount?: number) {
     const p = products.find(x => x.id === productId)
     if (!p) return
     if (isSubpackageProduct(p)) {
       const variantId = defaultVariantId(p)
-      if (variantId) toggleServiceItem(productId, variantId)
+      if (variantId) toggleServiceItem(productId, variantId, note)
       return
     }
     const variantId = defaultVariantId(p)
     if (!variantId) return
-    toggleItem(productId, variantId)
+    toggleItem(productId, variantId, p.product_subcategories?.name === 'Dental Clinic' ? (toothCount ?? 1) : undefined)
   }
 
-  function toggleItem(productId: string, variantId: string) {
+  function toggleItem(productId: string, variantId: string, toothCount?: number) {
     setGroups(prev =>
       prev.map(g => {
         if (g.id !== activeGroupId) return g
         const idx = g.items.findIndex(it => it.productId === productId && it.variantId === variantId)
         if (idx >= 0) return { ...g, items: g.items.filter((_, i) => i !== idx) }
-        return { ...g, items: [...g.items, { productId, variantId }] }
+        return { ...g, items: [...g.items, { productId, variantId, ...(toothCount != null ? { toothCount } : {}) }] }
       })
     )
   }
@@ -655,22 +665,17 @@ export default function AgentProductPage() {
 
   // ── Cart handlers — trip services ──────────────────────────────────────────
 
-  function toggleServiceItem(productId: string, variantId: string) {
+  function toggleServiceItem(productId: string, variantId: string, agentNote?: string) {
     setTripServices(prev => {
       const idx = prev.findIndex(it => it.productId === productId && it.variantId === variantId)
       if (idx >= 0) return prev.filter((_, i) => i !== idx)
       const p = products.find(x => x.id === productId)
       const isHotel = isHotelItem(p?.product_categories?.name, p?.product_subcategories?.name)
+      const note = agentNote ? { agentNote } : {}
       if (isHotel) {
-        // Remaining nights after existing hotels
-        const usedNights = prev.reduce((sum, s) => {
-          const sp = products.find(x => x.id === s.productId)
-          return isHotelItem(sp?.product_categories?.name, sp?.product_subcategories?.name) ? sum + s.days : sum
-        }, 0)
-        const remaining = Math.max(1, nights - usedNights)
-        return [...prev, { productId, variantId, days: remaining }]
+        return [...prev, { productId, variantId, days: Math.max(nights, 1), ...note }]
       }
-      return [...prev, { productId, variantId, days: Math.max(daysBetween(dateStart, dateEnd), 1) }]
+      return [...prev, { productId, variantId, days: Math.max(daysBetween(dateStart, dateEnd), 1), ...note }]
     })
   }
 
@@ -1424,22 +1429,35 @@ export default function AgentProductPage() {
                         if (!p || !v) return null
                         const cat = p.product_categories?.name
                         const sub = p.product_subcategories?.name
+                        const isDentalItem = sub === 'Dental Clinic'
                         const mr = getMarkupRate(cat, sub, markupRatesConfig)
                         const usd = cat === 'Subpackage' && mr === 0
                           ? subpkgUpgradeUsd(p, v)
                           : variantPriceUsd({ basePrice: v.base_price, priceCurrency: v.price_currency, exchangeRate, markupRate: mr })
+                        const toothCount = item.toothCount ?? 1
                         return (
-                          <div key={`${item.productId}-${item.variantId}`} className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg">
-                            <div className="flex-1 min-w-0">
-                              <p className="text-xs text-gray-800 truncate font-medium">{p.name}</p>
-                              <p className="text-[10px] text-gray-400 truncate">
-                                {v.variant_label ? `${v.variant_label} · ` : ''}{usd === 0 ? 'Free' : `${fmtUSD(usd)} × ${memberCount}`}
-                              </p>
+                          <div key={`${item.productId}-${item.variantId}`} className="px-3 py-2 bg-gray-50 rounded-lg space-y-1.5">
+                            <div className="flex items-center gap-2">
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs text-gray-800 truncate font-medium">{p.name}</p>
+                                <p className="text-[10px] text-gray-400 truncate">
+                                  {v.variant_label ? `${v.variant_label} · ` : ''}{usd === 0 ? 'Free' : `${fmtUSD(usd)} × ${isDentalItem ? `${toothCount} teeth` : memberCount}`}
+                                </p>
+                              </div>
+                              <p className="text-xs font-semibold text-gray-700 shrink-0">{usd === 0 ? 'Free' : fmtUSD(usd * (isDentalItem ? toothCount : memberCount))}</p>
+                              <button onClick={() => removeFromGroup(group.id, item.productId, item.variantId)}
+                                className="text-gray-300 hover:text-red-400 shrink-0 text-base leading-none ml-1">×</button>
                             </div>
-                            <p className="text-xs font-semibold text-gray-700 shrink-0">{usd === 0 ? 'Free' : fmtUSD(usd * memberCount)}</p>
-                            <button
-                              onClick={() => removeFromGroup(group.id, item.productId, item.variantId)}
-                              className="text-gray-300 hover:text-red-400 shrink-0 text-base leading-none ml-1">×</button>
+                            {isDentalItem && (
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] text-gray-400">Teeth:</span>
+                                <button onClick={() => updateItemToothCount(item.productId, item.variantId, toothCount - 1)}
+                                  className="w-5 h-5 rounded border border-gray-200 flex items-center justify-center text-gray-600 hover:bg-gray-100 text-xs font-bold">−</button>
+                                <span className="text-xs font-semibold text-gray-800 min-w-[1.25rem] text-center">{toothCount}</span>
+                                <button onClick={() => updateItemToothCount(item.productId, item.variantId, toothCount + 1)}
+                                  className="w-5 h-5 rounded border border-gray-200 flex items-center justify-center text-gray-600 hover:bg-gray-100 text-xs font-bold">+</button>
+                              </div>
+                            )}
                           </div>
                         )
                       })}
@@ -1469,19 +1487,28 @@ export default function AgentProductPage() {
                         ? subpkgUpgradeUsd(p, v)
                         : variantPriceUsd({ basePrice: v.base_price, priceCurrency: v.price_currency, exchangeRate, markupRate: mr })
                       return (
-                        <div key={`${it.productId}-${it.variantId}`} className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg">
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs text-gray-800 truncate font-medium">{p.name}</p>
-                            <p className="text-[10px] text-gray-400 truncate">
-                              {v.variant_label ? `${v.variant_label} · ` : ''}{qty}{unit}
+                        <div key={`${it.productId}-${it.variantId}`} className="px-3 py-2 bg-gray-50 rounded-lg space-y-1.5">
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs text-gray-800 truncate font-medium">{p.name}</p>
+                              <p className="text-[10px] text-gray-400 truncate">
+                                {v.variant_label ? `${v.variant_label} · ` : ''}{qty}{unit}
+                              </p>
+                            </div>
+                            <p className="text-xs font-semibold text-gray-700 shrink-0">
+                              {usd === 0 ? 'Free' : fmtUSD(usd * qty)}
                             </p>
+                            <button
+                              onClick={() => toggleServiceItem(it.productId, it.variantId)}
+                              className="text-gray-300 hover:text-red-400 shrink-0 text-base leading-none ml-1">×</button>
                           </div>
-                          <p className="text-xs font-semibold text-gray-700 shrink-0">
-                            {usd === 0 ? 'Free' : fmtUSD(usd * qty)}
-                          </p>
-                          <button
-                            onClick={() => toggleServiceItem(it.productId, it.variantId)}
-                            className="text-gray-300 hover:text-red-400 shrink-0 text-base leading-none ml-1">×</button>
+                          <textarea
+                            value={it.agentNote ?? ''}
+                            onChange={e => updateServiceNote(it.productId, it.variantId, e.target.value)}
+                            placeholder={isHotel ? 'e.g. 2 adults, non-smoking' : 'Agent note (admin only)'}
+                            rows={1}
+                            className="w-full border border-gray-200 rounded-md px-2 py-1 text-[11px] text-gray-700 resize-none focus:outline-none focus:border-[#0f4c35] placeholder:text-gray-300"
+                          />
                         </div>
                       )
                     })}
@@ -1608,7 +1635,7 @@ export default function AgentProductPage() {
                   const display = showFullLabel || sepIdx < 0 ? label : label.slice(sepIdx + 3)
                   return (
                     <button key={v.id}
-                      onClick={() => isSubpkg ? toggleServiceItem(detailProduct.id, v.id) : toggleItem(detailProduct.id, v.id)}
+                      onClick={() => isSubpkg ? toggleServiceItem(detailProduct.id, v.id, modalNote || undefined) : toggleItem(detailProduct.id, v.id, detailProduct.product_subcategories?.name === 'Dental Clinic' ? modalToothCount : undefined)}
                       className={`w-full flex items-center justify-between px-4 py-2.5 rounded-xl border transition-colors ${inCart ? 'border-[#0f4c35] bg-[#0f4c35]/5' : 'border-gray-200 hover:border-gray-300'}`}>
                       <div className="text-left">
                         <p className="text-sm font-medium text-gray-900">{display}</p>
@@ -1672,60 +1699,80 @@ export default function AgentProductPage() {
                 )
               })()}
 
-              {/* Agent note — Subpackage (non-hotel) services in cart */}
-              {(() => {
-                if (!isSubpackageProduct(detailProduct)) return null
-                if (detailProduct.product_subcategories?.name === 'Hotel') return null
+              {/* Agent note — Subpackage */}
+              {isSubpackageProduct(detailProduct) && (() => {
                 const inCartServices = tripServices.filter(it => it.productId === detailProduct.id)
-                if (inCartServices.length === 0) return null
                 return (
                   <div>
                     <p className="text-xs font-medium text-gray-500 mb-2">Agent Note <span className="font-normal text-gray-400">(admin only)</span></p>
-                    <div className="space-y-2">
-                      {inCartServices.map(svc => {
-                        const v = (detailProduct.product_variants ?? []).find(x => x.id === svc.variantId)
-                        return (
-                          <div key={svc.variantId}>
-                            {inCartServices.length > 1 && v?.variant_label && (
-                              <p className="text-[11px] text-gray-400 mb-1">{v.variant_label}</p>
-                            )}
-                            <textarea
-                              value={svc.agentNote ?? ''}
-                              onChange={e => updateServiceNote(svc.productId, svc.variantId, e.target.value)}
-                              placeholder="e.g. Fluent in Arabic, client prefers female interpreter"
-                              rows={2}
-                              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 resize-none focus:outline-none focus:border-[#0f4c35]"
-                            />
-                          </div>
-                        )
-                      })}
-                    </div>
+                    {inCartServices.length > 0 ? (
+                      <div className="space-y-2">
+                        {inCartServices.map(svc => {
+                          const v = (detailProduct.product_variants ?? []).find(x => x.id === svc.variantId)
+                          return (
+                            <div key={svc.variantId}>
+                              {inCartServices.length > 1 && v?.variant_label && (
+                                <p className="text-[11px] text-gray-400 mb-1">{v.variant_label}</p>
+                              )}
+                              <textarea
+                                value={svc.agentNote ?? ''}
+                                onChange={e => updateServiceNote(svc.productId, svc.variantId, e.target.value)}
+                                placeholder="e.g. Fluent in Arabic, client prefers female interpreter"
+                                rows={2}
+                                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 resize-none focus:outline-none focus:border-[#0f4c35]"
+                              />
+                            </div>
+                          )
+                        })}
+                      </div>
+                    ) : (
+                      <textarea
+                        value={modalNote}
+                        onChange={e => setModalNote(e.target.value)}
+                        placeholder={detailProduct.product_subcategories?.name === 'Hotel'
+                          ? 'e.g. 2 adults (parents), non-smoking room'
+                          : 'e.g. Fluent in Arabic, client prefers female interpreter'}
+                        rows={2}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 resize-none focus:outline-none focus:border-[#0f4c35]"
+                      />
+                    )}
                   </div>
                 )
               })()}
 
-              {/* Tooth count — dental products with per-tooth pricing */}
-              {(() => {
-                if (!detailProduct.price_per_tooth) return null
+              {/* Tooth count — Dental Clinic products */}
+              {detailProduct.product_subcategories?.name === 'Dental Clinic' && (() => {
                 let inCartItem: CartItem | undefined
                 for (const g of groups) {
-                  inCartItem = g.items.find(it => it.productId === detailProduct.id)
-                  if (inCartItem) break
+                  const found = g.items.find(it => it.productId === detailProduct.id)
+                  if (found) { inCartItem = found; break }
                 }
-                if (!inCartItem) return null
-                const ci = inCartItem
-                const count = ci.toothCount ?? 1
+                const count = inCartItem ? (inCartItem.toothCount ?? 1) : modalToothCount
+                const handleMinus = () => inCartItem
+                  ? updateItemToothCount(detailProduct.id, inCartItem.variantId, count - 1)
+                  : setModalToothCount(c => Math.max(1, c - 1))
+                const handlePlus = () => inCartItem
+                  ? updateItemToothCount(detailProduct.id, inCartItem.variantId, count + 1)
+                  : setModalToothCount(c => c + 1)
                 return (
                   <div>
                     <p className="text-xs font-medium text-gray-500 mb-2">Number of Teeth</p>
                     <div className="flex items-center gap-3">
-                      <button onClick={() => updateItemToothCount(detailProduct.id, ci.variantId, count - 1)}
+                      <button onClick={handleMinus}
                         className="w-8 h-8 rounded-lg border border-gray-200 flex items-center justify-center text-gray-700 hover:bg-gray-50 font-bold text-base">−</button>
                       <span className="text-base font-semibold text-gray-900 min-w-[2rem] text-center">{count}</span>
-                      <button onClick={() => updateItemToothCount(detailProduct.id, ci.variantId, count + 1)}
+                      <button onClick={handlePlus}
                         className="w-8 h-8 rounded-lg border border-gray-200 flex items-center justify-center text-gray-700 hover:bg-gray-50 font-bold text-base">+</button>
                       <span className="text-sm text-gray-500">
-                        = ₩{(count * detailProduct.price_per_tooth).toLocaleString('ko-KR')} base / person
+                        {(() => {
+                          const vid = inCartItem?.variantId
+                          const v = (detailProduct.product_variants ?? []).find(x => x.id === vid)
+                            ?? (detailProduct.product_variants ?? []).find(x => x.is_active)
+                          const unitKrw = v
+                            ? (v.price_currency === 'KRW' ? v.base_price : Math.round(v.base_price * exchangeRate))
+                            : detailProduct.base_price
+                          return `= ₩${(count * unitKrw).toLocaleString('ko-KR')} base / person`
+                        })()}
                       </span>
                     </div>
                   </div>
@@ -1775,7 +1822,7 @@ export default function AgentProductPage() {
                   ? (inCart ? '✓ In Trip Services' : 'Add to Trip Services')
                   : (inCart ? '✓ Added to ' + groups[activeGroupIndex]?.name : 'Add to ' + (groups[activeGroupIndex]?.name ?? 'Group'))
                 return (
-                  <button onClick={() => { toggleProduct(detailProduct.id); setDetailProduct(null) }}
+                  <button onClick={() => { toggleProduct(detailProduct.id, modalNote || undefined, modalToothCount); setDetailProduct(null) }}
                     className="w-full py-2.5 rounded-xl text-sm font-medium bg-[#0f4c35] hover:bg-[#0a3828] text-white transition-all">
                     {label}
                   </button>

@@ -540,17 +540,15 @@ export default function QuoteReviewPage() {
           const cat = found.product.product_categories?.name
           const sub = found.product.product_subcategories?.name
           const isHotelLine = isHotelItem(cat, sub)
-          const isDental = !!found.product.price_per_tooth && !!it.toothCount
+          const isDental = sub === 'Dental Clinic' && !!it.toothCount
           const multiplier = isDental ? it.toothCount!
             : isHotelLine ? nights : (it.quantity ?? groupMemberCount)
-          const baseUnitKrw = isDental
-            ? found.product.price_per_tooth!
-            : found.variant.price_currency === 'USD'
-              ? Math.round(found.variant.base_price * exchangeRate)
-              : found.variant.base_price
+          const baseUnitKrw = found.variant.price_currency === 'USD'
+            ? Math.round(found.variant.base_price * exchangeRate)
+            : found.variant.base_price
           const itemMarkupRate = getMarkupRate(cat, sub, liveMarkupRates)
           const finalUnitKrw = isDental
-            ? Math.round(found.product.price_per_tooth! * (1 + itemMarkupRate))
+            ? Math.round(baseUnitKrw * (1 + itemMarkupRate))
             : cat === 'Subpackage' && itemMarkupRate === 0
               ? liveSubpkgUpgradeKrw(found)
               : variantPriceKrw({ basePrice: found.variant.base_price, priceCurrency: found.variant.price_currency, exchangeRate, markupRate: itemMarkupRate })
