@@ -122,7 +122,7 @@ type CaseAttachment = {
   created_at: string
 }
 
-type AgentClient = { id: string; name: string; nationality: string }
+type AgentClient = { id: string; name: string; gender: string | null; nationality: string }
 type NewClientForm = {
   name: string; nationality: string; gender: 'male' | 'female'; date_of_birth: string
   phone: string; email: string; dietary_restriction: DietaryType; needs_muslim_friendly: boolean
@@ -323,7 +323,7 @@ export default function CaseDetailPage() {
       await fetchCase()
 
       if (aid) {
-        const { data: cl } = await supabase.from('clients').select('id, name, nationality').eq('agent_id', aid).order('name')
+        const { data: cl } = await supabase.from('clients').select('id, name, gender, nationality').eq('agent_id', aid).order('name')
         setAgentClients(cl ?? [])
       }
       setLoading(false)
@@ -411,7 +411,7 @@ export default function CaseDetailPage() {
         .select('id, name, nationality, needs_muslim_friendly').single()
       if (ce) throw ce
 
-      setAgentClients(p => [...p, { id: nc.id, name: nc.name, nationality: nc.nationality }])
+      setAgentClients(p => [...p, { id: nc.id, name: nc.name, gender: nc.gender ?? null, nationality: nc.nationality }])
 
       // Stage as a new member (commits to case_members when user clicks Save).
       const tempId = `new-${nc.id}-${Date.now()}`
@@ -1551,22 +1551,6 @@ export default function CaseDetailPage() {
               )}
             </div>
 
-            {/* Group slot overview — edit mode only (view-mode status handled by Case Readiness) */}
-            {editMembers && assignableGroups.length > 0 && (
-              <div className="flex items-center gap-2 flex-wrap text-[11px]">
-                <span className="text-gray-400">Group slots:</span>
-                {assignableGroups.map(g => {
-                  const assigned = pendingMembers.filter(p => !p.isRemoved && p.groupId === g.id).length
-                  const full = assigned === g.member_count
-                  const over = assigned > g.member_count
-                  return (
-                    <span key={g.id} className={`px-2 py-0.5 rounded-full border ${over ? 'bg-red-50 border-red-200 text-red-700' : full ? 'bg-green-50 border-green-200 text-green-700' : 'bg-amber-50 border-amber-200 text-amber-700'}`}>
-                      {g.name}: {assigned}/{g.member_count}
-                    </span>
-                  )
-                })}
-              </div>
-            )}
 
 
             {showNewClient && (
@@ -1758,14 +1742,21 @@ export default function CaseDetailPage() {
                   return (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       {groupedMembers.map(({ group, members }) => {
-                        const groupFull = members.filter(m => !m.isRemoved).length >= group.member_count
+                        const assignedCount = members.filter(m => !m.isRemoved).length
+                        const groupFull = assignedCount >= group.member_count
+                        const borderCls = groupFull ? 'border-gray-200' : 'border-red-200'
                         return (
-                        <div key={group.id} className="space-y-2">
-                          <input
-                            value={pendingGroupNames[group.id] ?? group.name}
-                            onChange={(e) => setPendingGroupNames(p => ({ ...p, [group.id]: e.target.value }))}
-                            placeholder="Group name"
-                            className="w-full text-[11px] font-semibold text-gray-700 uppercase tracking-wide bg-transparent border-b border-gray-200 focus:outline-none focus:border-[#0f4c35] py-1" />
+                        <div key={group.id} className={`space-y-2 border rounded-xl p-3 ${borderCls}`}>
+                          <div className="flex items-center gap-2">
+                            <input
+                              value={pendingGroupNames[group.id] ?? group.name}
+                              onChange={(e) => setPendingGroupNames(p => ({ ...p, [group.id]: e.target.value }))}
+                              placeholder="Group name"
+                              className="flex-1 text-[11px] font-semibold text-gray-700 uppercase tracking-wide bg-transparent border-b border-gray-200 focus:outline-none focus:border-[#0f4c35] py-1" />
+                            <span className={`text-[11px] font-semibold tabular-nums ${groupFull ? 'text-green-700' : 'text-red-400'}`}>
+                              {assignedCount}/{group.member_count}
+                            </span>
+                          </div>
                           {members.length === 0 ? (
                             <p className="text-xs text-gray-300 italic">No members assigned</p>
                           ) : (
@@ -1775,15 +1766,18 @@ export default function CaseDetailPage() {
                             <select value="" onChange={e => { if (e.target.value) stageAddExisting(e.target.value, group.id) }}
                               className="w-full text-xs border border-dashed border-gray-300 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-[#0f4c35] bg-white text-gray-500">
                               <option value="">+ Add client to {pendingGroupNames[group.id] ?? group.name}...</option>
-                              {addableClients.map(c => <option key={c.id} value={c.id}>{c.name}{c.nationality ? ` · ${c.nationality}` : ''}</option>)}
+                              {addableClients.map(c => {
+                                const parts = [c.name, c.gender, c.nationality].filter(Boolean)
+                                return <option key={c.id} value={c.id}>{parts.join(' · ')}</option>
+                              })}
                             </select>
                           )}
                         </div>
                       )})}
 
                       {unassigned.length > 0 && (
-                        <div className="space-y-2 sm:col-span-2">
-                          <p className="text-[10px] font-semibold text-amber-600 uppercase tracking-wide">Unassigned</p>
+                        <div className="space-y-2 sm:col-span-2 border border-red-200 rounded-xl p-3">
+                          <p className="text-[10px] font-semibold text-red-400 uppercase tracking-wide">Unassigned</p>
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                             {unassigned.map(renderMemberCard)}
                           </div>
