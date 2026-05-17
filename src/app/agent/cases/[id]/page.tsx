@@ -1245,8 +1245,8 @@ export default function CaseDetailPage() {
                     <p className="text-[10px] text-gray-400">Commission Rate</p>
                     <p className="text-sm font-semibold text-gray-700">{(agentMarginRate * 100).toFixed(0)}%</p>
                     <p className="text-[10px] text-gray-400">Base {(commissionBase * 100).toFixed(0)}% · {commissionBasePatientsLabel}</p>
-                    {commissionHighValue && <p className="text-[10px] text-[#0f4c35]">+5% High-Value (≥ $50k)</p>}
-                    {commissionRetention && <p className="text-[10px] text-[#0f4c35]">+3% Returning Client</p>}
+                    {commissionHighValue && <p className="text-[10px] text-gray-400">+5% High-Value (≥ $50k)</p>}
+                    {commissionRetention && <p className="text-[10px] text-gray-400">+3% Returning Client</p>}
                   </div>
                 </div>
               )}
