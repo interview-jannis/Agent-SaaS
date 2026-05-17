@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import DOBPicker from '@/components/DOBPicker'
 import { getMarkupRate, isHotelItem, nightsBetween, daysBetween, variantPriceUsd, type MarkupRatesConfig, DEFAULT_MARKUP_RATES } from '@/lib/pricing'
+import { COUNTRIES } from '@/lib/countries'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -1810,8 +1811,11 @@ export default function AgentProductPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">Nationality *</label>
-                  <input value={clientForm.nationality} onChange={e => setField('nationality', e.target.value)}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
+                  <select value={clientForm.nationality} onChange={e => setField('nationality', e.target.value)}
+                    className={`w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-[#0f4c35] bg-white ${!clientForm.nationality ? 'text-gray-400' : 'text-gray-900'}`}>
+                    <option value="">Select country...</option>
+                    {COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
                 </div>
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">Gender *</label>

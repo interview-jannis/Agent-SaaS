@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import DOBPicker from '@/components/DOBPicker'
 import { supabase } from '@/lib/supabase'
+import { COUNTRIES } from '@/lib/countries'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -302,7 +303,13 @@ function ClientForm({ token, client, onSaved }: {
       )}
 
       <Section title="Basic Information">
-        <TI label="Nationality" value={form.nationality} onChange={v => set('nationality', v)} />
+        <Field label="Nationality">
+          <select value={form.nationality} onChange={e => set('nationality', e.target.value)}
+            className={`${inputCls} ${!form.nationality ? 'text-gray-400' : ''}`}>
+            <option value="">Select country...</option>
+            {COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </Field>
         <Field label="Gender">
           <select value={form.gender} onChange={e => set('gender', e.target.value)} className={inputCls}>
             <option value="male">Male</option>

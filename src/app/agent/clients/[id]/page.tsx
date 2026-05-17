@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import DOBPicker from '@/components/DOBPicker'
+import { COUNTRIES } from '@/lib/countries'
 import {
   type DietaryType, type PrayerFrequency, type PrayerLocation,
   type PregnancyStatus, type SmokingStatus, type AlcoholStatus,
@@ -642,7 +643,14 @@ export default function ClientDetailPage() {
               <section className="bg-gray-50 rounded-2xl p-5 space-y-3">
                 <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Basic Information</h3>
                 <div className="grid grid-cols-2 gap-3">
-                  <TextInput label="Nationality" value={editForm.nationality} onChange={v => setEditForm(p => p && ({ ...p, nationality: v }))} />
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Nationality</label>
+                    <select value={editForm.nationality} onChange={e => setEditForm(p => p && ({ ...p, nationality: e.target.value }))}
+                      className={`w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-[#0f4c35] bg-white ${!editForm.nationality ? 'text-gray-400' : 'text-gray-900'}`}>
+                      <option value="">Select country...</option>
+                      {COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
                   <div>
                     <label className="block text-xs text-gray-500 mb-1">Gender</label>
                     <select value={editForm.gender} onChange={e => setEditForm(p => p && ({ ...p, gender: e.target.value }))}
