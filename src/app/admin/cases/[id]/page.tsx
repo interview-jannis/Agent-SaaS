@@ -2181,7 +2181,7 @@ export default function AdminCaseDetailPage() {
                 {/* Sticky cap — carries the full green border on top/left/right */}
                 <div className="bg-white border-t-2 border-x-2 border-[#0f4c35] rounded-t-2xl px-4 py-3 flex items-center justify-between gap-2 flex-wrap">
                   <p className="text-xs font-semibold uppercase tracking-wide text-[#0f4c35]">
-                    {sortedSchedules.length === 0 ? 'Build Schedule' : `New Version (v${nextVersion})`}
+                    {sortedSchedules.length === 0 ? 'Build Schedule' : latestSchedule?.confirmed_at ? 'Edit Schedule' : `New Version (v${nextVersion})`}
                   </p>
                   <div className="flex items-center gap-3">
                     <button
@@ -2237,6 +2237,7 @@ export default function AdminCaseDetailPage() {
                     }}
                     slug={latestSchedule?.slug ?? null}
                     nextVersion={nextVersion}
+                    editInPlace={latestSchedule?.confirmed_at ? (latestSchedule.id ?? null) : null}
                     initialConciergeName={latestSchedule?.concierge_name ?? lastConciergeInfo?.name ?? null}
                     initialConciergePhone={latestSchedule?.concierge_phone ?? lastConciergeInfo?.phone ?? null}
                     initialDaySubpackages={

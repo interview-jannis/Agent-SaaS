@@ -85,6 +85,8 @@ type Props = {
   slug: string | null
   // Save creates a new version on top of this.
   nextVersion: number
+  // When set, Save updates the existing row in-place (confirmed schedule edit).
+  editInPlace?: string | null
   // Concierge footer override (carried from last version ??admin can edit).
   initialConciergeName?: string | null
   initialConciergePhone?: string | null
@@ -107,7 +109,7 @@ export default function ScheduleEditor({
   travelStartDate, travelEndDate,
   initialItems, defaultDayCount, caseProducts,
   caseGroups = [],
-  onSaved, onSaveDraft, slug, nextVersion,
+  onSaved, onSaveDraft, slug, nextVersion, editInPlace = null,
   initialConciergeName = null, initialConciergePhone = null,
   readOnly = false,
   prevItems,
@@ -698,48 +700,66 @@ export default function ScheduleEditor({
         .sort(compareScheduleItems)
         .map((it, idx) => ({ ...it, sortOrder: idx }))
 
-      // Reuse existing slug if we have one, else generate.
-      const newSlug = slug ?? (Math.random().toString(36).slice(2, 10) + Date.now().toString(36))
+      if (editInPlace) {
+        // Confirmed schedule — update the existing row in-place (no new version, no status change)
+        const { error: updateError } = await supabase.from('schedules').update({
+          items: normalized,
+          day_subpackages: daySubpackages,
+          admin_note: adminNote.trim() || null,
+          concierge_name: conciergeName.trim() || null,
+          concierge_phone: conciergePhone.trim() || null,
+        }).eq('id', editInPlace)
+        if (updateError) throw updateError
 
-      const { error: insertError } = await supabase.from('schedules').insert({
-        case_id: caseId,
-        version: nextVersion,
-        slug: newSlug,
-        status: 'pending',
-        items: normalized,
-        day_subpackages: daySubpackages,
-        pdf_url: null,
-        revision_note: revisionNote.trim() || null,
-        admin_note: adminNote.trim() || null,
-        concierge_name: conciergeName.trim() || null,
-        concierge_phone: conciergePhone.trim() || null,
-      })
-      if (insertError) throw insertError
-
-      // Bump case status if it was awaiting_schedule
-      await supabase
-        .from('cases')
-        .update({ status: 'reviewing_schedule' })
-        .eq('id', caseId)
-        .eq('status', 'awaiting_schedule')
-
-      // Notify agent
-      if (agentId) {
-        await notifyAgent(
-          agentId,
-          `Schedule v${nextVersion} ready for review on ${caseNumber}`,
-          `/agent/cases/${caseId}`,
+        await logAsCurrentUser(
+          'schedule.uploaded',
+          { type: 'case', id: caseId, label: caseNumber },
+          { version: nextVersion - 1, item_count: normalized.length, source: 'editor_inplace' },
         )
+      } else {
+        // New version — insert a new row, bump status, notify agent
+        const newSlug = slug ?? (Math.random().toString(36).slice(2, 10) + Date.now().toString(36))
+
+        const { error: insertError } = await supabase.from('schedules').insert({
+          case_id: caseId,
+          version: nextVersion,
+          slug: newSlug,
+          status: 'pending',
+          items: normalized,
+          day_subpackages: daySubpackages,
+          pdf_url: null,
+          revision_note: revisionNote.trim() || null,
+          admin_note: adminNote.trim() || null,
+          concierge_name: conciergeName.trim() || null,
+          concierge_phone: conciergePhone.trim() || null,
+        })
+        if (insertError) throw insertError
+
+        // Bump case status if it was awaiting_schedule
+        await supabase
+          .from('cases')
+          .update({ status: 'reviewing_schedule' })
+          .eq('id', caseId)
+          .eq('status', 'awaiting_schedule')
+
+        // Notify agent
+        if (agentId) {
+          await notifyAgent(
+            agentId,
+            `Schedule v${nextVersion} ready for review on ${caseNumber}`,
+            `/agent/cases/${caseId}`,
+          )
+        }
+
+        await logAsCurrentUser(
+          'schedule.uploaded',
+          { type: 'case', id: caseId, label: caseNumber },
+          { version: nextVersion, item_count: normalized.length, source: 'editor', note: revisionNote.trim() || null },
+        )
+
+        // Clear draft now that it's been officially published
+        await onSaveDraft([], {})
       }
-
-      await logAsCurrentUser(
-        'schedule.uploaded',
-        { type: 'case', id: caseId, label: caseNumber },
-        { version: nextVersion, item_count: normalized.length, source: 'editor', note: revisionNote.trim() || null },
-      )
-
-      // Clear draft now that it's been officially published
-      await onSaveDraft([], {})
 
       onSaved()
     } catch (e: unknown) {
@@ -1358,20 +1378,22 @@ export default function ScheduleEditor({
               </p>
             ) : (
             <div className="flex items-center justify-end gap-2">
-              <button
-                onClick={() => void saveDraft(items, daySubpackages)}
-                disabled={savingDraft || saving || (items.length === 0 && Object.keys(daySubpackages).length === 0)}
-                className="text-sm font-medium bg-gray-700 text-white hover:bg-gray-600 px-4 py-2 rounded-xl disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {savingDraft ? 'Saving…' : draftSaved ? 'Draft saved' : 'Save Draft'}
-              </button>
+              {!editInPlace && (
+                <button
+                  onClick={() => void saveDraft(items, daySubpackages)}
+                  disabled={savingDraft || saving || (items.length === 0 && Object.keys(daySubpackages).length === 0)}
+                  className="text-sm font-medium bg-gray-700 text-white hover:bg-gray-600 px-4 py-2 rounded-xl disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {savingDraft ? 'Saving…' : draftSaved ? 'Draft saved' : 'Save Draft'}
+                </button>
+              )}
               <button
                 onClick={handleSave}
                 disabled={!canSave}
                 title={!allCovered ? 'Schedule all products and trip services before sending' : (hasPending ? 'Resolve pending drafts first' : (hasUnsetGroup ? 'Choose a group for every item first' : ''))}
                 className="text-sm font-medium bg-[#0f4c35] text-white hover:bg-[#0a3828] px-4 py-2 rounded-xl disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                {saving ? 'Saving…' : `Save v${nextVersion} & Send to Agent`}
+                {saving ? 'Saving…' : editInPlace ? 'Save Schedule Changes' : `Save v${nextVersion} & Send to Agent`}
               </button>
             </div>
             )}
