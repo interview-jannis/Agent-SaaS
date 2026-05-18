@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { logAsCurrentUser } from '@/lib/audit'
 
-type ContractType = 'nda' | 'partnership' | 'agent_client' | 'three_party'
+type ContractType = 'nda' | 'partnership' | 'three_party'
 
 type Template = {
   id: string
@@ -17,7 +17,6 @@ type Template = {
 const TYPE_LABELS: Record<ContractType, string> = {
   nda: 'Non-Disclosure Agreement',
   partnership: 'Partnership Agreement',
-  agent_client: 'Agent ↔ Client Agreement',
   three_party: '3-Party Service Agreement',
 }
 
@@ -248,7 +247,7 @@ export default function AdminContractsPage() {
                 {otError && <p className="text-xs text-red-500">{otError}</p>}
               </section>
 
-              {(['nda', 'partnership', 'agent_client', 'three_party'] as ContractType[]).map(type => {
+              {(['nda', 'partnership', 'three_party'] as ContractType[]).map(type => {
               const t = templates.find(x => x.contract_type === type)
               const isEditing = editingType === type
               return (
@@ -297,7 +296,7 @@ export default function AdminContractsPage() {
                         <p className="text-[10px] text-gray-900 mb-1.5">
                           Use <code className="bg-gray-200 px-1 rounded">## Heading</code> for section titles. Blank lines separate paragraphs.
                         </p>
-                        {(type === 'agent_client' || type === 'three_party') && (
+                        {type === 'three_party' && (
                           <p className="text-[10px] text-gray-500 mb-1.5">
                             Tokens substituted at sign time: <code className="bg-gray-200 px-1 rounded">{CASE_TEMPLATE_TOKENS}</code>
                           </p>

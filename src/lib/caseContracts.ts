@@ -5,7 +5,7 @@
 import { supabase } from './supabase'
 import { notifyAgent, notifyAssignedAdmin } from './notifications'
 
-export type CaseContractType = 'three_party' | 'agent_client'
+export type CaseContractType = 'three_party'
 
 export type CaseContractRow = {
   id: string

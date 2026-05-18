@@ -138,7 +138,7 @@ export default function AgentDashboardPage() {
             className="flex-1 md:flex-none flex items-center justify-center gap-1 px-3 py-1.5 text-xs font-medium text-gray-600 border border-gray-200 rounded-lg hover:border-gray-300 hover:bg-gray-50">
             <span className="text-sm leading-none">+</span> Add Client
           </button>
-          <button onClick={() => router.push('/agent/home')}
+          <button onClick={() => router.push('/agent/product')}
             className="flex-1 md:flex-none flex items-center justify-center gap-1 px-3 py-1.5 text-xs font-medium bg-[#0f4c35] text-white rounded-lg hover:bg-[#0a3828]">
             <span className="text-sm leading-none">+</span> Create Quote
           </button>

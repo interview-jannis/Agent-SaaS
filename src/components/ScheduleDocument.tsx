@@ -498,8 +498,8 @@ export default function ScheduleDocument({
 
 // ── Compute endBlock for a time segment ──────────────────────────────────────
 function segEndBlock(segStart: string, segEnd: string): ScheduleItemBlock | null {
-  const s = blockFromTime(segStart)
-  const e = blockFromTime(segEnd)
+  const s = blockFromTime(segStart, 'start')
+  const e = blockFromTime(segEnd, 'end')
   return e !== s ? e : null
 }
 

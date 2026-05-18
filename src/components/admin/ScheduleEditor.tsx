@@ -1817,11 +1817,11 @@ const inScope = itemGroupIds === null
               <Time24Input value={item.endTime ?? null} onChange={(v) => {
                 const updates: Partial<ScheduleItem> = { endTime: v }
                 if (!item.time && v) {
-                  // end-time-only: start block follows end time
-                  updates.block = blockFromTime(v)
+                  // end-time-only: start block follows end time (treat as end-mode boundary)
+                  updates.block = blockFromTime(v, 'end')
                 } else if (v) {
                   // set endBlock based on end time; null if same as start block
-                  const eb = blockFromTime(v)
+                  const eb = blockFromTime(v, 'end')
                   updates.endBlock = eb !== item.block ? eb : null
                 } else {
                   updates.endBlock = null

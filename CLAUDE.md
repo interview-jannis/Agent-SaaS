@@ -93,7 +93,8 @@ Agent 수동 개입:
 ### 편집 잠금 정책
 - **canceled 케이스**: Trip Info / Members / Travel Dates / Send 버튼 모두 비활성. View-only 배너 노출.
 - **client 필수 필드**: 한 번 채워진 필드는 빈값으로 clear 불가. 값 변경은 가능. (Muslim 토글을 off로 바꾸면 Muslim-only 필드는 자동 정리되며 허용)
-- **schedule 잠금**: schedule_confirmed 이후엔 업로드/삭제 불가 (canceled 포함).
+- **schedule 잠금**: schedule_confirmed 이후엔 업로드/삭제 불가 (canceled 포함). **2026-05-18 강화**: confirmed schedule은 immutable — ScheduleEditor가 `awaiting_schedule`/`revision_requested` 단계에서만 열림. 여행 중 일정 변경은 별도 흐름 없이 additional invoice(가격만 청구)로 모델 단순화.
+- **계약서 사인**: `admins.can_sign_contracts = true`인 admin만 카운터사인 가능 (agent_contracts, case_contracts 양쪽). super admin이라도 sign 권한 없으면 모달에 amber 안내 + 사인 버튼 숨김. API도 403 반환.
 
 ## 화면 구조
 - Agent (6탭): Home / Cases / Clients / Payouts / Dashboard / Profile
@@ -160,8 +161,9 @@ Agent 수동 개입:
 - **product_subcategory_tags** (2026-05-13): product_id(FK), subcategory_id(FK), PK(product_id, subcategory_id). 상품이 복수 서브카테고리에 속할 때 사용 (예: "Stem Cell, Lifting"). Excel subcategory 컬럼을 콤마 구분 → junction row 자동 생성. `products.subcategory_id`는 첫 번째 값(하위 호환 유지). ⚠️ 이 테이블 추가 후 `product_subcategories` join에 PGRST201(FK 모호성) 에러 발생 — 쿼리에서 반드시 explicit FK name 사용: `product_subcategories!products_subcategory_id_fkey(name)`, `product_subcategories!product_subcategory_tags_subcategory_id_fkey(name)`.
 - **product_variants** (2026-05-04): id, product_id, variant_label(NULL=default/sole), base_price, price_currency, sort_order, is_active. 같은 base name 상품의 다른 회차/사이즈/grade를 묶음. 모든 product에 최소 1개 default variant 보장. **편집 경로 2가지**: ProductForm(인라인 CRUD, 일상 운영) + Excel upload(bulk seed). Agent detail 모달은 variant_label에 ` · ` 있을 때 prefix 그룹핑해서 2-level 아코디언 노출 (예: `Face · 1 session` / `Face · 3 sessions` → "Face" 그룹 펼치면 sessions). product.base_price/price_currency는 첫 variant 값으로 sync되는 legacy 컬럼 — UI는 variants 사용.
 - **product_images**: id, product_id, image_url, is_primary, order
-- **admins**: id, auth_user_id, name, email, **title** (signer 직책), **is_super_admin** (BOOLEAN, 권한 분기), created_at
+- **admins**: id, auth_user_id, name, email, **title** (signer 직책), **is_super_admin** (BOOLEAN — 운영 권한: settings/approve agent/admin 관리), **can_sign_contracts** (BOOLEAN — 2026-05-18: 계약서 카운터사인 권한, 법인 representative 한정), created_at
   - 초대 플로우: invite_token(UNIQUE), invite_secret, invited_at, invite_expires_at (agent와 동일 패턴)
+  - **권한 매트릭스 (5/18)**: 대표님 = super+sign 둘 다 true, 운영 manager = super만 true, 일반 admin = 둘 다 false. /admin/admins에서 super admin이 Edit 모달로 두 플래그 모두 토글 가능. 마지막 super admin 제거 lockout 가드.
 - **agents**: id, agent_number, auth_user_id, name, email, phone, country, bank_info(jsonb), margin_rate, monthly_completed, margin_reset_at, onboarding_status, setup_completed_at, is_active, **assigned_admin_id**(FK admins ON DELETE SET NULL — 알림 라우팅 owner, super admin만 reassign)
   - 초대 플로우: invite_token(UNIQUE), invite_secret, invited_at, invite_expires_at
   - Reject 플로우: rejection_reason, rejected_at
@@ -228,7 +230,26 @@ Agent 수동 개입:
 - `src/types/schedule.ts` — `ScheduleItem` 타입 + `compareScheduleItems` / `groupItemsByDay` / `groupDayByBlock` / `dateForDay` / `formatDayHeader` / `generateScheduleItemId` 헬퍼. Block은 morning/afternoon/evening 3종.
   - **5/6 확장**: `endBlock?` (블록 범위 — `Morning → Afternoon`), `endTime?` (`09:00 – 15:00`), `partner?` (eyebrow 라벨, applyVariantPick에서 자동 채움), `internalNotes?` (admin only — VIP 미노출), `groupId?` (document_groups.id; null = Shared 활동, 그룹별 시술/공유 활동 구분). ScheduleDocument는 `filterGroupId` prop으로 그룹별 필터, `showInternalNotes`로 internal 박스 노출. URL: `/schedule/{slug}?group={id}` / `?internal=1`.
   - **5/14~15 정리**: `hotelCheckType` 3-enum (`checkin / stay / checkout` — 레거시 `depart/return` 제거). 호텔 배치 룰: 도착일 evening = check-in, 중간일 morning = stay (Fill Transfers anchor), 마지막날 morning = check-out, evening = stay. customer view에 morning stay 노출. **호텔 박수 카운트** = `max(day) - min(day) + 1` (단순 unique day 수 X — Day 1 check-in + Day 3 check-out만 잡혀도 3박으로 카운트).
-- `src/components/`: NotificationBell, DOBPicker, DateTime24Picker, SignaturePad, ContractStep, AgentOnboardingGuard, ChangePasswordCard, PrintPdfButton, AutoPrint, PrintButton, **QuoteDocument**(고객용 모든 invoice/quotation 공용 렌더, from_party/to_party 기반 분기, variant_label_snapshot 노출. signer 이름/직책은 signer_snapshot → admins FK join → super admin fallback 우선순위로 표시 — 5/7), **CaseDocumentsSection**(case 페이지 내 documents 리스트), **SelectedProductsSection**(2026-05-04, admin/agent case 페이지 공용 — quotation + additional_invoice 합쳐 표시, variant_label snapshot, ProductDetailModal), **ScheduleDocument**(2026-05-05, /schedule/[slug] 고객용 Option A 에디토리얼 렌더 — serif Day 01/02/03 헤더, Morning/Afternoon/Evening 블록, cover에 lead/dates/hotel 자동. 5/7: CSS class 시스템 + `@media (max-width:600px)` 인라인 `<style>` 미디어 쿼리로 모바일 대응, 그룹 탭 `position:sticky`, 블록 헤더 2px border, 항목 구분선 제거), **admin/ScheduleEditor**(2026-05-05, Day 카드 + Add Item form 인라인 편집기, save = 새 schedules row + items JSONB. confirmed 스케줄 운영 필드는 **ScheduleInternalEditor** 컴포넌트로 — address/partnerContact/driverInfo/internalNotes, in-place UPDATE 새 version 생성 X), SparklineCard, MobileTopBar, MobileNavContext, AdminCaseContractSection, AgentCaseContractSection, CaseHeroAction(AdminCaseHero/AgentCaseHero — Hero ACTION NEEDED 박스, status별 분기)
+- `src/components/`: NotificationBell, DOBPicker, DateTime24Picker, SignaturePad, ContractStep, AgentOnboardingGuard, ChangePasswordCard, PrintPdfButton, AutoPrint, PrintButton, **QuoteDocument**(고객용 모든 invoice/quotation 공용 렌더, from_party/to_party 기반 분기, variant_label_snapshot 노출. signer 이름/직책은 signer_snapshot → admins FK join → super admin fallback 우선순위로 표시 — 5/7. **5/18**: per-member 탭 제거, group 내 items를 카테고리 정렬로 표시), **CaseDocumentsSection**(case 페이지 내 documents 리스트. **5/18**: Additional invoice 모달에 category/subcategory dropdown + quantity input), **SelectedProductsSection**(2026-05-04, admin/agent case 페이지 공용 — quotation + additional_invoice 합쳐 표시, variant_label snapshot, ProductDetailModal. **5/18**: sort_order ASC 통일, OT items는 부모 base item 바로 아래 그룹핑), **ScheduleDocument**(2026-05-05, /schedule/[slug] 고객용 Option A 에디토리얼 렌더 — serif Day 01/02/03 헤더, Morning/Afternoon/Evening 블록, cover에 lead/dates/hotel 자동. 5/7: CSS class 시스템 + `@media (max-width:600px)` 인라인 `<style>` 미디어 쿼리로 모바일 대응, 그룹 탭 `position:sticky`, 블록 헤더 2px border, 항목 구분선 제거), **admin/ScheduleEditor**(2026-05-05, Day 카드 + Add Item form 인라인 편집기, save = 새 schedules row + items JSONB. confirmed 스케줄 운영 필드는 **ScheduleInternalEditor** 컴포넌트로 — address/partnerContact/driverInfo/internalNotes, in-place UPDATE 새 version 생성 X. **5/18**: Save Draft 시 `calcAndStoreOvertimeHours` 호출하여 day_subpackages per-day hours 초과분에 대해 `document_items` OT row 자동 생성, base item에 `overtime_hours` 저장. Trip Services 무료 final_price 보존), SparklineCard, MobileTopBar, MobileNavContext, AdminCaseContractSection(**5/18**: `adminProfile.can_sign_contracts` gate, 권한 없으면 amber 안내), AgentCaseContractSection, CaseHeroAction(AdminCaseHero/AgentCaseHero — Hero ACTION NEEDED 박스, status별 분기. **5/18**: awaiting_travel hero에 View Schedule 점프 버튼)
+
+### Quotation/Invoice 항목 정렬 룰 (5/18)
+QuoteDocument의 group 내 items는 다음 카테고리 순으로 정렬, 같은 rank 내 알파벳:
+1. K-Medical
+2. K-Beauty
+3. K-Wellness
+4. K-Starcation
+5. K-Education
+6. Subpackage (Hotel)
+7. Subpackage (other)
+8. 미분류 (99)
+
+`categoryRank(item)` 헬퍼가 `products.product_categories.name` + `products.product_subcategories.name` 조합으로 rank 결정. SELECT에 `product_categories(name), product_subcategories!products_subcategory_id_fkey(name)` 반드시 포함.
+
+### 번호 prefix 룰 (5/18 확정)
+- 모든 번호 (`case_number`, `client_number`, `agent_number`, `document_number`, `settlement_number`, `product_number`) **DB에 이미 `#` 포함**해서 저장됨 (`#C-001`, `#INV-F-001` 등)
+- UI에서 별도 `#` 추가 금지 — `{x.case_number}` 그대로 두면 자연스럽게 `#C-001` 표시
+- SQL `WHERE case_number = '#C-001'` 형식. 비교/필터/조회 모두 prefix 포함
+- 생성 코드 위치: `lib/documents.ts` (`#Q-`, `#INV-D-`, etc.), `api/admin/invite-agent/route.ts` (`#AG-`), `components/admin/ProductForm.tsx` (`#P-`), `components/CaseDocumentsSection.tsx` + `admin/settlement/page.tsx` (`#S-`), `agent/product/page.tsx` + `review/page.tsx` (`#CL-`, `#C-`)
 
 ## 언어 규칙
 - **모든 UI 텍스트는 영어만 사용** (버튼, 라벨, 에러 메시지, placeholder 포함)

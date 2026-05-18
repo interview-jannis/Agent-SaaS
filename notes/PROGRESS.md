@@ -1,12 +1,13 @@
 # Project Progress
 
 ## 현재 상태
-- **Phase**: 시뮬 D+6(5/17). 런칭 전 클라이언트 UX 잔손질 + 계약서 DB 업데이트 + 정렬 완료.
-- **마지막 작업**: 2026-05-17 — Client 상세 여권번호 입력/재확인 필드, phone/email 선택 항목화, 빈 필수 필드 amber 하이라이트, HeroShell 모바일 버튼 너비 통일, 계약서 SQL 작성.
-- **마지막 업데이트**: 2026-05-17 (런칭 5/18)
+- **Phase**: 런칭 D+0(5/18). 시뮬 #C-001 끝까지 돌리며 OT/Subpackage/Schedule/권한 분리 등 라운드 마감.
+- **마지막 작업**: 2026-05-18 — Overtime line items 자동 생성 모델, Confirmed schedule immutable, `admins.can_sign_contracts` 권한 분리 + /admin/admins Edit 모달, Snapshot 환율 일치, Additional invoice 카테고리/subcategory/quantity 필터, Quotation/Invoice 카테고리 정렬, Reopen Pricing, Trip Services 무료 보존 등.
+- **마지막 업데이트**: 2026-05-18 (런칭일)
 - **SaaS 브랜드명**: **TikkTakk** (전역 치환 완료)
 
-> 2026-05-17 상세: Client 등록 phone/email 선택 항목화 (`agent/clients/page.tsx`). Client 상세 빈 필수 필드 amber 하이라이트 — ViewField/TextInput B안 (label `*` 포함 + 값 없으면 amber 테두리/배경, `agent/clients/[id]/page.tsx`). Passport 번호 입력 + 재입력 확인 필드 추가 (`clientCompleteness.ts` + client detail page). HeroShell 모바일 버튼 너비 통일 (`[&>button]:flex-1 [&>button]:sm:flex-none`, `CaseHeroAction.tsx`). 계약서 3종(NDA/Partnership/Three-Party) DB 업데이트 SQL 작성 (`sql/update_contract_templates_260517.sql` — 토큰만 추가, 본문 무변경).
+> 2026-05-18 상세: `notes/26.05.18.md`. 새벽 라운드(nationality dropdown 통일, red-border-only 필드, cart auto-save, dental per-tooth + Subpackage agent_note, hotel cap 제거, instanceId 호텔 복수, commission breakdown 표시, Mark Paid 모달, members edit 재설계) + 시뮬 라운드(OT items 자동 생성 모델 `calcAndStoreOvertimeHours`, Trip Services 무료 보존, Selected Products/Finalize Pricing sort_order 통일, Reopen Pricing 버튼, Estimated 라벨 제거, snapshot 환율로 USD 일치, Per-member 탭 제거, Confirmed schedule immutable, Additional invoice 모달 카테고리/sub/qty 필터, Quotation/Invoice 카테고리 정렬, **`can_sign_contracts` 권한 분리** + /admin/admins Edit 모달). 23번째 작업으로 `#` prefix 중복 사건 — DB 값에 prefix 이미 포함된 걸 모르고 UI에 또 추가했다가 `##C-001`로 중복 발생 → 메모리에 영구 기록.
+> 2026-05-17 상세: `notes/26.05.17.md`. Client 등록 phone/email 선택 항목화 (`agent/clients/page.tsx`). Client 상세 빈 필수 필드 amber 하이라이트 — ViewField/TextInput B안 (5/18에 red-border-only로 정책 변경). Passport 번호 입력 + 재입력 확인 필드 추가 (`clientCompleteness.ts` + client detail page, 재입력 확인은 5/18에 단일 입력으로 축소). HeroShell 모바일 버튼 너비 통일 (`[&>button]:flex-1 [&>button]:sm:flex-none`, `CaseHeroAction.tsx`). 계약서 3종(NDA/Partnership/Three-Party) DB 업데이트 SQL 작성 (`sql/update_contract_templates_260517.sql` — 토큰만 추가, 본문 무변경). #7 치과 per-tooth + Subpackage agent_note (5/18 새벽 c984cbc 커밋으로 흡수). 코드 커밋은 없음 — 5/18 새벽 라운드에 합쳐짐.
 > 2026-05-16 상세: `notes/26.05.16.md` (Subpackage Free 카드 `Free – $X` range + 모달 asc 분기. K-Wellness subcategory dedupe (React key warning fix). 상품 description 159개 정리본 `data/product_descriptions.txt` + reformat 스크립트 + 오탈자 일괄 fix + 인라인 bullet/paren-aware 분할. Hotel 큐레이션 가이드 37→31, Sheraton 송도 컷, Gyeongwonjae 송도로 정정. Subpackage Hotel `tertiary_category` region 도입 + UI Row 3 pills 분기 코드 (agent+admin). Row 3 노출 통일: subcategory 클릭 시에만. 정렬: K-Medical partner = HS Center→Stem Cell→Dermatology→알파벳 / K-Wellness sub = SPA 가장 앞→알파벳. v25 사용자 편집: K-Beauty primary_category 8셀 fix + K-Wellness +2 워터파크 + Hotel region 채움 + INSPIRE/SOFITEL 정리).
 > 2026-05-15 (2차): `notes/26.05.15.md` §9–10 (이메일 ConfirmModal 전역 적용. Hero awaiting_contract Agent 2버튼/Admin 2×1그리드, awaiting_deposit Agent/Admin 글귀 재설계. Financials awaiting_contract green border + 항상 펼침. Admin Financials Preview 버튼 eye+gray-700. 3-party 계약 금액 $포맷. Subpackage markup=0 견적 버그 수정 + 최저 variant Free + 차액 로직).
 > 2026-05-14 상세: `notes/26.05.14.md` (낮: ScheduleEditor 세그먼트 컬럼 + full-width 레이아웃 + hotel sub-dropdown + Fill Transfers + admin-side bug sweep. 새벽: 케이스 페이지 강조 일관성 sweep, Hero 글로벌 sticky, 그룹 강제 선택, row checkbox 제거, hotel 3-enum(check-in/stay/check-out), hotel 박수 day-span 카운트, day-level concierge subpackage 도입. 후반: GroupMultiSelect radio 픽스, em-dash 정리, ItemRow padding 복구, day-level concierge에 per-service hours + Trip Services Summary 박스).
@@ -114,7 +115,8 @@
 - [x] **Agent setup 완료 → Admin 알림+이메일** — `src/app/api/agent/setup/route.ts`에서 setup 완료 시 `notifyAssignedAdmin` + `sendEmailToAdmin()` 구현됨. (코드 확인 5/12)
 - [x] **상품 카탈로그 3번째 티어** — `product_subcategory_tags` junction table + 멀티태그 Excel 파싱 + K-Beauty/K-Medical partner pills 3단계 UI. PGRST201 FK 모호성 버그 수반 → explicit FK name으로 해결. (5/13)
 - [ ] **파트너십 계약서 서명란 agent 이름 중복 확인** — 현재 계약서 서명 섹션에 "Agent / Company Name: tikktakk_agent Representative Name: tikktakk_agent"처럼 이름이 두 번 노출됨. `{{AGENT_NAME}}` 토큰 구조 재검토 필요 (5/18 발견)
-- [ ] **Admin 역할 3단계 분배 (Phase 2)** — Super Admin이 일반 Admin에게 권한 레벨 부여: Lv1(케이스 관리 + 상품 등록 등 기본 기능), Lv2(Lv1 + 계약서/마진율 수정 등 중요 설정), Lv3(Lv2 + 계약서 사인 권한). 현재는 `is_super_admin` 불리언 하나로만 분기 중.
+- [ ] **Additional invoice — Option C 합산 표시** — 현재 balance + additional 단일 숫자로 합산. 사용자 합의된 형식: 메인 라인은 balance, 그 아래 작은 글씨로 `+ $X add-ons` 별도 표시. agent + admin Financials 양쪽.
+- [x] **계약서 사인 권한 분리** — `admins.can_sign_contracts` 컬럼 + Edit 모달. 대표님은 super+sign, 운영자는 super만, 일반은 둘 다 X. 3단계 풀버전 대신 단일 capability flag로 해결 (5/18).
 - [ ] **Agent 국적별 판가/상품 가시성 분기 (Phase 2)** — 에이전트 국적(agents.country)에 따라 노출 상품 또는 카탈로그 가격이 달라지는 설정. Admin Settings에서 국적 그룹 정의 + 그룹별 마진율 override 또는 상품 가시성 태그 설정. 예: 인도네시아/말레이시아 에이전트는 K-Wellness 특가 적용, 중동 에이전트는 Muslim-friendly 상품 우선 노출 등.
 - [ ] **호텔 객실 정원 검증 (Phase 2)** — `product_variants`에 `min_occupancy/max_occupancy` 컬럼, ProductForm + Excel upload에 입력, v18 데이터 backfill, 카트에서 group memberCount > max_occupancy 시 경고. 견적 금액엔 영향 없음 (UX 안전장치). 시뮬에서 발견해도 늦지 않음
 - [x] **데이터 마스터 v17 → v18** (5/4 저녁: DIAR 159 rows → 11 base + 159 variants, Hotel 37 rows → 13 base + 37 variants. `[★5 Hotel]` strip + grade paren strip + Hanok inline. 사용자 검수 후 deleteMissing으로 옛 row 정리)
@@ -134,6 +136,30 @@
 - [x] **UI 색상 정리 (Agent + Admin)** (5/7) — GROUP_PALETTE (4색 → brand green 단일), STATUS_STYLES (10색 → 3색: 에이전트 차례=green, 대기=gray, 취소=rose), CaseHeroAction TONE (9→3), CaseDocumentsSection accent, agent/admin cases detail 전면: violet/emerald/blue/amber/yellow → brand green/gray 3톤 통일
 - [ ] Guide 페이지 화면 캡처 추가 (UI 정리 완료 후)
 - [x] Stamp invoice 렌더 위치/크기 — `QuoteDocument.tsx`에서 agent.stamp_url / system_settings.company_stamp 읽어 final_invoice 모드에서 렌더 코드 확인 완료
+
+### 5/18 완료 (런칭일 — 시뮬 #C-001 완주 + OT/Subpackage/권한 분리 라운드)
+- [x] **Admin 계약서 사인 권한 분리** — `admins.can_sign_contracts BOOLEAN` 컬럼. 기존 super admin 백필. sign-contract / case-contracts/sign-admin API + UI 게이트 추가. /admin/admins에 Edit 모달(name/title/super_admin/can_sign_contracts 한 번에 편집, 마지막 super admin lockout 가드). 대표님은 super+sign 둘 다 true, 운영자는 super만 true. SQL: `sql/2026-05-18_admins_can_sign_contracts.sql`.
+- [x] **Confirmed schedule immutable** — `canUploadSchedule` 게이트를 awaiting_schedule + revision_requested로 한정. ScheduleEditor의 `editInPlace` prop / in-place save 분기 / 'Edit Schedule' 헤더 모두 제거. 여행 중 변경은 additional invoice (가격만)로 모델 단순화. 이전 commit 198ab67(in-place edit 도입)을 d81f12f에서 revert.
+- [x] **Overtime line items 자동 생성** — Schedule Save Draft 시 `calcAndStoreOvertimeHours` 호출. day_subpackages per-day hours를 contracted와 비교, 초과분에 대해 `document_items` row 자동 생성 (`is_overtime_item=true`, `origin='admin_added'`, `overtime_rate_krw × hours`). 부모 base item에 `overtime_hours` 저장. Save Draft 동안만 트리거 (디바운스 자동 발동 제거).
+- [x] **Trip Services 무료 보존** — `calcAndStoreOvertimeHours`가 base item의 final_price를 `base_price × quantity`로 덮어쓰던 버그 fix. 무료(0)였던 Subpackage 항목은 0 유지, inflate된 경우만 contracted 가격으로 복귀.
+- [x] **Selected Products / Finalize Pricing 항목 순서 통일** — 양쪽 모두 `sort_order` ASC. OT items는 부모 base item 이름 매칭으로 바로 아래 그룹핑.
+- [x] **Reopen Pricing 버튼** — admin/cases/[id]에 `awaiting_payment + !payment_received` 조건일 때 노출. 클릭 시 `awaiting_pricing`으로 되돌리고 finalInvoice unfinalize.
+- [x] **Estimated 라벨 제거** — `quote.finalized_at`이 항상 null이라 잘못된 분기. `isPricingFinalized = !!finalInvoiceDoc?.finalized_at`로 교체.
+- [x] **Snapshot 환율 일치** — agent/admin Financials USD가 invoice 발행 시점 `price_rate_snapshot`을 우선 사용. 시스템 환율 업데이트되어도 issued invoice와 동일 USD 유지.
+- [x] **Additional invoice 모달 강화** — Category dropdown + Subcategory dropdown(active 상품 보유한 것만) + Quantity input. `AdditionalItemDraft.quantity` 추가, `issueAdditionalInvoice`에서 `basePrice × quantity` 합산.
+- [x] **Additional invoice가 Financials에 합산** — agent + admin 모두 balance + additionals 합산 표시. (Option C 별도 라인 표시는 후속 작업)
+- [x] **Quotation/Invoice 카테고리 정렬** — group 내 K-Medical → K-Beauty → K-Wellness → K-Starcation → K-Education → Subpackage(Hotel) → Subpackage(other) → 미분류 순, 같은 rank 내 알파벳. QuoteDocument SELECT에 product_categories/product_subcategories 추가.
+- [x] **Per-member 탭 제거** — QuoteDocument의 "All Members / Park SM / ..." sticky 탭 제거. 인당 가격 계산이 혼란 야기, 그룹 합계만 노출.
+- [x] **Agent Selected Products mirrors finalInvoice** — admin과 동일하게 `finalInvoice ?? quotation` 우선. Trip Services 0원 보존 등 모든 변경분 반영.
+- [x] **Awaiting Travel hero에 View Schedule 버튼** — `CaseHeroAction.tsx`에서 schedule 섹션 점프.
+- [x] **Members edit 재설계** — 그룹별 slot count + per-group add dropdown + unassigned 멤버 amber 하이라이트. 정원 초과 차단.
+- [x] **빈 필수 필드 red-border-only** — 5/17 amber 채우기 정책을 red 1px border만으로 통일 (다른 ViewField와 충돌 해소).
+- [x] **Nationality dropdown** — 모든 client form에서 `<input>` → `<select COUNTRIES>` (Add Client/detail/intake).
+- [x] **Cart auto-save + isolation** — every state change에 localStorage 저장, client별 cart 격리.
+- [x] **호텔 복수 선택 (instanceId)** — TripServiceItem에 `instanceId`, 동일 variantId라도 instance가 다르면 별개 카트 라인. Hotel max nights cap 제거.
+- [x] **Commission breakdown 표시** — Earnings 박스에 Base (월 환자 수 tier) + High-Value (+5%) + Retention (+3%) 명시. 케이스별 실제 적용된 tier 표시.
+- [x] **Mark Paid confirmation modal** — `window.confirm` → 커스텀 모달.
+- [x] **DateTime24Picker highlight prop** — per-input red border (이전엔 전체 amber 박스).
 
 ### 5/17 완료 (런칭 전 UX 잔손질 + 계약서 SQL + #7)
 - [x] **Client 등록 phone/email 선택 항목화** — `handleCreate()` 필수 체크 제거, 라벨 `*` 제거 (`agent/clients/page.tsx`)

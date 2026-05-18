@@ -27,14 +27,26 @@ export const SCHEDULE_BLOCK_LABEL: Record<ScheduleItemBlock, string> = {
 }
 
 // Infer block from a "HH:MM" time string.
-// <06:00 → night, 06:00–12:00 → morning, 12:01–18:00 → afternoon, 18:01+ → evening
-// Boundary times (06:00, 12:00, 18:00) belong to the earlier block.
-export function blockFromTime(time: string): ScheduleItemBlock {
+// Block boundaries: 06:00 / 12:00 / 18:00.
+// Asymmetric rule (5/18): boundaries on a START time belong to the LATER
+// block ("18:00 시작" feels like evening / dinner start), while boundaries
+// on an END time belong to the EARLIER block ("18:00에 끝남" feels like
+// afternoon wrap-up).
+// - mode='start' (default): 06:00 → morning, 12:00 → afternoon, 18:00 → evening
+// - mode='end':             06:00 → night,   12:00 → morning,   18:00 → afternoon
+export function blockFromTime(time: string, mode: 'start' | 'end' = 'start'): ScheduleItemBlock {
   const [h, m] = time.split(':').map(Number)
   const mins = h * 60 + m
+  if (mode === 'end') {
+    if (mins <= 360) return 'night'
+    if (mins <= 720) return 'morning'
+    if (mins <= 1080) return 'afternoon'
+    return 'evening'
+  }
+  // start mode — boundary belongs to later block
   if (mins < 360) return 'night'
-  if (mins <= 720) return 'morning'
-  if (mins <= 1080) return 'afternoon'
+  if (mins < 720) return 'morning'
+  if (mins < 1080) return 'afternoon'
   return 'evening'
 }
 
