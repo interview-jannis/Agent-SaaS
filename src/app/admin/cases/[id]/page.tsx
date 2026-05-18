@@ -524,13 +524,14 @@ export default function AdminCaseDetailPage() {
           durationValue,
           overtimeRateKrw: otRate,
         })
-        // Contracted price = base_price × quantity (no OT). Resets any OT that was previously
-        // embedded in final_price by the manual OT stepper (updateItemOvertimeHours).
+        // Only reset final_price if it was inflated above contracted amount by the old OT stepper.
+        // Subpackage free-tier items have final_price < base_price × qty — do NOT overwrite.
         const contractedFinalPrice = item.base_price * (item.quantity ?? 1)
+        const resetFinalPrice = item.final_price > contractedFinalPrice ? contractedFinalPrice : item.final_price
         baseItemOTUpdates.push({
           id: item.id,
           overtime_hours: overtimeHours,
-          contractedFinalPrice,
+          contractedFinalPrice: resetFinalPrice,
         })
         if (overtimeHours > 0 && otRate) {
           otInserts.push({

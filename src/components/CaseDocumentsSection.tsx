@@ -785,7 +785,7 @@ export default function CaseDocumentsSection({
                   </svg>
                   Preview
                 </a>
-                {doc.type !== 'commission_invoice' && !(doc.type === 'deposit_invoice' && doc.to_party === 'agent') && (
+                {doc.type !== 'commission_invoice' && doc.type !== 'final_invoice' && !(doc.type === 'deposit_invoice' && doc.to_party === 'agent') && (
                   <button onClick={() => copyLink(doc)}
                     className="flex items-center gap-1 text-[11px] font-medium bg-gray-700 text-white hover:bg-gray-600 px-2 py-1 rounded-lg">
                     {copiedId === doc.id ? (
