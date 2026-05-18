@@ -91,6 +91,8 @@ export type DocumentItemRow = {
   document_id: string
   document_group_id: string | null
   product_id: string | null
+  variant_id?: string | null
+  variant_label_snapshot?: string | null
   product_name_snapshot: string | null
   product_partner_snapshot: string | null
   base_price: number
@@ -100,6 +102,8 @@ export type DocumentItemRow = {
   origin?: 'original' | 'admin_added'
   removed_at?: string | null
   agent_note?: string | null
+  is_overtime_item?: boolean | null
+  overtime_hours?: number | null
 }
 
 export type GroupType = 'regular' | 'shared' | 'trip_services'
@@ -353,6 +357,8 @@ export type AddItemInput = {
   sortOrder?: number
   origin?: 'original' | 'admin_added'
   agentNote?: string | null
+  isOvertimeItem?: boolean | null
+  overtimeHours?: number | null
 }
 
 export async function addDocumentItem(input: AddItemInput): Promise<DocumentItemRow> {
@@ -372,6 +378,8 @@ export async function addDocumentItem(input: AddItemInput): Promise<DocumentItem
       sort_order: input.sortOrder ?? 0,
       origin: input.origin ?? 'original',
       agent_note: input.agentNote ?? null,
+      is_overtime_item: input.isOvertimeItem ?? null,
+      overtime_hours: input.overtimeHours ?? null,
     })
     .select('*')
     .single()
@@ -850,13 +858,16 @@ export async function issueInvoice(input: IssueInvoiceInput): Promise<DocumentRo
       const newGroup = await addDocumentGroup(newDoc.id, g.name, g.order, g.member_count)
       groupIdMap.set(g.id, newGroup.id)
     }
-    // Copy items
+    // Copy items (skip overtime items — they'll be regenerated from day_subpackages)
     const srcItems = await getDocumentItems(quotation.id)
     for (const it of srcItems) {
+      if (it.is_overtime_item) continue
       await addDocumentItem({
         documentId: newDoc.id,
         groupId: it.document_group_id ? groupIdMap.get(it.document_group_id) ?? null : null,
         productId: it.product_id,
+        variantId: it.variant_id,
+        variantLabelSnapshot: it.variant_label_snapshot,
         productNameSnapshot: it.product_name_snapshot,
         productPartnerSnapshot: it.product_partner_snapshot,
         basePrice: it.base_price,

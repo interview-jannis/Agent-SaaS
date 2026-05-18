@@ -390,69 +390,88 @@ export default function ScheduleDocument({
                     </span>
                   </div>
 
-                  {/* All-view: shared items full-width, group-specific in columns */}
+                  {/* All-view: shared and group items interleaved by time */}
                   {isAllView ? (() => {
                     const sharedRaw = sorted.filter(i => i.day === day && resolveGroupIds(i) === null)
                     const sharedItems = splitAroundPrayers(sharedRaw)
+
+                    const groupItemsMap: Record<string, ScheduleItem[]> = {}
+                    for (const g of groups) {
+                      const gRaw = sorted.filter(i => {
+                        if (i.day !== day) return false
+                        const gids = resolveGroupIds(i)
+                        return gids !== null && gids.includes(g.id)
+                      })
+                      groupItemsMap[g.id] = splitGroupItemsAroundShared(gRaw, sharedItems)
+                    }
+
+                    const sections = buildInterleavedSections(sharedItems, groupItemsMap, groups)
+
+                    if (sections.length === 0) {
+                      return <p className="sch-sans" style={{ fontSize: '13px', color: '#bbb', fontStyle: 'italic' }}>At leisure</p>
+                    }
+
                     return (
                       <>
-                        {sharedItems.length > 0 && (
-                          <div style={{ marginBottom: '20px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
-                              <div style={{ flex: 1, height: '1px', background: '#e8e2da' }} />
-                              <span className="sch-sans" style={{ fontSize: '9px', fontWeight: 700, letterSpacing: '0.22em', textTransform: 'uppercase', color: '#c0b8ae' }}>All Groups</span>
-                              <div style={{ flex: 1, height: '1px', background: '#e8e2da' }} />
-                            </div>
-                            <DayBlocks
-                              dayItems={sharedItems}
-                              showInternalNotes={showInternalNotes}
-                              isMultiGroup={false}
-                              groupColorById={groupColorById}
-                              groupNameById={groupNameById}
-                            />
-                          </div>
-                        )}
-                        <div className="sch-col-grid" style={{
-                          display: 'grid',
-                          gridTemplateColumns: `repeat(${groups.length}, minmax(0, 1fr))`,
-                          gap: '24px',
-                          alignItems: 'start',
-                        }}>
-                          {groups.map((g, gi) => {
-                            const col = GROUP_COLORS[gi % GROUP_COLORS.length]
-                            const colItemsRaw = sorted.filter(i => {
-                              if (i.day !== day) return false
-                              const gids = resolveGroupIds(i)
-                              return gids !== null && gids.includes(g.id)
-                            })
-                            const colItems = splitAroundPrayers(colItemsRaw)
+                        {sections.map((section, si) => {
+                          if (section.type === 'shared') {
                             return (
-                              <div key={g.id} style={{ minWidth: 0 }}>
-                                <div style={{ borderBottom: `2px solid ${col.accent}`, paddingBottom: '8px', marginBottom: '16px' }}>
-                                  <span className="sch-sans" style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.22em', textTransform: 'uppercase', color: col.text }}>
-                                    {g.name}
-                                  </span>
-                                  {g.members.length > 0 && (
-                                    <span className="sch-sans" style={{ fontSize: '10px', color: '#9a9088', marginLeft: '8px' }}>
-                                      {g.members.join(' · ')}
-                                    </span>
-                                  )}
-                                </div>
-                                {colItems.length === 0 ? (
-                                  <p className="sch-sans" style={{ fontSize: '12px', color: '#bbb', fontStyle: 'italic' }}>—</p>
-                                ) : (
-                                  <DayBlocks
-                                    dayItems={colItems}
-                                    showInternalNotes={showInternalNotes}
-                                    isMultiGroup={false}
-                                    groupColorById={groupColorById}
-                                    groupNameById={groupNameById}
-                                  />
-                                )}
+                              <div key={si} style={{ marginBottom: '20px' }}>
+                                <DayBlocks
+                                  dayItems={section.items}
+                                  showInternalNotes={showInternalNotes}
+                                  isMultiGroup={false}
+                                  groupColorById={groupColorById}
+                                  groupNameById={groupNameById}
+                                />
                               </div>
                             )
-                          })}
-                        </div>
+                          }
+
+                          const hasAnyItems = groups.some(g => (section.groupItems[g.id] ?? []).length > 0)
+                          if (!hasAnyItems) return null
+
+                          return (
+                            <div key={si} style={{ marginBottom: '20px' }}>
+                              <div className="sch-col-grid" style={{
+                                display: 'grid',
+                                gridTemplateColumns: `repeat(${groups.length}, minmax(0, 1fr))`,
+                                gap: '24px',
+                                alignItems: 'start',
+                              }}>
+                                {groups.map((g, gi) => {
+                                  const col = GROUP_COLORS[gi % GROUP_COLORS.length]
+                                  const colItems = section.groupItems[g.id] ?? []
+                                  return (
+                                    <div key={g.id} style={{ minWidth: 0 }}>
+                                      <div style={{ borderBottom: `2px solid ${col.accent}`, paddingBottom: '8px', marginBottom: '16px' }}>
+                                        <span className="sch-sans" style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.22em', textTransform: 'uppercase', color: col.text }}>
+                                          {g.name}
+                                        </span>
+                                        {g.members.length > 0 && (
+                                          <span className="sch-sans" style={{ fontSize: '10px', color: '#9a9088', marginLeft: '8px' }}>
+                                            {g.members.join(' · ')}
+                                          </span>
+                                        )}
+                                      </div>
+                                      {colItems.length === 0 ? (
+                                        <p className="sch-sans" style={{ fontSize: '12px', color: '#bbb', fontStyle: 'italic' }}>—</p>
+                                      ) : (
+                                        <DayBlocks
+                                          dayItems={colItems}
+                                          showInternalNotes={showInternalNotes}
+                                          isMultiGroup={false}
+                                          groupColorById={groupColorById}
+                                          groupNameById={groupNameById}
+                                        />
+                                      )}
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )
+                        })}
                       </>
                     )
                   })() : dayItems.length === 0 ? (
@@ -477,11 +496,16 @@ export default function ScheduleDocument({
   )
 }
 
-// ── Split long appointments around prayer times (render-time only) ───────────
-// Non-prayer items with both time+endTime are virtually split into segments
-// whenever a prayer item's start time falls strictly between them.
-// Each segment inherits the parent item's data with adjusted time/endTime/block.
+// ── Compute endBlock for a time segment ──────────────────────────────────────
+function segEndBlock(segStart: string, segEnd: string): ScheduleItemBlock | null {
+  const s = blockFromTime(segStart)
+  const e = blockFromTime(segEnd)
+  return e !== s ? e : null
+}
 
+// ── Split shared items around internal prayer items (render-time only) ────────
+// Non-prayer shared items with time+endTime are split whenever a prayer's
+// start time falls within them.
 function splitAroundPrayers(dayItems: ScheduleItem[]): ScheduleItem[] {
   const prayerItems = dayItems.filter(it => it.isPrayer && it.time)
   if (prayerItems.length === 0) return dayItems
@@ -514,7 +538,7 @@ function splitAroundPrayers(dayItems: ScheduleItem[]): ScheduleItem[] {
           time: segStart,
           endTime: prayer.time,
           block: blockFromTime(segStart),
-          endBlock: null,
+          endBlock: segEndBlock(segStart, prayer.time!),
         })
         segIdx++
       }
@@ -528,12 +552,126 @@ function splitAroundPrayers(dayItems: ScheduleItem[]): ScheduleItem[] {
         time: segStart,
         endTime: item.endTime,
         block: blockFromTime(segStart),
-        endBlock: null,
+        endBlock: segEndBlock(segStart, item.endTime!),
       })
     }
   }
 
   return result.sort(compareScheduleItems)
+}
+
+// ── Split group items around shared items (cross-source, render-time only) ────
+// Group items with time+endTime are split at each shared item's time boundary,
+// so that shared (All Groups) items can be interleaved at their correct position.
+// Only applies when the same person's schedule overlaps (shared item falls inside
+// a group item's time range).
+function splitGroupItemsAroundShared(
+  groupItems: ScheduleItem[],
+  sharedItems: ScheduleItem[],
+): ScheduleItem[] {
+  const splitPoints = sharedItems.filter(it => it.time)
+  if (splitPoints.length === 0) return groupItems
+
+  const result: ScheduleItem[] = []
+
+  for (const item of groupItems) {
+    if (!item.time || !item.endTime) {
+      result.push(item)
+      continue
+    }
+
+    const intersecting = splitPoints
+      .filter(p => p.time! > item.time! && p.time! < item.endTime!)
+      .sort((a, b) => a.time!.localeCompare(b.time!))
+
+    if (intersecting.length === 0) {
+      result.push(item)
+      continue
+    }
+
+    let segStart = item.time
+    let segIdx = 0
+
+    for (const sp of intersecting) {
+      if (segStart < sp.time!) {
+        result.push({
+          ...item,
+          id: `${item.id}-gseg-${segIdx}`,
+          time: segStart,
+          endTime: sp.time,
+          block: blockFromTime(segStart),
+          endBlock: segEndBlock(segStart, sp.time!),
+        })
+        segIdx++
+      }
+      segStart = sp.endTime ?? sp.time!
+    }
+
+    if (segStart < item.endTime!) {
+      result.push({
+        ...item,
+        id: `${item.id}-gseg-${segIdx}`,
+        time: segStart,
+        endTime: item.endTime,
+        block: blockFromTime(segStart),
+        endBlock: segEndBlock(segStart, item.endTime!),
+      })
+    }
+  }
+
+  return result.sort(compareScheduleItems)
+}
+
+// ── Interleaved section builder ───────────────────────────────────────────────
+// Merges shared (full-width) and per-group items into time-ordered sections.
+// Consecutive shared items → one SharedSection (rendered full-width).
+// Consecutive group items  → one ColumnsSection (rendered as column grid).
+type InterleaveSection =
+  | { type: 'shared'; items: ScheduleItem[] }
+  | { type: 'columns'; groupItems: Record<string, ScheduleItem[]> }
+
+function buildInterleavedSections(
+  sharedItems: ScheduleItem[],
+  groupItemsMap: Record<string, ScheduleItem[]>,
+  groups: GroupData[],
+): InterleaveSection[] {
+  type Tagged = { item: ScheduleItem; source: 'shared' | 'group'; groupId?: string }
+  const tagged: Tagged[] = []
+
+  for (const item of sharedItems) tagged.push({ item, source: 'shared' })
+  for (const g of groups) {
+    for (const item of (groupItemsMap[g.id] ?? [])) {
+      tagged.push({ item, source: 'group', groupId: g.id })
+    }
+  }
+
+  tagged.sort((a, b) => compareScheduleItems(a.item, b.item))
+
+  const sections: InterleaveSection[] = []
+
+  for (const t of tagged) {
+    const last = sections[sections.length - 1]
+
+    if (t.source === 'shared') {
+      if (last?.type === 'shared') {
+        last.items.push(t.item)
+      } else {
+        sections.push({ type: 'shared', items: [t.item] })
+      }
+    } else {
+      if (last?.type === 'columns') {
+        if (!last.groupItems[t.groupId!]) last.groupItems[t.groupId!] = []
+        last.groupItems[t.groupId!].push(t.item)
+      } else {
+        const groupItems: Record<string, ScheduleItem[]> = {}
+        for (const g of groups) groupItems[g.id] = []
+        groupItems[t.groupId!] = [t.item]
+        sections.push({ type: 'columns', groupItems })
+      }
+    }
+  }
+
+  return sections
 }
 
 // ── Block sections for one day ────────────────────────────────────────────────

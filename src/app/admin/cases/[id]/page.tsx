@@ -125,6 +125,7 @@ type Schedule = {
   first_opened_at: string | null
   concierge_name: string | null
   concierge_phone: string | null
+  day_subpackages?: Record<number, DaySubpackageEntry[]> | null
 }
 
 type Agent = { id: string; agent_number: string; name: string; assigned_admin_id: string | null }
@@ -507,7 +508,7 @@ export default function AdminCaseDetailPage() {
       sortOrder: number
     }
     const otInserts: OTInsert[] = []
-    const baseItemOTUpdates: { id: string; overtime_hours: number }[] = []
+    const baseItemOTUpdates: { id: string; overtime_hours: number; contractedFinalPrice: number }[] = []
 
     for (const g of documentGroups) {
       for (const item of g.document_items) {
@@ -522,9 +523,13 @@ export default function AdminCaseDetailPage() {
           durationValue,
           overtimeRateKrw: otRate,
         })
+        // Contracted price = base_price × quantity (no OT). Resets any OT that was previously
+        // embedded in final_price by the manual OT stepper (updateItemOvertimeHours).
+        const contractedFinalPrice = item.base_price * (item.quantity ?? 1)
         baseItemOTUpdates.push({
           id: item.id,
           overtime_hours: overtimeHours,
+          contractedFinalPrice,
         })
         if (overtimeHours > 0 && otRate) {
           otInserts.push({
@@ -541,9 +546,13 @@ export default function AdminCaseDetailPage() {
       }
     }
 
-    // Update overtime_hours on base items (quantity stays as contracted days — never overwrite)
+    // Update overtime_hours and reset final_price to contracted amount (no OT embedded).
+    // OT cost is captured exclusively by the separate is_overtime_item rows below.
     await Promise.all(baseItemOTUpdates.map(u =>
-      supabase.from('document_items').update({ overtime_hours: u.overtime_hours }).eq('id', u.id)
+      supabase.from('document_items').update({
+        overtime_hours: u.overtime_hours,
+        final_price: u.contractedFinalPrice,
+      }).eq('id', u.id)
     ))
 
     // Delete all existing OT items for this document, then re-insert
@@ -2113,10 +2122,18 @@ export default function AdminCaseDetailPage() {
             }[] = []
             // Use finalInvoice groups for product list (reflects removes/adds). Fall back to quotation.
             const productSourceGroups = editGroups.length > 0 ? editGroups : sortedGroups
+            // Schedule items reference quotation group IDs (set when the item was created).
+            // When productSourceGroups = editGroups (finalInvoice), its group IDs differ from
+            // the quotation's group IDs, breaking the picker's group-scope filter.
+            // Fix: map finalInvoice group names → quotation group IDs so the picker matches.
+            const quotGroupIdByName = new Map(sortedGroups.map(g => [g.name, g.id]))
             for (const grp of productSourceGroups) {
+              // Resolve to the quotation group ID for this group name (fallback to grp.id for
+              // groups that only exist in finalInvoice, e.g. admin_added in a new group).
+              const resolvedGroupId = quotGroupIdByName.get(grp.name) ?? grp.id
               for (const it of (grp.document_items ?? []).filter(x => !x.removed_at)) {
                 if (!it.variant_id) continue
-                const key = `${grp.id}:${it.variant_id}`
+                const key = `${resolvedGroupId}:${it.variant_id}`
                 if (seen.has(key)) continue
                 seen.add(key)
                 const catName = it.products?.product_categories?.name ?? null
@@ -2129,7 +2146,7 @@ export default function AdminCaseDetailPage() {
                   productName: it.products?.name ?? 'Service',
                   variantLabel: it.variant_label_snapshot ?? null,
                   partnerName: it.products?.partner_name ?? null,
-                  groupId: grp.id,
+                  groupId: resolvedGroupId,
                   groupName: grp.name,
                   isSubpackage: catName === 'Subpackage',
                   isSharedGroup: grp.name === 'Shared' || grp.name === 'Shared Activities',
@@ -2248,12 +2265,28 @@ export default function AdminCaseDetailPage() {
               <p className="text-[11px] text-gray-600">Review and adjust line item prices, then issue the balance invoice to the client.</p>
               <button
                 disabled={creatingDraft}
-                onClick={() => {
+                onClick={async () => {
                   setCreatingDraft(true)
-                  createDraftFinalInvoice(caseData.id)
-                    .then(() => fetchCase())
-                    .catch(e => setActionError(e?.message ?? 'Failed to prepare invoice.'))
-                    .finally(() => setCreatingDraft(false))
+                  try {
+                    const fi = await createDraftFinalInvoice(caseData.id)
+                    // Sync overtime items from the latest schedule's day_subpackages.
+                    // issueInvoice skips OT items during copy, so we regenerate them here.
+                    const daySubpkgs = latestSchedule?.day_subpackages as Record<number, DaySubpackageEntry[]> | null
+                    if (daySubpkgs && Object.keys(daySubpkgs).length > 0) {
+                      const { data: freshGroups } = await supabase
+                        .from('document_groups')
+                        .select(`id, name, order, member_count, document_items(id, variant_id, removed_at, is_overtime_item, quantity, base_price, overtime_hours, product_name_snapshot, product_partner_snapshot, sort_order, products(id, name, duration_value, duration_unit, partner_name)), document_group_members(id, case_member_id)`)
+                        .eq('document_id', fi.id)
+                      if (freshGroups && freshGroups.length > 0) {
+                        await calcAndStoreOvertimeHours(daySubpkgs, freshGroups as unknown as QuoteGroup[], fi.id)
+                      }
+                    }
+                    await fetchCase()
+                  } catch (e: unknown) {
+                    setActionError((e as { message?: string })?.message ?? 'Failed to prepare invoice.')
+                  } finally {
+                    setCreatingDraft(false)
+                  }
                 }}
                 className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-[#0f4c35] rounded-xl hover:bg-[#0d3f2c] disabled:opacity-50 transition-colors"
               >
@@ -2291,17 +2324,25 @@ export default function AdminCaseDetailPage() {
               <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
                 {editGroups.flatMap(g => g.document_items.filter(it => !it.removed_at).map(item => {
                   // 원가(base_price) KRW 편집. final_price는 기존 base/final 비율로 자동 계산.
+                  const isOT = !!item.is_overtime_item
                   const baseDigits = pricingBaseEdits[item.id] ?? String(item.base_price)
                   const baseNum = Number(baseDigits) || 0
-                  // 항목별 마진 배수: 기존 final_price / base_price (카테고리 마진 규칙 보존)
-                  const itemMult = item.base_price > 0 ? item.final_price / item.base_price : 1
+                  // For OT items: multiplier = quantity (hours). For regular items: final/base ratio.
+                  const itemMult = isOT
+                    ? (item.quantity ?? 1)
+                    : (item.base_price > 0 ? item.final_price / item.base_price : 1)
                   const autoFinalKrw = Math.round(baseNum * itemMult)
                   const autoFinalUsd = autoFinalKrw / exchangeRate
+                  // Display name: prefer snapshot (OT items append "– Overtime" to snapshot)
+                  const displayName = item.product_name_snapshot ?? item.products?.name ?? 'Item'
                   return (
                     <div key={item.id} className="flex items-center gap-2 px-3 py-2.5">
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm text-gray-900 truncate">{item.products?.name ?? 'Item'}</p>
-                        <p className="text-[10px] text-gray-400">{g.name} · orig {fmtKRW(item.base_price)}</p>
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-sm text-gray-900 truncate">{displayName}</p>
+                          {isOT && <span className="text-[9px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-1.5 py-0.5 shrink-0 leading-none">OT</span>}
+                        </div>
+                        <p className="text-[10px] text-gray-400">{g.name} · {isOT ? `${item.quantity ?? 0}h × ` : 'orig '}{fmtKRW(item.base_price)}</p>
                       </div>
                       {/* 원가 입력 (KRW) */}
                       <div className="flex items-center gap-1 shrink-0">
@@ -2332,7 +2373,9 @@ export default function AdminCaseDetailPage() {
                   .flatMap(g => g.document_items.filter(it => !it.removed_at))
                   .reduce((s, item) => {
                     const baseNum = Number(pricingBaseEdits[item.id] ?? String(item.base_price)) || 0
-                    const mult = item.base_price > 0 ? item.final_price / item.base_price : 1
+                    const mult = item.is_overtime_item
+                      ? (item.quantity ?? 1)
+                      : (item.base_price > 0 ? item.final_price / item.base_price : 1)
                     return s + Math.round(baseNum * mult)
                   }, 0)
                 const newTotal = liveSum
@@ -2382,10 +2425,12 @@ export default function AdminCaseDetailPage() {
                   setSavingPricing(true); setPricingError('')
                   try {
                     const items = editGroups.flatMap(g => g.document_items.filter(it => !it.removed_at))
+                    const getMult = (item: typeof items[0]) => item.is_overtime_item
+                      ? (item.quantity ?? 1)
+                      : (item.base_price > 0 ? item.final_price / item.base_price : 1)
                     const liveSum = items.reduce((s, item) => {
                       const baseNum = Number(pricingBaseEdits[item.id] ?? String(item.base_price)) || 0
-                      const mult = item.base_price > 0 ? item.final_price / item.base_price : 1
-                      return s + Math.round(baseNum * mult)
+                      return s + Math.round(baseNum * getMult(item))
                     }, 0)
                     const newTotal = liveSum
                     const newDueDate = dueDateValue
@@ -2394,8 +2439,7 @@ export default function AdminCaseDetailPage() {
                     for (const item of items) {
                       const newBase = Number(pricingBaseEdits[item.id] ?? String(item.base_price)) || 0
                       if (newBase !== item.base_price) {
-                        const mult = item.base_price > 0 ? item.final_price / item.base_price : 1
-                        const newFinal = Math.round(newBase * mult)
+                        const newFinal = Math.round(newBase * getMult(item))
                         await updateDocumentItemBothPrices(item.id, newBase, newFinal)
                       }
                     }

@@ -16,7 +16,7 @@ import { getMarkupRate, isHotelItem, nightsBetween, daysBetween, variantPriceUsd
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type CartItem = { productId: string; variantId: string; quantity?: number; toothCount?: number; agentNote?: string }
+type CartItem = { productId: string; variantId: string; quantity?: number; agentNote?: string }
 type CartGroup = { id: string; name: string; memberCount: number; items: CartItem[] }
 type TripServiceItem = { instanceId: string; productId: string; variantId: string; days: number; agentNote?: string }
 type CartDraft = { clientId: string; dateStart: string; dateEnd: string; tripName?: string; groups: CartGroup[]; tripServices?: TripServiceItem[] }
@@ -542,27 +542,21 @@ export default function QuoteReviewPage() {
           const cat = found.product.product_categories?.name
           const sub = found.product.product_subcategories?.name
           const isHotelLine = isHotelItem(cat, sub)
-          const isDental = sub === 'Dental Clinic' && !!it.toothCount
-          const multiplier = isDental ? it.toothCount!
-            : isHotelLine ? nights : (it.quantity ?? groupMemberCount)
+          const multiplier = isHotelLine ? nights : (it.quantity ?? groupMemberCount)
+          const itemMarkupRate = getMarkupRate(cat, sub, liveMarkupRates)
+          const finalUnitKrw = cat === 'Subpackage' && itemMarkupRate === 0
+            ? liveSubpkgUpgradeKrw(found)
+            : variantPriceKrw({ basePrice: found.variant.base_price, priceCurrency: found.variant.price_currency, exchangeRate, markupRate: itemMarkupRate })
           const baseUnitKrw = found.variant.price_currency === 'USD'
             ? Math.round(found.variant.base_price * exchangeRate)
             : found.variant.base_price
-          const itemMarkupRate = getMarkupRate(cat, sub, liveMarkupRates)
-          const finalUnitKrw = isDental
-            ? Math.round(baseUnitKrw * (1 + itemMarkupRate))
-            : cat === 'Subpackage' && itemMarkupRate === 0
-              ? liveSubpkgUpgradeKrw(found)
-              : variantPriceKrw({ basePrice: found.variant.base_price, priceCurrency: found.variant.price_currency, exchangeRate, markupRate: itemMarkupRate })
           // Bake "· N nights" into the snapshot label so customer-facing
           // QuoteDocument and admin SelectedProductsSection render the
           // multiplier without having to re-derive nights from the case.
           const labelBase = found.variant.variant_label ?? null
           const labelWithNights = isHotelLine
             ? (labelBase ? `${labelBase} · ${nights} ${nights === 1 ? 'night' : 'nights'}` : `${nights} ${nights === 1 ? 'night' : 'nights'}`)
-            : isDental
-              ? (labelBase ? `${labelBase} · ${it.toothCount} teeth` : `${it.toothCount} teeth`)
-              : labelBase
+            : labelBase
           await addDocumentItem({
             documentId: quotation.id,
             groupId: dg.id,

@@ -262,6 +262,10 @@ export default function ScheduleEditor({
   // Used to restore original state if admin cancels an edit (vs new items which are removed entirely).
   const [editSnapshots, setEditSnapshots] = useState<Map<string, ScheduleItem>>(new Map())
 
+  // All active variant IDs from the quotation (removed items are excluded from caseProducts).
+  // Used to detect schedule items whose linked product has since been removed.
+  const activeVariantIds = useMemo(() => new Set(caseProducts.map(cp => cp.variantId)), [caseProducts])
+
   // variantIds that belong to the explicit Shared document_group.
   // Used by ItemRow picker: Shared schedule rows show only these variants.
   const sharedVariantIds = useMemo(() => {
@@ -784,18 +788,22 @@ export default function ScheduleEditor({
         const hasPending = dayItems.some(i => pendingItemIds.has(i.id))
         // Collapse unless there are pending (unsaved) items in this day
         const isCollapsed = collapsedDays.has(day) && !hasPending
+        const hasRemovedItems = dayItems.some(i => i.variantId && !activeVariantIds.has(i.variantId))
         return (
-          <div id={`schedule-day-${day}`} key={day} className={`shadow-sm rounded-2xl ${hasPending ? 'bg-amber-50 border border-amber-300' : 'bg-white border border-gray-100'}`}>
+          <div id={`schedule-day-${day}`} key={day} className={`shadow-sm rounded-2xl ${hasPending ? 'bg-amber-50 border border-amber-300' : isCollapsed && hasRemovedItems ? 'bg-white border border-rose-300' : 'bg-white border border-gray-100'}`}>
             {/* Day header */}
-            <div className={`flex items-center justify-between px-4 py-3 ${hasPending ? 'border-b border-amber-200' : ''}`}>
+            <div className={`flex items-center justify-between px-4 py-3 ${hasPending ? 'border-b border-amber-200' : isCollapsed && hasRemovedItems ? 'border-b border-rose-100' : ''}`}>
               <button
                 onClick={() => toggleDayCollapse(day)}
                 className="flex items-baseline gap-2 flex-1 text-left min-w-0"
               >
-                <p className={`text-sm font-semibold shrink-0 ${hasPending ? 'text-amber-800' : 'text-gray-900'}`}>Day {day}</p>
+                <p className={`text-sm font-semibold shrink-0 ${hasPending ? 'text-amber-800' : isCollapsed && hasRemovedItems ? 'text-rose-700' : 'text-gray-900'}`}>Day {day}</p>
                 {dateObj && <p className="text-xs text-gray-400 truncate">{formatDayHeader(dateObj)}</p>}
                 {isCollapsed && dayItems.length > 0 && (
                   <span className="text-xs text-gray-400 shrink-0">· {dayItems.length} item{dayItems.length !== 1 ? 's' : ''}</span>
+                )}
+                {isCollapsed && hasRemovedItems && (
+                  <span className="text-[10px] font-semibold text-rose-700 bg-rose-50 border border-rose-200 rounded-full px-2 py-0.5 shrink-0">product removed</span>
                 )}
               </button>
               <div className="flex items-center gap-3 shrink-0">
@@ -841,6 +849,7 @@ export default function ScheduleEditor({
                     }
                     isNew={addedKeys.has(diffKeyFn(it))}
                     isMarkedForRemoval={markedForRemoval.has(it.id)}
+                    isProductRemoved={!!(it.variantId && !activeVariantIds.has(it.variantId))}
                     onGroupChosen={() => markGroupChosen(it.id)}
                     canMoveUp={idx > 0 && allItems[idx - 1].block === it.block}
                     canMoveDown={idx < allItems.length - 1 && allItems[idx + 1].block === it.block}
@@ -1642,6 +1651,7 @@ const PRAYER_HEX = '#fb923c'
 function ItemRow({
   item, caseProducts, caseGroups, availableLocations, sharedVariantIds, committedVariantContexts,
   isPending, isEditSession, isGroupUnset, highlightEmptyTitle, showResultsSuggestion, isNew, isMarkedForRemoval,
+  isProductRemoved,
   canMoveUp, canMoveDown,
   onUpdate, onApplyVariant, onRemove, onMove,
   onEdit, onCommit, onCancelDraft, onGroupChosen,
@@ -1659,6 +1669,7 @@ function ItemRow({
   showResultsSuggestion?: boolean
   isNew?: boolean
   isMarkedForRemoval?: boolean
+  isProductRemoved?: boolean
   canMoveUp: boolean
   canMoveDown: boolean
   onUpdate: (patch: Partial<ScheduleItem>) => void
@@ -1736,7 +1747,7 @@ const inScope = itemGroupIds === null
   const transportDim = isTransportType && !isPending
 
   return (
-    <div className={`flex ${isPending ? 'bg-amber-50/40 border border-dashed border-amber-300 m-2 rounded-lg overflow-hidden' : isMarkedForRemoval ? 'bg-rose-50/60 opacity-60' : showTitleAlert ? 'bg-rose-50/60' : isNew ? 'bg-green-50/50' : isTransportType ? 'bg-gray-100/60' : 'bg-white'}`}>
+    <div className={`flex ${isPending ? 'bg-amber-50/40 border border-dashed border-amber-300 m-2 rounded-lg overflow-hidden' : isMarkedForRemoval ? 'bg-rose-50/60 opacity-60' : isProductRemoved ? 'bg-rose-50/40 border-l-4 border-rose-400' : showTitleAlert ? 'bg-rose-50/60' : isNew ? 'bg-green-50/50' : isTransportType ? 'bg-gray-100/60' : 'bg-white'}`}>
       {/* Left gutter: 4px stripe */}
       <div style={{ width: 4, flexShrink: 0, background: stripeBackground, alignSelf: 'stretch' }} />
       {/* Main content */}
@@ -1969,7 +1980,7 @@ const inScope = itemGroupIds === null
                     }
                   }}
                   disabled={!isPending}
-                  className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-900 focus:outline-none focus:border-[#0f4c35] flex-1 min-w-[180px] disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-default"
+                  className={`text-xs border rounded-lg px-2 py-1 bg-white text-gray-900 focus:outline-none focus:border-[#0f4c35] flex-1 min-w-[180px] disabled:bg-gray-50 disabled:cursor-default ${isProductRemoved ? 'border-rose-400 text-rose-700 disabled:text-rose-600' : 'border-gray-200 disabled:text-gray-500'}`}
                 >
                   <option value="">— Link a product (optional) —</option>
                   {regularProducts.map(renderOption)}
@@ -1977,6 +1988,11 @@ const inScope = itemGroupIds === null
                     <option value="__results_consultation__">Results Consultation</option>
                   )}
                 </select>
+                {isProductRemoved && (
+                  <span className="text-[10px] font-semibold text-rose-700 bg-rose-50 border border-rose-200 rounded-full px-2 py-0.5 shrink-0 whitespace-nowrap">
+                    ⚠ Product removed
+                  </span>
+                )}
                 {/* Hotel check type — only for hotel sub-type (hospital is always "stay", no picker needed) */}
                 {selectedHotelProduct && !isHospital && (
                   <select
@@ -2008,9 +2024,14 @@ const inScope = itemGroupIds === null
                       : [...selectedIds, vid]
                     onUpdate({ tripServiceVariantIds: next.length ? next : null })
                   }
+                  // View mode: only show selected chips. Edit mode: show all to toggle.
+                  const visibleServices = isPending
+                    ? uniqueTripServices
+                    : uniqueTripServices.filter(cp => selectedIds.includes(cp.variantId))
+                  if (visibleServices.length === 0) return null
                   return (
                     <div className="flex flex-wrap items-center gap-1">
-                      {uniqueTripServices.map(cp => {
+                      {visibleServices.map(cp => {
                         const label = `${cp.partnerName ? `${cp.partnerName} · ` : ''}${cp.productName}`
                         const checked = selectedIds.includes(cp.variantId)
                         return (

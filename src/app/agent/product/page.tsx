@@ -53,7 +53,7 @@ type Client = {
 }
 
 // Non-Subpackage products go into a Group (or Shared).
-type CartItem = { productId: string; variantId: string; toothCount?: number; agentNote?: string }
+type CartItem = { productId: string; variantId: string; agentNote?: string }
 
 // Subpackage products (interpreter, car, hotel, concierge…) go into Trip Services.
 // days: user-set number of days/nights. Hotel auto-syncs to nightsBetween on render.
@@ -269,17 +269,10 @@ export default function AgentProductPage() {
   const [modalImageIndex, setModalImageIndex] = useState(0)
   const [cartRestoredBanner, setCartRestoredBanner] = useState(false)
   const [showCartDrawer, setShowCartDrawer] = useState(false)
-  const [modalToothCount, setModalToothCount] = useState(1)
   const [modalNote, setModalNote] = useState('')
 
   function openDetail(product: Product) {
     setModalImageIndex(imageIndexes[product.id] ?? 0)
-    let tc = 1
-    for (const g of groups) {
-      const it = g.items.find(x => x.productId === product.id)
-      if (it) { tc = it.toothCount ?? 1; break }
-    }
-    setModalToothCount(tc)
     const svc = tripServices.find(it => it.productId === product.id)
     setModalNote(svc?.agentNote ?? '')
     setDetailProduct(product)
@@ -640,7 +633,7 @@ export default function AgentProductPage() {
     return [...active].sort((a, b) => a.sort_order - b.sort_order)[0]?.id ?? null
   }
 
-  function toggleProduct(productId: string, note?: string, toothCount?: number) {
+  function toggleProduct(productId: string, note?: string) {
     const p = products.find(x => x.id === productId)
     if (!p) return
     if (isSubpackageProduct(p)) {
@@ -650,16 +643,16 @@ export default function AgentProductPage() {
     }
     const variantId = defaultVariantId(p)
     if (!variantId) return
-    toggleItem(productId, variantId, p.product_subcategories?.name === 'Dental Clinic' ? (toothCount ?? 1) : undefined)
+    toggleItem(productId, variantId)
   }
 
-  function toggleItem(productId: string, variantId: string, toothCount?: number) {
+  function toggleItem(productId: string, variantId: string) {
     setGroups(prev =>
       prev.map(g => {
         if (g.id !== activeGroupId) return g
         const idx = g.items.findIndex(it => it.productId === productId && it.variantId === variantId)
         if (idx >= 0) return { ...g, items: g.items.filter((_, i) => i !== idx) }
-        return { ...g, items: [...g.items, { productId, variantId, ...(toothCount != null ? { toothCount } : {}) }] }
+        return { ...g, items: [...g.items, { productId, variantId }] }
       })
     )
   }
@@ -704,15 +697,6 @@ export default function AgentProductPage() {
     setTripServices(prev => prev.map(it =>
       it.instanceId === instanceId ? { ...it, agentNote: note } : it
     ))
-  }
-
-  function updateItemToothCount(productId: string, variantId: string, count: number) {
-    setGroups(prev => prev.map(g => ({
-      ...g,
-      items: g.items.map(it =>
-        it.productId === productId && it.variantId === variantId ? { ...it, toothCount: Math.max(1, count) } : it
-      ),
-    })))
   }
 
   // ── Group management ───────────────────────────────────────────────────────
@@ -1426,35 +1410,23 @@ export default function AgentProductPage() {
                         if (!p || !v) return null
                         const cat = p.product_categories?.name
                         const sub = p.product_subcategories?.name
-                        const isDentalItem = sub === 'Dental Clinic'
                         const mr = getMarkupRate(cat, sub, markupRatesConfig)
                         const usd = cat === 'Subpackage' && mr === 0
                           ? subpkgUpgradeUsd(p, v)
                           : variantPriceUsd({ basePrice: v.base_price, priceCurrency: v.price_currency, exchangeRate, markupRate: mr })
-                        const toothCount = item.toothCount ?? 1
                         return (
-                          <div key={`${item.productId}-${item.variantId}`} className="px-3 py-2 bg-gray-50 rounded-lg space-y-1.5">
+                          <div key={`${item.productId}-${item.variantId}`} className="px-3 py-2 bg-gray-50 rounded-lg">
                             <div className="flex items-center gap-2">
                               <div className="flex-1 min-w-0">
                                 <p className="text-xs text-gray-800 truncate font-medium">{p.name}</p>
                                 <p className="text-[10px] text-gray-400 truncate">
-                                  {v.variant_label ? `${v.variant_label} · ` : ''}{usd === 0 ? 'Free' : `${fmtUSD(usd)} × ${isDentalItem ? `${toothCount} teeth` : memberCount}`}
+                                  {v.variant_label ? `${v.variant_label} · ` : ''}{usd === 0 ? 'Free' : `${fmtUSD(usd)} × ${memberCount}`}
                                 </p>
                               </div>
-                              <p className="text-xs font-semibold text-gray-700 shrink-0">{usd === 0 ? 'Free' : fmtUSD(usd * (isDentalItem ? toothCount : memberCount))}</p>
+                              <p className="text-xs font-semibold text-gray-700 shrink-0">{usd === 0 ? 'Free' : fmtUSD(usd * memberCount)}</p>
                               <button onClick={() => removeFromGroup(group.id, item.productId, item.variantId)}
                                 className="text-gray-300 hover:text-red-400 shrink-0 text-base leading-none ml-1">×</button>
                             </div>
-                            {isDentalItem && (
-                              <div className="flex items-center gap-2">
-                                <span className="text-[10px] text-gray-400">Teeth:</span>
-                                <button onClick={() => updateItemToothCount(item.productId, item.variantId, toothCount - 1)}
-                                  className="w-5 h-5 rounded border border-gray-200 flex items-center justify-center text-gray-600 hover:bg-gray-100 text-xs font-bold">−</button>
-                                <span className="text-xs font-semibold text-gray-800 min-w-[1.25rem] text-center">{toothCount}</span>
-                                <button onClick={() => updateItemToothCount(item.productId, item.variantId, toothCount + 1)}
-                                  className="w-5 h-5 rounded border border-gray-200 flex items-center justify-center text-gray-600 hover:bg-gray-100 text-xs font-bold">+</button>
-                              </div>
-                            )}
                           </div>
                         )
                       })}
@@ -1632,7 +1604,7 @@ export default function AgentProductPage() {
                   const display = showFullLabel || sepIdx < 0 ? label : label.slice(sepIdx + 3)
                   return (
                     <button key={v.id}
-                      onClick={() => isSubpkg ? toggleServiceItem(detailProduct.id, v.id, modalNote || undefined) : toggleItem(detailProduct.id, v.id, detailProduct.product_subcategories?.name === 'Dental Clinic' ? modalToothCount : undefined)}
+                      onClick={() => isSubpkg ? toggleServiceItem(detailProduct.id, v.id, modalNote || undefined) : toggleItem(detailProduct.id, v.id)}
                       className={`w-full flex items-center justify-between px-4 py-2.5 rounded-xl border transition-colors ${inCart ? 'border-[#0f4c35] bg-[#0f4c35]/5' : 'border-gray-200 hover:border-gray-300'}`}>
                       <div className="text-left">
                         <p className="text-sm font-medium text-gray-900">{display}</p>
@@ -1737,45 +1709,6 @@ export default function AgentProductPage() {
                 )
               })()}
 
-              {/* Tooth count — Dental Clinic products */}
-              {detailProduct.product_subcategories?.name === 'Dental Clinic' && (() => {
-                let inCartItem: CartItem | undefined
-                for (const g of groups) {
-                  const found = g.items.find(it => it.productId === detailProduct.id)
-                  if (found) { inCartItem = found; break }
-                }
-                const count = inCartItem ? (inCartItem.toothCount ?? 1) : modalToothCount
-                const handleMinus = () => inCartItem
-                  ? updateItemToothCount(detailProduct.id, inCartItem.variantId, count - 1)
-                  : setModalToothCount(c => Math.max(1, c - 1))
-                const handlePlus = () => inCartItem
-                  ? updateItemToothCount(detailProduct.id, inCartItem.variantId, count + 1)
-                  : setModalToothCount(c => c + 1)
-                return (
-                  <div>
-                    <p className="text-xs font-medium text-gray-500 mb-2">Number of Teeth</p>
-                    <div className="flex items-center gap-3">
-                      <button onClick={handleMinus}
-                        className="w-8 h-8 rounded-lg border border-gray-200 flex items-center justify-center text-gray-700 hover:bg-gray-50 font-bold text-base">−</button>
-                      <span className="text-base font-semibold text-gray-900 min-w-[2rem] text-center">{count}</span>
-                      <button onClick={handlePlus}
-                        className="w-8 h-8 rounded-lg border border-gray-200 flex items-center justify-center text-gray-700 hover:bg-gray-50 font-bold text-base">+</button>
-                      <span className="text-sm text-gray-500">
-                        {(() => {
-                          const vid = inCartItem?.variantId
-                          const v = (detailProduct.product_variants ?? []).find(x => x.id === vid)
-                            ?? (detailProduct.product_variants ?? []).find(x => x.is_active)
-                          const unitKrw = v
-                            ? (v.price_currency === 'KRW' ? v.base_price : Math.round(v.base_price * exchangeRate))
-                            : detailProduct.base_price
-                          return `= ₩${(count * unitKrw).toLocaleString('ko-KR')} base / person`
-                        })()}
-                      </span>
-                    </div>
-                  </div>
-                )
-              })()}
-
               {/* Description */}
               <div>
                 <p className="text-xs font-medium text-gray-500 mb-1">Description</p>
@@ -1819,7 +1752,7 @@ export default function AgentProductPage() {
                   ? (inCart ? '✓ In Trip Services' : 'Add to Trip Services')
                   : (inCart ? '✓ Added to ' + groups[activeGroupIndex]?.name : 'Add to ' + (groups[activeGroupIndex]?.name ?? 'Group'))
                 return (
-                  <button onClick={() => { toggleProduct(detailProduct.id, modalNote || undefined, modalToothCount); setDetailProduct(null) }}
+                  <button onClick={() => { toggleProduct(detailProduct.id, modalNote || undefined); setDetailProduct(null) }}
                     className="w-full py-2.5 rounded-xl text-sm font-medium bg-[#0f4c35] hover:bg-[#0a3828] text-white transition-all">
                     {label}
                   </button>
