@@ -34,6 +34,7 @@ type Item = {
   removed_at?: string | null
   origin?: string | null
   agent_note?: string | null
+  sort_order?: number | null
 }
 
 type Group = {
@@ -133,8 +134,11 @@ export default function SelectedProductsSection({
               ? items
               : (() => {
                   const all = [...(group.document_items ?? [])]
-                  const rank = (it: Item) => it.removed_at ? 3 : (it.origin === 'admin_added' ? 2 : 1)
-                  const baseItems = all.filter(it => !it.is_overtime_item).sort((a, b) => rank(a) - rank(b))
+                  const baseItems = all.filter(it => !it.is_overtime_item).sort((a, b) => {
+                    // removed items always at the bottom
+                    const removedRank = (it: Item) => it.removed_at ? 1 : 0
+                    return removedRank(a) - removedRank(b) || (a.sort_order ?? 0) - (b.sort_order ?? 0)
+                  })
                   const otItems = all.filter(it => it.is_overtime_item)
                   const sorted: Item[] = []
                   for (const base of baseItems) {

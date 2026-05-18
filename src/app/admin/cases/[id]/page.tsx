@@ -2353,7 +2353,7 @@ export default function AdminCaseDetailPage() {
               <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
                 {editGroups.flatMap(g => {
                   const active = g.document_items.filter(it => !it.removed_at)
-                  const baseItems = active.filter(it => !it.is_overtime_item)
+                  const baseItems = active.filter(it => !it.is_overtime_item).sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
                   const otItems = active.filter(it => it.is_overtime_item)
                   const sorted: typeof active = []
                   for (const base of baseItems) {
