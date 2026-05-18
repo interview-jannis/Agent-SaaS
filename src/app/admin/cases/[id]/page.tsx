@@ -2574,6 +2574,20 @@ export default function AdminCaseDetailPage() {
               </button>
                 )
               })()}
+
+              {/* Reopen Pricing — available on awaiting_payment before balance is received */}
+              {caseData.status === 'awaiting_payment' && !finalInvoice.payment_received_at && !editingPricing && (
+                <button
+                  onClick={async () => {
+                    await supabase.from('documents').update({ finalized_at: null }).eq('id', finalInvoice.id)
+                    await supabase.from('cases').update({ status: 'awaiting_pricing' }).eq('id', caseData.id)
+                    await fetchCase()
+                  }}
+                  className="w-full py-2 text-xs font-medium text-gray-500 hover:text-red-600 transition-colors border border-dashed border-gray-200 rounded-xl"
+                >
+                  Reopen Pricing (revert to awaiting_pricing)
+                </button>
+              )}
             </section>
             )
           })()}

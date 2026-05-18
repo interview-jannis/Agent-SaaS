@@ -954,6 +954,8 @@ export default function CaseDetailPage() {
   const lead = caseData.case_members.find(m => m.is_lead)
   const companions = caseData.case_members.filter(m => !m.is_lead)
   const quote = caseData.documents?.find(d => d.type === "quotation") ?? null
+  const finalInvoiceDoc = caseData.documents?.find(d => d.type === 'final_invoice') ?? null
+  const isPricingFinalized = !!finalInvoiceDoc?.finalized_at
   const schedule = caseData.schedules && caseData.schedules.length > 0
     ? [...caseData.schedules].sort((a, b) => b.version - a.version)[0]
     : null
@@ -1131,7 +1133,7 @@ export default function CaseDetailPage() {
               <div className={headerClass}>
                 <div className="flex items-center gap-2">
                   <h3 className={labelClass}>Financials</h3>
-                  {!quote.finalized_at && (
+                  {!isPricingFinalized && (
                     <span className="text-[10px] font-semibold text-gray-500 bg-gray-100 border border-gray-200 rounded-full px-2 py-0.5 uppercase tracking-wide">
                       Estimated
                     </span>
@@ -1139,8 +1141,8 @@ export default function CaseDetailPage() {
                 </div>
                 {quote.slug && (() => {
                   const finalInvoice = caseData?.documents?.find(d => d.type === 'final_invoice')
-                  const previewSlug = quote.finalized_at && finalInvoice?.slug ? finalInvoice.slug : quote.slug
-                  const previewPath = quote.finalized_at ? 'invoice' : 'quote'
+                  const previewSlug = isPricingFinalized && finalInvoice?.slug ? finalInvoice.slug : quote.slug
+                  const previewPath = isPricingFinalized ? 'invoice' : 'quote'
                   return (
                   <div className="flex items-center gap-2">
                     {!contractSigned && (
@@ -1163,7 +1165,7 @@ export default function CaseDetailPage() {
                     {/* Send — copy quote/invoice link to clipboard. Label flips once admin finalizes pricing.
                         Hidden during awaiting_pricing since the new invoice isn't ready yet. */}
                     {!isCanceled && caseData.status !== 'awaiting_pricing' && (() => {
-                      const isInvoiceStage = !!quote.finalized_at
+                      const isInvoiceStage = isPricingFinalized
                       const sendLabel = isInvoiceStage ? 'Send Invoice' : 'Send Quotation'
                       const emailKey = isInvoiceStage ? 'invoice' : 'quotation'
                       const baseUrl = process.env.NEXT_PUBLIC_APP_URL || (typeof window !== 'undefined' ? window.location.origin : '')
@@ -1206,10 +1208,10 @@ export default function CaseDetailPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-white rounded-xl border border-gray-100 p-3">
                   <p className="text-[10px] text-gray-400 mb-1">
-                    {quote.finalized_at ? 'Total Amount' : 'Estimated Quote'}
+                    {isPricingFinalized ? 'Total Amount' : 'Estimated Quote'}
                   </p>
                   <p className="text-base font-bold text-gray-900">{fmtUsd(toUsd(totalKrw))}</p>
-                  {!quote.finalized_at && (
+                  {!isPricingFinalized && (
                     <p className="mt-1">
                       <span className="text-[10px] font-medium text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
                         May change after admin finalizes
@@ -1217,15 +1219,17 @@ export default function CaseDetailPage() {
                     </p>
                   )}
                 </div>
-                {quote.finalized_at && quote.payment_due_date ? (
+                {isPricingFinalized && (finalInvoiceDoc?.payment_due_date ?? quote?.payment_due_date) ? (
                   <div className="bg-white rounded-xl border border-gray-100 p-3">
                     <p className="text-[10px] text-gray-400 mb-1">Payment Due</p>
-                    <p className={`text-sm font-medium ${caseData.status === 'awaiting_payment' && new Date(quote.payment_due_date) < new Date() ? 'text-red-500' : 'text-gray-900'}`}>
-                      {quote.payment_due_date}
-                    </p>
-                    {caseData.status === 'awaiting_payment' && new Date(quote.payment_due_date) < new Date() && (
-                      <p className="text-[10px] text-red-400 mt-0.5">Overdue</p>
-                    )}
+                    {(() => {
+                      const dueDate = finalInvoiceDoc?.payment_due_date ?? quote?.payment_due_date ?? ''
+                      const isOverdue = caseData.status === 'awaiting_payment' && !!dueDate && new Date(dueDate) < new Date()
+                      return <>
+                        <p className={`text-sm font-medium ${isOverdue ? 'text-red-500' : 'text-gray-900'}`}>{dueDate}</p>
+                        {isOverdue && <p className="text-[10px] text-red-400 mt-0.5">Overdue</p>}
+                      </>
+                    })()}
                   </div>
                 ) : (
                   <div className="bg-gray-50 rounded-xl border border-dashed border-gray-200 p-3">
@@ -1237,7 +1241,7 @@ export default function CaseDetailPage() {
               {earningsKrw > 0 && !financialsCollapsed && (
                 <div className="bg-[#0f4c35]/5 border border-[#0f4c35]/15 rounded-xl p-3 flex items-center justify-between">
                   <div>
-                    <p className="text-[10px] text-[#0f4c35]/70 mb-1">Your Estimated Earnings</p>
+                    <p className="text-[10px] text-[#0f4c35]/70 mb-1">{isPricingFinalized ? 'Your Earnings' : 'Your Estimated Earnings'}</p>
                     <p className="text-base font-bold text-[#0f4c35]">{fmtUsd(toUsd(earningsKrw))}</p>
                   </div>
                   <div className="text-right space-y-0.5">
