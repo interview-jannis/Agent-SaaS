@@ -3,14 +3,23 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import AgentGuideContent from '@/components/AgentGuideContent'
+import { supabase } from '@/lib/supabase'
+
+type OtSetting = { pdf_url?: string; file_name?: string; updated_at?: string }
 
 export default function OrientationPage() {
   const router = useRouter()
   const [acknowledged, setAcknowledged] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [ot, setOt] = useState<OtSetting | null>(null)
 
   useEffect(() => {
-    setLoading(false)
+    async function load() {
+      const { data } = await supabase.from('system_settings').select('value').eq('key', 'onboarding_ot').maybeSingle()
+      setOt((data?.value as OtSetting | null) ?? null)
+      setLoading(false)
+    }
+    load()
   }, [])
 
   return (
@@ -27,17 +36,45 @@ export default function OrientationPage() {
         <p className="text-sm text-gray-500 mt-1">Review the platform guide and materials before proceeding to the agreements.</p>
       </div>
 
-      <section className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-        {loading ? (
-          <div className="h-96 flex items-center justify-center">
-            <p className="text-sm text-gray-400">Loading...</p>
-          </div>
-        ) : (
-          <div className="px-4 md:px-8 py-8">
-            <AgentGuideContent embedded />
-          </div>
-        )}
-      </section>
+      {loading ? (
+        <div className="h-96 flex items-center justify-center">
+          <p className="text-sm text-gray-400">Loading...</p>
+        </div>
+      ) : (
+        <>
+          {ot?.pdf_url && (
+            <section className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+              <div className="px-4 md:px-6 py-4 border-b border-gray-100 flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">Orientation Materials</p>
+                  {ot.file_name && <p className="text-xs text-gray-400 mt-0.5">{ot.file_name}</p>}
+                </div>
+                <a
+                  href={ot.pdf_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="shrink-0 px-3 py-1.5 text-xs font-medium bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-colors"
+                >
+                  Open in new tab ↗
+                </a>
+              </div>
+              <iframe
+                src={ot.pdf_url}
+                className="w-full"
+                style={{ height: '70vh', minHeight: 480 }}
+                title="Orientation Materials"
+              />
+            </section>
+          )}
+
+          <section className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+            <div className="px-4 md:px-8 py-8">
+              <AgentGuideContent embedded />
+            </div>
+          </section>
+        </>
+      )}
+
 
       <label className="flex items-center gap-3 cursor-pointer select-none">
         <input type="checkbox" checked={acknowledged}

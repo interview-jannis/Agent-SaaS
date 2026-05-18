@@ -145,6 +145,7 @@ type Case = {
   cancellation_reason: string | null
   agent_notes: string | null
   schedule_draft_items: import('@/types/schedule').ScheduleItem[] | null
+  day_subpackages_draft: Record<number, DaySubpackageEntry[]> | null
   agents: Agent | Agent[] | null
   case_members: CaseMember[]
   documents: Quote[]
@@ -301,7 +302,7 @@ export default function AdminCaseDetailPage() {
       .select(`
         id, case_number, status, agent_id, travel_start_date, travel_end_date,
         payment_date, payment_confirmed_at, created_at,
-        concept, outbound_flight, inbound_flight, cancellation_reason, agent_notes, schedule_draft_items,
+        concept, outbound_flight, inbound_flight, cancellation_reason, agent_notes, schedule_draft_items, day_subpackages_draft,
         agents!cases_agent_id_fkey(id, agent_number, name, assigned_admin_id),
         case_members(
           id, is_lead,
@@ -476,10 +477,13 @@ export default function AdminCaseDetailPage() {
   ) => {
     // Build variantId → per-day hours array (for per-day OT calc, matching calcOvertimeCostKrw)
     const hoursByDayPerVariant: Record<string, number[]> = {}
+    // Also count actual scheduled days per variant (for quantity update + partner payout)
+    const scheduledDaysByVariant: Record<string, number> = {}
     for (const entries of Object.values(daySubpackages)) {
       for (const e of entries) {
         if (!hoursByDayPerVariant[e.variantId]) hoursByDayPerVariant[e.variantId] = []
         hoursByDayPerVariant[e.variantId].push(e.hours)
+        scheduledDaysByVariant[e.variantId] = (scheduledDaysByVariant[e.variantId] ?? 0) + 1
       }
     }
 
@@ -518,7 +522,10 @@ export default function AdminCaseDetailPage() {
           durationValue,
           overtimeRateKrw: otRate,
         })
-        baseItemOTUpdates.push({ id: item.id, overtime_hours: overtimeHours })
+        baseItemOTUpdates.push({
+          id: item.id,
+          overtime_hours: overtimeHours,
+        })
         if (overtimeHours > 0 && otRate) {
           otInserts.push({
             groupId: g.id,
@@ -534,7 +541,7 @@ export default function AdminCaseDetailPage() {
       }
     }
 
-    // Update overtime_hours on base items (for tracking; final_price stays as-is)
+    // Update overtime_hours on base items (quantity stays as contracted days — never overwrite)
     await Promise.all(baseItemOTUpdates.map(u =>
       supabase.from('document_items').update({ overtime_hours: u.overtime_hours }).eq('id', u.id)
     ))
@@ -548,7 +555,7 @@ export default function AdminCaseDetailPage() {
         document_group_id: ot.groupId,
         product_id: ot.productId,
         variant_id: ot.variantId,
-        product_name_snapshot: `${ot.productName} – OT`,
+        product_name_snapshot: `${ot.productName} – Overtime`,
         product_partner_snapshot: ot.partnerName,
         variant_label_snapshot: null,
         base_price: ot.otRate,
@@ -2197,7 +2204,7 @@ export default function AdminCaseDetailPage() {
                       .map(g => ({ id: g.id, name: g.name }))}
                     onSaved={() => fetchCase()}
                     onSaveDraft={async (items, daySubpackages) => {
-                      await supabase.from('cases').update({ schedule_draft_items: items }).eq('id', caseData.id)
+                      await supabase.from('cases').update({ schedule_draft_items: items, day_subpackages_draft: daySubpackages }).eq('id', caseData.id)
                       // Persist per-day hours to the latest schedule row so they survive page refresh.
                       if (latestSchedule?.id) {
                         await supabase.from('schedules').update({ day_subpackages: daySubpackages }).eq('id', latestSchedule.id)
@@ -2213,7 +2220,11 @@ export default function AdminCaseDetailPage() {
                     nextVersion={nextVersion}
                     initialConciergeName={latestSchedule?.concierge_name ?? lastConciergeInfo?.name ?? null}
                     initialConciergePhone={latestSchedule?.concierge_phone ?? lastConciergeInfo?.phone ?? null}
-                    initialDaySubpackages={(latestSchedule as { day_subpackages?: Record<number, Array<string | { variantId: string; hours: number }>> } | null)?.day_subpackages ?? undefined}
+                    initialDaySubpackages={
+                      (latestSchedule as { day_subpackages?: Record<number, Array<string | { variantId: string; hours: number }>> } | null)?.day_subpackages
+                      ?? caseData.day_subpackages_draft as Record<number, Array<string | { variantId: string; hours: number }>> | undefined
+                      ?? undefined
+                    }
                     prevItems={latestSchedule?.items ?? undefined}
                     readOnly={!canEdit}
                     stickyTop={140}
@@ -2810,20 +2821,48 @@ export default function AdminCaseDetailPage() {
 
           {/* Partner Payouts — track cash sent to hospitals/hotels/etc per partner */}
           {latestQuote && (() => {
-            type PartnerItem = { name: string; price: number; group: string; qty: number }
+            type PartnerItem = { name: string; price: number; group: string; qty: number; unit: string }
             type PartnerGroup = { name: string; suggested: number; items: PartnerItem[] }
             const groups = new Map<string, PartnerGroup>()
-            for (const g of latestQuote.document_groups ?? []) {
+            // Use finalInvoice if available (it has OT items); fall back to latestQuote
+            const payoutDoc = finalInvoice ?? latestQuote
+            // Compute actual scheduled days per variant from day_subpackages
+            // (not from document_items.quantity, which is the contracted days)
+            const dsRaw = (latestSchedule as { day_subpackages?: Record<string, Array<{ variantId: string } | string>> } | null)?.day_subpackages
+              ?? caseData.day_subpackages_draft as Record<string, Array<{ variantId: string } | string>> | null
+              ?? {}
+            const payoutScheduledDays: Record<string, number> = {}
+            for (const entries of Object.values(dsRaw)) {
+              for (const e of (entries ?? [])) {
+                const vid = typeof e === 'string' ? e : e?.variantId
+                if (vid) payoutScheduledDays[vid] = (payoutScheduledDays[vid] ?? 0) + 1
+              }
+            }
+            for (const g of payoutDoc.document_groups ?? []) {
               for (const item of (g.document_items ?? []).filter(it => !it.removed_at)) {
-                const pname = item.products?.partner_name?.trim()
+                const pname = (item.product_partner_snapshot ?? item.products?.partner_name)?.trim()
                 if (!pname) continue
                 const prev = groups.get(pname) ?? { name: pname, suggested: 0, items: [] }
-                prev.suggested += item.base_price ?? 0
+                // OT items: final_price is the total OT cost for partner
+                // Trip service base items: base_price × scheduled days (from day_subpackages)
+                // Other base items: base_price × contracted quantity
+                const isTripService = g.name === 'Trip Services'
+                const scheduledDays = (isTripService && item.variant_id && item.variant_id in payoutScheduledDays)
+                  ? payoutScheduledDays[item.variant_id]
+                  : null
+                const qty = item.is_overtime_item
+                  ? (item.quantity ?? 1)  // OT qty = overtime hours
+                  : Math.max(1, scheduledDays ?? item.quantity ?? 1)
+                const itemCost = item.is_overtime_item
+                  ? (item.final_price ?? 0)
+                  : (item.base_price ?? 0) * qty
+                prev.suggested += itemCost
                 prev.items.push({
-                  name: item.products?.name ?? 'Service',
-                  price: item.base_price ?? 0,
+                  name: item.product_name_snapshot ?? item.products?.name ?? 'Service',
+                  price: itemCost,
                   group: g.name,
-                  qty: g.member_count ?? 1,
+                  qty,
+                  unit: item.is_overtime_item ? 'h' : 'd',
                 })
                 groups.set(pname, prev)
               }
@@ -2882,7 +2921,7 @@ export default function AdminCaseDetailPage() {
                           <li key={i} className="flex justify-between gap-2">
                             <span className="truncate">
                               {it.name}
-                              <span className="text-gray-400"> · {it.group} ({it.qty} pax)</span>
+                              <span className="text-gray-400"> · {it.group} · {it.qty}{it.unit}</span>
                             </span>
                             <span className="text-gray-400 tabular-nums shrink-0">{fmtKRW(it.price)}</span>
                           </li>
@@ -2970,7 +3009,7 @@ export default function AdminCaseDetailPage() {
                           <ul className="text-[10px] text-gray-500 space-y-0.5 pl-4 border-l border-gray-100">
                             {g.items.map((it, i) => (
                               <li key={i} className="flex justify-between gap-2">
-                                <span className="truncate">{it.name}<span className="text-gray-400"> · {it.group} ({it.qty} pax)</span></span>
+                                <span className="truncate">{it.name}<span className="text-gray-400"> · {it.group} · {it.qty}{it.unit}</span></span>
                                 <span className="text-gray-400 tabular-nums shrink-0">{fmtKRW(it.price)}</span>
                               </li>
                             ))}

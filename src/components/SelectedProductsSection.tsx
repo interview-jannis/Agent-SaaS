@@ -27,6 +27,7 @@ type Item = {
   id: string
   final_price: number
   quantity?: number | null
+  is_overtime_item?: boolean | null
   products?: ProductSnapshot
   product_name_snapshot?: string | null
   variant_label_snapshot?: string | null
@@ -160,13 +161,18 @@ export default function SelectedProductsSection({
                       const unitKRW = amtKRW / qty
                       const unitUSD = unitKRW / exchangeRate
                       const metaBits: string[] = []
-                      if (item.products?.duration_value) {
-                        metaBits.push(`${item.products.duration_value} ${item.products.duration_unit ?? ''}`.trim())
-                      }
-                      // Trip Services: show days/nights from quantity
-                      if (group.name === 'Trip Services' && item.quantity != null) {
-                        const isHotel = item.products?.product_subcategories?.name === 'Hotel'
-                        metaBits.push(`${item.quantity}${isHotel ? 'n' : 'd'}`)
+                      if (item.is_overtime_item) {
+                        // OT items: quantity = overtime hours, base_price = hourly rate
+                        if (item.quantity != null) metaBits.push(`${item.quantity}h overtime`)
+                      } else {
+                        if (item.products?.duration_value) {
+                          metaBits.push(`${item.products.duration_value} ${item.products.duration_unit ?? ''}`.trim())
+                        }
+                        // Trip Services: show days/nights from quantity
+                        if (group.name === 'Trip Services' && item.quantity != null) {
+                          const isHotel = item.products?.product_subcategories?.name === 'Hotel'
+                          metaBits.push(`${item.quantity}${isHotel ? 'n' : 'd'}`)
+                        }
                       }
                       metaBits.push(`${fmtUSD(unitUSD)} × ${qty}`)
 

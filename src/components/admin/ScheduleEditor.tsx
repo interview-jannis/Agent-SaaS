@@ -163,25 +163,71 @@ export default function ScheduleEditor({
   // Day-level concierge subpackage assignments with hours per service per day.
   // Legacy data may be string[] (variantIds only) — normalize to entries on init.
   const [daySubpackages, setDaySubpackages] = useState<Record<number, DaySubpackageEntry[]>>(() => {
+    const tripServices = [...new Map(
+      caseProducts
+        .filter(cp => cp.isTripService && !cp.isHotel)
+        .map(cp => [cp.variantId, cp])
+    ).values()]
+    const autoRow = (cp: CaseProduct): DaySubpackageEntry => ({
+      variantId: cp.variantId,
+      hours: (cp.durationUnit ?? '').toLowerCase().startsWith('h') ? (cp.durationValue ?? 0) : 0,
+    })
     const out: Record<number, DaySubpackageEntry[]> = {}
-    if (!initialDaySubpackages) return out
-    for (const [dayStr, arr] of Object.entries(initialDaySubpackages)) {
-      const day = Number(dayStr)
-      const entries = (arr ?? []).map(v => {
-        if (typeof v === 'string') {
-          // Legacy: pull default hours from product durationValue (hours unit)
-          const cp = caseProducts.find(p => p.variantId === v)
-          const isHours = (cp?.durationUnit ?? '').toLowerCase().startsWith('h')
-          return { variantId: v, hours: isHours ? (cp?.durationValue ?? 0) : 0 }
+    // Days that have been explicitly saved (even if admin cleared them to empty)
+    const savedDays = new Set<number>()
+
+    if (initialDaySubpackages && Object.keys(initialDaySubpackages).length > 0) {
+      for (const [dayStr, arr] of Object.entries(initialDaySubpackages)) {
+        const day = Number(dayStr)
+        savedDays.add(day)
+        const entries = (arr ?? []).map(v => {
+          if (typeof v === 'string') {
+            const cp = caseProducts.find(p => p.variantId === v)
+            const isHours = (cp?.durationUnit ?? '').toLowerCase().startsWith('h')
+            return { variantId: v, hours: isHours ? (cp?.durationValue ?? 0) : 0 }
+          }
+          return v
+        })
+        if (entries.length > 0) out[day] = entries
+        // days with empty arrays: admin intentionally cleared — leave out[day] undefined
+      }
+    }
+
+    // Auto-populate any day in 1..defaultDayCount that was never explicitly saved
+    if (tripServices.length > 0 && defaultDayCount >= 1) {
+      for (let day = 1; day <= defaultDayCount; day++) {
+        if (!savedDays.has(day)) {
+          out[day] = tripServices.map(autoRow)
         }
-        return v
-      })
-      if (entries.length > 0) out[day] = entries
+      }
     }
     return out
   })
   // Keep ref in sync with state so saveDraft closures always see latest hours.
   daySubpackagesRef.current = daySubpackages
+
+  // Fallback: fill any trip-service days missing from state (handles React Fast Refresh
+  // which preserves component state across hot reloads, bypassing the useState initializer).
+  useEffect(() => {
+    setDaySubpackages(prev => {
+      const tripServices = [...new Map(
+        caseProducts.filter(cp => cp.isTripService && !cp.isHotel).map(cp => [cp.variantId, cp])
+      ).values()]
+      if (tripServices.length === 0 || defaultDayCount < 1) return prev
+      let changed = false
+      const next = { ...prev }
+      for (let day = 1; day <= defaultDayCount; day++) {
+        if (!(day in next)) {
+          next[day] = tripServices.map(cp => ({
+            variantId: cp.variantId,
+            hours: (cp.durationUnit ?? '').toLowerCase().startsWith('h') ? (cp.durationValue ?? 0) : 0,
+          }))
+          changed = true
+        }
+      }
+      return changed ? next : prev
+    })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Default hours for a service variant (from product.durationValue when unit is hours).
   function defaultHoursForVariant(variantId: string): number {
@@ -1172,7 +1218,7 @@ export default function ScheduleEditor({
           scheduledHours: number
           contractedHours: number
           hasHours: boolean
-          overage: number  // positive = overage; 0 = matches; negative = under (not used)
+          overtimeHours: number  // per-day excess hours from calcOvertimeCostKrw
           overtimeCostKrw: number
         }
         const missingTripServices: TripMissing[] = []
@@ -1203,7 +1249,7 @@ export default function ScheduleEditor({
           const baseHours = hasHours ? (cp.durationValue ?? 0) : 0
           const contractedHours = baseHours * cp.quantity
           const scheduledHours = scheduledHoursByVariant.get(vid) ?? 0
-          const { overtimeCostKrw } = calcOvertimeCostKrw({
+          const { overtimeHours, overtimeCostKrw } = calcOvertimeCostKrw({
             assignedHoursByDay: hoursByDayPerVariant.get(vid) ?? [],
             durationValue: hasHours ? (cp.durationValue ?? null) : null,
             overtimeRateKrw: cp.overtimeRateKrw,
@@ -1215,7 +1261,7 @@ export default function ScheduleEditor({
             scheduledHours,
             contractedHours,
             hasHours,
-            overage: Math.max(0, scheduledHours - contractedHours),
+            overtimeHours,
             overtimeCostKrw,
           })
         }
@@ -1263,11 +1309,11 @@ export default function ScheduleEditor({
                         {!s.cp.isHotel && s.scheduledHours > 0 && (
                           <span className={`ml-1 ${dayOK ? 'text-gray-500' : 'text-amber-700'}`}>· {s.scheduledHours}h scheduled</span>
                         )}
-                        {s.overage > 0 && s.overtimeCostKrw > 0 && (
-                          <span className="ml-1 font-semibold text-rose-600">· +{s.overage}h OT · +₩{s.overtimeCostKrw.toLocaleString('ko-KR')}</span>
+                        {s.overtimeHours > 0 && s.overtimeCostKrw > 0 && (
+                          <span className="ml-1 font-semibold text-rose-600">· +{s.overtimeHours}h OT · +₩{s.overtimeCostKrw.toLocaleString('ko-KR')}</span>
                         )}
-                        {s.overage > 0 && s.overtimeCostKrw === 0 && s.cp.overtimeRateKrw === null && (
-                          <span className="ml-1 text-amber-700">· +{s.overage}h over (no OT rate set)</span>
+                        {s.overtimeHours > 0 && s.overtimeCostKrw === 0 && s.cp.overtimeRateKrw === null && (
+                          <span className="ml-1 text-amber-700">· +{s.overtimeHours}h over (no OT rate set)</span>
                         )}
                       </li>
                     )
@@ -1882,7 +1928,11 @@ const inScope = itemGroupIds === null
               : null
             const uniqueTripServices = [...new Map(allTripServices.map(cp => [cp.variantId, cp])).values()]
             const renderOption = (cp: CaseProduct) => {
-              const isCommitted = cp.variantId !== item.variantId && committedVariantContexts.has(cp.variantId)
+              // Hotels and health checkup products are naturally linked to multiple items
+              // (check-in / stay / check-out, or checkup + hospital stay nights) — don't
+              // show ✓ for these so admins know they can select them again freely.
+              const multiUse = cp.isHotel || cp.isHealthCheckup
+              const isCommitted = !multiUse && cp.variantId !== item.variantId && committedVariantContexts.has(cp.variantId)
               const label = `${cp.partnerName ? `${cp.partnerName} · ` : ''}${cp.productName}${cp.variantLabel ? ` · ${cp.variantLabel}` : ''}`
               const dur = cp.durationValue && cp.durationUnit ? ` (${cp.durationValue}${cp.durationUnit})` : ''
               return <option key={cp.variantId} value={cp.variantId}>{isCommitted ? `✓ ${label}${dur}` : `${label}${dur}`}</option>
