@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
@@ -1903,21 +1903,34 @@ export default function CaseDetailPage() {
           {/* Selected Products — shared component (matches admin).
               Until schedule is confirmed, only show original quotation items
               (origin='original'). Admin-added items become visible once the
-              schedule is confirmed so the agent sees the full updated list. */}
+              schedule is confirmed so the agent sees the full updated list.
+              After finalize, finalInvoice is the live truth (mirrors admin). */}
           {(caseData.documents?.length ?? 0) > 0 && (() => {
             const scheduleConfirmed = (caseData.schedules ?? []).some(s => s.status === 'confirmed')
+            const finalInv = caseData.documents?.find(d => d.type === 'final_invoice') ?? null
+            const quoteDoc = caseData.documents?.find(d => d.type === 'quotation') ?? null
+            const mainDocForList = finalInv ?? quoteDoc
+            const additionalDocs = (caseData.documents ?? []).filter(d => d.type === 'additional_invoice')
             return (
               <SelectedProductsSection
-                documents={(caseData.documents ?? [])
-                  .filter(d => d.type === 'quotation' || d.type === 'additional_invoice')
-                  .map(d => ({
+                documents={[
+                  ...(mainDocForList ? [{
+                    id: mainDocForList.id,
+                    type: 'quotation' as const,
+                    document_number: mainDocForList.document_number ?? null,
+                    total_price: mainDocForList.total_price ?? null,
+                    finalized_at: mainDocForList.finalized_at ?? null,
+                    document_groups: mainDocForList.document_groups,
+                  }] : []),
+                  ...additionalDocs.map(d => ({
                     id: d.id,
-                    type: d.type as 'quotation' | 'additional_invoice',
+                    type: 'additional_invoice' as const,
                     document_number: d.document_number ?? null,
                     total_price: d.total_price ?? null,
                     finalized_at: d.finalized_at ?? null,
                     document_groups: d.document_groups,
-                  }))}
+                  })),
+                ]}
                 exchangeRate={exchangeRate}
                 defaultExpanded={false}
                 showKRW={false}

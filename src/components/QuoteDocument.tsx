@@ -190,12 +190,6 @@ export default async function QuoteDocument({
   // schedule that the client should not see until then.
   const scheduleConfirmed = (caseData?.schedules ?? []).some(s => s.status === 'confirmed')
 
-  // Per-member filter: resolve client name for the filtered member
-  const filterMember = filterMemberId
-    ? (caseData?.case_members ?? []).find(m => m.id === filterMemberId) ?? null
-    : null
-  const filterClientName = filterMember?.clients?.name ?? null
-
   // Issuer-aware rendering: agent-issued documents show agent's bank + name as
   // signer; admin-issued use system settings + signer_snapshot.
   const fromParty = (quote as { from_party?: 'admin' | 'agent' | null }).from_party ?? 'admin'
@@ -333,49 +327,6 @@ export default async function QuoteDocument({
             </div>
           </div>
 
-          {/* Per-member tabs — only when 2+ members exist; sticky on scroll */}
-          {(caseData?.case_members ?? []).length > 1 && (
-            <div className="mb-5 -mx-4 md:-mx-12 px-4 md:px-12 sticky top-0 z-10 bg-white border-b border-gray-200 print:hidden">
-              <div className="flex items-center gap-1 overflow-x-auto no-scrollbar py-2">
-                <a
-                  href="?"
-                  className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                    !filterMemberId
-                      ? 'bg-[#0f4c35] text-white'
-                      : 'text-gray-500 hover:text-gray-800 hover:bg-gray-100'
-                  }`}
-                >
-                  All Members
-                </a>
-                {(caseData?.case_members ?? []).map((m) => (
-                  <a
-                    key={m.id}
-                    href={`?member=${m.id}`}
-                    className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                      filterMemberId === m.id
-                        ? 'bg-[#0f4c35] text-white'
-                        : 'text-gray-500 hover:text-gray-800 hover:bg-gray-100'
-                    }`}
-                  >
-                    {m.clients?.name ?? '—'}
-                    {m.is_lead && <span className="ml-1 opacity-60 text-[10px]">★</span>}
-                  </a>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Per-member indicator — shown when document is filtered to one person */}
-          {filterClientName && (
-            <div className="mb-5 flex items-center gap-2 border border-[#0f4c35]/30 bg-[#0f4c35]/5 rounded px-4 py-2.5 print:mb-4">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-[#0f4c35] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-              </svg>
-              <p className="text-sm text-[#0f4c35] font-medium">
-                Individual {docTitle} for: <span className="font-bold">{filterClientName}</span>
-              </p>
-            </div>
-          )}
 
           {/* Quotation disclaimer banner — only for non-invoice */}
           {!isInvoice && (
