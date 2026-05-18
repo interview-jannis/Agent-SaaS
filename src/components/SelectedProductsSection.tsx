@@ -131,10 +131,21 @@ export default function SelectedProductsSection({
             // ??active-added ??removed.
             const displayItems = showOriginalOnly
               ? items
-              : [...(group.document_items ?? [])].sort((a, b) => {
+              : (() => {
+                  const all = [...(group.document_items ?? [])]
                   const rank = (it: Item) => it.removed_at ? 3 : (it.origin === 'admin_added' ? 2 : 1)
-                  return rank(a) - rank(b)
-                })
+                  const baseItems = all.filter(it => !it.is_overtime_item).sort((a, b) => rank(a) - rank(b))
+                  const otItems = all.filter(it => it.is_overtime_item)
+                  const sorted: Item[] = []
+                  for (const base of baseItems) {
+                    sorted.push(base)
+                    const baseName = base.product_name_snapshot ?? ''
+                    otItems.filter(ot => (ot.product_name_snapshot ?? '').startsWith(baseName + ' – Overtime')).forEach(ot => sorted.push(ot))
+                  }
+                  const placed = new Set(sorted.map(it => it.id))
+                  otItems.filter(it => !placed.has(it.id)).forEach(it => sorted.push(it))
+                  return sorted
+                })()
             return (
               <div key={group.id} className="bg-white rounded-xl border border-gray-100 overflow-hidden">
                 <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100">

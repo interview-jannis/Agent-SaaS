@@ -266,6 +266,7 @@ export default function AdminCaseDetailPage() {
   const [showClientPanel, setShowClientPanel] = useState(false)
   const [expandedClientIds, setExpandedClientIds] = useState<Set<string>>(new Set())
   const [creatingDraft, setCreatingDraft] = useState(false)
+  const [syncingOT, setSyncingOT] = useState(false)
 
   // Sections start collapsed; user expands what they need.
   const [setupCollapsed, setSetupCollapsed] = useState(true)
@@ -2319,53 +2320,93 @@ export default function AdminCaseDetailPage() {
                   : 'Adjust line item prices. Items are locked at this stage — to add or remove, request a schedule revision.'}
               </p>
 
+              {!finalInvoice.finalized_at && latestSchedule?.day_subpackages && Object.keys(latestSchedule.day_subpackages).length > 0 && (
+                <button
+                  disabled={syncingOT}
+                  onClick={async () => {
+                    setSyncingOT(true)
+                    try {
+                      const daySubpkgs = latestSchedule.day_subpackages as Record<number, DaySubpackageEntry[]>
+                      const { data: freshGroups } = await supabase
+                        .from('document_groups')
+                        .select(`id, name, order, member_count, document_items(id, variant_id, removed_at, is_overtime_item, quantity, base_price, overtime_hours, product_name_snapshot, product_partner_snapshot, sort_order, products(id, name, duration_value, duration_unit, partner_name)), document_group_members(id, case_member_id)`)
+                        .eq('document_id', finalInvoice.id)
+                      if (freshGroups && freshGroups.length > 0) {
+                        await calcAndStoreOvertimeHours(daySubpkgs, freshGroups as unknown as QuoteGroup[], finalInvoice.id)
+                      }
+                      await fetchCase()
+                    } catch (e: unknown) {
+                      setPricingError((e as { message?: string })?.message ?? 'Failed to sync OT items.')
+                    } finally {
+                      setSyncingOT(false)
+                    }
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-gray-700 rounded-lg hover:bg-gray-600 disabled:opacity-50 transition-colors"
+                >
+                  {syncingOT && <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg>}
+                  Sync OT Items
+                </button>
+              )}
+
               {pricingError && <p className="text-xs text-red-500">{pricingError}</p>}
 
               <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
-                {editGroups.flatMap(g => g.document_items.filter(it => !it.removed_at).map(item => {
-                  // 원가(base_price) KRW 편집. final_price는 기존 base/final 비율로 자동 계산.
-                  const isOT = !!item.is_overtime_item
-                  const baseDigits = pricingBaseEdits[item.id] ?? String(item.base_price)
-                  const baseNum = Number(baseDigits) || 0
-                  // For OT items: multiplier = quantity (hours). For regular items: final/base ratio.
-                  const itemMult = isOT
-                    ? (item.quantity ?? 1)
-                    : (item.base_price > 0 ? item.final_price / item.base_price : 1)
-                  const autoFinalKrw = Math.round(baseNum * itemMult)
-                  const autoFinalUsd = autoFinalKrw / exchangeRate
-                  // Display name: prefer snapshot (OT items append "– Overtime" to snapshot)
-                  const displayName = item.product_name_snapshot ?? item.products?.name ?? 'Item'
-                  return (
-                    <div key={item.id} className="flex items-center gap-2 px-3 py-2.5">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <p className="text-sm text-gray-900 truncate">{displayName}</p>
-                          {isOT && <span className="text-[9px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-1.5 py-0.5 shrink-0 leading-none">OT</span>}
+                {editGroups.flatMap(g => {
+                  const active = g.document_items.filter(it => !it.removed_at)
+                  const baseItems = active.filter(it => !it.is_overtime_item)
+                  const otItems = active.filter(it => it.is_overtime_item)
+                  const sorted: typeof active = []
+                  for (const base of baseItems) {
+                    sorted.push(base)
+                    const baseName = base.product_name_snapshot ?? ''
+                    otItems.filter(ot => (ot.product_name_snapshot ?? '').startsWith(baseName + ' – Overtime')).forEach(ot => sorted.push(ot))
+                  }
+                  const placed = new Set(sorted.map(it => it.id))
+                  otItems.filter(it => !placed.has(it.id)).forEach(it => sorted.push(it))
+                  return sorted.map(item => {
+                    // 원가(base_price) KRW 편집. final_price는 기존 base/final 비율로 자동 계산.
+                    const isOT = !!item.is_overtime_item
+                    const baseDigits = pricingBaseEdits[item.id] ?? String(item.base_price)
+                    const baseNum = Number(baseDigits) || 0
+                    // For OT items: multiplier = quantity (hours). For regular items: final/base ratio.
+                    const itemMult = isOT
+                      ? (item.quantity ?? 1)
+                      : (item.base_price > 0 ? item.final_price / item.base_price : 1)
+                    const autoFinalKrw = Math.round(baseNum * itemMult)
+                    const autoFinalUsd = autoFinalKrw / exchangeRate
+                    const displayName = item.product_name_snapshot ?? item.products?.name ?? 'Item'
+                    return (
+                      <div key={item.id} className="flex items-center gap-2 px-3 py-2.5">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <p className="text-sm text-gray-900 truncate">{displayName}</p>
+                            {isOT && <span className="text-[9px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-1.5 py-0.5 shrink-0 leading-none">OT</span>}
+                          </div>
+                          <p className="text-[10px] text-gray-400">{g.name} · {isOT ? `${item.quantity ?? 0}h × ` : 'orig '}{fmtKRW(item.base_price)}</p>
                         </div>
-                        <p className="text-[10px] text-gray-400">{g.name} · {isOT ? `${item.quantity ?? 0}h × ` : 'orig '}{fmtKRW(item.base_price)}</p>
+                        {/* 원가 입력 (KRW) */}
+                        <div className="flex items-center gap-1 shrink-0">
+                          <span className="text-xs text-gray-400">₩</span>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            placeholder={item.base_price.toLocaleString('en-US')}
+                            value={baseDigits === '' ? '' : Number(baseDigits).toLocaleString('en-US')}
+                            onChange={(e) => {
+                              const cleaned = e.target.value.replace(/[^0-9]/g, '')
+                              setPricingBaseEdits(p => ({ ...p, [item.id]: cleaned }))
+                            }}
+                            className="w-28 border border-gray-200 rounded-lg px-2 py-1 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35] tabular-nums text-right" />
+                        </div>
+                        {/* 자동계산된 고객 청구가 (USD) */}
+                        <div className="shrink-0 text-right">
+                          <p className="text-xs text-gray-400">→</p>
+                          <p className="text-sm font-semibold text-[#0f4c35] tabular-nums">{fmtUSD(autoFinalUsd)}</p>
+                        </div>
                       </div>
-                      {/* 원가 입력 (KRW) */}
-                      <div className="flex items-center gap-1 shrink-0">
-                        <span className="text-xs text-gray-400">₩</span>
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          placeholder={item.base_price.toLocaleString('en-US')}
-                          value={baseDigits === '' ? '' : Number(baseDigits).toLocaleString('en-US')}
-                          onChange={(e) => {
-                            const cleaned = e.target.value.replace(/[^0-9]/g, '')
-                            setPricingBaseEdits(p => ({ ...p, [item.id]: cleaned }))
-                          }}
-                          className="w-28 border border-gray-200 rounded-lg px-2 py-1 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35] tabular-nums text-right" />
-                      </div>
-                      {/* 자동계산된 고객 청구가 (USD) */}
-                      <div className="shrink-0 text-right">
-                        <p className="text-xs text-gray-400">→</p>
-                        <p className="text-sm font-semibold text-[#0f4c35] tabular-nums">{fmtUSD(autoFinalUsd)}</p>
-                      </div>
-                    </div>
-                  )
-                }))}
+                    )
+                  })
+                })}
               </div>
 
               {(() => {
