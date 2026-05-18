@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import SparklineCard from '@/components/SparklineCard'
-import { type CaseStatus, STATUS_LABELS, STATUS_STYLES, PIPELINE_ORDER, ACTIVE_STATUSES } from '@/lib/caseStatus'
+import { type CaseStatus, ACTIVE_STATUSES } from '@/lib/caseStatus'
 
 const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
@@ -24,33 +24,7 @@ type CaseRow = {
 
 type Settlement = { id: string; amount: number; paid_at: string | null; case_id: string | null }
 
-// Pipeline-specific labels — the "completed" cell here actually shows unsettled-only
-const PIPELINE_LABELS: Record<CaseStatus, string> = {
-  ...STATUS_LABELS,
-  completed: 'Travel Done · Unpaid',
-}
-
 function fmtUSD(n: number) { return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }
-
-// Compact USD: $12.7K / $1.5M / $500
-function fmtUsdShort(n: number): string {
-  if (n === 0) return '$0'
-  if (Math.abs(n) >= 1_000_000) {
-    const v = n / 1_000_000
-    return `$${v.toFixed(v < 10 ? 1 : 0).replace(/\.0$/, '')}M`
-  }
-  if (Math.abs(n) >= 1000) {
-    const v = n / 1000
-    return `$${v.toFixed(v < 10 ? 1 : 0).replace(/\.0$/, '')}K`
-  }
-  return `$${Math.round(n)}`
-}
-
-// Short date: Apr 27
-function fmtDateShort(iso: string): string {
-  const d = new Date(iso)
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-}
 
 function commissionKrw(total: number, margin: number): number {
   if (!margin || margin <= 0) return 0
@@ -106,13 +80,6 @@ export default function AgentDashboardPage() {
 
   // ── Derived ─────────────────────────────────────────────────────────────
 
-  const statusCounts = new Map<CaseStatus, number>()
-  for (const c of cases) statusCounts.set(c.status, (statusCounts.get(c.status) ?? 0) + 1)
-
-  // Completed pipeline cell shows unsettled only — settled ones belong to "Settlement Paid"
-  const settledCaseIds = new Set(settlements.filter(s => s.case_id).map(s => s.case_id!))
-  const unsettledCompletedCount = cases.filter(c => (c.status === 'completed' || c.status === 'awaiting_review') && !settledCaseIds.has(c.id)).length
-
   const now = new Date()
   const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
 
@@ -154,102 +121,6 @@ export default function AgentDashboardPage() {
       const q = c.documents?.find(d => d.type === "quotation")
       return sum + (q ? commissionKrw(q.total_price, q.agent_margin_rate) : 0)
     }, 0)
-
-  // Pipeline case chips — group cases by status, excluding settled completed + canceled
-  const casesByStatus = new Map<CaseStatus, CaseRow[]>()
-  for (const s of PIPELINE_ORDER) casesByStatus.set(s, [])
-  for (const c of cases) {
-    if ((c.status === 'completed' || c.status === 'awaiting_review') && settledCaseIds.has(c.id)) continue
-    if (c.status === 'canceled') continue
-    casesByStatus.get(c.status)?.push(c)
-  }
-  // Settled case list for the "Settlement Paid" cell
-  const settledCasesList = settlements
-    .filter(s => s.paid_at && s.case_id)
-    .map(s => cases.find(c => c.id === s.case_id))
-    .filter((c): c is CaseRow => !!c)
-
-  // Per-case secondary info line for pipeline chip (status-specific + urgency color)
-  const todayISO = now.toISOString().slice(0, 10)
-  const threeDaysFromNow = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10)
-  const weekFromNow = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10)
-
-  type CaseInfo = { line: string; urgency: 'normal' | 'warn' | 'alert' }
-  function caseInfoFor(c: CaseRow): CaseInfo {
-    const q = c.documents?.find(d => d.type === "quotation")
-    const totalUsd = q ? q.total_price / exchangeRate : null
-    const commUsd = q ? commissionKrw(q.total_price, q.agent_margin_rate) / exchangeRate : null
-
-    switch (c.status) {
-      case 'awaiting_info': {
-        // Agent must finish client/trip info before admin can upload schedule
-        return { line: 'Fill client + trip info', urgency: 'warn' }
-      }
-      case 'awaiting_contract': {
-        // 3-party contract pending
-        return { line: 'Send contract for signing', urgency: 'warn' }
-      }
-      case 'awaiting_deposit': {
-        // Deposit + info collection in parallel
-        return { line: 'Collect deposit + client info', urgency: 'warn' }
-      }
-      case 'awaiting_schedule': {
-        // Info complete, admin building schedule
-        const parts: string[] = []
-        if (totalUsd != null) parts.push(fmtUsdShort(totalUsd))
-        parts.push('Admin preparing schedule')
-        return { line: parts.join(' · '), urgency: 'normal' }
-      }
-      case 'reviewing_schedule': {
-        // Schedule uploaded, agent must confirm or request revision
-        return { line: 'Pending your review', urgency: 'warn' }
-      }
-      case 'awaiting_pricing': {
-        // Admin needs to finalize prices and issue invoice
-        return { line: 'Admin finalizing invoice', urgency: 'normal' }
-      }
-      case 'awaiting_payment': {
-        // Invoice ready (or sent) — waiting on client payment
-        const due = q?.payment_due_date
-        const overdue = !!due && due < todayISO
-        const soon = !!due && !overdue && due <= threeDaysFromNow
-        const parts: string[] = []
-        const action = q?.finalized_at ? 'Send invoice' : 'Awaiting invoice'
-        parts.push(action)
-        if (due) parts.push(overdue ? `Overdue ${fmtDateShort(due)}` : `Due ${fmtDateShort(due)}`)
-        if (totalUsd != null) parts.push(fmtUsdShort(totalUsd))
-        return { line: parts.join(' · '), urgency: overdue ? 'alert' : soon ? 'warn' : 'normal' }
-      }
-      case 'awaiting_travel': {
-        // Paid, travel pending or just ended
-        const start = c.travel_start_date
-        const soon = !!start && start >= todayISO && start <= weekFromNow
-        const ended = !!c.travel_end_date && c.travel_end_date < todayISO
-        return {
-          line: start ? `Travel ${fmtDateShort(start)}` : '',
-          // trip ended = needs mark complete (alert)
-          urgency: ended ? 'alert' : soon ? 'warn' : 'normal',
-        }
-      }
-      case 'awaiting_review': {
-        return { line: 'Submit client review', urgency: 'warn' }
-      }
-      case 'awaiting_settlement': {
-        return { line: 'Issue commission invoice', urgency: 'warn' }
-      }
-      case 'completed': {
-        const end = c.travel_end_date
-        const parts: string[] = []
-        if (end) parts.push(`Ended ${fmtDateShort(end)}`)
-        if (commUsd != null) parts.push(fmtUsdShort(commUsd))
-        return { line: parts.join(' · '), urgency: 'normal' }
-      }
-      case 'canceled': {
-        return { line: 'Canceled', urgency: 'normal' }
-      }
-    }
-  }
-
 
   const tierInfo = nextTierInfo(monthlyPatients)
 
@@ -342,112 +213,6 @@ export default function AgentDashboardPage() {
                 </div>
               </section>
 
-              {/* PIPELINE — Kanban-style mini columns per status */}
-              <section className="space-y-3">
-                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Pipeline</h3>
-                <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-2">
-                  {PIPELINE_ORDER.map(s => {
-                    const rawCount = statusCounts.get(s) ?? 0
-                    const count = s === 'completed' ? unsettledCompletedCount : rawCount
-                    const active = count > 0
-                    const list = casesByStatus.get(s) ?? []
-                    const visible = list.slice(0, 4)
-                    const extra = Math.max(0, list.length - visible.length)
-                    return (
-                      <div key={s}
-                        className={`rounded-2xl border border-gray-200 bg-white flex flex-col overflow-hidden min-h-[130px] md:min-h-[180px]`}>
-                        {/* Header: tinted bar with label + count */}
-                        <div className={`px-3 py-2.5 flex items-center justify-between border-b ${active ? STATUS_STYLES[s] : 'bg-gray-50 border-gray-100'}`}>
-                          <p className={`text-[10px] font-semibold uppercase tracking-wide truncate ${active ? '' : 'text-gray-400'}`}>{PIPELINE_LABELS[s]}</p>
-                          <span className={`text-sm font-bold tabular-nums ${active ? '' : 'text-gray-300'}`}>{count}</span>
-                        </div>
-                        {/* Body: clean white, case rows as subtle items */}
-                        <div className="flex-1 p-2 space-y-0.5">
-                          {visible.length === 0 ? (
-                            <p className="text-[10px] text-gray-300 text-center py-4">—</p>
-                          ) : (
-                            visible.map(c => {
-                              const lead = c.case_members?.find(m => m.is_lead)
-                              const info = caseInfoFor(c)
-                              const infoColor = info.urgency === 'alert' ? 'text-red-600' : info.urgency === 'warn' ? 'text-amber-700' : 'text-gray-400'
-                              return (
-                                <button key={c.id}
-                                  onClick={() => router.push(`/agent/cases/${c.id}`)}
-                                  className="w-full flex flex-col px-2 py-1.5 rounded-md hover:bg-gray-50 transition-colors text-left">
-                                  <div className="flex items-center gap-1.5">
-                                    <span className="text-[10px] font-mono text-gray-400 shrink-0">{c.case_number}</span>
-                                    <span className="text-[11px] text-gray-800 truncate flex-1">{lead?.clients?.name ?? '—'}</span>
-                                  </div>
-                                  {info.line && (
-                                    <span className={`text-[10px] ${infoColor} tabular-nums tracking-tight mt-0.5`}>{info.line}</span>
-                                  )}
-                                </button>
-                              )
-                            })
-                          )}
-                          {extra > 0 && (
-                            <button onClick={() => router.push('/agent/cases')}
-                              className="w-full text-[10px] text-gray-500 hover:text-gray-700 py-1 transition-colors">
-                              + {extra} more
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    )
-                  })}
-                  {(() => {
-                    const paidSettlements = settlements.filter(st => st.paid_at)
-                    const paidCount = paidSettlements.length
-                    const active = paidCount > 0
-                    // Pair each settlement with its case; keep most recent first
-                    const pairs = paidSettlements
-                      .map(s => ({ settlement: s, case: cases.find(c => c.id === s.case_id) }))
-                      .filter((p): p is { settlement: Settlement; case: CaseRow } => !!p.case)
-                      .sort((a, b) => (b.settlement.paid_at ?? '').localeCompare(a.settlement.paid_at ?? ''))
-                    const visible = pairs.slice(0, 4)
-                    const extra = Math.max(0, pairs.length - visible.length)
-                    return (
-                      <div
-                        className={`rounded-2xl border border-gray-200 bg-white flex flex-col overflow-hidden min-h-[180px]`}>
-                        <div className={`px-3 py-2.5 flex items-center justify-between border-b ${active ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-gray-50 border-gray-100'}`}>
-                          <p className={`text-[10px] font-semibold uppercase tracking-wide truncate ${active ? '' : 'text-gray-400'}`}>Settlement Paid</p>
-                          <span className={`text-sm font-bold tabular-nums ${active ? '' : 'text-gray-300'}`}>{paidCount}</span>
-                        </div>
-                        <div className="flex-1 p-2 space-y-0.5">
-                          {visible.length === 0 ? (
-                            <p className="text-[10px] text-gray-300 text-center py-4">—</p>
-                          ) : (
-                            visible.map(({ case: c, settlement }) => {
-                              const lead = c.case_members?.find(m => m.is_lead)
-                              const amtUsd = (settlement.amount ?? 0) / exchangeRate
-                              const paidAt = settlement.paid_at
-                              return (
-                                <button key={c.id}
-                                  onClick={() => router.push(`/agent/cases/${c.id}`)}
-                                  className="w-full flex flex-col px-2 py-1.5 rounded-md hover:bg-gray-50 transition-colors text-left">
-                                  <div className="flex items-center gap-1.5">
-                                    <span className="text-[10px] font-mono text-gray-400 shrink-0">{c.case_number}</span>
-                                    <span className="text-[11px] text-gray-800 truncate flex-1">{lead?.clients?.name ?? '—'}</span>
-                                  </div>
-                                  <span className="text-[10px] text-emerald-700 tabular-nums mt-0.5">
-                                    {paidAt ? `Paid ${fmtDateShort(paidAt)}` : ''}{paidAt && amtUsd ? ' · ' : ''}{amtUsd ? fmtUsdShort(amtUsd) : ''}
-                                  </span>
-                                </button>
-                              )
-                            })
-                          )}
-                          {extra > 0 && (
-                            <button onClick={() => router.push('/agent/payouts')}
-                              className="w-full text-[10px] text-gray-500 hover:text-gray-700 py-1 transition-colors">
-                              + {extra} more
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    )
-                  })()}
-                </div>
-              </section>
 
             </>
           )}

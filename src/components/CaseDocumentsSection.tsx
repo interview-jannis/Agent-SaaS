@@ -33,7 +33,10 @@ const INTENT_LABEL: Record<IssueIntent, string> = {
 }
 
 type ProductVariant = { id: string; variant_label: string | null; base_price: number; price_currency: string; sort_order: number }
-type Product = { id: string; name: string; partner_name: string | null; base_price: number; price_currency: string; product_variants: ProductVariant[] }
+type Product = { id: string; name: string; partner_name: string | null; base_price: number; price_currency: string; category_id: string | null; subcategory_id: string | null; product_variants: ProductVariant[] }
+
+type Category = { id: string; name: string }
+type Subcategory = { id: string; category_id: string; name: string }
 
 type Props = {
   caseId: string
@@ -103,6 +106,10 @@ export default function CaseDocumentsSection({
   caseId, caseNumber, agentId, actor, caseStatus, embedded, travelCompletedAt, quotation, finalInvoice, documents, exchangeRate, onChanged, onFinalPaymentConfirm, canEdit = true, clientEmail,
 }: Props) {
   const [products, setProducts] = useState<Product[]>([])
+  const [categories, setCategories] = useState<Category[]>([])
+  const [subcategories, setSubcategories] = useState<Subcategory[]>([])
+  const [draftCategoryId, setDraftCategoryId] = useState<string>('')
+  const [draftSubcategoryId, setDraftSubcategoryId] = useState<string>('')
   const [items, setItems] = useState<Record<string, DocumentItemRow[]>>({})
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState('')
@@ -124,6 +131,7 @@ export default function CaseDocumentsSection({
   const [draftProductId, setDraftProductId] = useState('')
   const [draftPriceRaw, setDraftPriceRaw] = useState('')
   const [draftNameOverride, setDraftNameOverride] = useState('')
+  const [draftQuantityRaw, setDraftQuantityRaw] = useState('1')
 
   // Item editing per-doc
   const [addingItemTo, setAddingItemTo] = useState<string | null>(null)
@@ -142,12 +150,24 @@ export default function CaseDocumentsSection({
   // Mark Paid confirmation modal
   const [markPaidConfirmDocId, setMarkPaidConfirmDocId] = useState<string | null>(null)
 
-  // Load products once
+  // Load products + categories + subcategories once
   useEffect(() => {
-    supabase.from('products')
-      .select('id, name, partner_name, base_price, price_currency, product_variants(id, variant_label, base_price, price_currency, sort_order)')
-      .eq('is_active', true).order('name')
-      .then(({ data }) => setProducts((data as unknown as Product[]) ?? []))
+    async function load() {
+      const [prodRes, catRes, subRes] = await Promise.all([
+        supabase.from('products')
+          .select('id, name, partner_name, base_price, price_currency, category_id, subcategory_id, product_variants(id, variant_label, base_price, price_currency, sort_order)')
+          .eq('is_active', true).order('name'),
+        supabase.from('product_categories').select('id, name').order('sort_order').order('name'),
+        supabase.from('product_subcategories').select('id, category_id, name').order('sort_order').order('name'),
+      ])
+      if (prodRes.error) console.error('[CaseDocuments] products fetch error:', prodRes.error)
+      if (catRes.error) console.error('[CaseDocuments] categories fetch error:', catRes.error)
+      if (subRes.error) console.error('[CaseDocuments] subcategories fetch error:', subRes.error)
+      setProducts((prodRes.data as unknown as Product[]) ?? [])
+      setCategories((catRes.data as Category[] | null) ?? [])
+      setSubcategories((subRes.data as Subcategory[] | null) ?? [])
+    }
+    void load()
   }, [])
 
   // Load deposit % default from system settings
@@ -255,6 +275,7 @@ export default function CaseDocumentsSection({
 
   function addDraftItem() {
     const price = Number(draftPriceRaw.replace(/[^0-9]/g, '')) || 0
+    const quantity = Math.max(1, Number(draftQuantityRaw.replace(/[^0-9]/g, '')) || 1)
     if (price <= 0) { setError('Enter a non-zero price.'); return }
     const product = products.find(p => p.id === draftProductId)
     const variant = product?.product_variants?.find(v => v.id === draftVariantId) ?? null
@@ -267,8 +288,9 @@ export default function CaseDocumentsSection({
       productPartnerSnapshot: product?.partner_name ?? null,
       basePrice: price,
       finalPrice: price,
+      quantity,
     }])
-    setDraftProductId(''); setDraftVariantId(''); setDraftPriceRaw(''); setDraftNameOverride('')
+    setDraftProductId(''); setDraftVariantId(''); setDraftPriceRaw(''); setDraftNameOverride(''); setDraftQuantityRaw('1')
     setError('')
   }
 
@@ -544,7 +566,10 @@ export default function CaseDocumentsSection({
                             <p className="text-[10px] text-gray-400 truncate">{it.productPartnerSnapshot}</p>
                           )}
                         </div>
-                        <span className="text-xs text-gray-700 tabular-nums shrink-0">{fmtKRW(it.finalPrice)}</span>
+                        {(it.quantity ?? 1) > 1 && (
+                          <span className="text-[10px] text-gray-400 tabular-nums shrink-0">× {it.quantity}</span>
+                        )}
+                        <span className="text-xs text-gray-700 tabular-nums shrink-0">{fmtKRW(it.finalPrice * (it.quantity ?? 1))}</span>
                         <button onClick={() => removeDraftItem(idx)} className="text-gray-300 hover:text-red-500 transition-colors" title="Remove">
                           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -555,7 +580,7 @@ export default function CaseDocumentsSection({
                     <div className="flex items-center justify-between px-2.5 py-1.5 bg-white">
                       <span className="text-[11px] text-gray-500">Total</span>
                       <span className="text-xs font-semibold text-gray-900 tabular-nums">
-                        {fmtKRW(draftItems.reduce((s, it) => s + it.finalPrice, 0))}
+                        {fmtKRW(draftItems.reduce((s, it) => s + it.finalPrice * (it.quantity ?? 1), 0))}
                       </span>
                     </div>
                   </div>
@@ -563,6 +588,38 @@ export default function CaseDocumentsSection({
 
                 {/* Add item form */}
                 <div className="bg-gray-50 rounded-lg border border-gray-100 p-2 space-y-1.5">
+                  {/* Category + Subcategory dropdowns — narrow the product list */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                    <select value={draftCategoryId} onChange={e => {
+                      setDraftCategoryId(e.target.value)
+                      setDraftSubcategoryId('')
+                      setDraftProductId(''); setDraftVariantId(''); setDraftPriceRaw('')
+                    }} className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-900 focus:outline-none focus:border-[#0f4c35] bg-white">
+                      <option value="">All categories</option>
+                      {categories.map(cat => (
+                        <option key={cat.id} value={cat.id}>{cat.name}</option>
+                      ))}
+                    </select>
+                    {(() => {
+                      // Only show subcategories that have at least one active product
+                      // (avoids stale/legacy subcategories appearing empty in the dropdown)
+                      const activeSubIds = new Set(products.map(p => p.subcategory_id).filter((v): v is string => !!v))
+                      const visibleSubs = subcategories
+                        .filter(s => activeSubIds.has(s.id))
+                        .filter(s => !draftCategoryId || s.category_id === draftCategoryId)
+                      return (
+                        <select value={draftSubcategoryId} onChange={e => {
+                          setDraftSubcategoryId(e.target.value)
+                          setDraftProductId(''); setDraftVariantId(''); setDraftPriceRaw('')
+                        }} className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-900 focus:outline-none focus:border-[#0f4c35] bg-white">
+                          <option value="">All subcategories ({visibleSubs.length})</option>
+                          {visibleSubs.map(sub => (
+                            <option key={sub.id} value={sub.id}>{sub.name}</option>
+                          ))}
+                        </select>
+                      )
+                    })()}
+                  </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                     <select value={draftProductId} onChange={e => {
                       const pid = e.target.value
@@ -571,11 +628,14 @@ export default function CaseDocumentsSection({
                       else setDraftPriceRaw('')
                     }} className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-900 focus:outline-none focus:border-[#0f4c35] bg-white">
                       <option value="">— Custom (enter name) —</option>
-                      {products.map(p => (
-                        <option key={p.id} value={p.id}>
-                          {p.partner_name ? `${p.partner_name} · ` : ''}{p.name}
-                        </option>
-                      ))}
+                      {products
+                        .filter(p => !draftCategoryId || p.category_id === draftCategoryId)
+                        .filter(p => !draftSubcategoryId || p.subcategory_id === draftSubcategoryId)
+                        .map(p => (
+                          <option key={p.id} value={p.id}>
+                            {p.partner_name ? `${p.partner_name} · ` : ''}{p.name}
+                          </option>
+                        ))}
                     </select>
                     <input type="text" placeholder={draftProductId ? '(uses product name)' : 'Custom item name'}
                       value={draftNameOverride} onChange={e => setDraftNameOverride(e.target.value)}
@@ -602,6 +662,14 @@ export default function CaseDocumentsSection({
                       onChange={e => setDraftPriceRaw(e.target.value.replace(/[^0-9]/g, ''))}
                       onKeyDown={e => e.key === 'Enter' && addDraftItem()}
                       className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-900 focus:outline-none focus:border-[#0f4c35] tabular-nums text-right bg-white" />
+                    <div className="flex items-center gap-1 shrink-0">
+                      <span className="text-[10px] text-gray-500">Qty</span>
+                      <input type="text" inputMode="numeric"
+                        value={draftQuantityRaw}
+                        onChange={e => setDraftQuantityRaw(e.target.value.replace(/[^0-9]/g, ''))}
+                        onKeyDown={e => e.key === 'Enter' && addDraftItem()}
+                        className="w-12 border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-900 focus:outline-none focus:border-[#0f4c35] tabular-nums text-right bg-white" />
+                    </div>
                     <button onClick={addDraftItem} disabled={!draftPriceRaw}
                       className="text-[11px] font-medium bg-[#0f4c35] text-white hover:bg-[#0a3828] rounded-lg px-3 py-1.5 disabled:opacity-40">
                       + Add

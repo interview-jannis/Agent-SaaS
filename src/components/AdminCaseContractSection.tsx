@@ -28,7 +28,7 @@ type Props = {
 export default function AdminCaseContractSection({ caseId, caseNumber, caseStatus, onChanged, readOnly = false }: Props) {
   const [contract, setContract] = useState<CaseContractRow | null>(null)
   const [loading, setLoading] = useState(true)
-  const [adminProfile, setAdminProfile] = useState<{ id: string; name: string; title: string | null } | null>(null)
+  const [adminProfile, setAdminProfile] = useState<{ id: string; name: string; title: string | null; can_sign_contracts: boolean } | null>(null)
   const [signing, setSigning] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -41,8 +41,8 @@ export default function AdminCaseContractSection({ caseId, caseNumber, caseStatu
       const { data: { session } } = await supabase.auth.getSession()
       const uid = session?.user?.id
       if (uid) {
-        const { data: ad } = await supabase.from('admins').select('id, name, title').eq('auth_user_id', uid).maybeSingle()
-        if (ad) setAdminProfile(ad as { id: string; name: string; title: string | null })
+        const { data: ad } = await supabase.from('admins').select('id, name, title, can_sign_contracts').eq('auth_user_id', uid).maybeSingle()
+        if (ad) setAdminProfile(ad as { id: string; name: string; title: string | null; can_sign_contracts: boolean })
       }
     }
     setLoading(false)
@@ -99,7 +99,8 @@ export default function AdminCaseContractSection({ caseId, caseNumber, caseStatu
   // Order-independent: admin can counter-sign at any time. Status only advances
   // once all three sigs are collected (handled by case status checker), so the
   // signing order doesn't affect downstream flow.
-  const canAdminSign = !contract.admin_signed_at && !readOnly
+  // Gate: only admins with can_sign_contracts may counter-sign.
+  const canAdminSign = !contract.admin_signed_at && !readOnly && !!adminProfile?.can_sign_contracts
   const showSignMode = canAdminSign && (signing || !contract.admin_signed_at) ? 'admin' : null
   const fullySigned = !!contract.admin_signed_at && !!contract.agent_signed_at && !!contract.client_signed_at
   // Auto-collapse when fully signed; stay expanded when admin needs to sign.
@@ -130,6 +131,12 @@ export default function AdminCaseContractSection({ caseId, caseNumber, caseStatu
             ? `Awaiting ${!contract.agent_signed_at ? 'agent' : 'client'} signature.`
             : 'Counter-sign below — remaining parties can sign in any order.'}
       </p>
+
+      {!contract.admin_signed_at && !readOnly && adminProfile && !adminProfile.can_sign_contracts && (
+        <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          Only admins with the <span className="font-semibold">Contract Signer</span> capability may counter-sign. Ask a super admin to grant this in /admin/admins.
+        </p>
+      )}
 
       {error && <p className="text-xs text-red-500 bg-red-50 px-3 py-2 rounded-lg">{error}</p>}
 

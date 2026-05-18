@@ -99,7 +99,7 @@ export default function ContractViewerPage() {
   const [adminAgree, setAdminAgree] = useState(false)
   const [savingSig, setSavingSig] = useState(false)
   const [sigError, setSigError] = useState('')
-  const [adminProfile, setAdminProfile] = useState<{ id: string; name: string; title: string | null; is_super_admin: boolean } | null>(null)
+  const [adminProfile, setAdminProfile] = useState<{ id: string; name: string; title: string | null; is_super_admin: boolean; can_sign_contracts: boolean } | null>(null)
 
   async function load() {
     const [cRes, aRes, sessRes] = await Promise.all([
@@ -112,8 +112,8 @@ export default function ContractViewerPage() {
 
     const uid = sessRes.data.session?.user?.id
     if (uid) {
-      const { data: ad } = await supabase.from('admins').select('id, name, title, is_super_admin').eq('auth_user_id', uid).maybeSingle()
-      if (ad) setAdminProfile(ad as { id: string; name: string; title: string | null; is_super_admin: boolean })
+      const { data: ad } = await supabase.from('admins').select('id, name, title, is_super_admin, can_sign_contracts').eq('auth_user_id', uid).maybeSingle()
+      if (ad) setAdminProfile(ad as { id: string; name: string; title: string | null; is_super_admin: boolean; can_sign_contracts: boolean })
     }
     setLoading(false)
   }
@@ -291,11 +291,15 @@ export default function ContractViewerPage() {
               ) : (
                 <div className="print:hidden">
                   <p className="text-xs text-gray-400 italic mb-2">Awaiting admin counter-signature.</p>
-                  {adminProfile && (
+                  {adminProfile?.can_sign_contracts ? (
                     <button onClick={() => setSigning(true)}
                       className="px-3 py-1.5 text-xs font-medium border border-[#0f4c35] text-[#0f4c35] rounded-lg hover:bg-[#0f4c35]/5">
                       Sign as {adminProfile.name}{adminProfile.title ? ` (${adminProfile.title})` : ''}
                     </button>
+                  ) : (
+                    <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                      Only admins with the <span className="font-semibold">Contract Signer</span> capability may counter-sign. Ask a super admin to grant this in /admin/admins.
+                    </p>
                   )}
                 </div>
               )}

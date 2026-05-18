@@ -84,7 +84,7 @@ function LoginForm() {
         {/* Logo */}
         <div className="mb-10 text-center">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/tiktak-logo-short.png" alt="TikkTakk" className="h-32 w-auto mx-auto mb-6" />
+          <img src="/tiktak-logo-short.png" alt="TikkTakk" className="h-64 w-auto mx-auto mb-0 mt-4" style={{ transform: 'translate(6px, -8px)' }} />
           <h1 className="text-2xl font-semibold text-gray-900">Welcome back</h1>
           <p className="text-sm text-gray-400 mt-1">Sign in to your TikkTakk account</p>
         </div>

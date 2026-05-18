@@ -57,13 +57,16 @@ export async function POST(req: Request) {
   const uid = userData.user.id
 
   const { data: admin } = await supabase.from('admins')
-    .select('id, name, title, is_super_admin')
+    .select('id, name, title, is_super_admin, can_sign_contracts')
     .eq('auth_user_id', uid)
     .maybeSingle()
   if (!admin) {
     return NextResponse.json({ error: 'Admin record not found.' }, { status: 403 })
   }
-  const adm = admin as { id: string; name: string; title: string | null; is_super_admin: boolean | null }
+  const adm = admin as { id: string; name: string; title: string | null; is_super_admin: boolean | null; can_sign_contracts: boolean | null }
+  if (!adm.can_sign_contracts) {
+    return NextResponse.json({ error: 'You do not have permission to counter-sign contracts. Ask a super admin to grant the Contract Signer capability.' }, { status: 403 })
+  }
   const typed = signed_typed_name.trim()
   if (typed.toLowerCase() !== adm.name.trim().toLowerCase()) {
     return NextResponse.json({

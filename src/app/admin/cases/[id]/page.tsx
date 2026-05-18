@@ -311,7 +311,7 @@ export default function AdminCaseDetailPage() {
           clients(client_number, nationality, date_of_birth, phone, email, special_requests, ${CLIENT_INFO_COLUMNS})
         ),
         documents(
-          id, type, document_number, slug, total_price, payment_due_date, payment_received_at, agent_margin_rate, company_margin_rate, finalized_at, from_party, to_party, created_at,
+          id, type, document_number, slug, total_price, payment_due_date, payment_received_at, agent_margin_rate, company_margin_rate, finalized_at, from_party, to_party, created_at, price_rate_snapshot,
           document_groups(id, name, order, member_count, document_items(id, base_price, final_price, quantity, overtime_hours, is_overtime_item, variant_id, variant_label_snapshot, product_name_snapshot, product_partner_snapshot, sort_order, origin, removed_at, agent_note, products(id, name, description, partner_name, duration_value, duration_unit, has_female_doctor, has_prayer_room, dietary_type, location, full_address, contact_phone, contact_email, contact_channels, product_categories(name), product_subcategories!products_subcategory_id_fkey(name))), document_group_members(id, case_member_id))
         ),
         schedules(id, slug, pdf_url, items, status, version, file_name, revision_note, admin_note, confirmed_at, created_at, first_opened_at, concierge_name, concierge_phone, day_subpackages)
@@ -729,10 +729,6 @@ export default function AdminCaseDetailPage() {
       caseData.status === 'awaiting_schedule'
       // Revision: agent requested changes
       || (caseData.status === 'reviewing_schedule' && latestSchedule?.status === 'revision_requested')
-      // Post-confirmation supplement (e.g. results consultation day added later)
-      || caseData.status === 'awaiting_pricing'
-      || caseData.status === 'awaiting_payment'
-      || caseData.status === 'awaiting_travel'
     )
   const sortedGroups = latestQuote?.document_groups ? [...latestQuote.document_groups].sort((a, b) => a.order - b.order) : []
   // editGroups: groups from finalInvoice (draft or finalized). Edit Selected Products
@@ -2181,7 +2177,7 @@ export default function AdminCaseDetailPage() {
                 {/* Sticky cap — carries the full green border on top/left/right */}
                 <div className="bg-white border-t-2 border-x-2 border-[#0f4c35] rounded-t-2xl px-4 py-3 flex items-center justify-between gap-2 flex-wrap">
                   <p className="text-xs font-semibold uppercase tracking-wide text-[#0f4c35]">
-                    {sortedSchedules.length === 0 ? 'Build Schedule' : latestSchedule?.confirmed_at ? 'Edit Schedule' : `New Version (v${nextVersion})`}
+                    {sortedSchedules.length === 0 ? 'Build Schedule' : `New Version (v${nextVersion})`}
                   </p>
                   <div className="flex items-center gap-3">
                     <button
@@ -2237,7 +2233,6 @@ export default function AdminCaseDetailPage() {
                     }}
                     slug={latestSchedule?.slug ?? null}
                     nextVersion={nextVersion}
-                    editInPlace={latestSchedule?.confirmed_at ? (latestSchedule.id ?? null) : null}
                     initialConciergeName={latestSchedule?.concierge_name ?? lastConciergeInfo?.name ?? null}
                     initialConciergePhone={latestSchedule?.concierge_phone ?? lastConciergeInfo?.phone ?? null}
                     initialDaySubpackages={
@@ -2671,7 +2666,16 @@ export default function AdminCaseDetailPage() {
                   .reduce((s: number, it: QuoteItem) => s + (it.final_price ?? 0), 0)
                 const showPending = !isFinalized && finalInvoice && (pendingRemovals > 0 || pendingAdditions > 0)
                 // After finalize show final_invoice total; before finalize show quotation (original estimate).
-                const displayTotal = isFinalized ? (finalInvoice!.total_price ?? 0) : (latestQuote.total_price ?? 0)
+                // Mid-trip additions (additional_invoice) always stack on top.
+                const additionalsTotal = (caseData.documents ?? [])
+                  .filter(d => d.type === 'additional_invoice')
+                  .reduce((s, d) => s + (d.total_price ?? 0), 0)
+                const baseTotal = isFinalized ? (finalInvoice!.total_price ?? 0) : (latestQuote.total_price ?? 0)
+                const displayTotal = baseTotal + additionalsTotal
+                // Use snapshot rate from issued invoice so admin USD matches client invoice PDF
+                const finRate = (finalInvoice as unknown as { price_rate_snapshot?: number | null } | null)?.price_rate_snapshot
+                const quoteRate = (latestQuote as unknown as { price_rate_snapshot?: number | null } | null)?.price_rate_snapshot
+                const displayRate = finRate ?? quoteRate ?? exchangeRate
                 return (
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div>
@@ -2701,14 +2705,14 @@ export default function AdminCaseDetailPage() {
                   <p className="text-[10px] text-gray-400 mb-0.5">
                     {isFinalized ? 'Total (USD)' : 'Estimated (USD)'}
                   </p>
-                  <p className="font-semibold text-gray-900">{fmtUSD(displayTotal / exchangeRate)}</p>
+                  <p className="font-semibold text-gray-900">{fmtUSD(displayTotal / displayRate)}</p>
                   {showPending && (
                     <div className="mt-1 space-y-0.5">
                       {pendingRemovals > 0 && (
-                        <p className="text-[10px] text-red-500">− {fmtUSD(pendingRemovals / exchangeRate)} pending removal</p>
+                        <p className="text-[10px] text-red-500">− {fmtUSD(pendingRemovals / displayRate)} pending removal</p>
                       )}
                       {pendingAdditions > 0 && (
-                        <p className="text-[10px] text-[#0f4c35]">+ {fmtUSD(pendingAdditions / exchangeRate)} pending addition</p>
+                        <p className="text-[10px] text-[#0f4c35]">+ {fmtUSD(pendingAdditions / displayRate)} pending addition</p>
                       )}
                     </div>
                   )}

@@ -252,7 +252,7 @@ export default function CaseDetailPage() {
           clients(client_number, nationality, email, ${CLIENT_INFO_COLUMNS})
         ),
         documents(
-          id, type, document_number, slug, total_price, payment_due_date, payment_received_at, agent_margin_rate, company_margin_rate, finalized_at, from_party, to_party, created_at,
+          id, type, document_number, slug, total_price, payment_due_date, payment_received_at, agent_margin_rate, company_margin_rate, finalized_at, from_party, to_party, created_at, price_rate_snapshot,
           document_groups(
             id, name, order, member_count,
             document_items(id, final_price, quantity, variant_label_snapshot, removed_at, origin, agent_note, products(id, name, description, partner_name, base_price, price_currency, duration_value, duration_unit, has_female_doctor, has_prayer_room, dietary_type, location, full_address)),
@@ -997,7 +997,9 @@ export default function CaseDetailPage() {
   // Before schedule is confirmed, display only original-quotation items so the
   // agent sees the same amount the client sees on the quotation document.
   // After confirmation (or once finalized), show the full updated total.
-  const totalKrw = isPricingFinalized
+  // Mid-trip additions (additional_invoice) are always included on top so
+  // Financials reflects what the client actually owes for the whole trip.
+  const baseTotalKrw = isPricingFinalized
     ? (finalInvoiceDoc?.total_price ?? quote?.total_price ?? 0)
     : (!scheduleConfirmed)
       ? (quote?.document_groups ?? [])
@@ -1005,9 +1007,18 @@ export default function CaseDetailPage() {
           .filter(it => it.origin === 'original' || it.origin == null)
           .reduce((s, it) => s + (it.final_price ?? 0), 0)
       : (quote?.total_price ?? 0)
+  const additionalsTotalKrw = (caseData.documents ?? [])
+    .filter(d => d.type === 'additional_invoice')
+    .reduce((s, d) => s + (d.total_price ?? 0), 0)
+  const totalKrw = baseTotalKrw + additionalsTotalKrw
   const agentMarginRate = quote?.agent_margin_rate ?? 0
   const earningsKrw = agentMarginRate > 0 ? Math.round(totalKrw * agentMarginRate) : 0
-  const toUsd = (krw: number) => krw / exchangeRate
+  // Use snapshot exchange rate from the issued invoice (matches what's on the
+  // client's invoice PDF). Fall back to current system rate before finalize.
+  const docForRate = (finalInvoiceDoc as unknown as { price_rate_snapshot?: number | null }) ?? null
+  const quoteForRate = (quote as unknown as { price_rate_snapshot?: number | null }) ?? null
+  const displayRate = docForRate?.price_rate_snapshot ?? quoteForRate?.price_rate_snapshot ?? exchangeRate
+  const toUsd = (krw: number) => krw / displayRate
   // Reverse-engineer commission breakdown from stored composite rate
   const totalUSD = toUsd(totalKrw)
   const commissionHighValue = totalUSD >= 50000

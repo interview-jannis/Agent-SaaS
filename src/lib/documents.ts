@@ -638,6 +638,7 @@ export type AdditionalItemDraft = {
   productPartnerSnapshot?: string | null
   basePrice: number
   finalPrice: number
+  quantity?: number
 }
 
 // Issue an additional invoice — Admin → Client. Issued mid-trip when the
@@ -653,7 +654,7 @@ export async function issueAdditionalInvoice(
 ): Promise<DocumentRow> {
   const quotation = await getCaseQuotation(caseId)
   const items = opts.items ?? []
-  const initialTotal = items.reduce((s, it) => s + (it.finalPrice || 0), 0)
+  const initialTotal = items.reduce((s, it) => s + (it.finalPrice || 0) * (it.quantity ?? 1), 0)
 
   const doc = await createDocument({
     caseId,
@@ -680,6 +681,7 @@ export async function issueAdditionalInvoice(
       productPartnerSnapshot: it.productPartnerSnapshot ?? null,
       basePrice: it.basePrice,
       finalPrice: it.finalPrice,
+      quantity: it.quantity ?? 1,
       sortOrder: i,
     })
   }

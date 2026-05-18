@@ -83,7 +83,7 @@ export default async function QuoteDocument({
       document_groups(
         id, name, order, member_count,
         document_group_members(case_member_id),
-        document_items(id, base_price, final_price, variant_label_snapshot, removed_at, origin, products(name, description))
+        document_items(id, base_price, final_price, variant_label_snapshot, removed_at, origin, products(name, description, product_categories(name), product_subcategories!products_subcategory_id_fkey(name)))
       )
     `)
     .eq('slug', slug)
@@ -232,6 +232,29 @@ export default async function QuoteDocument({
   type LineItem = { no: number; group: string; description: string; qty: number; unitUSD: number; amtUSD: number }
   const lineItems: LineItem[] = []
   let no = 1
+
+  // Canonical category order applied within each group:
+  // K-Medical → K-Beauty → K-Wellness → K-Starcation → K-Education →
+  // Subpackage(Hotel) → Subpackage(other) → uncategorized. Alphabetical within rank.
+  type ItemWithCat = { products: { name?: string; product_categories?: { name?: string | null } | { name?: string | null }[] | null; product_subcategories?: { name?: string | null } | { name?: string | null }[] | null } | null }
+  function pickName(rel: { name?: string | null } | { name?: string | null }[] | null | undefined): string | null {
+    if (!rel) return null
+    if (Array.isArray(rel)) return rel[0]?.name ?? null
+    return rel.name ?? null
+  }
+  function categoryRank(it: ItemWithCat): number {
+    const cat = pickName(it.products?.product_categories)
+    const sub = pickName(it.products?.product_subcategories)
+    if (cat === 'K-Medical') return 1
+    if (cat === 'K-Beauty') return 2
+    if (cat === 'K-Wellness') return 3
+    if (cat === 'K-Starcation') return 4
+    if (cat === 'K-Education') return 5
+    if (cat === 'Subpackage' && sub === 'Hotel') return 6
+    if (cat === 'Subpackage') return 7
+    return 99
+  }
+
   // allGroups used only for global group index (gi) so group numbers stay consistent
   groups.forEach((group) => {
     const gi = allGroups.findIndex(g => g.id === group.id)
@@ -251,10 +274,21 @@ export default async function QuoteDocument({
         : !customName || customName === autoName
           ? `${autoName} · ${memberCount} pax`
           : `${autoName}: ${customName} · ${memberCount} pax`
-    for (const item of group.document_items.filter(it => {
-      if (scheduleConfirmed || isInvoice) return !it.removed_at
-      return it.origin === 'original' || it.origin == null
-    })) {
+    const sortedItems = group.document_items
+      .filter(it => {
+        if (scheduleConfirmed || isInvoice) return !it.removed_at
+        return it.origin === 'original' || it.origin == null
+      })
+      .slice()
+      .sort((a, b) => {
+        const rA = categoryRank(a as ItemWithCat)
+        const rB = categoryRank(b as ItemWithCat)
+        if (rA !== rB) return rA - rB
+        const nA = (a.products?.name ?? '').toLowerCase()
+        const nB = (b.products?.name ?? '').toLowerCase()
+        return nA.localeCompare(nB)
+      })
+    for (const item of sortedItems) {
       const groupAmtUSD = item.final_price / exchangeRate
       const unitUSD = groupAmtUSD / memberCount
       // Per-member mode: show only this person's share (qty=1, amt=unitUSD)

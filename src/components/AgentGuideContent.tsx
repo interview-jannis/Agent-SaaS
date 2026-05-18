@@ -11,27 +11,30 @@ export type GuideEdits = {
 }
 
 // ─── Screenshot defaults ──────────────────────────────────────────────────────
-const SS = 'https://tknucfjnqapriadgiwuv.supabase.co/storage/v1/object/public/guide/screenshots'
+const P = '/guide/product'
+const C = '/guide/clients'
 
-const DEFAULT_CASE_SS: Record<string, string> = {
-  awaiting_contract:   `${SS}/case-agent-awaiting_contract.png`,
-  awaiting_deposit:    `${SS}/case-agent-awaiting_deposit.png`,
-  awaiting_schedule:   `${SS}/case-agent-awaiting_schedule.png`,
-  reviewing_schedule:  `${SS}/case-agent-reviewing_schedule.png`,
-  awaiting_pricing:    `${SS}/case-agent-awaiting_pricing.png`,
-  awaiting_payment:    `${SS}/case-agent-awaiting_payment.png`,
-  awaiting_travel:     `${SS}/case-agent-awaiting_travel.png`,
-  awaiting_review:     `${SS}/case-agent-awaiting_review.png`,
-  awaiting_settlement: `${SS}/case-agent-awaiting_settlement.png`,
-  completed:           `${SS}/case-agent-completed.png`,
+const DEFAULT_CASE_SS: Record<string, string[]> = {
+  awaiting_contract:   [`${P}/11.png`, `${P}/12.png`, `${P}/13.png`],
+  awaiting_deposit:    [`${P}/14.png`, `${P}/15.png`, `${P}/16.png`, `${P}/17.png`],
+  awaiting_schedule:   [`${P}/20.png`],
+  reviewing_schedule:  [`${P}/19.png`, `${P}/19_1.png`, `${P}/19_2.png`, `${P}/19_3.png`, `${P}/21.png`],
+  awaiting_pricing:    [`${P}/22.png`],
+  awaiting_payment:    [`${P}/23.png`],
+  awaiting_travel:     [`${P}/25.png`],
+  awaiting_review:     [`${P}/26.png`],
+  awaiting_settlement: [`${P}/27.png`, `${P}/28.png`],
+  completed:           [`${P}/29.png`],
 }
-const DEFAULT_SS: Record<string, string> = {
-  home:      `${SS}/agent-home.png`,
-  cases:     `${SS}/agent-cases.png`,
-  clients:   `${SS}/agent-clients.png`,
-  payouts:   `${SS}/agent-payouts.png`,
-  dashboard: `${SS}/agent-dashboard.png`,
-  profile:   `${SS}/agent-profile.png`,
+const DEFAULT_SS: Record<string, string[]> = {
+  home:      [],
+  cases:     [],
+  product:   [`${P}/1.png`, `${P}/2.png`, `${P}/3.png`, `${P}/4.png`, `${P}/5.png`,
+              `${P}/6.png`, `${P}/7.png`, `${P}/8.png`, `${P}/9.png`, `${P}/10.png`],
+  clients:   [`${C}/1.png`, `${C}/2.png`, `${C}/3.png`, `${C}/4.png`, `${C}/5.png`, `${C}/6.png`],
+  payouts:   [],
+  dashboard: [],
+  profile:   [],
 }
 
 // ─── Case pipeline ────────────────────────────────────────────────────────────
@@ -40,55 +43,55 @@ const CASE_STEPS = [
     status: 'awaiting_contract',
     label: 'Awaiting Contract',
     isYourMove: true,
-    action: 'Send your client the quotation link from the case page. The quote is a permanent snapshot — the products and estimated prices your client sees are fixed at the moment you created the case. Even if products change later, the original quote stays as-is.\n\nAt the same time, coordinate the 3-party contract: your client signs first, then you, then admin counter-signs. All three signatures are required before moving on.',
+    action: 'Send your client the quotation link from the case page. Use the Preview button to open the quotation as a shareable link, or Send Quotation to deliver it directly to your client\'s registered email address.\n\nOnce your client decides to proceed, complete the 3-party contract (admin, agent, client). Your client signs first, then you, then admin counter-signs — all three signatures are required. If you\'re meeting your client in person, use the "Sign on this device" option to complete all signatures from a single device.\n\nThe quotation is a permanent snapshot — products and estimated prices are fixed at the time the case was created and will not change even if catalogue prices are updated later.',
   },
   {
     status: 'awaiting_deposit',
     label: 'Awaiting Deposit',
     isYourMove: true,
-    action: 'Collect 50% of the total as a deposit from your client and forward it to admin.\n\nWhile waiting, fill in all Trip Info (flights, accommodation, travel dates) and Client Info (passport, medical details, dietary needs) on the case page. Incomplete fields will block the case from moving to the schedule stage — so the more you fill in now, the smoother the process.\n\nIf the product selection needs any changes, raise it with admin now. Once the schedule stage starts, product changes become much harder.',
+    action: 'Once admin signs the deposit invoice, collect the 50% deposit from your client and forward the full amount to admin. The case will advance once admin confirms receipt.\n\nAt the same time, fill in all Trip Info and Client Info on the case page — flight details, accommodation, travel dates, passport numbers, medical history, and dietary requirements. The Concept field is optional; use it for a brief trip label such as a family name. Assign existing clients to their respective groups, or register new client profiles directly from the case page. Incomplete required fields will block the case from advancing.\n\nIf any product changes are needed, raise them with admin now. Once the schedule stage begins, making changes becomes significantly harder.',
   },
   {
     status: 'awaiting_schedule',
     label: 'Awaiting Schedule',
     isYourMove: false,
-    action: 'Admin is reviewing the product selection and building the day-by-day itinerary. Nothing required from you right now — you\'ll get a notification as soon as the schedule is ready for your review.\n\nIf you recall a product change the client requested, message admin now while there\'s still time.',
+    action: 'Admin is reviewing the product selection and building the day-by-day itinerary. Wait until admin registers the schedule — you will be notified as soon as it is ready for your review. No action is required from you at this stage.\n\nIf you submitted a revision request from the schedule review step, the case has returned here. You can see the revision reason you provided. Wait for admin to upload the updated schedule.\n\nIf you recall a last-minute product change the client requested, contact admin now while the schedule is still being built.',
   },
   {
     status: 'reviewing_schedule',
     label: 'Reviewing Schedule',
     isYourMove: true,
-    action: 'Review the schedule admin has prepared. Check that the dates, service names, clinics, and timing all match what your client is expecting.\n\nIf anything needs to change, click "Request Revision" and leave a clear, specific note for admin (e.g. "Move the facial treatment to Day 2 afternoon — client has a doctor appointment on Day 1"). Admin will revise and re-send for another round of review.\n\nWhen everything looks good, click "Confirm". This permanently locks the schedule — no further edits are possible after this point, so make sure your client is aligned before you confirm.',
+    action: 'Review the schedule admin has prepared. You can preview it directly from the case page or send it to your client\'s email using the Send Schedule button.\n\nThe schedule cover page includes group members, flight details, accommodation, and concierge contact — verify all details are correct. Daily activities are listed in chronological order; group-specific services appear in separate side-by-side columns.\n\nIf anything needs to change, click "Request Revision" and leave a clear, specific note for admin (e.g. "Move the facial treatment to Day 2 afternoon — client has a doctor appointment on Day 1"). The case returns to Awaiting Schedule and admin will upload a revised version. When admin uploads the new schedule, only the latest version is shown — previous versions are no longer visible.\n\nWhen everything looks correct and your client is aligned, click "Confirm". This permanently locks the schedule — no further edits are possible after this point.',
   },
   {
     status: 'awaiting_pricing',
     label: 'Awaiting Final Pricing',
     isYourMove: false,
-    action: 'Admin is setting the final prices for the balance invoice. No action needed from you.\n\nNote: at this stage, the product list is locked. If you realise something needs to be added or removed, contact admin — they would need to revert the schedule to make structural changes, which takes extra time. Try to catch these issues during the schedule review.',
+    action: 'Admin is reviewing and finalising the prices for the balance invoice. No action is needed from you.\n\nNote that the final prices may differ from the original quotation — admin may make adjustments during the finalisation review. The product list is also locked at this stage. If you realise something needs to be added or removed, contact admin immediately — structural changes require reverting to the schedule stage, which takes additional time. Try to catch all such issues during the schedule review.',
   },
   {
     status: 'awaiting_payment',
     label: 'Awaiting Balance Payment',
     isYourMove: true,
-    action: 'Send your client the final invoice link. You can copy it from the case page using the "Send" button next to the invoice.\n\nOnce your client pays the remaining 50%, notify admin so they can confirm receipt on their end. The case won\'t advance until admin confirms the payment.',
+    action: 'Send your client the final invoice link. You can copy it from the case page using the Send button next to the invoice. Balance payment typically happens just before travel — coordinate the timing with your client so they are prepared.\n\nOnce your client pays the remaining 50%, notify admin so they can confirm receipt. The case will not advance until admin confirms the payment.',
   },
   {
     status: 'awaiting_travel',
     label: 'Awaiting Travel',
     isYourMove: true,
-    action: 'The payment is confirmed and the trip is on. Share the schedule link with your client so they have their itinerary on hand.\n\nCoordinate any on-the-ground logistics — transfers, clinic check-in times, hotel arrangements. Once the trip is fully complete, come back to the case and click "Mark Travel Complete". The timestamp is recorded and used as the basis for your commission.',
+    action: 'All payments are confirmed and the trip is on. Share the schedule link with your client so they have their itinerary on hand before departure.\n\nCoordinate any on-the-ground logistics — transfers, clinic check-in times, and hotel arrangements. If your client requests any activities outside the scheduled itinerary during the trip, an additional invoice may be issued — coordinate with admin in advance whenever possible to keep billing transparent.\n\nOnce the trip is fully complete, come back to the case and click "Mark Travel Complete". The timestamp is recorded and used as the basis for your commission calculation.',
   },
   {
     status: 'awaiting_review',
     label: 'Awaiting Review',
     isYourMove: true,
-    action: 'Collect feedback from your client and submit the post-trip survey on their behalf. Ask them how the trip went, whether the services met their expectations, and if there\'s anything to improve.\n\nOnce you submit the review, the case unlocks the commission invoice step. The sooner you submit, the sooner your payout can be processed.',
+    action: 'Communicate with your client to gather their feedback on the trip — how it went, whether the services met expectations, and anything to improve. Submit the post-trip survey on their behalf from the case page.\n\nOnce you submit the review, the commission invoice step becomes available. The sooner you submit, the sooner your payout can be processed.',
   },
   {
     status: 'awaiting_settlement',
     label: 'Awaiting Settlement',
     isYourMove: true,
-    action: 'Issue your commission invoice to admin using the "Issue Commission Invoice" button on the case page. Your commission rate (15–25%) is automatically applied based on your completed patient count for the month.\n\nOnce admin processes the payout and clicks "Mark Paid", a settlement record is created automatically and the case moves to Completed. You can view all your payouts under the Payouts tab.',
+    action: 'Issue your commission invoice to admin using the "Issue Commission Invoice" button on the case page. Your commission rate (15–25%) is automatically applied based on your completed patient count for the month.\n\nOnce the invoice is issued, wait for admin to process the payout. When admin clicks "Mark Paid", a settlement record is created automatically and the case moves to Completed. You can view all your payouts under the Payouts tab.',
   },
   {
     status: 'completed',
@@ -199,8 +202,10 @@ const AGENT_SECTIONS = [
     details: [
       'Settlement number, case number, KRW amount, and payment date',
       'Commission rate is calculated automatically based on your monthly completed patient count',
-      'Rate tiers: 15% (0–10 patients) · 20% (11–30) · 25% (31+)',
-      'Resets monthly — counted per patient, not per case (group of 4 = 4 patients)',
+      'Standard tiers: 15% (0–10 patients/month) · 20% (11–30) · 25% (31+). Resets monthly — counted per patient, not per case (a group of 4 = 4 patients)',
+      'High-Value Incentive: if the total case value reaches $50,000 or more, an additional 5% is applied on top of your standard rate',
+      'Retention Bonus: if a returning client books again, an additional 3% applies to that case',
+      'Incentive bonuses stack — a $50K+ case from a returning client earns both the High-Value and Retention bonuses simultaneously',
     ],
   },
   {
@@ -439,8 +444,7 @@ function CasePipeline({ edits, editMode, onEdit }: {
   function getScreenshots(status: string): string[] {
     const saved = edits.screenshots[`case_agent_${status}`]
     if (saved && saved.length > 0) return saved
-    const def = DEFAULT_CASE_SS[status]
-    return def ? [def] : []
+    return DEFAULT_CASE_SS[status] ?? []
   }
   function getAction(status: string, defaultAction: string): string {
     return edits.actions[`agent_${status}`] || defaultAction
@@ -533,8 +537,7 @@ function AgentGuideContentInner({ edits, editMode, onEdit }: {
   function getSS(key: string): string[] {
     const saved = edits.screenshots[`agent_${key}`]
     if (saved && saved.length > 0) return saved
-    const def = DEFAULT_SS[key]
-    return def ? [def] : []
+    return DEFAULT_SS[key] ?? []
   }
   function getDesc(key: string, base: string): string {
     return edits.descs[`agent_${key}`] || base

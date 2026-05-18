@@ -11,6 +11,7 @@ type AdminRow = {
   email: string | null
   title: string | null
   is_super_admin: boolean | null
+  can_sign_contracts: boolean | null
   invite_token: string | null
   invite_expires_at: string | null
   created_at: string | null
@@ -35,13 +36,55 @@ export default function AdminAdminsPage() {
   const [deleteTarget, setDeleteTarget] = useState<AdminRow | null>(null)
   const [deleteConfirmName, setDeleteConfirmName] = useState('')
 
+  // Edit modal
+  const [editTarget, setEditTarget] = useState<AdminRow | null>(null)
+  const [editForm, setEditForm] = useState<{ name: string; title: string; is_super_admin: boolean; can_sign_contracts: boolean }>({ name: '', title: '', is_super_admin: false, can_sign_contracts: false })
+  const [savingEdit, setSavingEdit] = useState(false)
+  const [editError, setEditError] = useState('')
+
   const fetchAdmins = useCallback(async () => {
     const { data } = await supabase.from('admins')
-      .select('id, auth_user_id, name, email, title, is_super_admin, invite_token, invite_expires_at, created_at')
+      .select('id, auth_user_id, name, email, title, is_super_admin, can_sign_contracts, invite_token, invite_expires_at, created_at')
       .order('is_super_admin', { ascending: false })
       .order('name')
     setAdmins((data as AdminRow[]) ?? [])
   }, [])
+
+  function openEditModal(a: AdminRow) {
+    setEditTarget(a)
+    setEditForm({
+      name: a.name ?? '',
+      title: a.title ?? '',
+      is_super_admin: !!a.is_super_admin,
+      can_sign_contracts: !!a.can_sign_contracts,
+    })
+    setEditError('')
+  }
+
+  async function saveEdit() {
+    if (!editTarget) return
+    const name = editForm.name.trim()
+    if (!name) { setEditError('Name is required.'); return }
+    // Lockout guard: must keep at least one super admin alive.
+    if (editTarget.is_super_admin && !editForm.is_super_admin) {
+      const remainingSupers = admins.filter(a => a.id !== editTarget.id && a.is_super_admin).length
+      if (remainingSupers === 0) {
+        setEditError('Cannot revoke Super Admin from the last super admin. Grant the role to another admin first.')
+        return
+      }
+    }
+    setSavingEdit(true); setEditError('')
+    const { error } = await supabase.from('admins').update({
+      name,
+      title: editForm.title.trim() || null,
+      is_super_admin: editForm.is_super_admin,
+      can_sign_contracts: editForm.can_sign_contracts,
+    }).eq('id', editTarget.id)
+    setSavingEdit(false)
+    if (error) { setEditError(error.message); return }
+    setEditTarget(null)
+    await fetchAdmins()
+  }
 
   useEffect(() => {
     async function init() {
@@ -166,6 +209,9 @@ export default function AdminAdminsPage() {
                         {isProtected && (
                           <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-[#0f4c35]/10 text-[#0f4c35]">Super Admin</span>
                         )}
+                        {a.can_sign_contracts && (
+                          <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">Contract Signer</span>
+                        )}
                         {isPendingInvite && (
                           <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-50 text-amber-700">Invite pending</span>
                         )}
@@ -184,11 +230,26 @@ export default function AdminAdminsPage() {
                         </>
                       )}
                     </div>
-                    {!isSelf && !isProtected && (
+                    {!isPendingInvite && (
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button onClick={() => openEditModal(a)}
+                          className="text-xs font-medium bg-green-700 text-white hover:bg-green-800 px-2.5 py-1 rounded-lg transition-colors">
+                          Edit
+                        </button>
+                        {!isSelf && !isProtected && (
+                          <button onClick={() => { setDeleteTarget(a); setDeleteConfirmName('') }}
+                            disabled={deletingId === a.id}
+                            className="text-xs text-gray-400 hover:text-red-500 disabled:opacity-40 transition-colors">
+                            {deletingId === a.id ? 'Deleting…' : 'Delete'}
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    {isPendingInvite && (
                       <button onClick={() => { setDeleteTarget(a); setDeleteConfirmName('') }}
                         disabled={deletingId === a.id}
                         className="shrink-0 text-xs text-gray-400 hover:text-red-500 disabled:opacity-40 transition-colors">
-                        {deletingId === a.id ? 'Deleting…' : isPendingInvite ? 'Cancel' : 'Delete'}
+                        {deletingId === a.id ? 'Cancelling…' : 'Cancel'}
                       </button>
                     )}
                   </div>
@@ -198,6 +259,68 @@ export default function AdminAdminsPage() {
           )}
         </div>
       </div>
+
+      {/* Edit modal */}
+      {editTarget && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+          onClick={() => { if (!savingEdit) setEditTarget(null) }}>
+          <div className="bg-white rounded-2xl max-w-md w-full p-5 space-y-4" onClick={e => e.stopPropagation()}>
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900">Edit Admin</h3>
+              <p className="text-xs text-gray-500 mt-1">{editTarget.email}</p>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-[11px] font-medium text-gray-600 mb-1">Name</label>
+                <input type="text" value={editForm.name} onChange={e => setEditForm(p => ({ ...p, name: e.target.value }))}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
+                <p className="text-[10px] text-gray-400 mt-1">Used as the signer name on contracts. The typed-name check on sign uses this exact value.</p>
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-gray-600 mb-1">Title</label>
+                <input type="text" value={editForm.title} onChange={e => setEditForm(p => ({ ...p, title: e.target.value }))}
+                  placeholder="e.g. Director, Account Manager"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-[#0f4c35]" />
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-gray-600 mb-1">Permissions</label>
+                <div className="space-y-2 bg-gray-50 rounded-lg border border-gray-100 p-3">
+                  <label className="flex items-start gap-2 cursor-pointer select-none">
+                    <input type="checkbox" checked={editForm.is_super_admin}
+                      onChange={e => setEditForm(p => ({ ...p, is_super_admin: e.target.checked }))}
+                      className="w-4 h-4 mt-0.5 accent-[#0f4c35] shrink-0" />
+                    <span>
+                      <span className="text-xs font-medium text-gray-900">Super Admin</span>
+                      <span className="block text-[10px] text-gray-500">Manage system settings, approve agents, invite/edit admins.</span>
+                    </span>
+                  </label>
+                  <label className="flex items-start gap-2 cursor-pointer select-none">
+                    <input type="checkbox" checked={editForm.can_sign_contracts}
+                      onChange={e => setEditForm(p => ({ ...p, can_sign_contracts: e.target.checked }))}
+                      className="w-4 h-4 mt-0.5 accent-amber-600 shrink-0" />
+                    <span>
+                      <span className="text-xs font-medium text-gray-900">Contract Signer</span>
+                      <span className="block text-[10px] text-gray-500">May counter-sign agent and case contracts as the company representative.</span>
+                    </span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            {editError && <p className="text-xs text-red-500">{editError}</p>}
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
+              <button onClick={() => setEditTarget(null)} disabled={savingEdit}
+                className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-800 disabled:opacity-40">Cancel</button>
+              <button onClick={saveEdit} disabled={savingEdit}
+                className="px-3 py-1.5 text-xs font-medium bg-[#0f4c35] text-white rounded-lg hover:bg-[#0a3828] disabled:opacity-40">
+                {savingEdit ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete modal */}
       {deleteTarget && (
