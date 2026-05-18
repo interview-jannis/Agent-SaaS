@@ -997,12 +997,14 @@ export default function CaseDetailPage() {
   // Before schedule is confirmed, display only original-quotation items so the
   // agent sees the same amount the client sees on the quotation document.
   // After confirmation (or once finalized), show the full updated total.
-  const totalKrw = (!scheduleConfirmed && !quote?.finalized_at)
-    ? (quote?.document_groups ?? [])
-        .flatMap(g => (g.document_items ?? []))
-        .filter(it => it.origin === 'original' || it.origin == null)
-        .reduce((s, it) => s + (it.final_price ?? 0), 0)
-    : (quote?.total_price ?? 0)
+  const totalKrw = isPricingFinalized
+    ? (finalInvoiceDoc?.total_price ?? quote?.total_price ?? 0)
+    : (!scheduleConfirmed)
+      ? (quote?.document_groups ?? [])
+          .flatMap(g => (g.document_items ?? []))
+          .filter(it => it.origin === 'original' || it.origin == null)
+          .reduce((s, it) => s + (it.final_price ?? 0), 0)
+      : (quote?.total_price ?? 0)
   const agentMarginRate = quote?.agent_margin_rate ?? 0
   const earningsKrw = agentMarginRate > 0 ? Math.round(totalKrw * agentMarginRate) : 0
   const toUsd = (krw: number) => krw / exchangeRate
