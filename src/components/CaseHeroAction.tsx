@@ -32,20 +32,21 @@ function CheckIcon() {
 
 
 function HeroShell({
-  tone, eyebrow, headline, subline, children,
+  tone, eyebrow, headline, subline, children, noPrefix,
 }: {
   tone: Tone
   eyebrow: string
   headline: string
   subline?: React.ReactNode
   children?: React.ReactNode
+  noPrefix?: boolean
 }) {
   const t = TONE[tone]
   return (
     <section className={`border rounded-2xl px-5 py-4 ${t.wrap}`}>
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div className="min-w-0 flex-1">
-          <p className={`text-[10px] font-semibold uppercase tracking-wider ${t.eyebrow}`}>Next · {eyebrow}</p>
+          <p className={`text-[10px] font-semibold uppercase tracking-wider ${t.eyebrow}`}>{noPrefix ? eyebrow : `Next · ${eyebrow}`}</p>
           <p className="text-sm font-semibold text-gray-900 mt-1">{headline}</p>
           {subline && <div className="text-xs text-gray-600 mt-1">{subline}</div>}
         </div>
@@ -305,6 +306,21 @@ export function AgentCaseHero(p: AgentHeroProps) {
         </HeroShell>
       )
 
+    case 'awaiting_settlement':
+      return (
+        <HeroShell
+          tone="green"
+          eyebrow="Action needed"
+          headline="Issue your commission invoice"
+          subline={<span>Submit your commission invoice to admin. Your rate (15–25%) is auto-applied based on this month&apos;s completed patient count.</span>}
+        >
+          <button onClick={p.onScrollToDocuments ?? (() => document.getElementById('financials')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))}
+            className={`text-xs font-medium px-3 py-2 rounded-lg ${TONE.green.primaryBtn}`}>
+            Go to Financials
+          </button>
+        </HeroShell>
+      )
+
     case 'completed':
       if (!p.travelCompletedAt) {
         return (
@@ -323,7 +339,7 @@ export function AgentCaseHero(p: AgentHeroProps) {
       }
       return (
         <HeroShell tone="gray" eyebrow="Done" headline="Case completed · awaiting commission settlement"
-          subline={<span>Your commission is queued for payout. Payouts tab tracks status.</span>} />
+          subline={<span>Your commission is queued for payout. Payouts tab tracks status.</span>} noPrefix />
       )
 
     default:
@@ -528,13 +544,31 @@ export function AdminCaseHero(p: AdminHeroProps) {
         </HeroShell>
       )
 
+    case 'awaiting_settlement':
+      return (
+        <HeroShell
+          tone={p.hasInvoice ? 'green' : 'gray'}
+          eyebrow={p.hasInvoice ? 'Action needed' : 'Waiting on agent'}
+          headline={p.hasInvoice ? 'Mark commission invoice paid' : 'Waiting for commission invoice'}
+          subline={p.hasInvoice
+            ? <span>Agent&apos;s commission invoice is issued. Verify the amount, transfer the payout, then click Mark Paid.</span>
+            : <span>Agent is preparing the commission invoice. You&apos;ll be notified once it&apos;s submitted.</span>}
+        >
+          <button onClick={p.onScrollToFinancials ?? (() => document.getElementById('financials')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))}
+            className={`text-xs font-medium px-3 py-2 rounded-lg ${p.hasInvoice ? TONE.green.primaryBtn : TONE.gray.primaryBtn}`}>
+            Go to Financials
+          </button>
+        </HeroShell>
+      )
+
     case 'completed':
       return (
         <HeroShell
           tone="gray"
-          eyebrow="Settlement queue"
-          headline="Case completed · process payout"
-          subline={<span>Pay partners and the agent commission. Track in Settlement and Partner Payouts sections.</span>}
+          eyebrow="Done"
+          headline="Case completed"
+          subline={<span>All done. Track partner payouts and agent settlement in their respective sections.</span>}
+          noPrefix
         />
       )
 

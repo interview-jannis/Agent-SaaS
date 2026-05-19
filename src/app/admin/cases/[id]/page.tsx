@@ -193,6 +193,7 @@ export default function AdminCaseDetailPage() {
   const [partnerEdits, setPartnerEdits] = useState<Record<string, { amount: string; paid_at: string; note: string; confirmName: string }>>({})
   const [savingPartner, setSavingPartner] = useState<string | null>(null)
   const [partnerError, setPartnerError] = useState('')
+  const [deletingPartner, setDeletingPartner] = useState<string | null>(null)  // partner_name being reset
 
   // Agent settlement — single row per case
   const [agentSettlement, setAgentSettlement] = useState<AgentSettlement | null>(null)
@@ -260,6 +261,7 @@ export default function AdminCaseDetailPage() {
   const [savingItems, setSavingItems] = useState(false)
   const [updatingQtyId, setUpdatingQtyId] = useState<string | null>(null)
   const [updatingOTId, setUpdatingOTId] = useState<string | null>(null)
+  const [qtyChanged, setQtyChanged] = useState(false)
   const [editingProducts, setEditingProducts] = useState(false)
   const editPickerRef = useRef<HTMLDivElement>(null)
   const [clientModalMember, setClientModalMember] = useState<CaseMember | null>(null)
@@ -693,7 +695,12 @@ export default function AdminCaseDetailPage() {
   // `latestQuote` retained as the in-page name for the quotation document.
   const latestQuote = caseData.documents?.find(d => d.type === 'quotation') ?? null
   const finalInvoice = caseData.documents?.find(d => d.type === 'final_invoice') ?? null
-  const sortedSchedules = caseData.schedules ? [...caseData.schedules].sort((a, b) => b.version - a.version) : []
+  // Filter out version=0 preview-only sentinel rows (created by ScheduleEditor
+  // Preview button before the first real Save & Send). They must not appear in
+  // schedule history UI or affect latestSchedule / nextVersion calculations.
+  const sortedSchedules = caseData.schedules
+    ? [...caseData.schedules].filter(s => s.version > 0).sort((a, b) => b.version - a.version)
+    : []
   const latestSchedule = sortedSchedules[0] ?? null
   // Shared Activities / Trip Services apply automatically — exclude from
   // per-member assignment counters.
@@ -1228,13 +1235,16 @@ export default function AdminCaseDetailPage() {
             // want the removed rows visible as audit trail. All other consumers
             // filter for active rows so customer-facing surfaces stay clean.
             const allItems = editGroups.flatMap(g => g.document_items.map(it => ({ ...it, groupName: g.name, groupId: g.id })))
-            const dirty = stagedAdds.length > 0 || stagedRemoves.size > 0
             const activeCount = allItems.filter(it => !it.removed_at).length
 
             const cancelChanges = () => { setStagedAdds([]); setStagedRemoves(new Set()); setActionError('') }
+            const dirty = stagedAdds.length > 0 || stagedRemoves.size > 0
+            const canSavePanel = dirty || qtyChanged
 
             const saveChanges = async () => {
               if (!finalInvoice) return
+              // qty-only changes are already auto-saved; just close the panel.
+              if (!dirty) { setQtyChanged(false); setEditingProducts(false); return }
               setSavingItems(true); setActionError('')
               try {
                 // Removals first (they don't depend on adds; ids stable)
@@ -1279,6 +1289,7 @@ export default function AdminCaseDetailPage() {
                 }
                 setStagedAdds([])
                 setStagedRemoves(new Set())
+                setQtyChanged(false)
                 await fetchCase()
                 setEditingProducts(false)
               } catch (e: unknown) {
@@ -1299,6 +1310,7 @@ export default function AdminCaseDetailPage() {
                 await supabase.from('document_items').update({ quantity: newQty, final_price: newFinalPrice }).eq('id', itemId)
                 await recalcDocumentTotal(finalInvoice.id)
                 await fetchCase()
+                setQtyChanged(true)
               } finally {
                 setUpdatingQtyId(null)
               }
@@ -1431,7 +1443,7 @@ export default function AdminCaseDetailPage() {
                                   {g.name === 'Trip Services' && (() => {
                                     const isHotel = isHotelItem(item.products?.product_categories?.name, item.products?.product_subcategories?.name)
                                     const unit = isHotel ? 'n' : 'd'
-                                    const maxQty = isHotel ? tripNights : tripDays
+                                    const maxQty = tripDays
                                     const qty = item.quantity ?? 1
                                     const busy = updatingQtyId === item.id
                                     return (
@@ -1815,9 +1827,9 @@ export default function AdminCaseDetailPage() {
                         <button
                           type="button"
                           onClick={saveChanges}
-                          disabled={!dirty || savingItems}
+                          disabled={!canSavePanel || savingItems}
                           className="text-xs font-medium bg-[#0f4c35] text-white hover:bg-[#0a3828] px-3 py-1.5 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed">
-                          {savingItems ? 'Saving…' : `Save${dirty ? ` (${stagedAdds.length}+ ${stagedRemoves.size}-)` : ''}`}
+                          {savingItems ? 'Saving…' : dirty ? `Save (${stagedAdds.length}+ ${stagedRemoves.size}-)` : 'Done'}
                         </button>
                       </div>
                     </div>
@@ -2109,7 +2121,7 @@ export default function AdminCaseDetailPage() {
             // the appointment picker.
             const seen = new Set<string>() // `${groupId}:${variantId}`
             const caseProducts: {
-              variantId: string; productName: string; variantLabel: string | null
+              variantId: string; itemId?: string; productName: string; variantLabel: string | null
               partnerName: string | null; groupId: string; groupName: string; isSubpackage: boolean
               isSharedGroup: boolean; isTripService: boolean; isHotel: boolean; isVehicle: boolean
               quantity: number
@@ -2131,16 +2143,19 @@ export default function AdminCaseDetailPage() {
               const resolvedGroupId = quotGroupIdByName.get(grp.name) ?? grp.id
               for (const it of (grp.document_items ?? []).filter(x => !x.removed_at)) {
                 if (!it.variant_id) continue
-                const key = `${resolvedGroupId}:${it.variant_id}`
+                const isTripService = grp.name === 'Trip Services'
+                // Trip Services: each document_item is tracked separately (e.g. two hotel
+                // rows for male/female groups). Non-trip-service: dedup by groupId+variantId.
+                const key = isTripService ? it.id : `${resolvedGroupId}:${it.variant_id}`
                 if (seen.has(key)) continue
                 seen.add(key)
                 const catName = it.products?.product_categories?.name ?? null
                 const subName = it.products?.product_subcategories?.name ?? null
-                const isTripService = grp.name === 'Trip Services'
                 const isHotel = isTripService && catName === 'Subpackage' && subName === 'Hotel'
                 const isVehicle = isTripService && catName === 'Subpackage' && subName === 'Vehicle'
                 caseProducts.push({
                   variantId: it.variant_id,
+                  itemId: it.id,
                   productName: it.products?.name ?? 'Service',
                   variantLabel: it.variant_label_snapshot ?? null,
                   partnerName: it.products?.partner_name ?? null,
@@ -2155,7 +2170,7 @@ export default function AdminCaseDetailPage() {
                   durationValue: it.products?.duration_value ?? null,
                   durationUnit: it.products?.duration_unit ?? null,
                   overtimeRateKrw: products.find(p => p.id === it.products?.id)?.variants.find(v => v.id === it.variant_id)?.overtime_rate_krw ?? null,
-                  isHealthCheckup: catName === 'K-Medical',
+                  isHealthCheckup: catName === 'K-Medical' && subName === 'Health Screening',
                   location: it.products?.location ?? null,
                   fullAddress: it.products?.full_address ?? null,
                   contactPhone: it.products?.contact_channels?.find(c => c.type === 'Phone')?.value ?? null,
@@ -2948,26 +2963,32 @@ export default function AdminCaseDetailPage() {
                 const pname = (item.product_partner_snapshot ?? item.products?.partner_name)?.trim()
                 if (!pname) continue
                 const prev = groups.get(pname) ?? { name: pname, suggested: 0, items: [] }
-                // OT items: final_price is the total OT cost for partner
-                // Trip service base items: base_price × scheduled days (from day_subpackages)
-                // Other base items: base_price × contracted quantity
+                // base_price is stored as (unit_cost × contracted_qty) — already a total.
+                // OT items: final_price is the total OT cost for partner.
+                // Trip services: pay for ACTUAL scheduled days; derive per-day cost from base_price ÷ contracted qty.
+                // All other items: base_price is the partner cost total (no further multiplication).
                 const isTripService = g.name === 'Trip Services'
+                const contractedQty = Math.max(1, item.quantity ?? 1)
                 const scheduledDays = (isTripService && item.variant_id && item.variant_id in payoutScheduledDays)
                   ? payoutScheduledDays[item.variant_id]
                   : null
-                const qty = item.is_overtime_item
-                  ? (item.quantity ?? 1)  // OT qty = overtime hours
-                  : Math.max(1, scheduledDays ?? item.quantity ?? 1)
                 const itemCost = item.is_overtime_item
                   ? (item.final_price ?? 0)
-                  : (item.base_price ?? 0) * qty
+                  : scheduledDays !== null
+                    // Trip service: actual scheduled days × per-day cost
+                    ? Math.round((item.base_price ?? 0) / contractedQty * scheduledDays)
+                    // Regular item: base_price already = total cost (unit × qty baked in during quotation)
+                    : (item.base_price ?? 0)
+                const displayQty = item.is_overtime_item ? contractedQty : (scheduledDays ?? contractedQty)
+                const isHotelFromLabel = !item.is_overtime_item &&
+                  (item.variant_label_snapshot?.toLowerCase().includes('night') ?? false)
                 prev.suggested += itemCost
                 prev.items.push({
                   name: item.product_name_snapshot ?? item.products?.name ?? 'Service',
                   price: itemCost,
                   group: g.name,
-                  qty,
-                  unit: item.is_overtime_item ? 'h' : 'd',
+                  qty: displayQty,
+                  unit: item.is_overtime_item ? 'h' : (scheduledDays !== null || isHotelFromLabel ? 'd' : 'pax'),
                 })
                 groups.set(pname, prev)
               }
@@ -2996,7 +3017,7 @@ export default function AdminCaseDetailPage() {
                     )}
                   </div>
                   <div className="flex items-baseline gap-3 text-[10px] text-gray-500">
-                    <span>Paid <span className="font-semibold tabular-nums text-gray-700">{fmtUSD(totalPaid / exchangeRate)}</span> of {fmtUSD(totalSuggested / exchangeRate)}</span>
+                    <span>Paid <span className="font-semibold tabular-nums text-gray-700">{fmtKRW(totalPaid)}</span> of {fmtKRW(totalSuggested)}</span>
                     {allPaid && <span className="text-[#0f4c35] font-medium">All settled ✓</span>}
                   </div>
                 </div>
@@ -3024,11 +3045,12 @@ export default function AdminCaseDetailPage() {
                       <ul className="text-[10px] text-gray-500 space-y-0.5 pl-4 border-l border-gray-100">
                         {g.items.map((it, i) => (
                           <li key={i} className="flex justify-between gap-2">
-                            <span className="truncate">
-                              {it.name}
-                              <span className="text-gray-400"> · {it.group} · {it.qty}{it.unit}</span>
+                            <span className="truncate">{it.name}<span className="text-gray-400"> · {it.group}</span></span>
+                            <span className="text-gray-400 tabular-nums shrink-0">
+                              {it.qty > 1
+                                ? `${fmtKRW(Math.round(it.price / it.qty))} × ${it.qty}${it.unit} = ${fmtKRW(it.price)}`
+                                : fmtKRW(it.price)}
                             </span>
-                            <span className="text-gray-400 tabular-nums shrink-0">{fmtKRW(it.price)}</span>
                           </li>
                         ))}
                       </ul>
@@ -3076,20 +3098,57 @@ export default function AdminCaseDetailPage() {
 
                     // Paid — default view
                     if (existing && !editing) {
+                      const isDeleting = deletingPartner === g.name
                       return (
-                        <div key={g.name} className="bg-white rounded-xl border border-green-200 p-3 flex items-center gap-3 flex-wrap">
-                          <span className="w-2 h-2 rounded-full bg-[#0f4c35] shrink-0" />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-gray-900">{g.name}</p>
-                            <p className="text-[10px] text-gray-500">{g.items.length} item{g.items.length !== 1 ? 's' : ''} · paid {existing.paid_at}{existing.note ? ` · ${existing.note}` : ''}</p>
+                        <div key={g.name} className="bg-white rounded-xl border border-green-200 p-3 space-y-2">
+                          <div className="flex items-center gap-3 flex-wrap">
+                            <span className="w-2 h-2 rounded-full bg-[#0f4c35] shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-gray-900">{g.name}</p>
+                              <p className="text-[10px] text-gray-500">{g.items.length} item{g.items.length !== 1 ? 's' : ''} · paid {existing.paid_at}{existing.note ? ` · ${existing.note}` : ''}</p>
+                            </div>
+                            <span className="text-right tabular-nums">
+                              <span className="text-sm font-semibold text-[#0f4c35]">{fmtUSD(existing.amount / exchangeRate)}</span>
+                              <span className="text-[10px] text-gray-400 ml-2">{fmtKRW(existing.amount)}</span>
+                            </span>
+                            <button
+                              onClick={() => setPartnerEdits(p => ({ ...p, [g.name]: { amount: String(existing.amount), paid_at: existing.paid_at, note: existing.note ?? '', confirmName: '' } }))}
+                              className="text-xs font-semibold bg-green-700 text-white hover:bg-green-800 px-2.5 py-1 rounded-lg transition-colors">Edit</button>
+                            <button
+                              onClick={() => setDeletingPartner(isDeleting ? null : g.name)}
+                              className="text-xs font-semibold bg-gray-700 text-white hover:bg-gray-600 px-2.5 py-1 rounded-lg transition-colors">Reset</button>
                           </div>
-                          <span className="text-right tabular-nums">
-                            <span className="text-sm font-semibold text-[#0f4c35]">{fmtUSD(existing.amount / exchangeRate)}</span>
-                            <span className="text-[10px] text-gray-400 ml-2">{fmtKRW(existing.amount)}</span>
-                          </span>
-                          <button
-                            onClick={() => setPartnerEdits(p => ({ ...p, [g.name]: { amount: String(existing.amount), paid_at: existing.paid_at, note: existing.note ?? '', confirmName: '' } }))}
-                            className="text-xs font-semibold bg-green-700 text-white hover:bg-green-800 px-2.5 py-1 rounded-lg transition-colors">Edit</button>
+                          {isDeleting && (
+                            <div className="pl-5 space-y-2">
+                              <p className="text-[11px] text-red-600">This will delete the payment record so you can re-enter the correct amount. Type the partner name to confirm.</p>
+                              <div className="flex gap-2 items-center">
+                                <input
+                                  placeholder={g.name}
+                                  id={`reset-confirm-${g.name}`}
+                                  className="flex-1 border border-gray-200 rounded-lg px-2 py-1 text-sm text-gray-900 focus:outline-none focus:border-red-400"
+                                />
+                                <button
+                                  disabled={saving}
+                                  onClick={async () => {
+                                    const input = (document.getElementById(`reset-confirm-${g.name}`) as HTMLInputElement)?.value ?? ''
+                                    if (input.trim() !== g.name.trim()) return
+                                    setSavingPartner(g.name); setPartnerError('')
+                                    try {
+                                      const { error } = await supabase.from('partner_payments').delete().eq('id', existing.id)
+                                      if (error) throw error
+                                      setDeletingPartner(null)
+                                      await fetchCase()
+                                    } catch (e: unknown) {
+                                      setPartnerError((e as { message?: string })?.message ?? 'Failed.')
+                                    } finally { setSavingPartner(null) }
+                                  }}
+                                  className="text-xs font-semibold bg-red-600 text-white hover:bg-red-700 px-2.5 py-1 rounded-lg transition-colors disabled:opacity-40">
+                                  {saving ? 'Deleting…' : 'Delete'}
+                                </button>
+                                <button onClick={() => setDeletingPartner(null)} className="text-[11px] text-gray-400 hover:text-gray-700">Cancel</button>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )
                     }
@@ -3114,8 +3173,12 @@ export default function AdminCaseDetailPage() {
                           <ul className="text-[10px] text-gray-500 space-y-0.5 pl-4 border-l border-gray-100">
                             {g.items.map((it, i) => (
                               <li key={i} className="flex justify-between gap-2">
-                                <span className="truncate">{it.name}<span className="text-gray-400"> · {it.group} · {it.qty}{it.unit}</span></span>
-                                <span className="text-gray-400 tabular-nums shrink-0">{fmtKRW(it.price)}</span>
+                                <span className="truncate">{it.name}<span className="text-gray-400"> · {it.group}</span></span>
+                                <span className="text-gray-400 tabular-nums shrink-0">
+                                  {it.qty > 1
+                                    ? `${fmtKRW(Math.round(it.price / it.qty))} × ${it.qty}${it.unit} = ${fmtKRW(it.price)}`
+                                    : fmtKRW(it.price)}
+                                </span>
                               </li>
                             ))}
                           </ul>

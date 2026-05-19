@@ -110,6 +110,9 @@ export default function ScheduleDocument({
   // null = "All groups" tab
   const [activeGroupId, setActiveGroupId] = useState<string | null>(initialGroupId ?? null)
   const [isMobile, setIsMobile] = useState(false)
+  // Viewer mode toggle — only available when opened with ?internal=1 (admin link).
+  // 'admin' shows internal notes/details; 'client' simulates what agent/client sees.
+  const [viewerMode, setViewerMode] = useState<'admin' | 'client'>('admin')
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth <= 600)
@@ -137,8 +140,11 @@ export default function ScheduleDocument({
   }, [activeGroupId])
 
   const isMultiGroup = groups.length > 1
-  const showTabs = isMultiGroup
+  const showTabs = true   // always show — ALL tab at minimum, group tabs when available
   const isAllView = activeGroupId === null && isMultiGroup
+  // When admin opens with ?internal=1, they can toggle between admin view and client view.
+  // effectiveShowInternal drives all internal-note rendering downstream.
+  const effectiveShowInternal = showInternalNotes && viewerMode === 'admin'
 
   // Filter items by active tab: null = all, group id = that group + shared items
   const filtered = activeGroupId
@@ -210,50 +216,110 @@ export default function ScheduleDocument({
         }
       `}</style>
 
-      {/* ── Group tab filter (screen only) ── */}
-      {showTabs && (
-        <div className="sch-tabs sch-no-print" style={{
-          position: 'sticky', top: 0, zIndex: 10,
-          background: '#e8e4de',
-          padding: '12px 24px',
-          display: 'flex', gap: '8px', flexWrap: 'wrap',
-        }}>
-          <button
-            className="sch-all-tab"
-            onClick={() => setActiveGroupId(null)}
-            style={{
-              fontFamily: 'Inter, sans-serif',
-              fontSize: '11px', fontWeight: 600,
-              letterSpacing: '0.14em', textTransform: 'uppercase',
-              padding: '6px 16px', borderRadius: '4px', border: '1px solid',
-              cursor: 'pointer', transition: 'all 0.15s',
-              background: activeGroupId === null ? '#1a1a1a' : '#fff',
-              color:      activeGroupId === null ? '#fff'    : '#888',
-              borderColor: activeGroupId === null ? '#1a1a1a' : '#ddd',
-            }}
-          >
-            All
-          </button>
-          {groups.map((g, gi) => {
-            const col = GROUP_COLORS[gi % GROUP_COLORS.length]
-            const isActive = activeGroupId === g.id
-            return (
-              <button key={g.id} onClick={() => setActiveGroupId(g.id)} style={{
+      {/* ── Sticky tab header (screen only) ── */}
+      <div className="sch-tabs sch-no-print" style={{
+        position: 'sticky', top: 0, zIndex: 10,
+        background: '#e8e4de',
+        padding: '10px 24px',
+        display: 'flex', flexDirection: 'column', gap: '6px',
+      }}>
+        {/* When internal=1: two labeled rows (Admin / Agent), clicking sets both viewerMode + group */}
+        {showInternalNotes ? (
+          <>
+            {(['admin', 'client'] as const).map(mode => {
+              const isActiveRow = viewerMode === mode
+              const rowLabel = mode === 'admin' ? 'Admin' : 'Agent'
+              return (
+                <div key={mode} style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                  <span style={{
+                    fontFamily: 'Inter, sans-serif',
+                    fontSize: '10px', fontWeight: 600,
+                    letterSpacing: '0.14em', textTransform: 'uppercase',
+                    color: isActiveRow ? '#0f4c35' : '#aaa',
+                    minWidth: '46px',
+                  }}>
+                    {rowLabel}:
+                  </span>
+                  {/* ALL tab */}
+                  <button
+                    className="sch-all-tab"
+                    onClick={() => { setViewerMode(mode); setActiveGroupId(null) }}
+                    style={{
+                      fontFamily: 'Inter, sans-serif',
+                      fontSize: '11px', fontWeight: 600,
+                      letterSpacing: '0.14em', textTransform: 'uppercase',
+                      padding: '5px 14px', borderRadius: '4px', border: '1px solid',
+                      cursor: 'pointer', transition: 'all 0.15s',
+                      background: isActiveRow && activeGroupId === null ? '#1a1a1a' : '#fff',
+                      color:      isActiveRow && activeGroupId === null ? '#fff'    : '#888',
+                      borderColor: isActiveRow && activeGroupId === null ? '#1a1a1a' : '#ddd',
+                    }}
+                  >
+                    All
+                  </button>
+                  {/* Group tabs */}
+                  {groups.map((g, gi) => {
+                    const col = GROUP_COLORS[gi % GROUP_COLORS.length]
+                    const isActive = isActiveRow && activeGroupId === g.id
+                    return (
+                      <button key={g.id} onClick={() => { setViewerMode(mode); setActiveGroupId(g.id) }} style={{
+                        fontFamily: 'Inter, sans-serif',
+                        fontSize: '11px', fontWeight: 600,
+                        letterSpacing: '0.14em', textTransform: 'uppercase',
+                        padding: '5px 14px', borderRadius: '4px', border: '1px solid',
+                        cursor: 'pointer', transition: 'all 0.15s',
+                        background: isActive ? col.accent : '#fff',
+                        color:      isActive ? '#fff'     : col.text,
+                        borderColor: isActive ? col.accent : col.border,
+                      }}>
+                        {g.name}
+                      </button>
+                    )
+                  })}
+                </div>
+              )
+            })}
+          </>
+        ) : (
+          /* No internal flag: just a plain group filter row */
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <button
+              className="sch-all-tab"
+              onClick={() => setActiveGroupId(null)}
+              style={{
                 fontFamily: 'Inter, sans-serif',
                 fontSize: '11px', fontWeight: 600,
                 letterSpacing: '0.14em', textTransform: 'uppercase',
                 padding: '6px 16px', borderRadius: '4px', border: '1px solid',
                 cursor: 'pointer', transition: 'all 0.15s',
-                background: isActive ? col.accent : '#fff',
-                color:      isActive ? '#fff'     : col.text,
-                borderColor: isActive ? col.accent : col.border,
-              }}>
-                {g.name}
-              </button>
-            )
-          })}
-        </div>
-      )}
+                background: activeGroupId === null ? '#1a1a1a' : '#fff',
+                color:      activeGroupId === null ? '#fff'    : '#888',
+                borderColor: activeGroupId === null ? '#1a1a1a' : '#ddd',
+              }}
+            >
+              All
+            </button>
+            {groups.map((g, gi) => {
+              const col = GROUP_COLORS[gi % GROUP_COLORS.length]
+              const isActive = activeGroupId === g.id
+              return (
+                <button key={g.id} onClick={() => setActiveGroupId(g.id)} style={{
+                  fontFamily: 'Inter, sans-serif',
+                  fontSize: '11px', fontWeight: 600,
+                  letterSpacing: '0.14em', textTransform: 'uppercase',
+                  padding: '6px 16px', borderRadius: '4px', border: '1px solid',
+                  cursor: 'pointer', transition: 'all 0.15s',
+                  background: isActive ? col.accent : '#fff',
+                  color:      isActive ? '#fff'     : col.text,
+                  borderColor: isActive ? col.accent : col.border,
+                }}>
+                  {g.name}
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </div>
 
       <div className="sch-outer" style={{ maxWidth: isAllView ? '1200px' : '720px', margin: '0 auto', padding: showTabs ? '16px 24px 48px' : '32px 24px 48px' }}>
 
@@ -419,7 +485,7 @@ export default function ScheduleDocument({
                               <div key={si} style={{ marginBottom: '20px' }}>
                                 <DayBlocks
                                   dayItems={section.items}
-                                  showInternalNotes={showInternalNotes}
+                                  showInternalNotes={effectiveShowInternal}
                                   isMultiGroup={false}
                                   groupColorById={groupColorById}
                                   groupNameById={groupNameById}
@@ -459,7 +525,7 @@ export default function ScheduleDocument({
                                       ) : (
                                         <DayBlocks
                                           dayItems={colItems}
-                                          showInternalNotes={showInternalNotes}
+                                          showInternalNotes={effectiveShowInternal}
                                           isMultiGroup={false}
                                           groupColorById={groupColorById}
                                           groupNameById={groupNameById}
@@ -479,7 +545,7 @@ export default function ScheduleDocument({
                   ) : (
                     <DayBlocks
                       dayItems={dayItems}
-                      showInternalNotes={showInternalNotes}
+                      showInternalNotes={effectiveShowInternal}
                       isMultiGroup={isMultiGroup && !activeGroupId}
                       groupColorById={groupColorById}
                       groupNameById={groupNameById}
@@ -793,14 +859,9 @@ function ScheduleRow({
   const eyebrow =
     itemType === 'transfer' ? null
     : itemType === 'meal'   ? (item.restaurantName ?? item.partner ?? null)
-    : isHospitalStay        ? (item.partner ?? 'Hospital')
-    : itemType === 'hotel'  ? null
+    : itemType === 'hotel'  ? (item.partner ?? null)   // show partner as eyebrow for all accommodation
     : itemType === 'free'   ? null
     : (item.partner ?? null)
-  const hotelPrefix =
-    itemType === 'hotel' && !isHospitalStay && item.hotelCheckType === 'checkin'  ? 'Check-in'
-    : itemType === 'hotel' && !isHospitalStay && item.hotelCheckType === 'checkout' ? 'Check-out'
-    : null
 
   return (
     <div style={{ display: 'flex', padding: '11px 0', alignItems: 'flex-start' }}>
@@ -882,17 +943,17 @@ function ScheduleRow({
         ) : (
           <div>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
-              {hotelPrefix && (
-                <span className="sch-sans" style={{ fontSize: '10px', fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase', color: '#9a9088' }}>
-                  {hotelPrefix} ·
-                </span>
-              )}
               <p className="sch-serif sch-item-title" style={{
                 fontSize: '19px', fontWeight: isPrayer ? 400 : 500, lineHeight: 1.3,
-                color: isPrayer ? '#c07830' : '#1a1a1a',
+                color: isPrayer ? '#c07830' : itemType === 'hotel' ? '#555' : '#1a1a1a',
                 fontStyle: isPrayer ? 'italic' : 'normal',
               }}>
-                {item.title || (itemType === 'free' ? 'At leisure' : '—')}
+                {itemType === 'hotel'
+                  ? (item.hotelCheckType === 'checkin'  ? 'Check-in'
+                    : item.hotelCheckType === 'checkout' ? 'Check-out'
+                    : 'Overnight Stay')   // 'stay', hospital, or unset → all same label
+                  : (item.title || (itemType === 'free' ? 'At leisure' : '—'))
+                }
               </p>
             </div>
             {(item.variantTag || (itemType === 'meal' && item.cuisine)) && (

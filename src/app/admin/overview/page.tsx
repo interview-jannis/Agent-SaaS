@@ -288,8 +288,8 @@ export default async function AdminOverviewPage() {
               <p className="text-[11px] text-gray-500 mt-2">from {revenueCaseCount} case{revenueCaseCount !== 1 ? 's' : ''} with cash received</p>
             </div>
             <div className="md:border-l md:border-gray-200 md:pl-6">
-              <p className="text-[10px] text-emerald-700 uppercase tracking-wide mb-2">Earnings · All Time</p>
-              <p className="text-4xl font-bold text-emerald-700 tracking-tight leading-none">{fmtKRW(earningsTotal)}</p>
+              <p className={`text-[10px] uppercase tracking-wide mb-2 ${earningsTotal >= 0 ? 'text-[#0f4c35]' : 'text-red-600'}`}>Earnings · All Time</p>
+              <p className={`text-4xl font-bold tracking-tight leading-none ${earningsTotal >= 0 ? 'text-[#0f4c35]' : 'text-red-600'}`}>{fmtKRW(earningsTotal)}</p>
               <p className="text-[11px] text-gray-500 mt-2">revenue minus partner & agent costs paid</p>
             </div>
           </div>

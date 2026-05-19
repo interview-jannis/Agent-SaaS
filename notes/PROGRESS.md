@@ -1,11 +1,12 @@
 # Project Progress
 
 ## 현재 상태
-- **Phase**: 런칭 D+0(5/18). 시뮬 #C-001 끝까지 돌리며 OT/Subpackage/Schedule/권한 분리 등 라운드 마감.
-- **마지막 작업**: 2026-05-18 — Overtime line items 자동 생성 모델, Confirmed schedule immutable, `admins.can_sign_contracts` 권한 분리 + /admin/admins Edit 모달, Snapshot 환율 일치, Additional invoice 카테고리/subcategory/quantity 필터, Quotation/Invoice 카테고리 정렬, Reopen Pricing, Trip Services 무료 보존 등.
-- **마지막 업데이트**: 2026-05-18 (런칭일)
+- **Phase**: 런칭 D+1(5/19). 파트너 정산 버그 수정 + Hero/Schedule UI 완성.
+- **마지막 작업**: 2026-05-19 — Partner Payouts 이중 곱셈 버그 수정(₩882M→정상), Reset 기능, KRW 표시 통일, 단가×수량 분해, 호텔 단위 'd' 고정, ScheduleDocument 탭 2행 재설계(Admin:/Agent:), CaseHero awaiting_settlement 누락 추가, completed "Next·" prefix 제거.
+- **마지막 업데이트**: 2026-05-19
 - **SaaS 브랜드명**: **TikkTakk** (전역 치환 완료)
 
+> 2026-05-19 상세: `notes/26.05.19.md`. Partner Payouts 이중 곱셈 버그(base_price 이미 총액인데 × quantity 한 번 더 → 수정). Reset 버튼(파트너 이름 확인 후 delete). KRW 표시 통일. 단가×qty 분해 표시(`₩1,500,000 × 3d = ₩4,500,000`). 호텔 `variant_label_snapshot` "night" 포함 여부로 'pax'→'d' 단위 교정. ScheduleDocument Admin:/Agent: 2행 탭 (행 클릭 = viewerMode + group 동시 설정). CaseHeroAction awaiting_settlement 누락 추가 + completed `noPrefix` 적용. Overview Earnings 음수 빨간색.
 > 2026-05-18 상세: `notes/26.05.18.md`. 새벽 라운드(nationality dropdown 통일, red-border-only 필드, cart auto-save, dental per-tooth + Subpackage agent_note, hotel cap 제거, instanceId 호텔 복수, commission breakdown 표시, Mark Paid 모달, members edit 재설계) + 시뮬 라운드(OT items 자동 생성 모델 `calcAndStoreOvertimeHours`, Trip Services 무료 보존, Selected Products/Finalize Pricing sort_order 통일, Reopen Pricing 버튼, Estimated 라벨 제거, snapshot 환율로 USD 일치, Per-member 탭 제거, Confirmed schedule immutable, Additional invoice 모달 카테고리/sub/qty 필터, Quotation/Invoice 카테고리 정렬, **`can_sign_contracts` 권한 분리** + /admin/admins Edit 모달). 23번째 작업으로 `#` prefix 중복 사건 — DB 값에 prefix 이미 포함된 걸 모르고 UI에 또 추가했다가 `##C-001`로 중복 발생 → 메모리에 영구 기록.
 > 2026-05-17 상세: `notes/26.05.17.md`. Client 등록 phone/email 선택 항목화 (`agent/clients/page.tsx`). Client 상세 빈 필수 필드 amber 하이라이트 — ViewField/TextInput B안 (5/18에 red-border-only로 정책 변경). Passport 번호 입력 + 재입력 확인 필드 추가 (`clientCompleteness.ts` + client detail page, 재입력 확인은 5/18에 단일 입력으로 축소). HeroShell 모바일 버튼 너비 통일 (`[&>button]:flex-1 [&>button]:sm:flex-none`, `CaseHeroAction.tsx`). 계약서 3종(NDA/Partnership/Three-Party) DB 업데이트 SQL 작성 (`sql/update_contract_templates_260517.sql` — 토큰만 추가, 본문 무변경). #7 치과 per-tooth + Subpackage agent_note (5/18 새벽 c984cbc 커밋으로 흡수). 코드 커밋은 없음 — 5/18 새벽 라운드에 합쳐짐.
 > 2026-05-16 상세: `notes/26.05.16.md` (Subpackage Free 카드 `Free – $X` range + 모달 asc 분기. K-Wellness subcategory dedupe (React key warning fix). 상품 description 159개 정리본 `data/product_descriptions.txt` + reformat 스크립트 + 오탈자 일괄 fix + 인라인 bullet/paren-aware 분할. Hotel 큐레이션 가이드 37→31, Sheraton 송도 컷, Gyeongwonjae 송도로 정정. Subpackage Hotel `tertiary_category` region 도입 + UI Row 3 pills 분기 코드 (agent+admin). Row 3 노출 통일: subcategory 클릭 시에만. 정렬: K-Medical partner = HS Center→Stem Cell→Dermatology→알파벳 / K-Wellness sub = SPA 가장 앞→알파벳. v25 사용자 편집: K-Beauty primary_category 8셀 fix + K-Wellness +2 워터파크 + Hotel region 채움 + INSPIRE/SOFITEL 정리).
