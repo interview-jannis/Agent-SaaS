@@ -129,6 +129,21 @@ export default function ProposalPage() {
         </div>
       </div>
 
+      {/* Promo video */}
+      <div className="px-8 md:px-10 pt-12 max-w-3xl mx-auto">
+        <p className="text-xs font-semibold tracking-[0.18em] uppercase text-[#0f4c35] mb-2">About TikkTakk</p>
+        <h2 className="text-xl font-bold text-gray-900 mb-5">See what we do</h2>
+        <div className="relative w-full rounded-2xl overflow-hidden border border-gray-100 shadow-sm" style={{ paddingBottom: '56.25%' }}>
+          <iframe
+            src="https://www.youtube.com/embed/lojeT0D5fdY"
+            title="TikkTakk — Premium K-Travel"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+            className="absolute inset-0 w-full h-full"
+          />
+        </div>
+      </div>
+
       <div className="px-8 md:px-10 py-12 md:py-16 space-y-16 max-w-3xl mx-auto">
 
         {/* Why TikkTakk */}
