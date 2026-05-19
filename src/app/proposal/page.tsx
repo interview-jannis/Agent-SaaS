@@ -217,7 +217,7 @@ export default async function ProposalPage() {
       </header>
 
       {/* Hero */}
-      <div className="bg-[#0f4c35] px-10 lg:px-20 py-14 md:py-20 text-white">
+      <div className="bg-[#0f4c35] px-12 lg:px-28 py-14 md:py-20 text-white">
         <p className="text-xs font-semibold tracking-[0.2em] uppercase text-white/50 mb-4">Powered by TikkTakk</p>
         <h1 className="text-3xl md:text-4xl font-bold leading-tight tracking-tight mb-4">
           Premium K-Travel,<br />Curated for You
@@ -228,7 +228,7 @@ export default async function ProposalPage() {
       </div>
 
       {/* Promo video */}
-      <div className="px-10 lg:px-20 pt-12">
+      <div className="px-12 lg:px-28 pt-12">
         <p className="text-xs font-semibold tracking-[0.18em] uppercase text-[#0f4c35] mb-2">About TikkTakk</p>
         <h2 className="text-xl font-bold text-gray-900 mb-5">See what we do</h2>
         <div className="relative w-full rounded-2xl overflow-hidden border border-gray-100 shadow-sm" style={{ paddingBottom: '56.25%' }}>
@@ -242,7 +242,7 @@ export default async function ProposalPage() {
         </div>
       </div>
 
-      <div className="px-10 lg:px-20 py-12 space-y-16">
+      <div className="px-12 lg:px-28 py-12 space-y-16">
 
         {/* Why TikkTakk + How It Works */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16">
@@ -314,7 +314,7 @@ export default async function ProposalPage() {
             <p className="text-xs font-semibold tracking-[0.18em] uppercase text-[#0f4c35] mb-2">Featured Services</p>
             <h2 className="text-xl font-bold text-gray-900 mb-7">A glimpse of what awaits</h2>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-              {productImages.filter(img => !img.name.toLowerCase().includes('diar')).map((img, i) => (
+              {productImages.map((img, i) => (
                 <div key={i} className="rounded-xl overflow-hidden border border-gray-100 group">
                   <div className="aspect-[4/3] overflow-hidden bg-gray-50">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -333,7 +333,7 @@ export default async function ProposalPage() {
       </div>
 
       {/* Footer */}
-      <footer className="border-t border-gray-100 px-10 lg:px-20 py-6 text-center">
+      <footer className="border-t border-gray-100 px-12 lg:px-28 py-6 text-center">
         <p className="text-xs text-gray-400">&copy; {new Date().getFullYear()} TikkTakk · Interview Co., Ltd. · All rights reserved.</p>
       </footer>
 
