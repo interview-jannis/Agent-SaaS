@@ -44,12 +44,72 @@
 
 ## 다음 할 일
 
-### 5/11 시뮬 전 (🔥 시급) — 5/8 미팅 액션 아이템
+### 기능/UI (코드) — 미완료
 
-#### 개발 (남은 것)
-- [ ] **Female/Male 상품 같은 그룹 내 복수 선택 방지** — 한 그룹 = 1인 기준, 성별 충돌 시 경고/차단
-- [ ] **통역/컨시어지/차량 overage 단가 + invoice 자동 연동** — ScheduleEditor에 overtime 시간 계산 + KRW 표시까지는 구현됨(5/15). 미구현: 초과 시 인라인 prompt → `document_items` `origin='admin_added'` row 자동 생성. 자세한 설계는 `notes/26.05.14.md` 후속 섹션 참조.
-- [ ] **Agent Home 사진 추가** — 9단계 절차 소개 화면에 이미지 삽입. 상품 사진 등록 완료 후 작업.
+- [ ] **Additional invoice Option C 별도 라인 표시** — 현재 balance + additional 단일 합산. 목표: 메인 라인은 balance, 그 아래 작은 글씨로 `+ $X add-ons` 분리. agent + admin Financials 양쪽.
+- [ ] **파트너십 계약서 서명란 agent 이름 중복** — `{{AGENT_NAME}}` 토큰 구조 재검토. 현재 "Agent / Company Name: tikktakk_agent  Representative Name: tikktakk_agent" 처럼 이름 두 번 노출.
+- [ ] **Agent Home 사진 추가** — 9단계 절차 소개 화면에 이미지 삽입.
+- [ ] **Female/Male 상품 같은 그룹 내 복수 선택 방지** — 한 그룹 = 1인 기준, 성별 충돌 시 경고/차단.
+- [ ] **호텔 객실 정원 검증 (Phase 2)** — `product_variants`에 `min_occupancy/max_occupancy` 컬럼, 카트에서 memberCount > max_occupancy 시 경고.
+- [ ] **Agent 국적별 판가 분기 (Phase 2)** — `agents.country` 기반 카탈로그 가격/가시성 분기.
+
+### 컨텐츠 (사용자 본인) — 미완료
+
+- [ ] **설문 질문 실제 내용 확정** — 이사님 검토 후 admin/surveys에서 갱신 (placeholder 12문항 seed됨).
+- [ ] **WHY 컬럼 채우기** — 비즈니스 카피.
+- [ ] **대표 원장 프로파일 컬럼** — 영문 오픈 정보.
+- [ ] **has_female_doctor / has_prayer_room** — Muslim VIP 핵심 필드.
+- [ ] **P-029, 030, 032, 033 (Nest Clinic 4개) name 시술명** 입력.
+- [ ] **호텔 ₩1M 미만 객실 정리** — v19 cutoff 적용 + deleteMissing으로 정리.
+
+### 알림 채널 확장
+
+- [ ] **WhatsApp 발송** (agent 대상)
+- [ ] **KakaoTalk 발송** (admin 대상)
+- [ ] **SNS 정보** (agent registration에 WhatsApp 등)
+
+### Polish
+
+- [ ] **Guide 화면 캡처 추가** — UI 정리 완료 후 (진행 중)
+
+---
+
+## 상업 운영 전 체크리스트
+
+> 🚨 표시: 운영 전 반드시 완료해야 함. 그 외는 확장 시점에 검토.
+
+### 🚨 보안
+
+- [ ] **RLS 활성화** — 현재 전체 비활성화. anon key로 누구나 모든 테이블 read/write 가능. 의료/계약/금융 데이터 노출 위험. 해결: 서버사이드 API route 마이그레이션 + RLS 정책 (auth.uid() 기반). 작업량 2~3주.
+- [ ] **anon key 노출 → service role 분리** — 클라이언트 직접 supabase 호출 부분 API route로 전환.
+
+### 🚨 법/규제
+
+- [ ] **개인정보보호법 (PIPA) 준수** — 이용약관 + 개인정보처리방침(한/영), 정보주체 권리(열람/정정/삭제), DPO 지정, 민감정보 별도 동의, 침해 72시간 내 KISA 신고 의무. 법무법인 자문 권장.
+- [ ] **외국인환자 유치업자 등록** — 관광진흥법 + 의료법. 미등록 운영 시 3년 이하 징역 또는 3천만원 이하 벌금. 보건복지부 신청 + 보증보험 가입.
+- [ ] **계약서 공인전자서명 (선택)** — 현재 SHA-256 + IP + typed name으로 기본 갖춤. 분쟁 대비 강화 시 KICA 등 타임스탬프 인증기관 도입 검토.
+
+### 운영 안정성
+
+- [ ] **Supabase Pro 업그레이드 + PITR 활성화** — 현재 free tier 7일 백업만. 운영 실수 복구 불가 위험. Pro $25/mo + 일일 dump 자동화(S3/GCS 권장).
+- [ ] **Staging 환경 분리** — 현재 production 직접 수정. Supabase project 1개 추가 + Vercel preview branch 연동.
+- [ ] **모니터링 / 에러 추적** — Sentry(에러) + Better Uptime(가동률) + Supabase metrics. 무료 티어로 시작 가능.
+- [ ] **E2E 자동화 테스트** — Playwright 최소 1 critical path (가입 → 견적 → 계약 → 결제 → 여행 완료). 매 배포 자동 검증.
+
+### 결제/세무
+
+- [ ] **결제 자동화** — 현재 수동 Mark Paid. 확장 시: Stripe/Wise(외화) + 토스페이먼츠/아임포트(국내) + 영수증 자동 발급.
+- [ ] **외국환거래법 신고** — 외화 수취 일정액 이상 시 신고 의무 확인.
+- [ ] **부가세 면세 여부 확인** — 의료관광 수수료 면세 가능성 + 외국인 클라이언트 영세율 검토. 세무사 자문.
+
+### 확장성
+
+- [ ] **다국어 (i18n)** — 중동/동남아 진출 시 아랍어/말레이어. next-intl 인프라 선 검토.
+- [ ] **Admin 자동화** — 자동 스케줄 추천, 정산 자동화 등. admin 1인 처리 한계 대비.
+
+---
+
+### (구) 완료 확인 목록
 - [x] **Admin Approve & Activate → Agent 알림** — `admin/agents/[id]/page.tsx`에서 Approve & Activate 후 notifyAgent 호출 확인 완료.
 
 #### 개발 (완료 확인됨)

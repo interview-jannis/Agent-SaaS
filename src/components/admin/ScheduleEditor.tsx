@@ -40,6 +40,9 @@ export type DaySubpackageEntry = { variantId: string; hours: number }
 
 type CaseProduct = {
   variantId: string
+  // Unique document_item id — allows multiple Trip Service rows for the same
+  // variant (e.g. hotel booked separately for male/female groups).
+  itemId?: string
   productName: string
   variantLabel: string | null
   partnerName: string | null
@@ -143,6 +146,10 @@ export default function ScheduleEditor({
   const [draftSaved, setDraftSaved] = useState(false)
   const [error, setError] = useState('')
   const [emptyTitleIds, setEmptyTitleIds] = useState<Set<string>>(new Set())
+  // Local preview slug: set the first time Preview is clicked when no real schedule
+  // slug exists yet (first-ever version). A version=0 sentinel row is created in
+  // `schedules` so the /schedule/[slug]?draft=1 page can look up the case.
+  const [localPreviewSlug, setLocalPreviewSlug] = useState<string | null>(null)
   // Items added in this session that haven't been "Saved" individually yet.
   // Pending rows show with dashed border + inline Cancel/Save and don't count
   // for the global coverage gate (so admin can stage incomplete drafts).
@@ -784,7 +791,14 @@ export default function ScheduleEditor({
       {visibleDays.map(day => {
         const dayItems = items
           .filter(i => i.day === day)
-          .sort(compareScheduleItems)
+          .sort((a, b) => {
+            // Items being edited (in editSnapshots) use their pre-edit snapshot for
+            // sort comparison so they don't visually jump while admin is adjusting
+            // their block/time. The final position is resolved on commit.
+            const aForSort = editSnapshots.get(a.id) ?? a
+            const bForSort = editSnapshots.get(b.id) ?? b
+            return compareScheduleItems(aForSort, bForSort)
+          })
         const dateObj = dateForDay(travelStartDate, day)
         const hasPending = dayItems.some(i => pendingItemIds.has(i.id))
         // Collapse unless there are pending (unsaved) items in this day
@@ -1214,15 +1228,19 @@ export default function ScheduleEditor({
           if (!scheduledDaysByVariant.has(it.variantId)) scheduledDaysByVariant.set(it.variantId, new Set())
           scheduledDaysByVariant.get(it.variantId)!.add(it.day)
         }
-        // Deduplicate trip service products by variantId (quantity is the same across groups)
+        // Collect trip service products keyed by itemId (falls back to variantId).
+        // Using itemId allows the same hotel variant to appear as separate lines
+        // when booked for different groups (e.g. male + female suites).
         const tripServiceProducts = new Map<string, CaseProduct>()
         for (const cp of caseProducts) {
           if (!cp.isTripService) continue
-          if (!tripServiceProducts.has(cp.variantId)) tripServiceProducts.set(cp.variantId, cp)
+          const key = cp.itemId ?? cp.variantId
+          if (!tripServiceProducts.has(key)) tripServiceProducts.set(key, cp)
         }
         type TripMissing = { cp: CaseProduct; required: number; scheduled: number }
         type TripSummary = {
           cp: CaseProduct
+          key: string
           scheduledDays: number
           requiredDays: number
           scheduledHours: number
@@ -1233,7 +1251,8 @@ export default function ScheduleEditor({
         }
         const missingTripServices: TripMissing[] = []
         const tripSummary: TripSummary[] = []
-        for (const [vid, cp] of tripServiceProducts) {
+        for (const [key, cp] of tripServiceProducts) {
+          const vid = cp.variantId
           const daySet = scheduledDaysByVariant.get(vid)
           let scheduledDays = 0
           if (daySet && daySet.size > 0) {
@@ -1241,15 +1260,10 @@ export default function ScheduleEditor({
               const days = [...daySet]
               const minDay = Math.min(...days)
               const maxDay = Math.max(...days)
-              // If the max day has ONLY checkout items (no checkin/stay), that day
-              // is a departure morning — subtract 1 so it doesn't count as an extra night.
-              // If the max day has ANY checkout item, treat it as departure morning
-              // (checkout takes precedence even if a stay item is also on that day)
-              const maxDayHasCheckout = committedItems.some(
-                it => it.variantId === vid && it.day === maxDay && it.hotelCheckType === 'checkout'
-              )
-              const maxNightDay = maxDayHasCheckout ? maxDay - 1 : maxDay
-              scheduledDays = Math.max(0, maxNightDay - minDay + 1)
+              // Hotel nights = max(day) - min(day) + 1 (span-based, inclusive).
+              // Day 1 check-in + Day 4 check-out → 4-1+1 = 4 nights counted.
+              // quantity in document_items likewise represents day-span (set to tripDays).
+              scheduledDays = Math.max(0, maxDay - minDay + 1)
             } else {
               scheduledDays = daySet.size
             }
@@ -1266,6 +1280,7 @@ export default function ScheduleEditor({
           })
           tripSummary.push({
             cp,
+            key,
             scheduledDays,
             requiredDays: cp.quantity,
             scheduledHours,
@@ -1310,7 +1325,7 @@ export default function ScheduleEditor({
                   {tripSummary.map(s => {
                     const dayOK = s.scheduledDays >= s.requiredDays
                     return (
-                      <li key={s.cp.variantId} className={dayOK ? 'text-gray-700' : 'text-amber-900'}>
+                      <li key={s.key} className={dayOK ? 'text-gray-700' : 'text-amber-900'}>
                         {s.cp.partnerName && <span className={dayOK ? 'text-gray-500' : 'text-amber-700'}>{s.cp.partnerName} · </span>}
                         <span className="font-medium">{s.cp.productName}</span>{s.cp.variantLabel ? <span className={dayOK ? 'text-gray-500' : 'text-amber-700'}> · {s.cp.variantLabel}</span> : null}
                         <span className={`ml-1 ${dayOK ? 'text-gray-500' : 'text-amber-700 font-semibold'}`}>
@@ -1366,6 +1381,33 @@ export default function ScheduleEditor({
               >
                 {savingDraft ? 'Saving…' : draftSaved ? 'Draft saved' : 'Save Draft'}
               </button>
+              <button
+                  onClick={async () => {
+                    // Resolve effective slug: real schedule slug → local preview slug → create one
+                    let effectiveSlug = slug ?? localPreviewSlug
+                    if (!effectiveSlug) {
+                      // First preview click with no existing schedule: create a version=0
+                      // sentinel row so /schedule/[slug]?draft=1 can locate the case.
+                      const newSlug = Math.random().toString(36).slice(2, 10) + Date.now().toString(36)
+                      const { error: upsertErr } = await supabase.from('schedules').upsert(
+                        { case_id: caseId, version: 0, slug: newSlug, status: 'pending', items: [] },
+                        { onConflict: 'case_id,version' },
+                      )
+                      if (!upsertErr) {
+                        setLocalPreviewSlug(newSlug)
+                        effectiveSlug = newSlug
+                      }
+                    }
+                    if (!effectiveSlug) return
+                    if (items.length > 0) await saveDraft(items, daySubpackages)
+                    const url = `${typeof window !== 'undefined' ? window.location.origin : ''}/schedule/${effectiveSlug}?preview=1&internal=1&draft=1`
+                    window.open(url, '_blank')
+                  }}
+                  disabled={savingDraft || saving || items.length === 0}
+                  className="text-sm font-medium bg-gray-700 text-white hover:bg-gray-600 px-4 py-2 rounded-xl disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Preview ↗
+                </button>
               <button
                 onClick={handleSave}
                 disabled={!canSave}

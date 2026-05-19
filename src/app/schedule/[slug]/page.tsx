@@ -11,10 +11,10 @@ export default async function SchedulePage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>
-  searchParams: Promise<{ autoprint?: string; preview?: string; v?: string; internal?: string; group?: string }>
+  searchParams: Promise<{ autoprint?: string; preview?: string; v?: string; internal?: string; group?: string; draft?: string }>
 }) {
   const { slug } = await params
-  const { autoprint, preview, v, internal, group } = await searchParams
+  const { autoprint, preview, v, internal, group, draft } = await searchParams
   const supabase = createServerClient()
 
   // Default: latest version (client-facing). Admin preview can pin a specific version via ?v=.
@@ -26,7 +26,7 @@ export default async function SchedulePage({
       first_opened_at, open_count,
       concierge_name, concierge_phone,
       cases(id, agent_id, case_number, concept, travel_start_date, travel_end_date,
-        outbound_flight, inbound_flight,
+        outbound_flight, inbound_flight, schedule_draft_items,
         case_members(id, is_lead, clients(name)),
         documents(
           type,
@@ -68,6 +68,7 @@ export default async function SchedulePage({
     travel_end_date: string | null
     outbound_flight: FlightData
     inbound_flight: FlightData
+    schedule_draft_items: ScheduleItem[] | null
     case_members: { id: string; is_lead: boolean; clients: { name: string | null } | null }[] | null
     documents: {
       type: string
@@ -145,8 +146,14 @@ export default async function SchedulePage({
     }
   }
 
+  // Draft preview: use cases.schedule_draft_items instead of saved schedule items.
+  const isDraftPreview = draft === '1'
+  const renderItems: ScheduleItem[] | null = isDraftPreview
+    ? (schedule.cases?.schedule_draft_items ?? schedule.items)
+    : schedule.items
+
   // Native (items) renderer takes precedence over PDF.
-  if (schedule.items && schedule.items.length > 0) {
+  if (renderItems && renderItems.length > 0) {
     const caseRef = schedule.cases
     const lead = caseRef?.case_members?.find(m => m.is_lead)?.clients?.name ?? null
 
@@ -206,7 +213,7 @@ export default async function SchedulePage({
     return (
       <>
         <ScheduleDocument
-          items={schedule.items}
+          items={renderItems}
           caseNumber={caseRef?.case_number ?? null}
           tripName={caseRef?.concept ?? null}
           leadName={lead}
