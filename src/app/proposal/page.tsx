@@ -211,9 +211,9 @@ export default async function ProposalPage() {
     <div className="min-h-screen bg-white">
 
       {/* Header */}
-      <header className="h-32 border-b border-gray-100 flex items-center px-12 lg:px-28">
+      <header className="h-24 border-b border-gray-100 flex items-center px-12 lg:px-28">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/tiktak-logo-long.png?v=2" alt="TikkTakk" className="h-28 w-auto" />
+        <img src="/tiktak-logo-long.png?v=2" alt="TikkTakk" className="h-20 w-auto" />
       </header>
 
       {/* Hero — 2-col: text left, image mosaic right */}
