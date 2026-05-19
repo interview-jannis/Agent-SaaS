@@ -217,20 +217,18 @@ export default async function ProposalPage() {
       </header>
 
       {/* Hero */}
-      <div className="bg-[#0f4c35] px-8 md:px-10 py-14 md:py-20 text-white">
-        <div className="max-w-2xl mx-auto">
-          <p className="text-xs font-semibold tracking-[0.2em] uppercase text-white/50 mb-4">Powered by TikkTakk</p>
-          <h1 className="text-3xl md:text-4xl font-bold leading-tight tracking-tight mb-4">
-            Premium K-Travel,<br />Curated for You
-          </h1>
-          <p className="text-base text-white/70 leading-relaxed max-w-lg">
-            TikkTakk is a white-glove medical tourism concierge connecting discerning clients with Korea&apos;s finest clinics, wellness destinations, and cultural experiences — seamlessly managed by your dedicated agent.
-          </p>
-        </div>
+      <div className="bg-[#0f4c35] px-8 lg:px-12 py-14 md:py-20 text-white">
+        <p className="text-xs font-semibold tracking-[0.2em] uppercase text-white/50 mb-4">Powered by TikkTakk</p>
+        <h1 className="text-3xl md:text-4xl font-bold leading-tight tracking-tight mb-4">
+          Premium K-Travel,<br />Curated for You
+        </h1>
+        <p className="text-base text-white/70 leading-relaxed max-w-lg">
+          TikkTakk is a white-glove medical tourism concierge connecting discerning clients with Korea&apos;s finest clinics, wellness destinations, and cultural experiences — seamlessly managed by your dedicated agent.
+        </p>
       </div>
 
       {/* Promo video */}
-      <div className="px-8 md:px-10 pt-12 max-w-3xl mx-auto">
+      <div className="px-8 lg:px-12 pt-12">
         <p className="text-xs font-semibold tracking-[0.18em] uppercase text-[#0f4c35] mb-2">About TikkTakk</p>
         <h2 className="text-xl font-bold text-gray-900 mb-5">See what we do</h2>
         <div className="relative w-full rounded-2xl overflow-hidden border border-gray-100 shadow-sm" style={{ paddingBottom: '56.25%' }}>
@@ -244,10 +242,10 @@ export default async function ProposalPage() {
         </div>
       </div>
 
-      <div className="px-8 md:px-10 py-12 md:py-16 space-y-16 max-w-3xl mx-auto">
+      <div className="px-8 lg:px-12 py-12 space-y-16">
 
         {/* Why TikkTakk + How It Works */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16">
 
           {/* Why TikkTakk */}
           <section>
@@ -315,7 +313,7 @@ export default async function ProposalPage() {
           <section>
             <p className="text-xs font-semibold tracking-[0.18em] uppercase text-[#0f4c35] mb-2">Featured Services</p>
             <h2 className="text-xl font-bold text-gray-900 mb-7">A glimpse of what awaits</h2>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
               {productImages.filter(img => !img.name.toLowerCase().includes('diar')).slice(0, 12).map((img, i) => (
                 <div key={i} className="rounded-xl overflow-hidden border border-gray-100 group">
                   <div className="aspect-[4/3] overflow-hidden bg-gray-50">
@@ -335,7 +333,7 @@ export default async function ProposalPage() {
       </div>
 
       {/* Footer */}
-      <footer className="border-t border-gray-100 px-8 md:px-10 py-6 text-center">
+      <footer className="border-t border-gray-100 px-8 lg:px-12 py-6 text-center">
         <p className="text-xs text-gray-400">&copy; {new Date().getFullYear()} TikkTakk · Interview Co., Ltd. · All rights reserved.</p>
       </footer>
 
