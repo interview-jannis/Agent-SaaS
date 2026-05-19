@@ -1,4 +1,7 @@
-import { createServerClient } from '@/lib/supabase-server'
+'use client'
+
+import { useState, useEffect } from 'react'
+import { supabase } from '@/lib/supabase'
 
 const STEPS = [
   {
@@ -162,50 +165,48 @@ function imgPriority(img: ProductImage): number {
   return 11
 }
 
-async function loadFeaturedImages(): Promise<ProductImage[]> {
-  try {
-    const supabase = createServerClient()
-    const { data: prods } = await supabase
-      .from('products')
-      .select('id, product_number, name, product_categories(name), product_subcategories!products_subcategory_id_fkey(name)')
-      .in('product_number', ALL_NUMBERS)
-    if (!prods?.length) return []
+export default function ProposalPage() {
+  const [productImages, setProductImages] = useState<ProductImage[]>([])
 
-    const prodByNumber = new Map(prods.map(p => [p.product_number, p]))
-    const prodIds = prods.map(p => p.id)
+  useEffect(() => {
+    async function loadFeatured() {
+      const { data: prods } = await supabase
+        .from('products')
+        .select('id, product_number, name, product_categories(name), product_subcategories!products_subcategory_id_fkey(name)')
+        .in('product_number', ALL_NUMBERS)
+      if (!prods?.length) return
 
-    const { data: imgs } = await supabase
-      .from('product_images')
-      .select('product_id, image_url, is_primary, order')
-      .in('product_id', prodIds)
-    if (!imgs) return []
+      const prodByNumber = new Map(prods.map(p => [p.product_number, p]))
+      const prodIds = prods.map(p => p.id)
 
-    const seenUrls = new Set<string>()
-    const result: ProductImage[] = []
+      const { data: imgs } = await supabase
+        .from('product_images')
+        .select('product_id, image_url, is_primary, order')
+        .in('product_id', prodIds)
+      if (!imgs) return
 
-    for (const spec of FLAT_SPECS) {
-      const prod = prodByNumber.get(spec.num)
-      if (!prod) continue
-      const img = imgs.find(i =>
-        i.product_id === prod.id &&
-        (spec.ord === null ? i.is_primary : i.order === spec.ord)
-      )
-      if (!img?.image_url || seenUrls.has(img.image_url)) continue
-      seenUrls.add(img.image_url)
-      const cat = (prod.product_categories as { name?: string } | null)?.name ?? ''
-      const sub = (prod.product_subcategories as { name?: string } | null)?.name ?? ''
-      result.push({ url: img.image_url, name: prod.name, category: cat, subcategory: sub })
+      const seenUrls = new Set<string>()
+      const result: ProductImage[] = []
+
+      for (const spec of FLAT_SPECS) {
+        const prod = prodByNumber.get(spec.num)
+        if (!prod) continue
+        const img = imgs.find(i =>
+          i.product_id === prod.id &&
+          (spec.ord === null ? i.is_primary : i.order === spec.ord)
+        )
+        if (!img?.image_url || seenUrls.has(img.image_url)) continue
+        seenUrls.add(img.image_url)
+        const cat = (prod.product_categories as { name?: string } | null)?.name ?? ''
+        const sub = (prod.product_subcategories as { name?: string } | null)?.name ?? ''
+        result.push({ url: img.image_url, name: prod.name, category: cat, subcategory: sub })
+      }
+
+      result.sort((a, b) => imgPriority(a) - imgPriority(b))
+      setProductImages(result)
     }
-
-    result.sort((a, b) => imgPriority(a) - imgPriority(b))
-    return result
-  } catch {
-    return []
-  }
-}
-
-export default async function ProposalPage() {
-  const productImages = await loadFeaturedImages()
+    loadFeatured()
+  }, [])
 
   return (
     <div className="min-h-screen bg-white">
