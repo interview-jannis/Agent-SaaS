@@ -211,20 +211,41 @@ export default async function ProposalPage() {
     <div className="min-h-screen bg-white">
 
       {/* Header */}
-      <header className="h-32 border-b border-gray-100 flex items-center px-12 lg:px-28">
+      <header className="h-16 border-b border-gray-100 flex items-center px-12 lg:px-28">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/tiktak-logo-long.png" alt="TikkTakk" className="h-28 w-auto" />
+        <img src="/tiktak-logo-long.png" alt="TikkTakk" className="h-9 w-auto" />
       </header>
 
-      {/* Hero */}
-      <div className="bg-[#0f4c35] px-12 lg:px-28 py-14 md:py-20 text-white">
-        <p className="text-xs font-semibold tracking-[0.2em] uppercase text-white/50 mb-4">Powered by TikkTakk</p>
-        <h1 className="text-3xl md:text-4xl font-bold leading-tight tracking-tight mb-4">
-          Premium K-Travel,<br />Curated for You
-        </h1>
-        <p className="text-base text-white/70 leading-relaxed max-w-lg">
-          TikkTakk is a white-glove medical tourism concierge connecting discerning clients with Korea&apos;s finest clinics, wellness destinations, and cultural experiences — seamlessly managed by your dedicated agent.
-        </p>
+      {/* Hero — 2-col: text left, image mosaic right */}
+      <div className="bg-[#0f4c35] text-white">
+        <div className="grid grid-cols-1 lg:grid-cols-2 min-h-[320px]">
+          {/* Left: text */}
+          <div className="px-12 lg:px-28 py-14 flex flex-col justify-center">
+            <p className="text-xs font-semibold tracking-[0.2em] uppercase text-white/50 mb-4">Powered by TikkTakk</p>
+            <h1 className="text-3xl md:text-4xl font-bold leading-tight tracking-tight mb-4">
+              Premium K-Travel,<br />Curated for You
+            </h1>
+            <p className="text-base text-white/70 leading-relaxed max-w-lg">
+              TikkTakk is a white-glove medical tourism concierge connecting discerning clients with Korea&apos;s finest clinics, wellness destinations, and cultural experiences — seamlessly managed by your dedicated agent.
+            </p>
+          </div>
+          {/* Right: product image mosaic */}
+          {productImages.length > 0 ? (
+            <div className="hidden lg:grid grid-cols-3 gap-0.5 p-0.5 bg-[#0a3828]">
+              {productImages.slice(0, 6).map((img, i) => (
+                <div key={i} className="relative overflow-hidden bg-[#0a3828] aspect-[4/3]">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={img.url} alt={img.name} className="w-full h-full object-cover opacity-80 hover:opacity-100 transition-opacity" />
+                  <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/60 to-transparent px-2 py-1.5">
+                    <p className="text-[10px] text-white/90 truncate leading-tight">{img.name}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="hidden lg:block bg-[#0a3828]" />
+          )}
+        </div>
       </div>
 
       {/* Promo video */}
